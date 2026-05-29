@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { RefreshCw, Database, CheckCircle, Clock, AlertCircle } from 'lucide-react';
-import { getSyncMeta } from '@/lib/firestore/catalog';
 import type { SyncMeta } from '@/lib/firestore/catalog';
 
 interface SyncStatus extends SyncMeta {
@@ -17,16 +16,13 @@ export default function AdminPage() {
 
   const loadStatus = async () => {
     try {
-      const meta = await getSyncMeta();
-      if (meta) {
-        // Hole aktuellen Total von der API
-        const res = await fetch(`/api/admin/sync?secret=${process.env.NEXT_PUBLIC_CRON_SECRET ?? ''}`, {
-          headers: { 'x-cron-secret': '' },
-        });
-        // Zeige einfach die Meta-Daten ohne API-Aufruf (kein Secret nötig für Status-Anzeige)
+      // Nutzt Session-Auth — kein Secret im Client nötig
+      const res = await fetch('/api/admin/trigger-sync');
+      if (res.ok) {
+        const data = await res.json();
         setStatus({
-          ...meta,
-          newCards: (meta.currentTotal ?? 0) - (meta.syncedTotal ?? 0),
+          ...data,
+          newCards: (data.currentTotal ?? 0) - (data.syncedTotal ?? 0),
         });
       }
     } catch { /* ignore */ } finally {
@@ -40,11 +36,7 @@ export default function AdminPage() {
     setSyncing(true);
     setLastResult(null);
     try {
-      const secret = 'sfz-cron-2026-pokedex';
-      const res = await fetch(`/api/admin/sync?mode=${mode}`, {
-        method: 'POST',
-        headers: { 'x-cron-secret': secret },
-      });
+      const res = await fetch(`/api/admin/trigger-sync?mode=${mode}`, { method: 'POST' });
       const data = await res.json();
       setLastResult(data.message ?? data.error ?? 'Fertig');
       await loadStatus();
@@ -55,7 +47,7 @@ export default function AdminPage() {
     }
   };
 
-  const pct = status ? Math.round((status.syncedTotal / (status.currentTotal || 1)) * 100) : 0;
+  const pct = status ? Math.round(((status.syncedTotal ?? 0) / (status.currentTotal || 1)) * 100) : 0;
   const isComplete = pct >= 100;
   const hasNew = (status?.newCards ?? 0) > 0;
 
@@ -80,7 +72,7 @@ export default function AdminPage() {
                 ? <span className="flex items-center gap-1 text-xs text-green-500"><CheckCircle size={13} /> Aktuell</span>
                 : hasNew
                   ? <span className="flex items-center gap-1 text-xs text-yellow-500"><Clock size={13} /> Update verfügbar</span>
-                  : <span className="flex items-center gap-1 text-xs text-muted-foreground"><Clock size={13} /> Läuft…</span>
+                  : <span className="flex items-center gap-1 text-xs text-muted-foreground"><Clock size={13} /> Initialer Sync läuft…</span>
               }
             </div>
 
@@ -122,7 +114,6 @@ export default function AdminPage() {
 
           {/* Buttons */}
           <div className="space-y-2">
-            {/* Neue Karten holen (nur Delta) */}
             <button
               onClick={() => runSync('update')}
               disabled={syncing || (!hasNew && isComplete)}
@@ -136,7 +127,6 @@ export default function AdminPage() {
               )}
             </button>
 
-            {/* Initialen Sync fortsetzen (falls nicht fertig) */}
             {!isComplete && (
               <button
                 onClick={() => runSync('auto')}
@@ -152,10 +142,8 @@ export default function AdminPage() {
             )}
           </div>
 
-          {/* Hinweis */}
           <p className="text-xs text-muted-foreground text-center px-2">
-            Der tägliche Cron-Job (3:00 Uhr) holt automatisch neue Karten.
-            Hier kannst du es auch manuell anstoßen.
+            Wöchentlicher Cron-Job (Montag 3:00 Uhr) prüft automatisch auf neue Karten.
           </p>
         </div>
       )}
