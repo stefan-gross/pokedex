@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const TCG_BASE = 'https://api.pokemontcg.io/v2';
-const headers = process.env.POKEMON_TCG_API_KEY
+const headers: Record<string, string> = process.env.POKEMON_TCG_API_KEY
   ? { 'X-Api-Key': process.env.POKEMON_TCG_API_KEY }
   : {};
 
