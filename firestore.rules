@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pokédex Collections — persönliche App, kein Auth erforderlich
+    // TODO: Vor dem Go-Live auf Auth-Check umstellen falls gewünscht
+    match /cards/{id} {
+      allow read, write: if true;
+    }
+    match /cards/{cardId}/priceHistory/{id} {
+      allow read, write: if true;
+    }
+    match /binders/{id} {
+      allow read, write: if true;
+    }
+    match /wishlists/{id} {
+      allow read, write: if true;
+    }
+  }
+}

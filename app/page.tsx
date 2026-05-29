@@ -1,65 +1,101 @@
-import Image from "next/image";
+import Link from 'next/link';
 
-export default function Home() {
+export default function DashboardPage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="px-4 pt-6 pb-4 space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Pokédex</h1>
+          <p className="text-sm text-muted-foreground">Deine Sammlung</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </div>
+
+      {/* Stat Tiles */}
+      <div className="grid grid-cols-2 gap-3">
+        <StatTile label="Karten gesamt" sub="+12 diese Woche" value="847" accent />
+        <StatTile label="Sammlungswert" sub="trendPrice" value="€ 1.240" />
+        <StatTile label="Sets" sub="3 vollständig" value="12" />
+        <StatTile label="Wunschliste" sub="2 günstig" value="34" />
+      </div>
+
+      {/* Set-Vollständigkeit */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Set-Vollständigkeit</h2>
+          <Link href="/collection" className="text-xs" style={{ color: 'var(--pokedex-red)' }}>Alle</Link>
         </div>
-      </main>
+        <div className="space-y-2">
+          <SetProgress name="Scarlet & Violet" owned={74} total={94} />
+          <SetProgress name="Paldea Evolved" owned={31} total={93} />
+          <SetProgress name="Obsidian Flames" owned={8} total={197} />
+        </div>
+      </section>
+
+      {/* Zuletzt hinzugefügt */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Zuletzt hinzugefügt</h2>
+          <Link href="/collection" className="text-xs" style={{ color: 'var(--pokedex-red)' }}>Alle</Link>
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+          {[
+            { name: 'Pikachu', number: '049/198', img: 'https://images.pokemontcg.io/sv1/49.png' },
+            { name: 'Charizard ex', number: '125/197', img: 'https://images.pokemontcg.io/sv3/125.png' },
+            { name: 'Mewtwo', number: '150/165', img: 'https://images.pokemontcg.io/mew/150.png' },
+            { name: 'Gardevoir ex', number: '086/193', img: 'https://images.pokemontcg.io/sv2/86.png' },
+          ].map((card) => (
+            <RecentCard key={card.name} {...card} />
+          ))}
+        </div>
+      </section>
     </div>
+  );
+}
+
+function StatTile({ label, sub, value, accent }: { label: string; sub: string; value: string; accent?: boolean }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-3 flex items-center justify-between gap-2 min-h-[68px]">
+      <div className="flex-1 min-w-0 flex flex-col justify-between">
+        <div className="text-xs text-muted-foreground font-medium">{label}</div>
+        <div className="text-[10px] text-muted-foreground/60 mt-1">{sub}</div>
+      </div>
+      <div
+        className="text-[28px] font-extrabold leading-none shrink-0"
+        style={{ color: accent ? 'var(--pokedex-red)' : undefined }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function SetProgress({ name, owned, total }: { name: string; owned: number; total: number }) {
+  const pct = Math.round((owned / total) * 100);
+  return (
+    <div className="bg-card border border-border rounded-xl px-3 py-2.5">
+      <div className="flex justify-between items-center mb-1.5">
+        <span className="text-sm font-medium">{name}</span>
+        <span className="text-xs text-muted-foreground">{owned}/{total}</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+        <div
+          className="h-full rounded-full"
+          style={{ width: `${pct}%`, background: 'var(--pokedex-red)' }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function RecentCard({ name, number, img }: { name: string; number: string; img: string }) {
+  return (
+    <Link href="/collection" className="shrink-0 flex flex-col items-center gap-1">
+      <div className="w-[72px] h-[100px] rounded-lg overflow-hidden bg-secondary border border-border">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={img} alt={name} className="w-full h-full object-cover" />
+      </div>
+      <span className="text-[10px] text-muted-foreground">{number}</span>
+    </Link>
   );
 }

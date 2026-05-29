@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pokédex App — Mockup</title>
+<style>
+:root {
+  --bg:#0f1117; --bg2:#1a1d27; --bg3:#22263a; --border:#2e3349;
+  --text:#e2e8f0; --text2:#94a3b8; --text3:#64748b;
+  --accent:#e53e3e; --accent2:#fc8181;
+  --gold:#f6c90e; --blue:#4299e1; --green:#48bb78;
+  --purple:#9f7aea; --orange:#ed8936;
+  --shadow:rgba(0,0,0,0.5);
+  --nav-h:68px;
+}
+@media(prefers-color-scheme:light){:root{
+  --bg:#f0f2f8; --bg2:#fff; --bg3:#e8ecf4; --border:#d1d9e8;
+  --text:#1a202c; --text2:#4a5568; --text3:#718096; --shadow:rgba(0,0,0,0.12);
+}}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);height:100dvh;overflow:hidden;}
+
+/* ── Shell ── */
+.app{display:flex;flex-direction:column;height:100dvh;max-width:430px;margin:0 auto;position:relative;overflow:hidden;}
+.main{flex:1;overflow-y:auto;padding-bottom:var(--nav-h);}
+.screen{display:none;padding:16px;}
+.screen.active{display:block;}
+
+/* ── Top bar ── */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50;}
+.topbar-title{font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px;}
+.topbar-title .ball{width:22px;height:22px;background:var(--accent);border-radius:50%;position:relative;overflow:hidden;flex-shrink:0;}
+.topbar-title .ball::after{content:'';position:absolute;bottom:0;left:0;right:0;height:50%;background:#fff;}
+.topbar-title .ball::before{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:7px;height:7px;background:#fff;border-radius:50%;border:1.5px solid var(--bg2);z-index:2;}
+.topbar-actions{display:flex;gap:6px;}
+.icon-btn{width:36px;height:36px;border-radius:8px;background:var(--bg3);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);}
+.icon-btn:hover{background:var(--border);color:var(--text);}
+svg.ic{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;}
+
+/* ── Bottom Nav ── */
+.bottom-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;background:var(--bg2);border-top:1px solid var(--border);padding:6px 0 max(6px,env(safe-area-inset-bottom));z-index:100;display:flex;justify-content:space-around;align-items:flex-end;}
+.bn-item{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--text3);cursor:pointer;padding:4px 10px;min-width:52px;}
+.bn-item.active{color:var(--accent);}
+.bn-item svg{width:22px;height:22px;}
+/* FAB Scan button */
+.bn-fab{display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;margin-top:-18px;}
+.bn-fab-btn{width:52px;height:52px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(229,62,62,0.5);}
+.bn-fab-btn svg{width:24px;height:24px;stroke:#fff;}
+.bn-fab span{font-size:10px;color:var(--text3);margin-top:2px;}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:all .15s;white-space:nowrap;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-secondary{background:var(--bg3);color:var(--text);border:1px solid var(--border);}
+.btn-sm{padding:6px 12px;font-size:12px;font-weight:500;}
+.btn-icon{padding:8px;min-width:36px;}
+
+/* ── Cards (Pokemon card) ── */
+.card-wrap{position:relative;border-radius:8px;overflow:hidden;background:linear-gradient(135deg,#1e2340,#2d3561);cursor:pointer;}
+.card-wrap.foil{background:linear-gradient(135deg,#2d1b69,#1a3a5c,#1a472a);}
+.card-wrap img{width:100%;display:block;aspect-ratio:2.5/3.5;object-fit:cover;}
+.card-wrap.not-owned img{filter:grayscale(100%) brightness(35%);}
+.card-wrap.not-owned{background:#080808;}
+/* Owned counter badge */
+.card-owned-badge{position:absolute;top:5px;right:5px;background:rgba(72,187,120,0.92);color:#fff;font-size:9px;font-weight:800;padding:2px 5px;border-radius:8px;z-index:3;line-height:1.4;pointer-events:none;}
+/* Overlay actions — always visible on mobile */
+.card-overlay{position:absolute;bottom:0;left:0;right:0;padding:5px 5px 4px;background:linear-gradient(transparent,rgba(0,0,0,0.78));display:flex;gap:4px;}
+.card-overlay-btn{height:26px;border-radius:6px;border:none;font-size:10px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:2px;transition:all .15s;}
+.cob-add{background:rgba(229,62,62,0.92);color:#fff;flex:1;}
+.cob-wish{background:rgba(213,63,140,0.88);color:#fff;flex:0 0 28px;}
+.cob-add:hover{background:var(--accent);}
+.cob-wish:hover{background:#d53f8c;}
+.cob-wish:hover{background:var(--gold);}
+.card-img-placeholder{width:100%;aspect-ratio:2.5/3.5;display:flex;align-items:center;justify-content:center;opacity:.15;}
+.card-img-placeholder svg{width:28px;height:28px;stroke:currentColor;fill:none;}
+.shimmer{position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent);background-size:200% 100%;animation:shimmer 1.5s infinite;}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+
+/* ── Cards Grid ── */
+.cards-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.card-meta{padding:5px 4px 3px;background:var(--bg2);border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;}
+.card-name{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.card-set-label{font-size:10px;color:var(--text3);}
+.card-price-row{display:flex;justify-content:space-between;margin-top:2px;}
+.card-price{font-size:11px;color:var(--green);font-weight:600;}
+.card-cond{font-size:10px;color:var(--text3);background:var(--bg3);padding:1px 4px;border-radius:3px;}
+.full-card{border-radius:8px;overflow:hidden;border:1px solid var(--border);}
+
+/* ── Dashboard ── */
+.stat-row-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;}
+.stat-tile{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:68px;}
+.stat-tile-left{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;}
+.stat-tile .lbl{font-size:11px;color:var(--text3);}
+.stat-tile .sub{font-size:10px;color:var(--text3);margin-top:4px;}
+.stat-tile .val{font-size:28px;font-weight:800;line-height:1;flex-shrink:0;}
+.c-red{color:var(--accent2);}
+.c-gold{color:var(--gold);}
+.c-green{color:var(--green);}
+.c-blue{color:var(--blue);}
+
+.section-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+.section-title{font-size:14px;font-weight:600;}
+.section-more{font-size:12px;color:var(--text3);cursor:pointer;}
+.section-more:hover{color:var(--accent2);}
+
+/* Activity feed */
+.act-item{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;}
+.act-thumb{width:34px;height:48px;border-radius:4px;overflow:hidden;background:linear-gradient(135deg,#1e2340,#2d3561);flex-shrink:0;}
+.act-thumb img{width:100%;height:100%;object-fit:cover;}
+.act-info{flex:1;min-width:0;}
+.act-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.act-meta{font-size:11px;color:var(--text3);margin-top:1px;}
+.act-price{font-size:12px;color:var(--green);font-weight:600;flex-shrink:0;}
+
+/* Set progress */
+.set-prog-item{display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;}
+.set-prog-item:hover .set-prog-name{color:var(--accent2);}
+.set-logo{width:44px;height:28px;object-fit:contain;flex-shrink:0;}
+.set-prog-info{flex:1;min-width:0;}
+.set-prog-name{font-size:12px;font-weight:500;}
+.set-abbr{font-size:10px;color:var(--text3);font-family:monospace;background:var(--bg3);padding:1px 4px;border-radius:3px;margin-left:3px;}
+.set-prog-count{font-size:10px;color:var(--text3);}
+.prog-bar{height:4px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-top:3px;}
+.prog-fill{height:100%;background:var(--accent);border-radius:2px;}
+.prog-pct{font-size:10px;color:var(--text3);flex-shrink:0;width:28px;text-align:right;}
+
+/* ── Search ── */
+.search-bar{display:flex;gap:8px;margin-bottom:12px;}
+.search-input{flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text);font-size:14px;}
+.search-input::placeholder{color:var(--text3);}
+.filter-scroll{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px;padding-bottom:4px;scrollbar-width:none;}
+.filter-scroll::-webkit-scrollbar{display:none;}
+.chip{padding:6px 12px;border-radius:20px;font-size:12px;background:var(--bg2);border:1px solid var(--border);color:var(--text2);cursor:pointer;white-space:nowrap;flex-shrink:0;}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+.filter-row{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;}
+
+/* Search result count */
+.result-count{font-size:12px;color:var(--text3);margin-bottom:10px;}
+
+/* ── Card detail ── */
+.card-detail-img{width:70%;margin:0 auto 16px;display:block;border-radius:10px;box-shadow:0 8px 32px var(--shadow);}
+.detail-title{font-size:20px;font-weight:700;text-align:center;margin-bottom:4px;}
+.detail-sub{font-size:13px;color:var(--text2);text-align:center;margin-bottom:14px;}
+.detail-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;}
+.detail-info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;}
+.detail-info-cell{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;}
+.detail-info-cell .il{font-size:11px;color:var(--text3);margin-bottom:2px;}
+.detail-info-cell .iv{font-size:13px;font-weight:600;}
+.price-history-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);}
+.price-history-row:last-child{border:none;}
+
+/* ── Cycles ── */
+.cycle-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px;cursor:pointer;}
+.cycle-header{display:flex;align-items:center;gap:12px;padding:14px;}
+.cycle-logo{font-size:28px;width:44px;text-align:center;}
+.cycle-info{flex:1;}
+.cycle-name{font-size:15px;font-weight:700;}
+.cycle-years{font-size:12px;color:var(--text3);}
+.cycle-chevron{color:var(--text3);}
+.cycle-sets{padding:0 14px 12px;display:none;flex-direction:column;gap:6px;}
+.cycle-sets.open{display:flex;}
+.set-item-row{display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg3);border-radius:8px;cursor:pointer;}
+.set-item-row:hover{background:var(--border);}
+.set-item-logo{width:50px;height:30px;object-fit:contain;}
+.set-item-info{flex:1;}
+.set-item-name{font-size:13px;font-weight:500;}
+.set-item-count{font-size:11px;color:var(--text3);}
+.set-item-pct{font-size:11px;font-weight:600;color:var(--accent2);flex-shrink:0;}
+
+/* ── Set Cards screen ── */
+.set-header{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:14px;display:flex;align-items:center;gap:12px;}
+.set-header-logo{height:36px;object-fit:contain;}
+.set-header-info h2{font-size:16px;font-weight:700;}
+.set-header-info p{font-size:12px;color:var(--text3);}
+
+/* ── Tags ── */
+.tag{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;background:var(--bg3);color:var(--text2);}
+.tag-foil{background:#2d1b69;color:#b794f4;}
+.tag-new{background:#1a3a2a;color:var(--green);}
+.badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:600;}
+.badge-green{background:#1a3a2a;color:var(--green);}
+.badge-red{background:#2d1a1a;color:var(--accent2);}
+
+/* ── Type badges ── */
+.type-badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;}
+.t-fire{background:#c05621;color:#fbd38d;}.t-water{background:#2b6cb0;color:#bee3f8;}
+.t-grass{background:#276749;color:#9ae6b4;}.t-psychic{background:#702459;color:#fed7e2;}
+.t-elec{background:#b7791f;color:#fefcbf;}.t-dragon{background:#2d3748;color:#b794f4;}
+.t-normal{background:#4a5568;color:#e2e8f0;}
+
+/* ── Scanner ── */
+.camera-view{background:var(--bg2);border:1px solid var(--border);border-radius:14px;aspect-ratio:3/4;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;margin-bottom:12px;}
+.cam-live{position:absolute;inset:0;background:linear-gradient(160deg,#0a0e1a,#0d1520);}
+/* Rounded card-shaped guide frame */
+.card-guide-frame{position:absolute;width:190px;height:266px;border:2.5px solid var(--green);border-radius:12px;z-index:2;box-shadow:0 0 0 2px rgba(72,187,120,.15),0 0 24px rgba(72,187,120,.12);}
+.scan-status-chip{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.65);color:#fff;font-size:12px;padding:5px 12px;border-radius:20px;display:flex;align-items:center;gap:6px;z-index:3;white-space:nowrap;}
+.scan-dot{width:8px;height:8px;border-radius:50%;background:var(--green);}
+.scan-countdown{font-size:40px;font-weight:800;color:var(--green);position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:4;text-shadow:0 0 24px rgba(72,187,120,.9);}
+.scan-hint{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.65);color:#fff;font-size:11px;padding:5px 12px;border-radius:20px;z-index:3;white-space:nowrap;}
+/* Compact scan result */
+.scan-result{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:10px 12px;display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.scan-result-img{width:44px;height:62px;border-radius:5px;object-fit:cover;flex-shrink:0;}
+.scan-result-info{flex:1;min-width:0;}
+.scan-result-name{font-size:13px;font-weight:700;}
+.scan-result-meta{font-size:11px;color:var(--text3);margin-top:2px;}
+.scan-conf{display:flex;align-items:center;gap:5px;margin-top:4px;}
+.scan-conf-bar{flex:1;height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;}
+.scan-conf-fill{height:100%;background:var(--green);border-radius:2px;}
+/* Multi-scan carousel */
+.scan-carousel-wrap{margin-top:8px;}
+.scan-carousel-label{font-size:11px;color:var(--text3);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;}
+.scan-carousel{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;}
+.scan-carousel::-webkit-scrollbar{display:none;}
+.scan-ci{flex-shrink:0;width:82px;}
+.scan-ci .full-card{border-radius:6px;overflow:hidden;border:1px solid var(--border);}
+.scan-ci .card-wrap{border-radius:6px 6px 0 0;}
+.scan-ci .card-meta{padding:3px 4px 2px;border-radius:0 0 6px 6px;}
+.scan-ci .card-name{font-size:9px;}
+.scan-ci .card-set-label{font-size:8px;}
+/* Wishlist selector chips */
+.wl-selector{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+.wl-sel-chip{display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:20px;font-size:12px;background:var(--bg2);border:1.5px solid var(--border);color:var(--text2);cursor:pointer;white-space:nowrap;}
+.wl-sel-chip.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+.wl-sel-chip .chip-x{font-size:10px;opacity:.7;}
+/* Binder detail */
+.binder-detail-hd{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:14px;}
+.binder-detail-spine{height:5px;}
+.binder-detail-body{padding:12px 14px;display:flex;align-items:center;gap:12px;}
+.binder-detail-icon{font-size:26px;}
+.binder-detail-info{flex:1;}
+.binder-detail-name{font-size:16px;font-weight:700;}
+.binder-detail-meta{font-size:11px;color:var(--text3);margin-top:2px;}
+/* Wishlist card badge (grayed in binder) */
+.card-wl-badge{position:absolute;top:5px;left:5px;background:rgba(213,63,140,0.85);color:#fff;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:3;pointer-events:none;font-size:9px;}
+
+/* ── Mappen ── */
+.binder-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:10px;cursor:pointer;}
+.binder-spine{height:5px;}
+.binder-body{padding:12px;}
+.binder-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;}
+.binder-name{font-size:15px;font-weight:600;}
+.binder-count{font-size:11px;color:var(--text3);margin-top:2px;}
+.binder-preview-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;}
+.binder-preview-grid.g4{grid-template-columns:repeat(2,1fr);}
+.bs{aspect-ratio:2.5/3.5;background:var(--bg3);border-radius:4px;overflow:hidden;}
+.bs img{width:100%;height:100%;object-fit:cover;}
+.bs.empty{display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text3);}
+
+/* ── Wishlist ── */
+.wl-item{display:flex;gap:10px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;}
+.wl-thumb{width:40px;height:56px;border-radius:4px;overflow:hidden;background:linear-gradient(135deg,#1e2340,#2d3561);flex-shrink:0;}
+.wl-thumb img{width:100%;height:100%;object-fit:cover;}
+.wl-info{flex:1;min-width:0;}
+.wl-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.wl-set{font-size:11px;color:var(--text3);margin-top:1px;}
+.wl-price-row{display:flex;align-items:center;gap:6px;margin-top:4px;}
+.wl-price{font-size:13px;font-weight:700;}
+.wl-max{font-size:11px;color:var(--text3);}
+.wl-actions{display:flex;flex-direction:column;gap:4px;justify-content:center;flex-shrink:0;}
+
+/* Modal */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:flex-end;justify-content:center;}
+.modal-bg.open{display:flex;}
+.modal{background:var(--bg2);border-radius:20px 20px 0 0;padding:20px;width:100%;max-width:430px;max-height:80dvh;overflow-y:auto;}
+.modal-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px;}
+.modal-title{font-size:16px;font-weight:700;margin-bottom:16px;}
+.form-group{margin-bottom:12px;}
+.form-label{font-size:12px;color:var(--text2);margin-bottom:4px;display:block;}
+.form-input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:13px;}
+.form-select{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:13px;}
+.icon-picker{display:flex;gap:6px;flex-wrap:wrap;}
+.icon-opt{width:40px;height:40px;border-radius:8px;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;}
+.icon-opt.sel{border-color:var(--accent);}
+.layout-opts{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.layout-opt{border:2px solid var(--border);border-radius:8px;padding:10px;cursor:pointer;text-align:center;background:var(--bg3);}
+.layout-opt.sel{border-color:var(--accent);background:rgba(229,62,62,.08);}
+.lg-prev{display:grid;gap:2px;margin:0 auto 6px;width:fit-content;}
+.lg-prev.g4{grid-template-columns:repeat(2,1fr);}
+.lg-prev.g9{grid-template-columns:repeat(3,1fr);}
+.lg-cell{width:12px;height:17px;background:var(--border);border-radius:1px;}
+.layout-opt.sel .lg-cell{background:var(--accent);opacity:.7;}
+.ll{font-size:12px;font-weight:600;}.ls{font-size:10px;color:var(--text3);}
+
+/* Back button */
+.back-btn{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text2);cursor:pointer;margin-bottom:14px;background:none;border:none;}
+.back-btn:hover{color:var(--text);}
+
+/* Pokédex */
+.dex-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.dex-entry{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 6px;text-align:center;cursor:pointer;}
+.dex-entry:hover{border-color:var(--text3);}
+.dex-sprite{font-size:36px;line-height:1;margin-bottom:4px;}
+.dex-num{font-size:10px;color:var(--text3);}
+.dex-name{font-size:11px;font-weight:600;margin:2px 0;}
+.dex-types{display:flex;gap:3px;justify-content:center;flex-wrap:wrap;}
+
+/* Stats bars */
+.stat-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.sbn{font-size:11px;color:var(--text3);width:28px;text-align:right;}
+.sbv{font-size:11px;font-weight:600;width:28px;}
+.sbtrack{flex:1;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden;}
+.sbfill{height:100%;border-radius:3px;}
+
+/* Prices */
+.price-table{width:100%;}
+.pt-row{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border);}
+.pt-thumb{width:36px;height:50px;border-radius:4px;overflow:hidden;background:linear-gradient(135deg,#1e2340,#2d3561);flex-shrink:0;}
+.pt-thumb img{width:100%;height:100%;object-fit:cover;}
+.pt-info{flex:1;min-width:0;}
+.pt-name{font-size:13px;font-weight:600;}
+.pt-set{font-size:10px;color:var(--text3);}
+.pt-price{text-align:right;flex-shrink:0;}
+.pt-val{font-size:14px;font-weight:700;}
+.pt-trend{font-size:11px;}
+
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+
+/* ── Add-to-collection modal pills ── */
+.pill-group{display:flex;flex-wrap:wrap;gap:5px;}
+.pill{padding:5px 10px;border-radius:20px;font-size:11px;font-weight:500;background:var(--bg3);border:1.5px solid var(--border);color:var(--text2);cursor:pointer;white-space:nowrap;}
+.pill.sel{background:var(--accent);border-color:var(--accent);color:#fff;}
+.pill:hover:not(.sel){border-color:var(--text3);color:var(--text);}
+/* Qty control */
+.qty-ctrl{display:flex;align-items:center;gap:12px;}
+.qty-val{font-size:18px;font-weight:700;min-width:28px;text-align:center;}
+.qty-btn{width:32px;height:32px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg3);color:var(--text);font-size:18px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.qty-btn:hover{background:var(--border);}
+/* New-binder inline link */
+.link-btn{background:none;border:none;color:var(--blue);font-size:11px;cursor:pointer;padding:4px 0 0;text-align:left;}
+.link-btn:hover{text-decoration:underline;}
+/* Binder checkboxes */
+.binder-checks{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 10px;display:flex;flex-direction:column;gap:2px;}
+.binder-check{display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;padding:4px 0;color:var(--text);}
+.binder-check input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── TOPBAR ── -->
+  <div class="topbar">
+    <div class="topbar-title">
+      <div class="ball"></div>
+      <span>Pokédex</span>
+    </div>
+    <div class="topbar-actions">
+      <button class="icon-btn" onclick="nav('notifications')">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+      </button>
+      <button class="icon-btn">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── MAIN ── -->
+  <div class="main">
+
+    <!-- DASHBOARD -->
+    <div class="screen active" id="s-dashboard">
+      <!-- Stats — Name top-left, value right centered -->
+      <div class="stat-row-grid" style="margin-top:4px">
+        <div class="stat-tile">
+          <div class="stat-tile-left"><div class="lbl">Karten gesamt</div><div class="sub">+12 diese Woche</div></div>
+          <div class="val c-red">847</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-tile-left"><div class="lbl">Sammlungswert</div><div class="sub">▲ +€47 (30 Tage)</div></div>
+          <div class="val c-gold" style="font-size:22px">€1.243</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-tile-left"><div class="lbl">Mappen</div><div class="sub">847 Karten</div></div>
+          <div class="val c-blue">6</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-tile-left"><div class="lbl">Wunschliste</div><div class="sub">3 Preisalerts</div></div>
+          <div class="val c-green">24</div>
+        </div>
+      </div>
+
+      <!-- Zuletzt hinzugefügt -->
+      <div class="section-hd"><div class="section-title">Zuletzt hinzugefügt</div><div class="section-more" onclick="nav('collection')">Alle →</div></div>
+      <div class="act-item"><div class="act-thumb"><img src="https://images.pokemontcg.io/swsh4/44_hires.png" alt=""></div><div class="act-info"><div class="act-name">Pikachu VMAX <span class="tag tag-foil">Foil</span></div><div class="act-meta">Vivid Voltage · vor 2 Std.</div></div><div class="act-price">€28</div></div>
+      <div class="act-item"><div class="act-thumb"><img src="https://images.pokemontcg.io/sv3/125_hires.png" alt=""></div><div class="act-info"><div class="act-name">Charizard ex <span class="tag tag-foil">Holo</span></div><div class="act-meta">Obsidian Flammen · gestern</div></div><div class="act-price">€45</div></div>
+      <div class="act-item"><div class="act-thumb"><img src="https://images.pokemontcg.io/swsh7/30_hires.png" alt=""></div><div class="act-info"><div class="act-name">Vaporeon V</div><div class="act-meta">Strahlende Höhen · gestern</div></div><div class="act-price">€8,20</div></div>
+
+      <!-- Set-Vollständigkeit -->
+      <div class="section-hd" style="margin-top:16px"><div class="section-title">Set-Vollständigkeit</div><div class="section-more" onclick="nav('cycles')">Alle Zyklen →</div></div>
+      <div class="set-prog-item" onclick="nav('set-cards')">
+        <img class="set-logo" src="https://images.pokemontcg.io/sv3/logo.png" alt="">
+        <div class="set-prog-info"><div class="set-prog-name">Obsidian Flammen <span class="set-abbr">SV03</span></div><div class="prog-bar"><div class="prog-fill" style="width:81%"></div></div><div class="set-prog-count">186 / 230 Karten</div></div>
+        <div class="prog-pct">81%</div>
+      </div>
+      <div class="set-prog-item" onclick="nav('set-cards')">
+        <img class="set-logo" src="https://images.pokemontcg.io/sv2/logo.png" alt="">
+        <div class="set-prog-info"><div class="set-prog-name">Entwicklungen in Paldea <span class="set-abbr">SV02</span></div><div class="prog-bar"><div class="prog-fill" style="width:58%"></div></div><div class="set-prog-count">112 / 193 Karten</div></div>
+        <div class="prog-pct">58%</div>
+      </div>
+      <div class="set-prog-item" onclick="nav('set-cards')">
+        <img class="set-logo" src="https://images.pokemontcg.io/swsh4/logo.png" alt="">
+        <div class="set-prog-info"><div class="set-prog-name">Lebendige Kraft <span class="set-abbr">SWSH4</span></div><div class="prog-bar"><div class="prog-fill" style="width:91%"></div></div><div class="set-prog-count">185 / 203 Karten</div></div>
+        <div class="prog-pct">91%</div>
+      </div>
+    </div>
+
+    <!-- SCANNER -->
+    <div class="screen" id="s-scanner">
+      <div style="font-size:16px;font-weight:700;margin-bottom:2px">Karte scannen</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Halte die Karte in den Rahmen — Aufnahme erfolgt automatisch</div>
+      <div class="camera-view">
+        <div class="cam-live"></div>
+        <div class="scan-status-chip"><div class="scan-dot"></div>Karte erkannt — halte still…</div>
+        <!-- Abgerundeter Kartenrahmen -->
+        <div class="card-guide-frame"></div>
+        <div class="scan-countdown">2</div>
+        <div class="scan-hint">Aufnahme in Kürze…</div>
+      </div>
+
+      <!-- Kompaktes Erkennungsergebnis -->
+      <div class="scan-result">
+        <img class="scan-result-img" src="https://images.pokemontcg.io/swsh4/44_hires.png" alt="">
+        <div class="scan-result-info">
+          <div class="scan-result-name">Pikachu VMAX</div>
+          <div class="scan-result-meta">SWSH4 · 044/185 · Rainbow Rare</div>
+          <div class="scan-conf">
+            <div class="scan-conf-bar"><div class="scan-conf-fill" style="width:94%"></div></div>
+            <span style="font-size:10px;color:var(--green);font-weight:600">94%</span>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openAddModal('Pikachu VMAX','https://images.pokemontcg.io/swsh4/44_hires.png','Vivid Voltage · 044/185',true)" style="font-size:11px;flex-shrink:0">＋ Hinzufügen</button>
+      </div>
+
+      <!-- Multi-Scan Carousel -->
+      <div class="scan-carousel-wrap">
+        <div class="scan-carousel-label">
+          <span>Erkannte Karten (3)</span>
+          <span style="color:var(--accent);cursor:pointer">Alle hinzufügen</span>
+        </div>
+        <div class="scan-carousel">
+          <!-- Karte 1 -->
+          <div class="scan-ci">
+            <div class="full-card" onclick="openAddModal('Pikachu VMAX','https://images.pokemontcg.io/swsh4/44_hires.png','Vivid Voltage · 044/185',true)">
+              <div class="card-wrap foil" style="border-radius:6px 6px 0 0">
+                <img src="https://images.pokemontcg.io/swsh4/44_hires.png" alt="">
+                <div class="card-overlay" style="padding:3px 3px 3px">
+                  <button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Pikachu VMAX','https://images.pokemontcg.io/swsh4/44_hires.png','Vivid Voltage · 044/185',true)" style="height:22px"><svg style="width:10px;height:11px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 13 18"><rect x="1" y="1" width="11" height="16" rx="1.5"/><line x1="3" y1="6" x2="10" y2="6"/></svg></button>
+                  <button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()" style="height:22px"><svg style="width:10px;height:10px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+                </div>
+              </div>
+              <div class="card-meta"><div class="card-name">Pikachu VMAX</div><div class="card-set-label">044/185</div></div>
+            </div>
+          </div>
+          <!-- Karte 2 -->
+          <div class="scan-ci">
+            <div class="full-card" onclick="openAddModal('Charizard ex','https://images.pokemontcg.io/sv3/125_hires.png','Obsidian Flammen · 125/197',true)">
+              <div class="card-wrap foil" style="border-radius:6px 6px 0 0">
+                <img src="https://images.pokemontcg.io/sv3/125_hires.png" alt="">
+                <div class="card-overlay" style="padding:3px 3px 3px">
+                  <button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Charizard ex','https://images.pokemontcg.io/sv3/125_hires.png','Obsidian Flammen · 125/197',true)" style="height:22px"><svg style="width:10px;height:11px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 13 18"><rect x="1" y="1" width="11" height="16" rx="1.5"/><line x1="3" y1="6" x2="10" y2="6"/></svg></button>
+                  <button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()" style="height:22px"><svg style="width:10px;height:10px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+                </div>
+              </div>
+              <div class="card-meta"><div class="card-name">Charizard ex</div><div class="card-set-label">125/197</div></div>
+            </div>
+          </div>
+          <!-- Karte 3 -->
+          <div class="scan-ci">
+            <div class="full-card" onclick="openAddModal('Umbreon VMAX','https://images.pokemontcg.io/swsh7/215_hires.png','Str. Höhen · 215/232',true)">
+              <div class="card-wrap foil" style="border-radius:6px 6px 0 0">
+                <img src="https://images.pokemontcg.io/swsh7/215_hires.png" alt="">
+                <div class="card-overlay" style="padding:3px 3px 3px">
+                  <button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Umbreon VMAX','https://images.pokemontcg.io/swsh7/215_hires.png','Str. Höhen · 215/232',true)" style="height:22px"><svg style="width:10px;height:11px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 13 18"><rect x="1" y="1" width="11" height="16" rx="1.5"/><line x1="3" y1="6" x2="10" y2="6"/></svg></button>
+                  <button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()" style="height:22px"><svg style="width:10px;height:10px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+                </div>
+              </div>
+              <div class="card-meta"><div class="card-name">Umbreon VMAX</div><div class="card-set-label">215/232</div></div>
+            </div>
+          </div>
+          <!-- Karte 4 (noch nicht erkannt) -->
+          <div class="scan-ci">
+            <div style="aspect-ratio:2.5/3.5;background:var(--bg2);border:1.5px dashed var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;color:var(--text3)">
+              <svg style="width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.5" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              <span style="font-size:9px">Nächste…</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEARCH -->
+    <div class="screen" id="s-search">
+      <div style="font-size:16px;font-weight:700;margin-bottom:12px">Karte suchen</div>
+      <!-- Suchfeld -->
+      <div class="search-bar" style="margin-bottom:10px">
+        <input class="search-input" placeholder="Name oder Nummer…" value="Pikachu">
+      </div>
+      <!-- Filter-Dropdowns -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">
+        <select class="form-select" style="padding:7px 6px;font-size:11px">
+          <option>Set: Alle</option>
+          <option>Obsidian Flammen</option>
+          <option>Vivid Voltage</option>
+          <option>Evol. Skies</option>
+        </select>
+        <select class="form-select" style="padding:7px 6px;font-size:11px">
+          <option>Variante: Alle</option>
+          <option>Standard</option>
+          <option>Holo</option>
+          <option>Reverse Holo</option>
+          <option>Alt Art</option>
+        </select>
+        <select class="form-select" style="padding:7px 6px;font-size:11px">
+          <option>Sprache: Alle</option>
+          <option>🇩🇪 Deutsch</option>
+          <option>🇬🇧 Englisch</option>
+          <option>🇯🇵 Japanisch</option>
+        </select>
+      </div>
+      <!-- Sortierung -->
+      <div style="display:flex;gap:6px;margin-bottom:12px;align-items:center">
+        <select class="form-select" style="flex:1;padding:7px 10px;font-size:12px">
+          <option>Sortierung: Nummer ↑</option>
+          <option>Sortierung: Nummer ↓</option>
+          <option>Sortierung: Name A–Z</option>
+          <option>Sortierung: Preis ↑</option>
+          <option>Sortierung: Preis ↓</option>
+        </select>
+      </div>
+      <div class="result-count">42 Ergebnisse für „Pikachu"</div>
+      <div class="cards-grid">
+        <!-- owned ×1, multi-variant (foil) -->
+        <div class="full-card" onclick="openAddModal('Pikachu VMAX','https://images.pokemontcg.io/swsh4/44_hires.png','Vivid Voltage · 044/185',true)">
+          <div class="card-wrap foil" style="border-radius:8px 8px 0 0">
+            <img src="https://images.pokemontcg.io/swsh4/44_hires.png" alt="Pikachu VMAX">
+            <div class="card-owned-badge">×1</div>
+            <div class="card-overlay">
+              <button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Pikachu VMAX','https://images.pokemontcg.io/swsh4/44_hires.png','Vivid Voltage · 044/185',true)">
+                <svg style="width:16px;height:13px;stroke:#fff;fill:none;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 22 20"><rect x="8" y="0" width="12" height="17" rx="1.5" stroke-width="1.5" opacity="0.4"/><rect x="4" y="2" width="12" height="17" rx="1.5" stroke-width="1.6" opacity="0.65"/><rect x="0" y="4" width="12" height="16" rx="1.5" stroke-width="2"/></svg>
+              </button>
+              <button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:13px;height:13px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+            </div>
+          </div>
+          <div class="card-meta"><div class="card-name">Pikachu VMAX</div><div class="card-set-label">044/185 · Vivid Voltage</div><div class="card-price-row"><span class="card-price">€28</span><span class="card-cond">NM</span></div></div>
+        </div>
+        <!-- not owned, single variant -->
+        <div class="full-card" onclick="openAddModal('Pikachu V','https://images.pokemontcg.io/swsh4/45_hires.png','Vivid Voltage · 045/185',false)">
+          <div class="card-wrap not-owned" style="border-radius:8px 8px 0 0">
+            <img src="https://images.pokemontcg.io/swsh4/45_hires.png" alt="Pikachu V" onerror="this.style.display='none'">
+            <div class="card-overlay">
+              <button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Pikachu V','https://images.pokemontcg.io/swsh4/45_hires.png','Vivid Voltage · 045/185',false)">
+                <svg style="width:13px;height:14px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 13 18"><rect x="1" y="1" width="11" height="16" rx="1.5"/><line x1="3" y1="6" x2="10" y2="6"/></svg>
+              </button>
+              <button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:13px;height:13px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+            </div>
+          </div>
+          <div class="card-meta"><div class="card-name">Pikachu V</div><div class="card-set-label">045/185 · Vivid Voltage</div><div class="card-price-row"><span class="card-price">€12</span><span class="card-cond">—</span></div></div>
+        </div>
+        <!-- owned ×2, multi-variant (foil) -->
+        <div class="full-card" onclick="openAddModal('Pikachu VMAX ★','https://images.pokemontcg.io/swsh4/188_hires.png','Vivid Voltage · 188/185',true)">
+          <div class="card-wrap foil" style="border-radius:8px 8px 0 0">
+            <img src="https://images.pokemontcg.io/swsh4/188_hires.png" alt="" onerror="this.style.display='none'">
+            <div class="card-owned-badge">×2</div>
+            <div class="card-overlay">
+              <button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Pikachu VMAX ★','https://images.pokemontcg.io/swsh4/188_hires.png','Vivid Voltage · 188/185',true)">
+                <svg style="width:16px;height:13px;stroke:#fff;fill:none;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 22 20"><rect x="8" y="0" width="12" height="17" rx="1.5" stroke-width="1.5" opacity="0.4"/><rect x="4" y="2" width="12" height="17" rx="1.5" stroke-width="1.6" opacity="0.65"/><rect x="0" y="4" width="12" height="16" rx="1.5" stroke-width="2"/></svg>
+              </button>
+              <button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:13px;height:13px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+            </div>
+          </div>
+          <div class="card-meta"><div class="card-name">Pikachu VMAX ★</div><div class="card-set-label">188/185 · Vivid Voltage</div><div class="card-price-row"><span class="card-price">€45</span><span class="card-cond">—</span></div></div>
+        </div>
+        <!-- not owned, single variant -->
+        <div class="full-card" onclick="openAddModal('Pikachu','https://images.pokemontcg.io/cel25/1_hires.png','Celebrations · 001/025',false)">
+          <div class="card-wrap not-owned" style="border-radius:8px 8px 0 0">
+            <img src="https://images.pokemontcg.io/cel25/1_hires.png" alt="" onerror="this.style.display='none'">
+            <div class="card-overlay">
+              <button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Pikachu','https://images.pokemontcg.io/cel25/1_hires.png','Celebrations · 001/025',false)">
+                <svg style="width:13px;height:14px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 13 18"><rect x="1" y="1" width="11" height="16" rx="1.5"/><line x1="3" y1="6" x2="10" y2="6"/></svg>
+              </button>
+              <button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:13px;height:13px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+            </div>
+          </div>
+          <div class="card-meta"><div class="card-name">Pikachu</div><div class="card-set-label">001/025 · Celebrations</div><div class="card-price-row"><span class="card-price">€4</span><span class="card-cond">—</span></div></div>
+        </div>
+        <!-- not owned, multi-variant (1st Ed) -->
+        <div class="full-card" onclick="openAddModal('Pikachu','https://images.pokemontcg.io/base1/58_hires.png','Base Set · 058/102',true)">
+          <div class="card-wrap not-owned" style="border-radius:8px 8px 0 0">
+            <img src="https://images.pokemontcg.io/base1/58_hires.png" alt="" onerror="this.style.display='none'">
+            <div class="card-overlay">
+              <button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Pikachu','https://images.pokemontcg.io/base1/58_hires.png','Base Set · 058/102',true)">
+                <svg style="width:16px;height:13px;stroke:#fff;fill:none;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 22 20"><rect x="8" y="0" width="12" height="17" rx="1.5" stroke-width="1.5" opacity="0.4"/><rect x="4" y="2" width="12" height="17" rx="1.5" stroke-width="1.6" opacity="0.65"/><rect x="0" y="4" width="12" height="16" rx="1.5" stroke-width="2"/></svg>
+              </button>
+              <button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:13px;height:13px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+            </div>
+          </div>
+          <div class="card-meta"><div class="card-name">Pikachu</div><div class="card-set-label">058/102 · Base Set (1st Ed.)</div><div class="card-price-row"><span class="card-price">€22</span><span class="card-cond">—</span></div></div>
+        </div>
+        <!-- owned ×1, multi-variant -->
+        <div class="full-card" onclick="openAddModal('Pikachu VSTAR','https://images.pokemontcg.io/swsh9/184_hires.png','Brilliant Stars · 184/172',true)">
+          <div class="card-wrap foil" style="border-radius:8px 8px 0 0">
+            <img src="https://images.pokemontcg.io/swsh9/184_hires.png" alt="" onerror="this.style.display='none'">
+            <div class="card-owned-badge">×1</div>
+            <div class="card-overlay">
+              <button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Pikachu VSTAR','https://images.pokemontcg.io/swsh9/184_hires.png','Brilliant Stars · 184/172',true)">
+                <svg style="width:16px;height:13px;stroke:#fff;fill:none;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 22 20"><rect x="8" y="0" width="12" height="17" rx="1.5" stroke-width="1.5" opacity="0.4"/><rect x="4" y="2" width="12" height="17" rx="1.5" stroke-width="1.6" opacity="0.65"/><rect x="0" y="4" width="12" height="16" rx="1.5" stroke-width="2"/></svg>
+              </button>
+              <button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:13px;height:13px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+            </div>
+          </div>
+          <div class="card-meta"><div class="card-name">Pikachu VSTAR</div><div class="card-set-label">184/172 · Brilliant Stars</div><div class="card-price-row"><span class="card-price">€18</span><span class="card-cond">—</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD DETAIL -->
+    <div class="screen" id="s-card-detail">
+      <button class="back-btn" onclick="nav('search')">
+        <svg class="ic" style="width:16px;height:16px" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        Zurück
+      </button>
+      <img class="card-detail-img" src="https://images.pokemontcg.io/swsh4/44_hires.png" alt="Pikachu VMAX">
+      <div class="detail-title">Pikachu VMAX</div>
+      <div class="detail-sub">Vivid Voltage · Nr. 044/185 · Rainbow Rare <span class="tag tag-foil">Foil</span></div>
+      <div class="detail-actions">
+        <button class="btn btn-primary" onclick="openAddModal('Pikachu VMAX','https://images.pokemontcg.io/swsh4/44_hires.png','Vivid Voltage · 044/185',true)">＋ Zur Sammlung</button>
+        <button class="btn btn-secondary" style="gap:6px">
+          <svg style="width:16px;height:16px;fill:#d53f8c;stroke:none;flex-shrink:0" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+          Wunschliste
+        </button>
+      </div>
+      <div class="detail-info-grid">
+        <div class="detail-info-cell"><div class="il">Typ</div><div class="iv"><span class="type-badge t-elec">Elektro</span></div></div>
+        <div class="detail-info-cell"><div class="il">Supertyp</div><div class="iv">Pokémon</div></div>
+        <div class="detail-info-cell"><div class="il">Seltenheit</div><div class="iv">Rainbow Rare</div></div>
+        <div class="detail-info-cell"><div class="il">HP</div><div class="iv">310</div></div>
+        <div class="detail-info-cell"><div class="il">Set</div><div class="iv">Vivid Voltage</div></div>
+        <div class="detail-info-cell"><div class="il">Nummer</div><div class="iv">044 / 185</div></div>
+      </div>
+      <div style="font-size:14px;font-weight:600;margin-bottom:8px">Marktpreise</div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:16px">
+        <div class="price-history-row"><span style="color:var(--text2);font-size:13px">Cardmarket Ø</span><span style="font-weight:700;color:var(--green)">€28,00</span></div>
+        <div class="price-history-row"><span style="color:var(--text2);font-size:13px">Trend (30 Tage)</span><span style="font-size:12px" class="badge badge-red">▼ -4,2%</span></div>
+        <div class="price-history-row"><span style="color:var(--text2);font-size:13px">Niedrigster Preis</span><span style="color:var(--text);font-size:13px">€23,50</span></div>
+      </div>
+    </div>
+
+    <!-- COLLECTION -->
+    <div class="screen" id="s-collection">
+      <div style="font-size:16px;font-weight:700;margin-bottom:12px">Meine Sammlung <span style="font-size:13px;color:var(--text3);font-weight:400">847 Karten</span></div>
+      <div class="search-bar" style="margin-bottom:10px">
+        <input class="search-input" placeholder="🔍 In Sammlung suchen…">
+      </div>
+      <div class="filter-scroll" style="margin-bottom:12px">
+        <div class="chip on">Alle</div>
+        <div class="chip">⚡ Elektro</div><div class="chip">🔥 Feuer</div><div class="chip">🌊 Wasser</div><div class="chip">✨ Foil</div>
+      </div>
+      <div class="cards-grid">
+        <div class="full-card" onclick="openAddModal('Pikachu VMAX','https://images.pokemontcg.io/swsh4/44_hires.png','Vivid Voltage · 044/185',true)"><div class="card-wrap foil" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/swsh4/44_hires.png" alt=""><div class="card-owned-badge">×1</div><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Pikachu VMAX','https://images.pokemontcg.io/swsh4/44_hires.png','Vivid Voltage · 044/185',true)" style="font-size:10px">✏️ Bearb.</button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()" style="background:rgba(100,116,139,0.9);flex:0 0 28px"><svg style="width:12px;height:12px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg></button></div></div><div class="card-meta"><div class="card-name">Pikachu VMAX</div><div class="card-set-label">044/185 · Vivid Voltage</div><div class="card-price-row"><span class="card-price">€28</span><span class="card-cond">NM</span></div></div></div>
+        <div class="full-card" onclick="openAddModal('Charizard ex','https://images.pokemontcg.io/sv3/125_hires.png','Obsidian Flammen · 125/197',true)"><div class="card-wrap foil" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/sv3/125_hires.png" alt=""><div class="card-owned-badge">×1</div><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation()" style="font-size:10px">✏️ Bearb.</button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()" style="background:rgba(100,116,139,0.9);flex:0 0 28px"><svg style="width:12px;height:12px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg></button></div></div><div class="card-meta"><div class="card-name">Charizard ex</div><div class="card-set-label">125/197 · Obsidian Flammen</div><div class="card-price-row"><span class="card-price">€45</span><span class="card-cond">NM</span></div></div></div>
+        <div class="full-card" onclick="openAddModal('Vaporeon V','https://images.pokemontcg.io/swsh7/30_hires.png','Strahlende Höhen · 030/232',false)"><div class="card-wrap" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/swsh7/30_hires.png" alt=""><div class="card-owned-badge">×2</div><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation()" style="font-size:10px">✏️ Bearb.</button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()" style="background:rgba(100,116,139,0.9);flex:0 0 28px"><svg style="width:12px;height:12px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg></button></div></div><div class="card-meta"><div class="card-name">Vaporeon V</div><div class="card-set-label">030/232 · Str. Höhen</div><div class="card-price-row"><span class="card-price">€8</span><span class="card-cond">LP</span></div></div></div>
+        <div class="full-card" onclick="openAddModal('Giratina VSTAR','https://images.pokemontcg.io/swsh11/131_hires.png','Lost Origin · 131/196',true)"><div class="card-wrap foil" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/swsh11/131_hires.png" alt=""><div class="card-owned-badge">×1</div><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation()" style="font-size:10px">✏️ Bearb.</button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()" style="background:rgba(100,116,139,0.9);flex:0 0 28px"><svg style="width:12px;height:12px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg></button></div></div><div class="card-meta"><div class="card-name">Giratina VSTAR</div><div class="card-set-label">131/196 · Lost Origin</div><div class="card-price-row"><span class="card-price">€55</span><span class="card-cond">NM</span></div></div></div>
+        <div class="full-card" onclick="openAddModal('Umbreon VMAX','https://images.pokemontcg.io/swsh7/215_hires.png','Str. Höhen · 215/232',true)"><div class="card-wrap foil" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/swsh7/215_hires.png" alt=""><div class="card-owned-badge">×1</div><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation()" style="font-size:10px">✏️ Bearb.</button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()" style="background:rgba(100,116,139,0.9);flex:0 0 28px"><svg style="width:12px;height:12px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg></button></div></div><div class="card-meta"><div class="card-name">Umbreon VMAX</div><div class="card-set-label">215/232 · Str. Höhen</div><div class="card-price-row"><span class="card-price">€120</span><span class="card-cond">NM</span></div></div></div>
+        <div class="full-card" onclick="openAddModal('Charizard','https://images.pokemontcg.io/base1/4_hires.png','Base Set · 004/102',true)"><div class="card-wrap" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/base1/4_hires.png" alt=""><div class="card-owned-badge">×1</div><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation()" style="font-size:10px">✏️ Bearb.</button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()" style="background:rgba(100,116,139,0.9);flex:0 0 28px"><svg style="width:12px;height:12px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg></button></div></div><div class="card-meta"><div class="card-name">Charizard</div><div class="card-set-label">004/102 · Base Set</div><div class="card-price-row"><span class="card-price">€280</span><span class="card-cond">LP</span></div></div></div>
+      </div>
+    </div>
+
+    <!-- CYCLES -->
+    <div class="screen" id="s-cycles">
+      <button class="back-btn" onclick="nav('dashboard')"><svg class="ic" style="width:16px;height:16px" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>Dashboard</button>
+      <div style="font-size:16px;font-weight:700;margin-bottom:14px">Zyklen &amp; Sets</div>
+
+      <!-- Karmesin & Purpur -->
+      <div class="cycle-card">
+        <div class="cycle-header" onclick="toggleCycle('cycle-sv')">
+          <div class="cycle-logo">🔴</div>
+          <div class="cycle-info"><div class="cycle-name">Karmesin &amp; Purpur</div><div class="cycle-years">2023 – heute · 6 Sets</div></div>
+          <svg class="ic cycle-chevron" style="width:16px;height:16px" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="cycle-sets open" id="cycle-sv">
+          <div class="set-item-row" onclick="nav('set-cards')"><img class="set-item-logo" src="https://images.pokemontcg.io/sv3/logo.png" alt="" onerror="this.style.display='none'"><div class="set-item-info"><div class="set-item-name">Obsidian Flammen</div><div class="set-item-count">230 Karten · SV03</div></div><div class="set-item-pct">81%</div></div>
+          <div class="set-item-row" onclick="nav('set-cards')"><img class="set-item-logo" src="https://images.pokemontcg.io/sv2/logo.png" alt="" onerror="this.style.display='none'"><div class="set-item-info"><div class="set-item-name">Entwicklungen in Paldea</div><div class="set-item-count">193 Karten · SV02</div></div><div class="set-item-pct">58%</div></div>
+          <div class="set-item-row" onclick="nav('set-cards')"><img class="set-item-logo" src="https://images.pokemontcg.io/sv1/logo.png" alt="" onerror="this.style.display='none'"><div class="set-item-info"><div class="set-item-name">Karmesin &amp; Purpur</div><div class="set-item-count">198 Karten · SV01</div></div><div class="set-item-pct">34%</div></div>
+        </div>
+      </div>
+
+      <!-- Schwert & Schild -->
+      <div class="cycle-card">
+        <div class="cycle-header" onclick="toggleCycle('cycle-swsh')">
+          <div class="cycle-logo">⚔️</div>
+          <div class="cycle-info"><div class="cycle-name">Schwert &amp; Schild</div><div class="cycle-years">2020 – 2023 · 12 Sets</div></div>
+          <svg class="ic cycle-chevron" style="width:16px;height:16px" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="cycle-sets" id="cycle-swsh">
+          <div class="set-item-row" onclick="nav('set-cards')"><img class="set-item-logo" src="https://images.pokemontcg.io/swsh7/logo.png" alt="" onerror="this.style.display='none'"><div class="set-item-info"><div class="set-item-name">Strahlende Höhen</div><div class="set-item-count">238 Karten · SWSH7</div></div><div class="set-item-pct">26%</div></div>
+          <div class="set-item-row" onclick="nav('set-cards')"><img class="set-item-logo" src="https://images.pokemontcg.io/swsh4/logo.png" alt="" onerror="this.style.display='none'"><div class="set-item-info"><div class="set-item-name">Lebendige Kraft</div><div class="set-item-count">203 Karten · SWSH4</div></div><div class="set-item-pct">91%</div></div>
+          <div class="set-item-row" onclick="nav('set-cards')"><img class="set-item-logo" src="https://images.pokemontcg.io/swsh11/logo.png" alt="" onerror="this.style.display='none'"><div class="set-item-info"><div class="set-item-name">Verlorener Ursprung</div><div class="set-item-count">196 Karten · SWSH11</div></div><div class="set-item-pct">43%</div></div>
+        </div>
+      </div>
+
+      <!-- Sonne & Mond -->
+      <div class="cycle-card">
+        <div class="cycle-header" onclick="toggleCycle('cycle-sm')">
+          <div class="cycle-logo">☀️</div>
+          <div class="cycle-info"><div class="cycle-name">Sonne &amp; Mond</div><div class="cycle-years">2017 – 2020 · 12 Sets</div></div>
+          <svg class="ic cycle-chevron" style="width:16px;height:16px" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="cycle-sets" id="cycle-sm"></div>
+      </div>
+
+      <!-- Klassik -->
+      <div class="cycle-card">
+        <div class="cycle-header" onclick="toggleCycle('cycle-base')">
+          <div class="cycle-logo">🃏</div>
+          <div class="cycle-info"><div class="cycle-name">Klassik / Basis</div><div class="cycle-years">1999 – 2003 · 9 Sets</div></div>
+          <svg class="ic cycle-chevron" style="width:16px;height:16px" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="cycle-sets" id="cycle-base">
+          <div class="set-item-row" onclick="nav('set-cards')"><div style="width:50px;height:30px;display:flex;align-items:center;justify-content:center;font-size:20px">🃏</div><div class="set-item-info"><div class="set-item-name">Basis-Edition</div><div class="set-item-count">102 Karten · BASE1</div></div><div class="set-item-pct">12%</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SET CARDS -->
+    <div class="screen" id="s-set-cards">
+      <button class="back-btn" onclick="nav('cycles')"><svg class="ic" style="width:16px;height:16px" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>Zyklen</button>
+      <div class="set-header">
+        <img class="set-header-logo" src="https://images.pokemontcg.io/sv3/logo.png" alt="">
+        <div class="set-header-info">
+          <h2>Obsidian Flammen</h2>
+          <p>SV03 · 230 Karten · 186 in Sammlung (81%)</p>
+        </div>
+      </div>
+      <div class="filter-scroll" style="margin-bottom:12px">
+        <div class="chip on">Alle (230)</div>
+        <div class="chip">✅ Vorhanden (186)</div>
+        <div class="chip">❌ Fehlend (44)</div>
+        <div class="chip">⚡ Elektro</div><div class="chip">🔥 Feuer</div>
+      </div>
+      <div class="cards-grid">
+        <!-- owned ×1, multi-variant -->
+        <div class="full-card" onclick="openAddModal('Charizard ex','https://images.pokemontcg.io/sv3/125_hires.png','Obsidian Flammen · 125/197',true)"><div class="card-wrap foil" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/sv3/125_hires.png" alt=""><div class="card-owned-badge">×1</div><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Charizard ex','https://images.pokemontcg.io/sv3/125_hires.png','Obsidian Flammen · 125/197',true)"><svg style="width:15px;height:12px;stroke:#fff;fill:none;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 22 20"><rect x="8" y="0" width="12" height="17" rx="1.5" stroke-width="1.5" opacity="0.4"/><rect x="4" y="2" width="12" height="17" rx="1.5" stroke-width="1.6" opacity="0.65"/><rect x="0" y="4" width="12" height="16" rx="1.5" stroke-width="2"/></svg></button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:12px;height:12px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button></div></div><div class="card-meta"><div class="card-name">Charizard ex</div><div class="card-set-label">125/197</div><div class="card-price-row"><span class="card-price">€45</span><span class="card-cond" style="background:#1a3a2a;color:var(--green)">✓</span></div></div></div>
+        <!-- owned ×1, multi-variant -->
+        <div class="full-card" onclick="openAddModal('Arcanine ex','https://images.pokemontcg.io/sv3/6_hires.png','Obsidian Flammen · 006/197',true)"><div class="card-wrap" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/sv3/6_hires.png" alt="" onerror="this.style.display='none'"><div class="card-owned-badge">×1</div><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Arcanine ex','https://images.pokemontcg.io/sv3/6_hires.png','Obsidian Flammen · 006/197',true)"><svg style="width:15px;height:12px;stroke:#fff;fill:none;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 22 20"><rect x="8" y="0" width="12" height="17" rx="1.5" stroke-width="1.5" opacity="0.4"/><rect x="4" y="2" width="12" height="17" rx="1.5" stroke-width="1.6" opacity="0.65"/><rect x="0" y="4" width="12" height="16" rx="1.5" stroke-width="2"/></svg></button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:12px;height:12px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button></div></div><div class="card-meta"><div class="card-name">Arcanine ex</div><div class="card-set-label">006/197</div><div class="card-price-row"><span class="card-price">€15</span><span class="card-cond" style="background:#1a3a2a;color:var(--green)">✓</span></div></div></div>
+        <!-- not owned, single variant -->
+        <div class="full-card" onclick="openAddModal('Tyranitar ex','https://images.pokemontcg.io/sv3/20_hires.png','Obsidian Flammen · 020/197',false)"><div class="card-wrap not-owned" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/sv3/20_hires.png" alt="" onerror="this.style.display='none'"><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Tyranitar ex','https://images.pokemontcg.io/sv3/20_hires.png','Obsidian Flammen · 020/197',false)"><svg style="width:12px;height:13px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 13 18"><rect x="1" y="1" width="11" height="16" rx="1.5"/><line x1="3" y1="6" x2="10" y2="6"/></svg></button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:12px;height:12px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button></div></div><div class="card-meta"><div class="card-name">Tyranitar ex</div><div class="card-set-label">020/197</div><div class="card-price-row"><span class="card-price">€12</span><span class="card-cond">—</span></div></div></div>
+        <!-- owned ×1, multi-variant -->
+        <div class="full-card" onclick="openAddModal('Revavroom ex','https://images.pokemontcg.io/sv3/30_hires.png','Obsidian Flammen · 030/197',true)"><div class="card-wrap foil" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/sv3/30_hires.png" alt="" onerror="this.style.display='none'"><div class="card-owned-badge">×1</div><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Revavroom ex','https://images.pokemontcg.io/sv3/30_hires.png','Obsidian Flammen · 030/197',true)"><svg style="width:15px;height:12px;stroke:#fff;fill:none;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 22 20"><rect x="8" y="0" width="12" height="17" rx="1.5" stroke-width="1.5" opacity="0.4"/><rect x="4" y="2" width="12" height="17" rx="1.5" stroke-width="1.6" opacity="0.65"/><rect x="0" y="4" width="12" height="16" rx="1.5" stroke-width="2"/></svg></button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:12px;height:12px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button></div></div><div class="card-meta"><div class="card-name">Revavroom ex</div><div class="card-set-label">030/197</div><div class="card-price-row"><span class="card-price">€9</span><span class="card-cond" style="background:#1a3a2a;color:var(--green)">✓</span></div></div></div>
+        <!-- not owned, multi-variant -->
+        <div class="full-card" onclick="openAddModal('Dragonite ex','https://images.pokemontcg.io/sv3/40_hires.png','Obsidian Flammen · 040/197',true)"><div class="card-wrap not-owned" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/sv3/40_hires.png" alt="" onerror="this.style.display='none'"><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Dragonite ex','https://images.pokemontcg.io/sv3/40_hires.png','Obsidian Flammen · 040/197',true)"><svg style="width:15px;height:12px;stroke:#fff;fill:none;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 22 20"><rect x="8" y="0" width="12" height="17" rx="1.5" stroke-width="1.5" opacity="0.4"/><rect x="4" y="2" width="12" height="17" rx="1.5" stroke-width="1.6" opacity="0.65"/><rect x="0" y="4" width="12" height="16" rx="1.5" stroke-width="2"/></svg></button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:12px;height:12px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button></div></div><div class="card-meta"><div class="card-name">Dragonite ex</div><div class="card-set-label">040/197</div><div class="card-price-row"><span class="card-price">€18</span><span class="card-cond">—</span></div></div></div>
+        <!-- owned ×1, single variant -->
+        <div class="full-card" onclick="openAddModal('Greedent ex','https://images.pokemontcg.io/sv3/50_hires.png','Obsidian Flammen · 050/197',false)"><div class="card-wrap foil" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/sv3/50_hires.png" alt="" onerror="this.style.display='none'"><div class="card-owned-badge">×1</div><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Greedent ex','https://images.pokemontcg.io/sv3/50_hires.png','Obsidian Flammen · 050/197',false)"><svg style="width:12px;height:13px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 13 18"><rect x="1" y="1" width="11" height="16" rx="1.5"/><line x1="3" y1="6" x2="10" y2="6"/></svg></button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:12px;height:12px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button></div></div><div class="card-meta"><div class="card-name">Greedent ex</div><div class="card-set-label">050/197</div><div class="card-price-row"><span class="card-price">€7</span><span class="card-cond" style="background:#1a3a2a;color:var(--green)">✓</span></div></div></div>
+      </div>
+    </div>
+
+    <!-- BINDERS -->
+    <div class="screen" id="s-binders">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:16px;font-weight:700">Mappen &amp; Boxen</div>
+        <button class="btn btn-primary btn-sm" onclick="document.getElementById('new-binder-modal').classList.add('open')">+ Neu</button>
+      </div>
+      <!-- Vorschau-Toggle -->
+      <div style="display:flex;gap:6px;margin-bottom:14px">
+        <div class="chip on" id="bp-recent" onclick="this.classList.add('on');document.getElementById('bp-top').classList.remove('on')">Zuletzt hinzugefügt</div>
+        <div class="chip" id="bp-top" onclick="this.classList.add('on');document.getElementById('bp-recent').classList.remove('on')">Teuerste Karten</div>
+      </div>
+
+      <div class="binder-card" onclick="nav('binder-detail')"><div class="binder-spine" style="background:linear-gradient(90deg,#f6ad55,#ed8936)"></div><div class="binder-body"><div class="binder-top"><div><div class="binder-name">⚡ Elektro-Stars</div><div class="binder-count">36 Karten · 9er Layout · €184</div></div><svg class="ic" style="color:var(--text3)" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div><div class="binder-preview-grid"><div class="bs"><img src="https://images.pokemontcg.io/swsh4/44_hires.png" alt=""></div><div class="bs"><img src="https://images.pokemontcg.io/swsh4/45_hires.png" alt="" onerror="this.style.display='none'"></div><div class="bs"><img src="https://images.pokemontcg.io/swsh7/172_hires.png" alt="" onerror="this.style.display='none'"></div><div class="bs"><img src="https://images.pokemontcg.io/swsh4/170_hires.png" alt="" onerror="this.style.display='none'"></div><div class="bs"><img src="https://images.pokemontcg.io/swsh4/43_hires.png" alt="" onerror="this.style.display='none'"></div><div class="bs" style="filter:grayscale(100%) brightness(40%)"><img src="https://images.pokemontcg.io/swsh4/188_hires.png" alt="" onerror="this.style.display='none'"></div><div class="bs" style="filter:grayscale(100%) brightness(40%)"><img src="https://images.pokemontcg.io/swsh4/189_hires.png" alt="" onerror="this.style.display='none'"></div><div class="bs empty">+</div><div class="bs empty">+</div></div></div></div>
+
+      <div class="binder-card" onclick="nav('binder-detail')"><div class="binder-spine" style="background:linear-gradient(90deg,#63b3ed,#4299e1)"></div><div class="binder-body"><div class="binder-top"><div><div class="binder-name">🌊 Wasser-Kollektion</div><div class="binder-count">54 Karten · 9er Layout · €312</div></div><svg class="ic" style="color:var(--text3)" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div><div class="binder-preview-grid"><div class="bs"><img src="https://images.pokemontcg.io/swsh7/30_hires.png" alt=""></div><div class="bs"><img src="https://images.pokemontcg.io/swsh10/40_hires.png" alt="" onerror="this.style.display='none'"></div><div class="bs"><img src="https://images.pokemontcg.io/swsh7/31_hires.png" alt="" onerror="this.style.display='none'"></div><div class="bs"><img src="https://images.pokemontcg.io/swsh7/32_hires.png" alt="" onerror="this.style.display='none'"></div><div class="bs" style="filter:grayscale(100%) brightness(40%)"><img src="https://images.pokemontcg.io/swsh7/215_hires.png" alt="" onerror="this.style.display='none'"></div><div class="bs empty">+</div></div></div></div>
+
+      <div class="binder-card" onclick="nav('binder-detail')"><div class="binder-spine" style="background:linear-gradient(90deg,#fc8181,#e53e3e)"></div><div class="binder-body"><div class="binder-top"><div><div class="binder-name">🔥 Feuer &amp; Kampf</div><div class="binder-count">42 Karten · 4er Layout · €428</div></div><svg class="ic" style="color:var(--text3)" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div><div class="binder-preview-grid g4"><div class="bs"><img src="https://images.pokemontcg.io/sv3/125_hires.png" alt=""></div><div class="bs"><img src="https://images.pokemontcg.io/base1/4_hires.png" alt=""></div><div class="bs" style="filter:grayscale(100%) brightness(40%)"><img src="https://images.pokemontcg.io/swsh9/154_hires.png" alt="" onerror="this.style.display='none'"></div><div class="bs empty">+</div></div></div></div>
+    </div>
+
+    <!-- BINDER DETAIL -->
+    <div class="screen" id="s-binder-detail">
+      <button class="back-btn" onclick="nav('binders')"><svg class="ic" style="width:16px;height:16px" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>Mappen</button>
+      <!-- Binder Header -->
+      <div class="binder-detail-hd">
+        <div class="binder-detail-spine" style="background:linear-gradient(90deg,#f6ad55,#ed8936)"></div>
+        <div class="binder-detail-body">
+          <div class="binder-detail-icon">⚡</div>
+          <div class="binder-detail-info">
+            <div class="binder-detail-name">Elektro-Stars</div>
+            <div class="binder-detail-meta">36 Karten · 9er Layout · €184</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" style="font-size:11px;flex-shrink:0">✏️ Bearb.</button>
+        </div>
+      </div>
+      <!-- Legende -->
+      <div style="display:flex;gap:12px;margin-bottom:10px">
+        <span style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block"></span>Vorhanden</span>
+        <span style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:#d53f8c;display:inline-block"></span>Auf Wunschliste</span>
+      </div>
+      <!-- Suche & Filter -->
+      <div class="search-bar" style="margin-bottom:8px">
+        <input class="search-input" placeholder="In Mappe suchen…">
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:14px">
+        <select class="form-select" style="flex:1;padding:7px 10px;font-size:12px">
+          <option>Sortierung: Nummer ↑</option>
+          <option>Sortierung: Name A–Z</option>
+          <option>Sortierung: Preis ↓</option>
+        </select>
+        <select class="form-select" style="flex:1;padding:7px 10px;font-size:12px">
+          <option>Alle</option>
+          <option>✅ Vorhanden</option>
+          <option>♥ Wunschliste</option>
+        </select>
+      </div>
+      <!-- Card Grid: owned + wishlist (grayed) -->
+      <div class="cards-grid">
+        <div class="full-card" onclick="openAddModal('Pikachu VMAX','https://images.pokemontcg.io/swsh4/44_hires.png','Vivid Voltage · 044/185',true)"><div class="card-wrap foil" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/swsh4/44_hires.png" alt=""><div class="card-owned-badge">×1</div><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Pikachu VMAX','https://images.pokemontcg.io/swsh4/44_hires.png','Vivid Voltage · 044/185',true)"><svg style="width:16px;height:13px;stroke:#fff;fill:none;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 22 20"><rect x="8" y="0" width="12" height="17" rx="1.5" stroke-width="1.5" opacity="0.4"/><rect x="4" y="2" width="12" height="17" rx="1.5" stroke-width="1.6" opacity="0.65"/><rect x="0" y="4" width="12" height="16" rx="1.5" stroke-width="2"/></svg></button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:13px;height:13px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button></div></div><div class="card-meta"><div class="card-name">Pikachu VMAX</div><div class="card-set-label">044/185 · Vivid Voltage</div><div class="card-price-row"><span class="card-price">€28</span><span class="card-cond">NM</span></div></div></div>
+        <div class="full-card" onclick="openAddModal('Vaporeon V','https://images.pokemontcg.io/swsh7/30_hires.png','Str. Höhen · 030/232',false)"><div class="card-wrap" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/swsh7/30_hires.png" alt=""><div class="card-owned-badge">×2</div><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation()"><svg style="width:13px;height:14px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 13 18"><rect x="1" y="1" width="11" height="16" rx="1.5"/><line x1="3" y1="6" x2="10" y2="6"/></svg></button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:13px;height:13px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button></div></div><div class="card-meta"><div class="card-name">Vaporeon V</div><div class="card-set-label">030/232 · Str. Höhen</div><div class="card-price-row"><span class="card-price">€8</span><span class="card-cond">LP</span></div></div></div>
+        <!-- Wunschlisten-Karte: grau, Herz-Badge oben links -->
+        <div class="full-card" onclick="openAddModal('Pikachu VMAX ★','https://images.pokemontcg.io/swsh4/188_hires.png','Vivid Voltage · 188/185',true)"><div class="card-wrap not-owned" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/swsh4/188_hires.png" alt="" onerror="this.style.display='none'"><div class="card-wl-badge">♥</div><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Pikachu VMAX ★','https://images.pokemontcg.io/swsh4/188_hires.png','Vivid Voltage · 188/185',true)"><svg style="width:16px;height:13px;stroke:#fff;fill:none;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 22 20"><rect x="8" y="0" width="12" height="17" rx="1.5" stroke-width="1.5" opacity="0.4"/><rect x="4" y="2" width="12" height="17" rx="1.5" stroke-width="1.6" opacity="0.65"/><rect x="0" y="4" width="12" height="16" rx="1.5" stroke-width="2"/></svg></button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:13px;height:13px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button></div></div><div class="card-meta"><div class="card-name">Pikachu VMAX ★</div><div class="card-set-label">188/185 · Vivid Voltage</div><div class="card-price-row"><span class="card-price">€45</span><span class="card-cond" style="color:#d53f8c">♥ WL</span></div></div></div>
+        <div class="full-card" onclick="openAddModal('Raichu V','https://images.pokemontcg.io/swsh4/43_hires.png','Vivid Voltage · 043/185',true)"><div class="card-wrap foil" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/swsh4/43_hires.png" alt="" onerror="this.style.display='none'"><div class="card-owned-badge">×1</div><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation()"><svg style="width:16px;height:13px;stroke:#fff;fill:none;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 22 20"><rect x="8" y="0" width="12" height="17" rx="1.5" stroke-width="1.5" opacity="0.4"/><rect x="4" y="2" width="12" height="17" rx="1.5" stroke-width="1.6" opacity="0.65"/><rect x="0" y="4" width="12" height="16" rx="1.5" stroke-width="2"/></svg></button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:13px;height:13px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button></div></div><div class="card-meta"><div class="card-name">Raichu V</div><div class="card-set-label">043/185 · Vivid Voltage</div><div class="card-price-row"><span class="card-price">€12</span><span class="card-cond">NM</span></div></div></div>
+        <!-- Wunschlisten-Karte -->
+        <div class="full-card" onclick="openAddModal('Voltorb','https://images.pokemontcg.io/swsh4/167_hires.png','Vivid Voltage · 167/185',false)"><div class="card-wrap not-owned" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/swsh4/167_hires.png" alt="" onerror="this.style.display='none'"><div class="card-wl-badge">♥</div><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation()"><svg style="width:13px;height:14px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 13 18"><rect x="1" y="1" width="11" height="16" rx="1.5"/><line x1="3" y1="6" x2="10" y2="6"/></svg></button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:13px;height:13px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button></div></div><div class="card-meta"><div class="card-name">Voltorb</div><div class="card-set-label">167/185 · Vivid Voltage</div><div class="card-price-row"><span class="card-price">€2</span><span class="card-cond" style="color:#d53f8c">♥ WL</span></div></div></div>
+        <div class="full-card" onclick="openAddModal('Pikachu V','https://images.pokemontcg.io/swsh4/45_hires.png','Vivid Voltage · 045/185',false)"><div class="card-wrap" style="border-radius:8px 8px 0 0"><img src="https://images.pokemontcg.io/swsh4/45_hires.png" alt="" onerror="this.style.display='none'"><div class="card-owned-badge">×1</div><div class="card-overlay"><button class="card-overlay-btn cob-add" onclick="event.stopPropagation()"><svg style="width:13px;height:14px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 13 18"><rect x="1" y="1" width="11" height="16" rx="1.5"/><line x1="3" y1="6" x2="10" y2="6"/></svg></button><button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:13px;height:13px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button></div></div><div class="card-meta"><div class="card-name">Pikachu V</div><div class="card-set-label">045/185 · Vivid Voltage</div><div class="card-price-row"><span class="card-price">€12</span><span class="card-cond">NM</span></div></div></div>
+      </div>
+    </div>
+
+    <!-- WISHLIST -->
+    <div class="screen" id="s-wishlist">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:16px;font-weight:700">Wunschlisten</div>
+        <button class="btn btn-primary btn-sm" style="font-size:11px">
+          <svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+          PDF drucken
+        </button>
+      </div>
+
+      <!-- Wunschlisten-Auswahl (multi-select chips) -->
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Wunschlisten</div>
+      <div class="wl-selector" style="margin-bottom:10px">
+        <div class="wl-sel-chip on">🏆 Top-Wünsche (12) <span class="chip-x">✕</span></div>
+        <div class="wl-sel-chip">🔄 Tausch (8)</div>
+        <div class="wl-sel-chip">🎁 Geschenke (4)</div>
+        <div class="wl-sel-chip" style="border-style:dashed" onclick="document.getElementById('new-binder-modal').classList.add('open')">＋ Neu</div>
+      </div>
+
+      <!-- Mappen-Filter (multi-select chips) -->
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Mappen filtern</div>
+      <div class="wl-selector" style="margin-bottom:10px">
+        <div class="wl-sel-chip on">⚡ Elektro-Stars <span class="chip-x">✕</span></div>
+        <div class="wl-sel-chip">🌊 Wasser-Kollektion</div>
+        <div class="wl-sel-chip">🔥 Feuer &amp; Kampf</div>
+      </div>
+
+      <!-- Sortierung -->
+      <div style="display:flex;gap:6px;margin-bottom:12px">
+        <select class="form-select" style="flex:1;padding:7px 10px;font-size:12px">
+          <option>Sortierung: Preis ↓</option>
+          <option>Sortierung: Name A–Z</option>
+          <option>Sortierung: Priorität</option>
+        </select>
+        <select class="form-select" style="flex:1;padding:7px 10px;font-size:12px">
+          <option>Max. Preis: alle</option>
+          <option>bis €25</option>
+          <option>bis €50</option>
+          <option>bis €100</option>
+        </select>
+      </div>
+
+      <!-- Karten-Raster -->
+      <div class="cards-grid">
+        <!-- Karte: Preis über Max → rot markiert -->
+        <div class="full-card" onclick="openAddModal('Rayquaza VMAX','https://images.pokemontcg.io/swsh7/218_hires.png','Evol. Skies · 218/203',true)">
+          <div class="card-wrap foil not-owned" style="border-radius:8px 8px 0 0">
+            <img src="https://images.pokemontcg.io/swsh7/218_hires.png" alt="">
+            <div class="card-wl-badge">♥</div>
+            <div class="card-overlay">
+              <button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Rayquaza VMAX','https://images.pokemontcg.io/swsh7/218_hires.png','Evol. Skies · 218/203',true)"><svg style="width:16px;height:13px;stroke:#fff;fill:none;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 22 20"><rect x="8" y="0" width="12" height="17" rx="1.5" stroke-width="1.5" opacity="0.4"/><rect x="4" y="2" width="12" height="17" rx="1.5" stroke-width="1.6" opacity="0.65"/><rect x="0" y="4" width="12" height="16" rx="1.5" stroke-width="2"/></svg></button>
+              <button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:13px;height:13px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+            </div>
+          </div>
+          <div class="card-meta">
+            <div class="card-name">Rayquaza VMAX</div>
+            <div class="card-set-label">218/203 · Evol. Skies</div>
+            <div class="card-price-row"><span class="card-price" style="color:var(--accent2)">€185 ▲</span><span class="card-cond" style="color:var(--text3);font-size:9px">Max: €150</span></div>
+          </div>
+        </div>
+        <!-- Karte: Preisalert (unter Max) → grün markiert -->
+        <div class="full-card" onclick="openAddModal('Umbreon VMAX','https://images.pokemontcg.io/swsh7/215_hires.png','Evol. Skies · 215/203',true)">
+          <div class="card-wrap foil not-owned" style="border-radius:8px 8px 0 0;border:1.5px solid var(--green)">
+            <img src="https://images.pokemontcg.io/swsh7/215_hires.png" alt="">
+            <div class="card-wl-badge" style="background:rgba(72,187,120,0.9)">🔔</div>
+            <div class="card-overlay">
+              <button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Umbreon VMAX','https://images.pokemontcg.io/swsh7/215_hires.png','Evol. Skies · 215/203',true)"><svg style="width:16px;height:13px;stroke:#fff;fill:none;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 22 20"><rect x="8" y="0" width="12" height="17" rx="1.5" stroke-width="1.5" opacity="0.4"/><rect x="4" y="2" width="12" height="17" rx="1.5" stroke-width="1.6" opacity="0.65"/><rect x="0" y="4" width="12" height="16" rx="1.5" stroke-width="2"/></svg></button>
+              <button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:13px;height:13px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+            </div>
+          </div>
+          <div class="card-meta">
+            <div class="card-name">Umbreon VMAX</div>
+            <div class="card-set-label">215/203 · Evol. Skies</div>
+            <div class="card-price-row"><span class="card-price" style="color:var(--green)">€95 ▼</span><span class="card-cond" style="background:#1a3a2a;color:var(--green)">ALERT</span></div>
+          </div>
+        </div>
+        <!-- Normale Wunschliste-Karte -->
+        <div class="full-card" onclick="openAddModal('Pikachu V-UNION','https://images.pokemontcg.io/swsh4/44_hires.png','Celebrations · 001/025',false)">
+          <div class="card-wrap not-owned" style="border-radius:8px 8px 0 0">
+            <img src="https://images.pokemontcg.io/swsh4/44_hires.png" alt="">
+            <div class="card-wl-badge">♥</div>
+            <div class="card-overlay">
+              <button class="card-overlay-btn cob-add" onclick="event.stopPropagation();openAddModal('Pikachu V-UNION','https://images.pokemontcg.io/swsh4/44_hires.png','Celebrations · 001/025',false)"><svg style="width:13px;height:14px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 13 18"><rect x="1" y="1" width="11" height="16" rx="1.5"/><line x1="3" y1="6" x2="10" y2="6"/></svg></button>
+              <button class="card-overlay-btn cob-wish" onclick="event.stopPropagation()"><svg style="width:13px;height:13px;fill:#fff;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+            </div>
+          </div>
+          <div class="card-meta">
+            <div class="card-name">Pikachu V-UNION</div>
+            <div class="card-set-label">001/025 · Celebrations</div>
+            <div class="card-price-row"><span class="card-price">€22</span><span class="card-cond" style="font-size:9px;color:var(--text3)">Max: €25</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRICES -->
+    <div class="screen" id="s-prices">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="font-size:16px;font-weight:700">Marktpreise</div>
+        <button class="btn btn-secondary btn-sm">🔄</button>
+      </div>
+      <div class="stat-row-grid" style="grid-template-columns:1fr 1fr 1fr">
+        <div class="stat-tile"><div class="lbl">Gesamtwert</div><div class="val c-gold" style="font-size:18px">€1.243</div></div>
+        <div class="stat-tile"><div class="lbl">Alerts</div><div class="val c-green" style="font-size:18px">3</div></div>
+        <div class="stat-tile"><div class="lbl">Trend</div><div class="val" style="font-size:18px;color:var(--green)">▲</div></div>
+      </div>
+      <div class="price-table">
+        <div class="pt-row"><div class="pt-thumb"><img src="https://images.pokemontcg.io/swsh7/218_hires.png" alt=""></div><div class="pt-info"><div class="pt-name">Rayquaza VMAX</div><div class="pt-set">Evolving Skies · NM</div></div><div class="pt-price"><div class="pt-val">€92</div><div class="pt-trend" style="color:var(--green)">▲ +8,2%</div></div></div>
+        <div class="pt-row"><div class="pt-thumb"><img src="https://images.pokemontcg.io/base1/4_hires.png" alt=""></div><div class="pt-info"><div class="pt-name">Charizard 1st Ed.</div><div class="pt-set">Base Set · LP</div></div><div class="pt-price"><div class="pt-val" style="color:var(--gold)">€280</div><div class="pt-trend" style="color:var(--green)">▲ +2,1%</div></div></div>
+        <div class="pt-row"><div class="pt-thumb"><img src="https://images.pokemontcg.io/swsh7/215_hires.png" alt=""></div><div class="pt-info"><div class="pt-name">Umbreon VMAX <span style="font-size:10px;background:#1a3a2a;color:var(--green);padding:1px 4px;border-radius:3px">ALERT</span></div><div class="pt-set">Evolving Skies · NM</div></div><div class="pt-price"><div class="pt-val" style="color:var(--green)">€95</div><div class="pt-trend" style="color:var(--accent2)">▼ -8,7%</div></div></div>
+        <div class="pt-row"><div class="pt-thumb"><img src="https://images.pokemontcg.io/swsh11/131_hires.png" alt=""></div><div class="pt-info"><div class="pt-name">Giratina VSTAR</div><div class="pt-set">Lost Origin · NM</div></div><div class="pt-price"><div class="pt-val">€55</div><div class="pt-trend" style="color:var(--accent2)">▼ -3,5%</div></div></div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+
+  <!-- ── BOTTOM NAV ── -->
+  <nav class="bottom-nav">
+    <div class="bn-item active" id="bn-dashboard" onclick="nav('dashboard')">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Home
+    </div>
+    <div class="bn-item" id="bn-search" onclick="nav('search')">
+      <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Suchen
+    </div>
+    <div class="bn-fab" onclick="nav('scanner')">
+      <div class="bn-fab-btn"><svg class="ic" style="width:24px;height:24px;stroke:#fff" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
+    </div>
+    <div class="bn-item" id="bn-binders" onclick="nav('binders')">
+      <svg class="ic" viewBox="0 0 24 24"><rect x="2" y="3" width="12" height="17" rx="2"/><path d="M6 3V1.5M14 3V1.5M6 1.5h10a2 2 0 012 2V19"/></svg>Mappen
+    </div>
+    <div class="bn-item" id="bn-wishlist" onclick="nav('wishlist')">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>Wunschliste
+    </div>
+  </nav>
+
+  <!-- ── MODAL: Zur Sammlung hinzufügen ── -->
+  <div class="modal-bg" id="add-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal" style="max-height:88dvh">
+      <div class="modal-handle"></div>
+      <!-- Card preview -->
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+        <img id="add-modal-img" src="https://images.pokemontcg.io/swsh4/44_hires.png" style="width:50px;height:70px;border-radius:6px;object-fit:cover;flex-shrink:0">
+        <div style="flex:1;min-width:0">
+          <div id="add-modal-name" style="font-size:15px;font-weight:700">Pikachu VMAX</div>
+          <div id="add-modal-sub" style="font-size:11px;color:var(--text3);margin-top:2px">Vivid Voltage · 044/185</div>
+          <div style="font-size:11px;color:var(--green);margin-top:3px">Cardmarket: <strong>€28,00</strong></div>
+        </div>
+        <button class="btn btn-secondary btn-sm" style="font-size:11px;flex-shrink:0" onclick="document.getElementById('add-modal').classList.remove('open');nav('card-detail')">Details →</button>
+      </div>
+      <!-- Variante + Zustand (2 Spalten) -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div>
+          <label class="form-label">Variante</label>
+          <select class="form-select" style="padding:8px 10px;font-size:12px">
+            <option>Standard</option>
+            <option>Holo</option>
+            <option>Reverse Holo</option>
+            <option>Alt Art</option>
+            <option>1st Edition</option>
+            <option>Promo</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Zustand</label>
+          <select class="form-select" style="padding:8px 10px;font-size:12px">
+            <option>Near Mint</option>
+            <option>Lightly Played</option>
+            <option>Mod. Played</option>
+            <option>Heavily Played</option>
+            <option>Poor</option>
+          </select>
+        </div>
+      </div>
+      <!-- Sprache + Anzahl (2 Spalten) -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+        <div>
+          <label class="form-label">Sprache</label>
+          <select class="form-select" style="padding:8px 10px;font-size:12px">
+            <option>🇩🇪 Deutsch</option>
+            <option>🇬🇧 Englisch</option>
+            <option>🇯🇵 Japanisch</option>
+            <option>🇫🇷 Französisch</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Anzahl</label>
+          <div class="qty-ctrl" style="height:36px">
+            <button class="qty-btn" onclick="changeQty(-1)">−</button>
+            <span class="qty-val" id="qty-display">1</span>
+            <button class="qty-btn" onclick="changeQty(1)">＋</button>
+          </div>
+        </div>
+      </div>
+      <!-- Mappen multi-select -->
+      <div style="margin-bottom:12px">
+        <label class="form-label">Mappen zuordnen</label>
+        <div class="binder-checks">
+          <label class="binder-check"><input type="checkbox"> ⚡ Elektro-Stars</label>
+          <label class="binder-check"><input type="checkbox" checked> 🌊 Wasser-Kollektion</label>
+          <label class="binder-check"><input type="checkbox"> 🔥 Feuer &amp; Kampf</label>
+        </div>
+        <button class="link-btn" onclick="document.getElementById('add-modal').classList.remove('open');setTimeout(()=>document.getElementById('new-binder-modal').classList.add('open'),150)">＋ Neue Mappe erstellen</button>
+      </div>
+      <!-- Actions -->
+      <div style="display:grid;grid-template-columns:1fr 2fr;gap:8px;margin-top:6px">
+        <button class="btn btn-secondary" onclick="document.getElementById('add-modal').classList.remove('open')">
+          <svg style="width:15px;height:15px;fill:#d53f8c;stroke:none" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+          Wunschliste
+        </button>
+        <button class="btn btn-primary" onclick="document.getElementById('add-modal').classList.remove('open')">✓ Zur Sammlung</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MODAL: Neue Mappe ── -->
+  <div class="modal-bg" id="new-binder-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <div class="modal-title">Neue Mappe erstellen</div>
+      <div class="form-group"><label class="form-label">Name</label><input class="form-input" placeholder="z.B. Meine Lieblingsdrachen"></div>
+      <div class="form-group">
+        <label class="form-label">Icon</label>
+        <div class="icon-picker">
+          <div class="icon-opt sel">⚡</div><div class="icon-opt">🔥</div><div class="icon-opt">🌊</div><div class="icon-opt">🌿</div>
+          <div class="icon-opt">🔮</div><div class="icon-opt">🐉</div><div class="icon-opt">⭐</div><div class="icon-opt">🏆</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Layout (Karten pro Seite)</label>
+        <div class="layout-opts">
+          <div class="layout-opt"><div class="lg-prev g4"><div class="lg-cell"></div><div class="lg-cell"></div><div class="lg-cell"></div><div class="lg-cell"></div></div><div class="ll">4er-Seite</div><div class="ls">2 × 2 Karten</div></div>
+          <div class="layout-opt sel"><div class="lg-prev g9"><div class="lg-cell"></div><div class="lg-cell"></div><div class="lg-cell"></div><div class="lg-cell"></div><div class="lg-cell"></div><div class="lg-cell"></div><div class="lg-cell"></div><div class="lg-cell"></div><div class="lg-cell"></div></div><div class="ll">9er-Seite</div><div class="ls">3 × 3 Karten</div></div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
+        <button class="btn btn-secondary" onclick="document.getElementById('new-binder-modal').classList.remove('open')">Abbrechen</button>
+        <button class="btn btn-primary">Erstellen</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const screenMap = {
+  dashboard:'s-dashboard', scanner:'s-scanner', search:'s-search',
+  'card-detail':'s-card-detail', collection:'s-collection',
+  cycles:'s-cycles', 'set-cards':'s-set-cards',
+  binders:'s-binders', 'binder-detail':'s-binder-detail',
+  wishlist:'s-wishlist', prices:'s-prices'
+};
+const bnMap = {
+  dashboard:'bn-dashboard', search:'bn-search',
+  collection:'bn-binders',
+  binders:'bn-binders', 'binder-detail':'bn-binders',
+  wishlist:'bn-wishlist', prices:'bn-wishlist',
+  cycles:'bn-binders','set-cards':'bn-binders','card-detail':'bn-search',
+  scanner:null
+};
+
+function nav(name) {
+  Object.values(screenMap).forEach(id=>{const el=document.getElementById(id);if(el)el.classList.remove('active');});
+  const t=document.getElementById(screenMap[name]);
+  if(t)t.classList.add('active');
+  document.querySelectorAll('.bn-item').forEach(el=>el.classList.remove('active'));
+  const bn=bnMap[name];
+  if(bn){const el=document.getElementById(bn);if(el)el.classList.add('active');}
+  document.querySelector('.main').scrollTop=0;
+}
+
+function toggleCycle(id){
+  const el=document.getElementById(id);
+  if(el)el.classList.toggle('open');
+}
+
+let _qty = 1;
+function openAddModal(name, img, sub, multi) {
+  _qty = 1;
+  document.getElementById('add-modal-name').textContent = name;
+  document.getElementById('add-modal-img').src = img;
+  document.getElementById('add-modal-sub').textContent = sub;
+  document.getElementById('qty-display').textContent = _qty;
+  // Show/hide variant pills based on multi flag
+  const vg = document.querySelector('#add-modal .pill-group');
+  if (vg) {
+    const pills = vg.querySelectorAll('.pill');
+    pills.forEach((p,i) => {
+      if (!multi && i > 0) p.style.display='none';
+      else p.style.display='';
+      p.classList.toggle('sel', i===0);
+    });
+  }
+  document.getElementById('add-modal').classList.add('open');
+}
+
+function changeQty(d) {
+  _qty = Math.max(1, _qty + d);
+  document.getElementById('qty-display').textContent = _qty;
+}
+
+function selPill(el) {
+  const group = el.closest('.pill-group');
+  if (!group) return;
+  group.querySelectorAll('.pill').forEach(p => p.classList.remove('sel'));
+  el.classList.add('sel');
+}
+</script>
+</body>
+</html>
