@@ -72,7 +72,9 @@ export default function AdminPage() {
                 ? <span className="flex items-center gap-1 text-xs text-green-500"><CheckCircle size={13} /> Aktuell</span>
                 : hasNew
                   ? <span className="flex items-center gap-1 text-xs text-yellow-500"><Clock size={13} /> Update verfügbar</span>
-                  : <span className="flex items-center gap-1 text-xs text-muted-foreground"><Clock size={13} /> Initialer Sync läuft…</span>
+                  : (status?.syncedTotal ?? 0) === 0
+                    ? <span className="flex items-center gap-1 text-xs text-muted-foreground"><Clock size={13} /> Noch nicht gestartet</span>
+                    : <span className="flex items-center gap-1 text-xs" style={{color:'var(--pokedex-red)'}}><Clock size={13} /> Initialer Sync unvollständig</span>
               }
             </div>
 
