@@ -1,0 +1,10 @@
+{
+  "framework": "nextjs",
+  "regions": ["fra1"],
+  "crons": [
+    {
+      "path": "/api/cron/sync-catalog",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}

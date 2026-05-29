@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import type { TcgApiCard } from '@/lib/pokemon-tcg';
 import type { CardDoc } from '@/types';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
@@ -35,13 +36,15 @@ export function CardTile({ card, ownedCards = [], onWishlist, isWishlisted }: Pr
           className="relative rounded-xl overflow-hidden border border-border"
           style={{ background: isOwned ? undefined : '#080808' }}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <Image
             src={card.images.small}
             alt={card.name}
+            width={245}
+            height={342}
             className="w-full aspect-[2.5/3.5] object-cover"
             style={!isOwned ? { filter: 'grayscale(100%) brightness(35%)' } : undefined}
             loading="lazy"
+            sizes="(max-width: 400px) 30vw, 120px"
           />
 
           {/* Owned badge */}
