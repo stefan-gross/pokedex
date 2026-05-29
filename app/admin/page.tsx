@@ -37,11 +37,17 @@ export default function AdminPage() {
     setLastResult(null);
     try {
       const res = await fetch(`/api/admin/trigger-sync?mode=${mode}`, { method: 'POST' });
-      const data = await res.json();
-      setLastResult(data.message ?? data.error ?? 'Fertig');
+      const text = await res.text();
+      try {
+        const data = JSON.parse(text);
+        setLastResult(data.message ?? data.error ?? `Status ${res.status}`);
+      } catch {
+        // Kein JSON → zeige die ersten 200 Zeichen der Antwort
+        setLastResult(`Server-Fehler (${res.status}): ${text.slice(0, 200)}`);
+      }
       await loadStatus();
     } catch (err) {
-      setLastResult('Fehler: ' + String(err));
+      setLastResult('Netzwerk-Fehler: ' + String(err));
     } finally {
       setSyncing(false);
     }

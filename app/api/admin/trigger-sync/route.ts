@@ -8,20 +8,28 @@ async function verifySession(req: NextRequest) {
   return !!(await verifySessionToken(token));
 }
 
-// GET → Status abfragen
 export async function GET(req: NextRequest) {
   if (!(await verifySession(req))) {
     return NextResponse.json({ error: 'Nicht eingeloggt' }, { status: 401 });
   }
-  return NextResponse.json(await getSyncStatus());
+  try {
+    return NextResponse.json(await getSyncStatus());
+  } catch (err) {
+    console.error('[trigger-sync GET]', err);
+    return NextResponse.json({ error: String(err), syncedTotal: 0, currentTotal: 0, newCards: 0 }, { status: 500 });
+  }
 }
 
-// POST → Sync auslösen
 export async function POST(req: NextRequest) {
   if (!(await verifySession(req))) {
     return NextResponse.json({ error: 'Nicht eingeloggt' }, { status: 401 });
   }
-  const mode = (req.nextUrl.searchParams.get('mode') ?? 'auto') as 'auto' | 'update';
-  const result = await runSync(mode);
-  return NextResponse.json(result);
+  try {
+    const mode = (req.nextUrl.searchParams.get('mode') ?? 'auto') as 'auto' | 'update';
+    const result = await runSync(mode);
+    return NextResponse.json(result);
+  } catch (err) {
+    console.error('[trigger-sync POST]', err);
+    return NextResponse.json({ error: String(err), message: `Fehler: ${String(err)}` }, { status: 500 });
+  }
 }
