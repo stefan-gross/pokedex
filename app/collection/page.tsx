@@ -1,21 +1,20 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Search, X, SlidersHorizontal } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { CardTile } from '@/components/card/CardTile';
 import type { TcgApiCard } from '@/lib/pokemon-tcg';
 import type { CardDoc } from '@/types';
 import { getCards } from '@/lib/firestore/cards';
 
-type SortKey = 'number' | 'name' | 'rarity';
+type SortKey = 'number' | 'name';
 
 function CollectionContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const initialQ = searchParams.get('q') ?? '';
 
-  const [query, setQuery] = useState(initialQ);
   const [inputValue, setInputValue] = useState(initialQ);
   const [results, setResults] = useState<TcgApiCard[]>([]);
   const [ownedCards, setOwnedCards] = useState<CardDoc[]>([]);
@@ -23,25 +22,25 @@ function CollectionContent() {
   const [sort, setSort] = useState<SortKey>('number');
   const [filterSet, setFilterSet] = useState('');
   const [sets, setSets] = useState<{ id: string; name: string }[]>([]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load own collection from Firestore
   useEffect(() => {
     getCards().then(setOwnedCards).catch(() => {});
   }, []);
 
   const doSearch = useCallback(async (q: string) => {
     if (!q.trim()) {
-      // No query: show own collection cards via API
       setResults([]);
+      setSets([]);
       return;
     }
     setLoading(true);
     try {
-      const qStr = `name:"${q}"${filterSet ? ` set.id:${filterSet}` : ''}`;
-      const res = await fetch(`/api/tcg?q=${encodeURIComponent(qStr)}&pageSize=40`);
+      // Wildcard search: name:pikachu* finds all cards containing "pikachu"
+      const qStr = `name:${q}*${filterSet ? ` set.id:${filterSet}` : ''}`;
+      const res = await fetch(`/api/tcg?q=${encodeURIComponent(qStr)}&pageSize=60`);
       const data = await res.json();
       const cards: TcgApiCard[] = data.data ?? [];
-      // Extract sets for filter
       const setMap = new Map<string, string>();
       cards.forEach(c => setMap.set(c.set.id, c.set.name));
       setSets(Array.from(setMap.entries()).map(([id, name]) => ({ id, name })));
@@ -53,34 +52,36 @@ function CollectionContent() {
     }
   }, [filterSet]);
 
+  // Debounced live search — fires 400ms after user stops typing
   useEffect(() => {
-    doSearch(query);
-  }, [query, doSearch]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setQuery(inputValue);
-    router.replace(`/collection?q=${encodeURIComponent(inputValue)}`, { scroll: false });
-  };
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      doSearch(inputValue);
+      if (inputValue) {
+        router.replace(`/collection?q=${encodeURIComponent(inputValue)}`, { scroll: false });
+      } else {
+        router.replace('/collection', { scroll: false });
+      }
+    }, 400);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [inputValue, doSearch, router]);
 
   const clearSearch = () => {
     setInputValue('');
-    setQuery('');
+    setResults([]);
+    setSets([]);
     router.replace('/collection', { scroll: false });
   };
 
-  // Sort results
   const sorted = [...results].sort((a, b) => {
     if (sort === 'name') return a.name.localeCompare(b.name);
-    if (sort === 'number') {
-      const na = parseInt(a.number) || 0;
-      const nb = parseInt(b.number) || 0;
-      return na - nb;
-    }
-    return 0;
+    const na = parseInt(a.number) || 0;
+    const nb = parseInt(b.number) || 0;
+    return na - nb;
   });
 
-  // Map tcgId → owned cards
   const ownedByTcgId = new Map<string, CardDoc[]>();
   ownedCards.forEach(c => {
     if (c.tcgId) {
@@ -90,58 +91,54 @@ function CollectionContent() {
     }
   });
 
-  const isEmpty = !loading && results.length === 0 && query.trim();
-
   return (
     <div className="flex flex-col min-h-screen">
       {/* Header */}
       <div className="sticky top-0 z-20 bg-background px-4 pt-12 pb-3 space-y-3 border-b border-border">
-        {/* Search input */}
-        <form onSubmit={handleSubmit}>
-          <div className="relative flex items-center">
-            <Search size={16} className="absolute left-3 text-muted-foreground pointer-events-none" />
+        <div className="relative flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
             <input
               type="search"
               value={inputValue}
               onChange={e => setInputValue(e.target.value)}
-              placeholder="Name oder Nummer…"
-              className="w-full h-10 pl-9 pr-9 rounded-xl bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              placeholder="Name suchen, z.B. Pikachu…"
+              autoFocus
+              className="w-full h-10 pl-9 pr-8 rounded-xl bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             />
             {inputValue && (
               <button
                 type="button"
                 onClick={clearSearch}
-                className="absolute right-3 text-muted-foreground"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
               >
                 <X size={14} />
               </button>
             )}
           </div>
-        </form>
+        </div>
 
-        {/* Filters row */}
-        <div className="flex gap-2 overflow-x-auto pb-0.5 -mx-0.5 px-0.5">
-          <select
-            value={sort}
-            onChange={e => setSort(e.target.value as SortKey)}
-            className="h-8 px-2 rounded-lg bg-secondary border border-border text-xs shrink-0"
-          >
-            <option value="number">Nummer</option>
-            <option value="name">Name</option>
-            <option value="rarity">Seltenheit</option>
-          </select>
-
-          {sets.length > 0 && (
+        {/* Filters */}
+        {sets.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-0.5">
+            <select
+              value={sort}
+              onChange={e => setSort(e.target.value as SortKey)}
+              className="h-8 px-2 rounded-lg bg-secondary border border-border text-xs shrink-0"
+            >
+              <option value="number">Nummer</option>
+              <option value="name">Name</option>
+            </select>
             <select
               value={filterSet}
               onChange={e => setFilterSet(e.target.value)}
-              className="h-8 px-2 rounded-lg bg-secondary border border-border text-xs shrink-0 max-w-[160px]"
+              className="h-8 px-2 rounded-lg bg-secondary border border-border text-xs shrink-0 max-w-[180px]"
             >
-              <option value="">Alle Sets</option>
+              <option value="">Alle Sets ({sets.length})</option>
               {sets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Content */}
@@ -152,30 +149,33 @@ function CollectionContent() {
           </div>
         )}
 
-        {isEmpty && (
+        {!loading && !inputValue && (
+          <div className="text-center pt-16 space-y-2">
+            <Search size={36} className="mx-auto text-muted-foreground/30" />
+            <p className="text-muted-foreground text-sm">Tippe einen Pokémon-Namen ein</p>
+            <p className="text-muted-foreground/50 text-xs">z.B. „Pikachu", „Charizard" oder „Mewtwo"</p>
+          </div>
+        )}
+
+        {!loading && inputValue && results.length === 0 && (
           <p className="text-center text-muted-foreground text-sm pt-12">
-            Keine Karten gefunden für „{query}"
+            Keine Karten gefunden für „{inputValue}"
           </p>
         )}
 
-        {!query && !loading && (
-          <div className="text-center pt-12 space-y-2">
-            <Search size={32} className="mx-auto text-muted-foreground/40" />
-            <p className="text-muted-foreground text-sm">Suche nach einer Karte</p>
-            <p className="text-muted-foreground/60 text-xs">z.B. „Pikachu" oder „025/198"</p>
-          </div>
-        )}
-
         {sorted.length > 0 && (
-          <div className="grid grid-cols-3 gap-2">
-            {sorted.map(card => (
-              <CardTile
-                key={card.id}
-                card={card}
-                ownedCards={ownedByTcgId.get(card.id)}
-              />
-            ))}
-          </div>
+          <>
+            <p className="text-xs text-muted-foreground mb-2">{sorted.length} Karten gefunden</p>
+            <div className="grid grid-cols-3 gap-2">
+              {sorted.map(card => (
+                <CardTile
+                  key={card.id}
+                  card={card}
+                  ownedCards={ownedByTcgId.get(card.id)}
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>
