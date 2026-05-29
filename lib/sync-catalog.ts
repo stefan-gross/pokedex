@@ -1,11 +1,11 @@
-// Sync-Logik als wiederverwendbare Funktion
-// Wird sowohl von /api/admin/trigger-sync als auch von /api/admin/sync genutzt
-
-import { upsertCatalogBatch, getSyncMeta, setSyncMeta, type CatalogCard } from './firestore/catalog';
+import { getAdminDb } from './firebase/admin';
+import type { CatalogCard, SyncMeta } from './firestore/catalog';
 
 const TCG_BASE = 'https://api.pokemontcg.io/v2';
 const PAGE_SIZE = 250;
 const MAX_WRITES_PER_DAY = 19000;
+const COL = 'tcg_catalog';
+const META_COL = 'tcg_catalog_meta';
 
 function apiHeaders(): Record<string, string> {
   return process.env.POKEMON_TCG_API_KEY
@@ -46,6 +46,29 @@ async function fetchPage(page: number): Promise<CatalogCard[]> {
   }));
 }
 
+async function upsertBatch(cards: CatalogCard[]): Promise<void> {
+  const db = getAdminDb();
+  // Admin SDK: 500 Dokumente pro Batch
+  for (let i = 0; i < cards.length; i += 500) {
+    const batch = db.batch();
+    cards.slice(i, i + 500).forEach(card => {
+      batch.set(db.collection(COL).doc(card.id), card, { merge: true });
+    });
+    await batch.commit();
+  }
+}
+
+async function getMeta(): Promise<SyncMeta | null> {
+  const db = getAdminDb();
+  const snap = await db.collection(META_COL).doc('sync').get();
+  return snap.exists ? (snap.data() as SyncMeta) : null;
+}
+
+async function setMeta(data: Partial<SyncMeta>): Promise<void> {
+  const db = getAdminDb();
+  await db.collection(META_COL).doc('sync').set(data, { merge: true });
+}
+
 export interface SyncResult {
   status: 'up-to-date' | 'in-progress' | 'complete' | 'updated' | 'error';
   message: string;
@@ -56,14 +79,14 @@ export interface SyncResult {
 }
 
 export async function runSync(mode: 'auto' | 'update' = 'auto'): Promise<SyncResult> {
-  const meta = await getSyncMeta();
+  const meta = await getMeta();
   const currentTotal = await fetchCurrentTotal();
   const syncedTotal = meta?.syncedTotal ?? 0;
   const lastPage = meta?.lastPage ?? 0;
   const totalPages = Math.ceil(currentTotal / PAGE_SIZE);
   const isFullySynced = syncedTotal >= currentTotal;
 
-  // ── UPDATE: Nur neue Karten (Differenz) ─────────────────────────────────
+  // ── UPDATE: Nur neue Karten ──────────────────────────────────────────────
   if (mode === 'update') {
     if (isFullySynced) {
       return { status: 'up-to-date', message: `Alle ${syncedTotal.toLocaleString()} Karten sind aktuell`, syncedTotal, currentTotal };
@@ -75,14 +98,14 @@ export async function runSync(mode: 'auto' | 'update' = 'auto'): Promise<SyncRes
     for (let p = startPage; p <= totalPages; p++) {
       const cards = await fetchPage(p);
       if (!cards.length) break;
-      await upsertCatalogBatch(cards);
+      await upsertBatch(cards);
       written += cards.length;
     }
-    await setSyncMeta({ lastPage: totalPages, totalPages, syncedTotal: currentTotal, currentTotal, lastSynced: new Date().toISOString() });
+    await setMeta({ lastPage: totalPages, totalPages, syncedTotal: currentTotal, currentTotal, lastSynced: new Date().toISOString() });
     return { status: 'updated', message: `✅ ${written} neue Karten hinzugefügt`, written, syncedTotal: currentTotal, currentTotal };
   }
 
-  // ── AUTO: Initialer Sync oder up-to-date ────────────────────────────────
+  // ── AUTO: Initialer Sync ─────────────────────────────────────────────────
   if (isFullySynced) {
     return { status: 'up-to-date', message: `Alle ${syncedTotal.toLocaleString()} Karten sind aktuell`, syncedTotal, currentTotal };
   }
@@ -95,9 +118,9 @@ export async function runSync(mode: 'auto' | 'update' = 'auto'): Promise<SyncRes
   for (let p = startPage; p <= endPage; p++) {
     const cards = await fetchPage(p);
     if (!cards.length) break;
-    await upsertCatalogBatch(cards);
+    await upsertBatch(cards);
     written += cards.length;
-    await setSyncMeta({ lastPage: p, totalPages, syncedTotal: syncedTotal + written, currentTotal, lastSynced: new Date().toISOString() });
+    await setMeta({ lastPage: p, totalPages, syncedTotal: syncedTotal + written, currentTotal, lastSynced: new Date().toISOString() });
   }
 
   const newSyncedTotal = syncedTotal + written;
@@ -115,7 +138,7 @@ export async function runSync(mode: 'auto' | 'update' = 'auto'): Promise<SyncRes
 }
 
 export async function getSyncStatus() {
-  const meta = await getSyncMeta();
+  const meta = await getMeta();
   const currentTotal = await fetchCurrentTotal();
   const syncedTotal = meta?.syncedTotal ?? 0;
   return {
