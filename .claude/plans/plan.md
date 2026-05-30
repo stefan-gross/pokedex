@@ -299,47 +299,76 @@ Nach Implementierung testen:
 
 ---
 
-## Aktueller Implementierungsstand (Stand: 2026-05-29)
+## Aktueller Implementierungsstand (Stand: 2026-05-30)
+
+> **Hinweis für Wiederaufnahme:** Alle Seiten liegen unter `app/(app)/` (Route Group). Root-Layout ist minimal. Login unter `app/login/page.tsx` ohne App-Chrome.
 
 ### ✅ Fertig
 
-| Phase | Was | Dateien |
-|-------|-----|---------|
-| 0 | Mockup | `public/mockup.html` |
-| 1 | Next.js 16 + Tailwind + shadcn/ui + Firebase + Layout + Dashboard | `app/layout.tsx`, `app/page.tsx`, `components/BottomNav.tsx` |
-| 2 | Scanner (Kamera + Gemini Vision + Add-Modal) | `app/scanner/page.tsx`, `components/scanner/*` |
-| 3 | Suche (pokemontcg.io, Live-Wildcard-Suche, Karten-Grid) | `app/collection/page.tsx`, `components/card/CardTile.tsx` |
-| 4 (teilw.) | Mappen: Übersicht + Detailseite + Create/Edit Modal | `app/binders/*`, `components/binder/*` |
-| Auth | Firebase Email/Password, Session-Cookie `.smartfamilyzone.de`, proxy.ts | `proxy.ts`, `app/login/page.tsx`, `lib/auth.ts`, `components/AuthRefresh.tsx` |
-| Catalog | Firestore `tcg_catalog`, Admin SDK, `/admin`-Seite, wöch. Cron | `lib/sync-catalog.ts`, `lib/firebase/admin.ts`, `app/admin/page.tsx`, `vercel.json` |
+| Bereich | Was | Wichtige Dateien |
+|---------|-----|-----------------|
+| Phase 0 | Mockup | `public/mockup.html` |
+| Phase 1 | Next.js 16 + Tailwind v4 + shadcn/ui + Firebase + Layout | `app/layout.tsx`, `app/(app)/layout.tsx`, `components/BottomNav.tsx` |
+| Phase 2 | Scanner (Kamera + Gemini Vision + Add-Modal) | `app/(app)/scanner/page.tsx`, `components/scanner/*` |
+| Phase 3 | Suche (pokemontcg.io, Live-Wildcard + Catalog-Fallback, Karten-Grid) | `app/(app)/collection/page.tsx`, `components/card/CardTile.tsx` |
+| Phase 4 (teilw.) | Mappen: Übersicht + Detailseite + Create/Edit Modal | `app/(app)/binders/*`, `components/binder/*` |
+| Phase 6 (teilw.) | Preissystem: TCGPlayer via pokemontcg.io, Provider-Interface | `lib/prices/`, `app/api/prices/route.ts`, `components/card/CardPrices.tsx` |
+| Auth | Firebase Email/Password, Session-Cookie `.smartfamilyzone.de`, Middleware | `middleware.ts`, `app/login/page.tsx`, `lib/auth.ts`, `components/AuthRefresh.tsx` |
+| Catalog | Firestore `tcg_catalog`, Admin SDK, `/admin`-Seite, wöch. Cron | `lib/sync-catalog.ts`, `lib/firebase/admin.ts`, `app/(app)/admin/page.tsx` |
+| Settings | Dark/Light/System-Theme (next-themes), App-Reload, Abmelden | `app/(app)/settings/page.tsx`, `components/ThemeProvider.tsx` |
+| Set-Detail | `/sets/[setId]` mit Header, Rarity-Breakdown, Filter, 3-Spalten-Grid | `app/(app)/sets/[setId]/page.tsx`, `app/api/sets/route.ts` |
+| PWA | Safe-area-inset Fix (Dynamic Island), Pokeball SVG Favicon | `app/(app)/layout.tsx`, `app/icon.svg`, `app/globals.css` |
+| UI | Plus Jakarta Sans, Login-Split-Panel, Dashboard-Redesign | `app/layout.tsx`, `app/login/page.tsx`, `app/(app)/page.tsx` |
 
 ### 🔲 Noch offen
 
 - **Phase 4 (Rest)** — Karten per Drag & Drop in Mappen verschieben, Mappe als PDF
-- **Phase 5** — Wunschlisten: CRUD, Karten zuordnen, Binder-Planung (WL-Karten in Mappen), PDF-Export
-- **Phase 6** — Marktpreise: Cardmarket API (trendPrice, EUR), Preishistorie, Gesamtwert im Dashboard
+- **Phase 5** — Wunschlisten: CRUD, Karten zuordnen, PDF-Export (`app/(app)/wishlist/` existiert noch nicht)
+- **Phase 6 (Rest)** — Preishistorie in Firestore, Gesamtwert im Dashboard live aus Firestore
 - **Phase 7** — PDF-Export für Sammlung/Wunschliste (`@react-pdf/renderer`)
-- **Pokédex/Wiki** — PokéAPI Integration (noch nicht begonnen)
+- **Pokédex/Wiki** — PokéAPI Integration (noch nicht begonnen, geplant: `app/(app)/pokedex/`)
+- **Dashboard** — Stat-Tiles und Sets live aus Firestore (aktuell Mock-Daten)
+- **Phase 4 (Rest)** — Set-Favoriten in Firestore speichern (aktuell nur Mock)
+
+### Wichtige Architektur-Entscheidungen
+
+- `middleware.ts` (nicht `proxy.ts`) schützt alle Routen außer `/login` und `/api/auth`
+- `app/(app)/` — Route Group für alle App-Seiten (hat BottomNav + AuthRefresh im Layout)
+- `app/login/` — Login-Seite ohne App-Chrome (nur Root-Layout)
+- `next build --webpack` — Turbopack für Production-Build deaktiviert (Inkompatibilität)
+- Preise: Provider-Interface in `lib/prices/types.ts`, aktuell TCGPlayer, austauschbar zu Cardmarket/pokeprice.io
+- Dark Mode: class-based via next-themes (`attribute="class"`), `.dark`-Klasse auf `<html>`
+- Font: Plus Jakarta Sans via `next/font/google`, Variable auf `<html>` (nicht `<body>`)
 
 ### Deployment
 
-- **Repo**: GitHub → `stefan-gross/pokedex` (main)
-- **Hosting**: Vercel → automatisches Deploy bei Push
+- **Repo**: GitHub → `stefan-gross/pokedex` (main → Vercel Auto-Deploy)
+- **Hosting**: Vercel, Region `fra1`
 - **URL**: `https://pokedex.smartfamilyzone.de`
-- **DNS**: IONOS CNAME → Vercel
+- **Build-Befehl**: `next build --webpack` (in `package.json`)
 
-### Vercel Env Vars
+### Env Vars (alle eingetragen — lokal `.env.local` + Vercel)
 
-✅ `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`, `CRON_SECRET` — eingetragen (2026-05-30)
+| Variable | Wert | Wo |
+|----------|------|----|
+| `FIREBASE_ADMIN_PROJECT_ID` | `smartfamilyzone-d9657` | Vercel ✅ |
+| `FIREBASE_ADMIN_CLIENT_EMAIL` | `firebase-adminsdk-fbsvc@...` | Vercel ✅ |
+| `FIREBASE_ADMIN_PRIVATE_KEY` | `-----BEGIN PRIVATE KEY...` | Vercel ✅ |
+| `CRON_SECRET` | `sfz-cron-2026-pokedex` | Vercel ✅ |
+| `POKEMON_TCG_API_KEY` | `a82a4efa-7b6a-405e-a23e-c6df8aea0e7c` | lokal + Vercel ✅ |
+| `GEMINI_API_KEY` | in `.env.local` | lokal ✅ |
+| `CARDMARKET_*` | — | gesperrt, kein Zugang |
 
 ### Firebase
 
-- **Projekt**: `smartfamilyzone-d9657` (geteilt mit contracts-app)
+- **Projekt**: `smartfamilyzone-d9657` (geteilt mit contracts-app + family-hub)
 - **Firestore Collections**: `cards`, `binders`, `wishlists`, `tcg_catalog`, `tcg_catalog_meta`
-- **Rules**: `/{document=**} if request.auth != null` — Admin SDK umgeht das
-- **Auth**: Email/Password aktiviert
+- **Rules**: `/{document=**} if request.auth != null`
+- **Auth**: Email/Password aktiviert, SSO über `.smartfamilyzone.de` Cookie
 
-### API Keys
+### Bekannte Eigenheiten
 
-- ✅ `POKEMON_TCG_API_KEY` — eingetragen lokal + Vercel (2026-05-30)
-- `CARDMARKET_*` — API aktuell gesperrt, kein neuer Zugang möglich
+- Node.js: System hat v15 — immer v22 nutzen: `/Users/sgr/.nvm/versions/node/v22.3.0/bin/node`
+- Dev-Server starten: `/Users/sgr/.nvm/versions/node/v22.3.0/bin/node node_modules/.bin/next dev --webpack --port 3000`
+- Turbopack nicht nutzen (weder `--turbo` noch ohne `--webpack`)
+- `.claude/launch.json` startet Dev-Server korrekt
