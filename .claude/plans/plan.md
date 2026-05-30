@@ -299,7 +299,7 @@ Nach Implementierung testen:
 
 ---
 
-## Aktueller Implementierungsstand (Stand: 2026-05-30)
+## Aktueller Implementierungsstand (Stand: 2026-05-31)
 
 > **Hinweis für Wiederaufnahme:** Alle Seiten liegen unter `app/(app)/` (Route Group). Root-Layout ist minimal. Login unter `app/login/page.tsx` ohne App-Chrome.
 
@@ -314,11 +314,13 @@ Nach Implementierung testen:
 | Phase 4 (teilw.) | Mappen: Übersicht + Detailseite + Create/Edit Modal | `app/(app)/binders/*`, `components/binder/*` |
 | Phase 6 (teilw.) | Preissystem: TCGPlayer via pokemontcg.io, Provider-Interface | `lib/prices/`, `app/api/prices/route.ts`, `components/card/CardPrices.tsx` |
 | Auth | Firebase Email/Password, Session-Cookie `.smartfamilyzone.de`, Middleware | `middleware.ts`, `app/login/page.tsx`, `lib/auth.ts`, `components/AuthRefresh.tsx` |
-| Catalog | Firestore `tcg_catalog`, Admin SDK, `/admin`-Seite, wöch. Cron | `lib/sync-catalog.ts`, `lib/firebase/admin.ts`, `app/(app)/admin/page.tsx` |
-| Settings | Dark/Light/System-Theme (next-themes), App-Reload, Abmelden | `app/(app)/settings/page.tsx`, `components/ThemeProvider.tsx` |
-| Set-Detail | `/sets/[setId]` mit Header, Rarity-Breakdown, Filter, 3-Spalten-Grid | `app/(app)/sets/[setId]/page.tsx`, `app/api/sets/route.ts` |
-| PWA | Safe-area-inset Fix (Dynamic Island), Pokeball SVG Favicon | `app/(app)/layout.tsx`, `app/icon.svg`, `app/globals.css` |
+| Catalog-Sync | Firestore `tcg_catalog`, Admin SDK, Sync in Einstellungen, wöch. Cron | `lib/sync-catalog.ts`, `lib/firebase/admin.ts` |
+| Settings | Theme, App-Reload, Abmelden, **Catalog-Sync** (inkl. Live-Fortschritt) | `app/(app)/settings/page.tsx`, `components/ThemeProvider.tsx` |
+| Set-Detailseite | `/sets/[setId]`: Header, Rarity-Breakdown, Filter, 3-Spalten-Grid | `app/(app)/sets/[setId]/page.tsx` |
+| Sets-Übersicht | `/sets`: Alle Sets gruppiert nach Serie, Card-Layout, owned-Zähler | `app/(app)/sets/page.tsx` |
+| PWA | Pokeball-Favicon (PNG + SVG + Apple-Icon), Manifest-Icons | `app/icon.png`, `app/icon.svg`, `app/apple-icon.png`, `public/icon-*.png` |
 | UI | Plus Jakarta Sans, Login-Split-Panel, Dashboard-Redesign | `app/layout.tsx`, `app/login/page.tsx`, `app/(app)/page.tsx` |
+| Mehrsprachigkeit | Deutsche Set-/Seriennamen live von TCGdex API, deutsche Logos | `lib/tcgdex.ts`, `lib/set-names-de.ts` |
 
 ### 🔲 Noch offen
 
@@ -329,6 +331,7 @@ Nach Implementierung testen:
 - **Pokédex/Wiki** — PokéAPI Integration (noch nicht begonnen, geplant: `app/(app)/pokedex/`)
 - **Dashboard** — Stat-Tiles und Sets live aus Firestore (aktuell Mock-Daten)
 - **Phase 4 (Rest)** — Set-Favoriten in Firestore speichern (aktuell nur Mock)
+- **Catalog-Sync** — noch ~85% ausstehend (3.000 von 20.000 Karten), Sync läuft in 750-Karten-Chunks
 
 ### Wichtige Architektur-Entscheidungen
 
@@ -339,6 +342,18 @@ Nach Implementierung testen:
 - Preise: Provider-Interface in `lib/prices/types.ts`, aktuell TCGPlayer, austauschbar zu Cardmarket/pokeprice.io
 - Dark Mode: class-based via next-themes (`attribute="class"`), `.dark`-Klasse auf `<html>`
 - Font: Plus Jakarta Sans via `next/font/google`, Variable auf `<html>` (nicht `<body>`)
+- Set-Detailseite: lädt Karten aus Firestore Catalog (`tcg_catalog`), Fallback auf pokemontcg.io API
+- Deutsche Namen + Logos: TCGdex API (`api.tcgdex.net/v2/de`), 6h Server-Cache, ID-Normalisierung in `lib/tcgdex.ts`
+- `/admin`-Route entfernt — Catalog-Sync-UI ist in Einstellungen integriert
+
+### Externe APIs
+
+| API | Zweck | Auth |
+|-----|-------|------|
+| `pokemontcg.io` | Kartendatenbank, Bilder, Set-Metadaten | API Key |
+| `api.tcgdex.net/v2/de` | Deutsche Set-Namen + Logos (kein Auth, 6h gecacht) | — |
+| Firebase Firestore | Sammlung, Mappen, Catalog | Firebase Config |
+| Google Gemini Vision | Scanner-Bilderkennung | API Key |
 
 ### Deployment
 
@@ -346,6 +361,7 @@ Nach Implementierung testen:
 - **Hosting**: Vercel, Region `fra1`
 - **URL**: `https://pokedex.smartfamilyzone.de`
 - **Build-Befehl**: `next build --webpack` (in `package.json`)
+- **Vercel Timeout**: Serverless Functions max ~10s → Catalog-Sync macht max 2 Seiten (500 Karten) pro Request, Client loopt
 
 ### Env Vars (alle eingetragen — lokal `.env.local` + Vercel)
 
@@ -372,3 +388,4 @@ Nach Implementierung testen:
 - Dev-Server starten: `/Users/sgr/.nvm/versions/node/v22.3.0/bin/node node_modules/.bin/next dev --webpack --port 3000`
 - Turbopack nicht nutzen (weder `--turbo` noch ohne `--webpack`)
 - `.claude/launch.json` startet Dev-Server korrekt
+- TCGdex IDs unterscheiden sich von pokemontcg.io (sv1 vs sv01, pt5 vs .5) → `toTcgdexId()` in `lib/tcgdex.ts`
