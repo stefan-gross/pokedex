@@ -3,8 +3,12 @@
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Sun, Moon, Smartphone, RefreshCw } from 'lucide-react';
+import {
+  ChevronLeft, Sun, Moon, Smartphone, RefreshCw,
+  Database, CheckCircle, Clock, AlertCircle,
+} from 'lucide-react';
 import Link from 'next/link';
+import type { SyncMeta } from '@/lib/firestore/catalog';
 
 const THEMES = [
   { value: 'system', label: 'System', icon: Smartphone },
@@ -12,18 +16,62 @@ const THEMES = [
   { value: 'dark',   label: 'Dunkel', icon: Moon },
 ] as const;
 
+interface SyncStatus extends SyncMeta { newCards: number }
+
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const router = useRouter();
 
-  useEffect(() => setMounted(true), []);
+  /* ── Sync state ─────────────────────────────────── */
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
+  const [syncLoading, setSyncLoading] = useState(true);
+  const [syncing, setSyncing]         = useState(false);
+  const [syncResult, setSyncResult]   = useState<string | null>(null);
+
+  useEffect(() => { setMounted(true); loadSyncStatus(); }, []);
+
+  async function loadSyncStatus() {
+    try {
+      const res = await fetch('/api/admin/trigger-sync');
+      if (res.ok) {
+        const data = await res.json();
+        setSyncStatus({ ...data, newCards: (data.currentTotal ?? 0) - (data.syncedTotal ?? 0) });
+      }
+    } catch { /* ignore */ } finally {
+      setSyncLoading(false);
+    }
+  }
+
+  async function runSync(mode: 'auto' | 'update') {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res  = await fetch(`/api/admin/trigger-sync?mode=${mode}`, { method: 'POST' });
+      const text = await res.text();
+      try {
+        const data = JSON.parse(text);
+        setSyncResult(data.message ?? data.error ?? `Status ${res.status}`);
+      } catch {
+        setSyncResult(`Server-Fehler (${res.status}): ${text.slice(0, 200)}`);
+      }
+      await loadSyncStatus();
+    } catch (err) {
+      setSyncResult('Netzwerk-Fehler: ' + String(err));
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });
     router.push('/login');
     router.refresh();
   }
+
+  const pct        = syncStatus ? Math.round(((syncStatus.syncedTotal ?? 0) / (syncStatus.currentTotal || 1)) * 100) : 0;
+  const isComplete = pct >= 100;
+  const hasNew     = (syncStatus?.newCards ?? 0) > 0;
 
   return (
     <div className="min-h-screen">
@@ -65,10 +113,106 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        {/* Karten-Catalog */}
+        <section>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Karten-Catalog</p>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+
+            {syncLoading ? (
+              <div className="flex justify-center py-6">
+                <div className="w-6 h-6 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <>
+                {/* Status-Zeile */}
+                <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Database size={16} className="text-muted-foreground shrink-0" />
+                    <p className="text-sm font-medium">Sync-Status</p>
+                  </div>
+                  {isComplete
+                    ? <span className="flex items-center gap-1 text-xs text-green-500"><CheckCircle size={12} /> Aktuell</span>
+                    : hasNew
+                      ? <span className="flex items-center gap-1 text-xs text-yellow-500"><Clock size={12} /> Update verfügbar</span>
+                      : (syncStatus?.syncedTotal ?? 0) === 0
+                        ? <span className="text-xs text-muted-foreground">Noch nicht gestartet</span>
+                        : <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--pokedex-red)' }}><Clock size={12} /> Unvollständig</span>
+                  }
+                </div>
+
+                {/* Fortschritt */}
+                <div className="px-4 py-3 space-y-2 border-b border-border">
+                  <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+                    <div className="h-full rounded-full transition-all"
+                      style={{ width: `${pct}%`, background: isComplete ? '#48bb78' : 'var(--pokedex-red)' }} />
+                  </div>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>{(syncStatus?.syncedTotal ?? 0).toLocaleString('de-DE')} gecacht</span>
+                    <span>{pct}% · {(syncStatus?.currentTotal ?? 0).toLocaleString('de-DE')} gesamt</span>
+                  </div>
+                  {syncStatus?.lastSynced && (
+                    <p className="text-xs text-muted-foreground">
+                      Letzter Sync: {new Date(syncStatus.lastSynced).toLocaleString('de-DE')}
+                    </p>
+                  )}
+                  {hasNew && (
+                    <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg bg-yellow-500/10 text-yellow-600">
+                      <AlertCircle size={12} />
+                      {syncStatus!.newCards.toLocaleString('de-DE')} neue Karten verfügbar
+                    </div>
+                  )}
+                </div>
+
+                {/* Ergebnis letzter Sync */}
+                {syncResult && (
+                  <div className="px-4 py-2.5 border-b border-border text-xs text-muted-foreground">
+                    {syncResult}
+                  </div>
+                )}
+
+                {/* Aktions-Buttons */}
+                <button
+                  onClick={() => runSync('update')}
+                  disabled={syncing || (isComplete && !hasNew)}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-secondary disabled:opacity-40"
+                >
+                  {syncing
+                    ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin shrink-0" />
+                    : <RefreshCw size={18} className="text-muted-foreground shrink-0" />
+                  }
+                  <div>
+                    <p className="text-sm font-medium">
+                      {hasNew ? `${syncStatus!.newCards.toLocaleString('de-DE')} neue Karten holen` : 'Auf neue Karten prüfen'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Wöchentlich automatisch um Mo. 3:00 Uhr</p>
+                  </div>
+                </button>
+
+                {!isComplete && (
+                  <button
+                    onClick={() => runSync('auto')}
+                    disabled={syncing}
+                    className="w-full flex items-center gap-3 px-4 py-3.5 text-left border-t border-border transition-colors active:bg-secondary disabled:opacity-40"
+                  >
+                    {syncing
+                      ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin shrink-0" />
+                      : <Database size={18} className="text-muted-foreground shrink-0" />
+                    }
+                    <div>
+                      <p className="text-sm font-medium">Initialen Sync fortsetzen</p>
+                      <p className="text-xs text-muted-foreground">Nächste 19.000 Karten in Firestore laden</p>
+                    </div>
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </section>
+
         {/* App */}
         <section>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">App</p>
-          <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
             <button
               onClick={() => window.location.reload()}
               className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-secondary transition-colors"
@@ -88,9 +232,9 @@ export default function SettingsPage() {
           <div className="bg-card border border-border rounded-xl overflow-hidden">
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-secondary transition-colors text-red-500"
+              className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-secondary transition-colors"
             >
-              <div className="text-sm font-medium">Abmelden</div>
+              <div className="text-sm font-medium text-red-500">Abmelden</div>
             </button>
           </div>
         </section>
