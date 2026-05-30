@@ -156,30 +156,32 @@ function ViewBtn({ active, onClick, label, children }: {
 function SetProgress({ name, code, setId, owned, total }: SetEntry) {
   const pct = Math.round((owned / total) * 100);
   return (
-    <div className="bg-card border border-border rounded-xl px-3 py-2.5">
-      <div className="flex items-center gap-3 mb-1.5">
-        {/* Set Logo */}
-        <div className="w-12 h-7 flex items-center justify-start shrink-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={`https://images.pokemontcg.io/${setId}/logo.png`}
-            alt={name}
-            className="max-h-7 max-w-[48px] object-contain"
-            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-          />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex justify-between items-baseline gap-2">
-            <span className="text-sm font-medium truncate">{name}</span>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <span className="text-[10px] font-mono text-muted-foreground/60 bg-secondary px-1.5 py-0.5 rounded">{code}</span>
-              <span className="text-xs text-muted-foreground">{owned}/{total}</span>
-            </div>
+    <div className="bg-card border border-border rounded-xl px-3 py-2.5 flex items-center gap-3">
+      {/* Logo */}
+      <div className="w-14 shrink-0 flex items-center justify-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`https://images.pokemontcg.io/${setId}/logo.png`}
+          alt={name}
+          className="max-h-8 max-w-[56px] object-contain"
+          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+        />
+      </div>
+
+      {/* Right: name + bar */}
+      <div className="flex-1 min-w-0 space-y-1.5">
+        {/* Row 1: Name + Code + Count */}
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-medium truncate">{name}</span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border" style={{ color: 'var(--foreground)', borderColor: 'var(--foreground)' }}>{code}</span>
+            <span className="text-xs text-muted-foreground tabular-nums">{owned}/{total}</span>
           </div>
         </div>
-      </div>
-      <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: 'var(--pokedex-red)' }} />
+        {/* Row 2: Progress bar */}
+        <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: 'var(--pokedex-red)' }} />
+        </div>
       </div>
     </div>
   );
