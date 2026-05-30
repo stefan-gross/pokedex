@@ -48,9 +48,9 @@ function LoginForm() {
     <div className="min-h-screen bg-[#0f1117] flex">
       {/* Left panel — desktop only */}
       <div className="hidden lg:flex w-2/5 flex-col justify-between p-14">
-        <div className="flex items-center gap-3">
-          <span className="text-3xl">🎴</span>
-          <span className="text-white font-semibold text-lg">Pokédex</span>
+        <div className="flex flex-col gap-2">
+          <span className="text-8xl">🎴</span>
+          <span className="text-white font-bold text-6xl leading-none mt-2">Pokédex</span>
         </div>
         <div>
           <h1 className="text-4xl font-semibold text-white leading-snug mb-5">
