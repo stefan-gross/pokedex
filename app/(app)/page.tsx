@@ -6,24 +6,26 @@ import { useState } from 'react';
 
 type SetView = 'recent' | 'complete' | 'favorites';
 
-const SETS = {
+interface SetEntry { name: string; code: string; setId: string; owned: number; total: number }
+
+const SETS: Record<SetView, SetEntry[]> = {
   recent: [
-    { name: 'Scarlet & Violet', owned: 74, total: 94 },
-    { name: 'Obsidian Flames', owned: 8, total: 197 },
-    { name: 'Paldea Evolved', owned: 31, total: 93 },
-    { name: '151', owned: 12, total: 165 },
+    { name: 'Karmesin & Purpur',        code: 'SVI',  setId: 'sv1',     owned: 74, total: 94 },
+    { name: 'Obsidianflammen',           code: 'OBF',  setId: 'sv3',     owned: 8,  total: 197 },
+    { name: 'Entwicklungen in Paldea',  code: 'PAL',  setId: 'sv2',     owned: 31, total: 93 },
+    { name: '151',                       code: 'MEW',  setId: 'sv3pt5',  owned: 12, total: 165 },
   ],
   complete: [
-    { name: 'Scarlet & Violet', owned: 74, total: 94 },
-    { name: 'Paldea Evolved', owned: 31, total: 93 },
-    { name: '151', owned: 12, total: 165 },
-    { name: 'Obsidian Flames', owned: 8, total: 197 },
+    { name: 'Karmesin & Purpur',        code: 'SVI',  setId: 'sv1',     owned: 74, total: 94 },
+    { name: 'Entwicklungen in Paldea',  code: 'PAL',  setId: 'sv2',     owned: 31, total: 93 },
+    { name: '151',                       code: 'MEW',  setId: 'sv3pt5',  owned: 12, total: 165 },
+    { name: 'Obsidianflammen',           code: 'OBF',  setId: 'sv3',     owned: 8,  total: 197 },
   ],
   favorites: [
-    { name: 'Base Set', owned: 42, total: 102 },
-    { name: 'Scarlet & Violet', owned: 74, total: 94 },
-    { name: '151', owned: 12, total: 165 },
-    { name: 'Neo Genesis', owned: 5, total: 111 },
+    { name: 'Basisset',                  code: 'BS',   setId: 'base1',   owned: 42, total: 102 },
+    { name: 'Karmesin & Purpur',        code: 'SVI',  setId: 'sv1',     owned: 74, total: 94 },
+    { name: '151',                       code: 'MEW',  setId: 'sv3pt5',  owned: 12, total: 165 },
+    { name: 'Neo Genesis',               code: 'N1',   setId: 'neo1',    owned: 5,  total: 111 },
   ],
 };
 
@@ -99,7 +101,7 @@ export default function DashboardPage() {
         </div>
         <div className="space-y-2">
           {SETS[setView].map(s => (
-            <SetProgress key={s.name} name={s.name} owned={s.owned} total={s.total} />
+            <SetProgress key={s.setId} {...s} />
           ))}
         </div>
       </section>
@@ -151,13 +153,30 @@ function ViewBtn({ active, onClick, label, children }: {
   );
 }
 
-function SetProgress({ name, owned, total }: { name: string; owned: number; total: number }) {
+function SetProgress({ name, code, setId, owned, total }: SetEntry) {
   const pct = Math.round((owned / total) * 100);
   return (
     <div className="bg-card border border-border rounded-xl px-3 py-2.5">
-      <div className="flex justify-between items-center mb-1.5">
-        <span className="text-sm font-medium">{name}</span>
-        <span className="text-xs text-muted-foreground">{owned}/{total}</span>
+      <div className="flex items-center gap-3 mb-1.5">
+        {/* Set Logo */}
+        <div className="w-12 h-7 flex items-center justify-start shrink-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`https://images.pokemontcg.io/${setId}/logo.png`}
+            alt={name}
+            className="max-h-7 max-w-[48px] object-contain"
+            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+          />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex justify-between items-baseline gap-2">
+            <span className="text-sm font-medium truncate">{name}</span>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="text-[10px] font-mono text-muted-foreground/60 bg-secondary px-1.5 py-0.5 rounded">{code}</span>
+              <span className="text-xs text-muted-foreground">{owned}/{total}</span>
+            </div>
+          </div>
+        </div>
       </div>
       <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: 'var(--pokedex-red)' }} />
