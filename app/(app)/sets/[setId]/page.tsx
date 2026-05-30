@@ -5,9 +5,40 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { getCards } from '@/lib/firestore/cards';
+import { getCardsBySetId } from '@/lib/firestore/catalog';
 import { getSetNameDe } from '@/lib/set-names-de';
-import type { TcgApiCard } from '@/lib/pokemon-tcg';
+import type { CatalogCard } from '@/lib/firestore/catalog';
 import type { CardDoc } from '@/types';
+
+/* Wenn der Catalog dieses Set noch nicht hat → pokemontcg.io API als Fallback */
+async function loadSetCards(setId: string): Promise<CatalogCard[]> {
+  const catalogCards = await getCardsBySetId(setId);
+  if (catalogCards.length > 0) return catalogCards;
+
+  // Fallback: API
+  const res = await fetch(`/api/tcg?q=${encodeURIComponent(`set.id:${setId}`)}&pageSize=250`);
+  const data = await res.json();
+  // API-Response in CatalogCard-Shape mappen
+  return (data.data ?? []).map((c: {
+    id: string; name: string; number: string;
+    set: { id: string; name: string; series: string };
+    rarity?: string; supertype?: string; types?: string[];
+    images: { small: string; large: string };
+  }): CatalogCard => ({
+    id: c.id,
+    name: c.name,
+    nameLower: c.name.toLowerCase(),
+    number: c.number,
+    setId: c.set.id,
+    setName: c.set.name,
+    series: c.set.series,
+    rarity: c.rarity ?? '',
+    supertype: c.supertype ?? '',
+    types: c.types ?? [],
+    imgSmall: c.images.small,
+    imgLarge: c.images.large,
+  }));
+}
 
 /* ── Rarity helpers ──────────────────────────────────────────── */
 const RARITY_GROUPS: { label: string; symbol: string; color: string; keys: string[] }[] = [
@@ -28,44 +59,30 @@ function getRarityGroup(rarity: string) {
 
 /* ── Sort / Filter types ─────────────────────────────────────── */
 type Filter = 'all' | 'owned' | 'missing';
-type SortKey = 'number' | 'name' | 'price';
+type SortKey = 'number' | 'name';
 type SortDir = 'asc' | 'desc';
-
-interface TcgSet {
-  id: string;
-  name: string;
-  series: string;
-  printedTotal: number;
-  total: number;
-  ptcgoCode?: string;
-  releaseDate?: string;
-  images: { symbol: string; logo: string };
-}
 
 /* ── Page ────────────────────────────────────────────────────── */
 export default function SetDetailPage() {
   const { setId } = useParams<{ setId: string }>();
 
-  const [set, setSet]           = useState<TcgSet | null>(null);
-  const [cards, setCards]       = useState<TcgApiCard[]>([]);
-  const [owned, setOwned]       = useState<CardDoc[]>([]);
-  const [loading, setLoading]   = useState(true);
+  const [cards, setCards]     = useState<CatalogCard[]>([]);
+  const [owned, setOwned]     = useState<CardDoc[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [filter, setFilter]     = useState<Filter>('all');
-  const [sortKey, setSortKey]   = useState<SortKey>('number');
-  const [sortDir, setSortDir]   = useState<SortDir>('asc');
+  const [filter, setFilter]   = useState<Filter>('all');
+  const [sortKey, setSortKey] = useState<SortKey>('number');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
 
   useEffect(() => {
     async function load() {
       setLoading(true);
       try {
-        const [setRes, cardsRes, ownedCards] = await Promise.all([
-          fetch(`/api/sets?id=${setId}`).then(r => r.json()),
-          fetch(`/api/tcg?q=${encodeURIComponent(`set.id:${setId}`)}&pageSize=250`).then(r => r.json()),
+        const [catalogCards, ownedCards] = await Promise.all([
+          loadSetCards(setId),
           getCards(),
         ]);
-        setSet(setRes.data ?? null);
-        setCards(cardsRes.data ?? []);
+        setCards(catalogCards);
         setOwned(ownedCards);
       } finally {
         setLoading(false);
@@ -73,6 +90,10 @@ export default function SetDetailPage() {
     }
     load();
   }, [setId]);
+
+  const setName  = cards[0]?.setName ?? '';
+  const logoUrl  = `https://images.pokemontcg.io/${setId}/logo.png`;
+  const nameDe   = getSetNameDe(setId, setName);
 
   const ownedTcgIds = useMemo(() => new Set(owned.map(c => c.tcgId).filter(Boolean)), [owned]);
 
@@ -98,17 +119,19 @@ export default function SetDetailPage() {
 
     result.sort((a, b) => {
       let cmp = 0;
-      if (sortKey === 'number') cmp = (parseInt(a.number) || 0) - (parseInt(b.number) || 0);
-      if (sortKey === 'name')   cmp = a.name.localeCompare(b.name);
-      // price sort: fall back to number if no price data yet
-      if (sortKey === 'price')  cmp = (parseInt(a.number) || 0) - (parseInt(b.number) || 0);
+      if (sortKey === 'number') {
+        const na = parseInt(a.number) || 0;
+        const nb = parseInt(b.number) || 0;
+        cmp = na !== nb ? na - nb : a.number.localeCompare(b.number);
+      }
+      if (sortKey === 'name') cmp = a.name.localeCompare(b.name);
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return result;
   }, [cards, filter, sortKey, sortDir, ownedTcgIds]);
 
-  const ownedCount = cards.filter(c => ownedTcgIds.has(c.id)).length;
-  const totalCount = cards.length || set?.total || 0;
+  const ownedCount = useMemo(() => cards.filter(c => ownedTcgIds.has(c.id)).length, [cards, ownedTcgIds]);
+  const totalCount = cards.length;
   const pct        = totalCount ? Math.round((ownedCount / totalCount) * 100) : 0;
 
   function toggleSort(key: SortKey) {
@@ -128,28 +151,21 @@ export default function SetDetailPage() {
         <Link href="/" className="text-muted-foreground shrink-0">
           <ChevronLeft size={22} />
         </Link>
-        {set ? (
-          <div className="flex items-center gap-2 min-w-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={set.images.logo} alt={set.name} className="h-6 max-w-[80px] object-contain shrink-0" />
-            <span className="font-semibold text-sm truncate">{getSetNameDe(setId, set.name)}</span>
-            {set.ptcgoCode && (
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border shrink-0"
-                style={{ color: 'var(--foreground)', borderColor: 'var(--foreground)' }}>
-                {set.ptcgoCode}
-              </span>
-            )}
-          </div>
-        ) : (
-          <span className="font-semibold text-sm text-muted-foreground">Set wird geladen…</span>
-        )}
+        <div className="flex items-center gap-2 min-w-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={logoUrl} alt={nameDe} className="h-6 max-w-[80px] object-contain shrink-0"
+            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+          <span className="font-semibold text-sm truncate">
+            {loading ? 'Wird geladen…' : nameDe}
+          </span>
+        </div>
       </div>
 
       {loading ? (
         <div className="flex justify-center pt-16">
           <div className="w-8 h-8 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : set && (
+      ) : (
         <>
           {/* Set info */}
           <div className="px-4 pt-4 pb-3 space-y-3 border-b border-border">
@@ -195,7 +211,7 @@ export default function SetDetailPage() {
 
             {/* Sort buttons */}
             <div className="flex gap-2">
-              {([['number', 'Nummer'], ['name', 'Name'], ['price', 'Preis']] as [SortKey, string][]).map(([k, label]) => (
+              {([['number', 'Nummer'], ['name', 'Name']] as [SortKey, string][]).map(([k, label]) => (
                 <button key={k} onClick={() => toggleSort(k)}
                   className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors"
                   style={{
@@ -219,7 +235,7 @@ export default function SetDetailPage() {
                   <div className="w-full aspect-[2/3] rounded-lg overflow-hidden border border-border relative">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={card.images.small}
+                      src={card.imgSmall}
                       alt={card.name}
                       className="w-full h-full object-cover transition-all"
                       style={!isOwned ? { filter: 'brightness(0.55) saturate(0.3)' } : undefined}

@@ -63,6 +63,21 @@ export async function setSyncMeta(data: Partial<SyncMeta>): Promise<void> {
   await setDoc(doc(db, 'tcg_catalog_meta', 'sync'), data, { merge: true });
 }
 
+// Alle Karten eines Sets aus dem Catalog (nach Nummer sortiert)
+export async function getCardsBySetId(setId: string): Promise<CatalogCard[]> {
+  const snap = await getDocs(
+    query(collection(db, COL), where('setId', '==', setId))
+  );
+  const cards = snap.docs.map(d => d.data() as CatalogCard);
+  // client-seitig nach Nummer sortieren (Firestore braucht sonst Composite-Index)
+  cards.sort((a, b) => {
+    const na = parseInt(a.number) || 0;
+    const nb = parseInt(b.number) || 0;
+    return na !== nb ? na - nb : a.number.localeCompare(b.number);
+  });
+  return cards;
+}
+
 // Wie viele Karten sind bereits gecacht?
 export async function getCatalogCount(): Promise<number> {
   const meta = await getSyncMeta();
