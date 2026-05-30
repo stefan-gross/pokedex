@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { getCard } from '@/lib/firestore/cards';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
+import { CardPrices } from '@/components/card/CardPrices';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -15,7 +16,7 @@ export default async function CardDetailPage({ params }: Props) {
 
   return (
     <div className="min-h-screen">
-      <div className="sticky top-0 z-10 bg-background border-b border-border px-4 pt-12 pb-3 flex items-center gap-3">
+      <div className="sticky top-safe z-10 bg-background border-b border-border px-4 pt-4 pb-3 flex items-center gap-3">
         <Link href="/collection" className="text-muted-foreground">
           <ChevronLeft size={22} />
         </Link>
@@ -45,6 +46,8 @@ export default async function CardDetailPage({ params }: Props) {
           <Row label="Sprache" value={card.language.toUpperCase()} />
           <Row label="Anzahl" value={String(card.quantity)} />
         </div>
+
+        {card.tcgId && <CardPrices tcgId={card.tcgId} />}
       </div>
     </div>
   );

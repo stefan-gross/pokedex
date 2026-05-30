@@ -1,11 +1,9 @@
 import type { Metadata, Viewport } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
-import { BottomNav } from '@/components/BottomNav';
-import AuthRefresh from '@/components/AuthRefresh';
+import { ThemeProvider } from '@/components/ThemeProvider';
 
-const geistSans = Geist({ variable: '--font-sans', subsets: ['latin'] });
-const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
+const jakarta = Plus_Jakarta_Sans({ variable: '--font-sans', subsets: ['latin'], weight: ['400', '500', '600', '700'] });
 
 export const metadata: Metadata = {
   title: 'Pokédex',
@@ -28,11 +26,9 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="de" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <AuthRefresh />
-        <main className="pb-nav min-h-screen">{children}</main>
-        <BottomNav />
+    <html lang="de" suppressHydrationWarning className={jakarta.variable}>
+      <body className="antialiased">
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );

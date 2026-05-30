@@ -121,7 +121,7 @@ function CollectionContent() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <div className="sticky top-0 z-20 bg-background px-4 pt-12 pb-3 space-y-2 border-b border-border">
+      <div className="sticky top-safe z-20 bg-background px-4 pt-4 pb-3 space-y-2 border-b border-border">
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <input

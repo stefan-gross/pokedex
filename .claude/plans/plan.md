@@ -328,14 +328,9 @@ Nach Implementierung testen:
 - **URL**: `https://pokedex.smartfamilyzone.de`
 - **DNS**: IONOS CNAME → Vercel
 
-### Ausstehende Vercel Env Vars
+### Vercel Env Vars
 
-```
-FIREBASE_ADMIN_PROJECT_ID=smartfamilyzone-d9657
-FIREBASE_ADMIN_CLIENT_EMAIL=firebase-adminsdk-fbsvc@smartfamilyzone-d9657.iam.gserviceaccount.com
-FIREBASE_ADMIN_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n..."
-CRON_SECRET=sfz-cron-2026-pokedex
-```
+✅ `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`, `CRON_SECRET` — eingetragen (2026-05-30)
 
 ### Firebase
 
@@ -344,7 +339,7 @@ CRON_SECRET=sfz-cron-2026-pokedex
 - **Rules**: `/{document=**} if request.auth != null` — Admin SDK umgeht das
 - **Auth**: Email/Password aktiviert
 
-### Ausstehende API Keys
+### API Keys
 
-- `POKEMON_TCG_API_KEY` — pokemontcg.io (nach Registrierung)
-- `CARDMARKET_*` — Cardmarket OAuth (nach Registrierung)
+- ✅ `POKEMON_TCG_API_KEY` — eingetragen lokal + Vercel (2026-05-30)
+- `CARDMARKET_*` — API aktuell gesperrt, kein neuer Zugang möglich

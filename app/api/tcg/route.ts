@@ -12,19 +12,27 @@ export async function GET(req: NextRequest) {
   const pageSize = searchParams.get('pageSize') ?? '20';
   const id = searchParams.get('id');
 
+  const abort = new AbortController();
+  const timeout = setTimeout(() => abort.abort(), 8000);
+
   try {
     if (id) {
-      const res = await fetch(`${TCG_BASE}/cards/${id}`, { headers, next: { revalidate: 3600 } });
+      const res = await fetch(`${TCG_BASE}/cards/${id}`, { headers, next: { revalidate: 3600 }, signal: abort.signal });
       const data = await res.json();
       return NextResponse.json(data);
     }
 
     const params = new URLSearchParams({ q, page, pageSize });
-    const res = await fetch(`${TCG_BASE}/cards?${params}`, { headers, next: { revalidate: 3600 } });
+    const res = await fetch(`${TCG_BASE}/cards?${params}`, { headers, next: { revalidate: 3600 }, signal: abort.signal });
     const data = await res.json();
     return NextResponse.json(data);
   } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      return NextResponse.json({ error: 'TCG API timeout — add POKEMON_TCG_API_KEY to avoid rate limiting' }, { status: 504 });
+    }
     console.error('TCG API error:', err);
     return NextResponse.json({ error: 'TCG API request failed' }, { status: 500 });
+  } finally {
+    clearTimeout(timeout);
   }
 }

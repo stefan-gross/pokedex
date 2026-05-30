@@ -58,7 +58,7 @@ export default function AdminPage() {
   const hasNew = (status?.newCards ?? 0) > 0;
 
   return (
-    <div className="min-h-screen px-4 pt-12 pb-8">
+    <div className="min-h-screen px-4 pt-4 pb-8">
       <div className="flex items-center gap-3 mb-6">
         <Database size={22} />
         <h1 className="text-xl font-bold">Karten-Catalog</h1>

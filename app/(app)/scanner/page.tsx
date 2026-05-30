@@ -72,7 +72,7 @@ export default function ScannerPage() {
   return (
     <div className="flex flex-col min-h-screen bg-black">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-12 pb-3 bg-black">
+      <div className="flex items-center justify-between px-4 pt-4 pb-3 bg-black">
         <h1 className="text-base font-semibold text-white">Karte scannen</h1>
         <button
           onClick={() => router.back()}

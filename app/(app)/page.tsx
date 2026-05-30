@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Settings } from 'lucide-react';
 
 export default function DashboardPage() {
   return (
@@ -9,6 +10,9 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold">Pokédex</h1>
           <p className="text-sm text-muted-foreground">Deine Sammlung</p>
         </div>
+        <Link href="/settings" className="text-muted-foreground p-1">
+          <Settings size={22} strokeWidth={1.8} />
+        </Link>
       </div>
 
       {/* Stat Tiles */}

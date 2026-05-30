@@ -26,7 +26,7 @@ export default function BindersPage() {
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <div className="px-4 pt-12 pb-4 flex items-center justify-between border-b border-border">
+      <div className="px-4 pt-4 pb-4 flex items-center justify-between border-b border-border">
         <div>
           <h1 className="text-2xl font-bold">Mappen</h1>
           <p className="text-sm text-muted-foreground">{binders.length} {binders.length === 1 ? 'Mappe' : 'Mappen'}</p>
