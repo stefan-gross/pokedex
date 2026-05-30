@@ -4,12 +4,13 @@ import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { getCards } from '@/lib/firestore/cards';
-import { getSetNameDe, SERIES_NAMES_DE } from '@/lib/set-names-de';
+import { SERIES_NAMES_DE } from '@/lib/set-names-de';
 import type { CardDoc } from '@/types';
 
 interface TcgSet {
   id: string;
   name: string;
+  nameDe?: string;
   series: string;
   printedTotal: number;
   total: number;
@@ -108,7 +109,7 @@ export default function SetsPage() {
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={`https://images.pokemontcg.io/${set.id}/logo.png`}
-                          alt={getSetNameDe(set.id, set.name)}
+                          alt={set.nameDe ?? set.name}
                           className="max-w-[56px] max-h-[28px] object-contain"
                           onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
                         />
@@ -116,7 +117,7 @@ export default function SetsPage() {
 
                       {/* Info */}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{getSetNameDe(set.id, set.name)}</p>
+                        <p className="text-sm font-medium truncate">{set.nameDe ?? set.name}</p>
                         <div className="flex items-center gap-2 mt-1">
                           <div className="h-1.5 w-24 rounded-full bg-secondary overflow-hidden shrink-0">
                             <div

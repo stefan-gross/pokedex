@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { fetchTcgdexNamesMap, resolveNameDe, toTcgdexId } from '@/lib/tcgdex';
 
 const TCG_BASE = 'https://api.pokemontcg.io/v2';
 const headers: Record<string, string> = process.env.POKEMON_TCG_API_KEY
@@ -13,24 +14,42 @@ export async function GET(req: NextRequest) {
 
   try {
     if (id) {
-      // Einzelnes Set
-      const res = await fetch(`${TCG_BASE}/sets/${id}`, {
-        headers,
-        next: { revalidate: 86400 },
-        signal: abort.signal,
-      });
-      if (!res.ok) return NextResponse.json({ error: 'Set not found' }, { status: 404 });
-      return NextResponse.json(await res.json());
+      // Einzelnes Set: pokemontcg.io + TCGdex parallel
+      const [tcgRes, namesMap] = await Promise.all([
+        fetch(`${TCG_BASE}/sets/${id}`, {
+          headers,
+          next: { revalidate: 86400 },
+          signal: abort.signal,
+        }),
+        fetchTcgdexNamesMap(),
+      ]);
+      if (!tcgRes.ok) return NextResponse.json({ error: 'Set not found' }, { status: 404 });
+      const data = await tcgRes.json();
+      if (data.data) data.data.nameDe = resolveNameDe(id, namesMap, data.data.name);
+      return NextResponse.json(data);
     }
 
-    // Alle Sets — nach releaseDate absteigend sortiert
-    const res = await fetch(`${TCG_BASE}/sets?orderBy=-releaseDate&pageSize=250`, {
-      headers,
-      next: { revalidate: 3600 }, // 1h Cache — Sets kommen selten neu
-      signal: abort.signal,
-    });
-    if (!res.ok) return NextResponse.json({ error: 'Failed to fetch sets' }, { status: 502 });
-    return NextResponse.json(await res.json());
+    // Alle Sets: pokemontcg.io + TCGdex parallel
+    const [tcgRes, namesMap] = await Promise.all([
+      fetch(`${TCG_BASE}/sets?orderBy=-releaseDate&pageSize=250`, {
+        headers,
+        next: { revalidate: 3600 },
+        signal: abort.signal,
+      }),
+      fetchTcgdexNamesMap(),
+    ]);
+    if (!tcgRes.ok) return NextResponse.json({ error: 'Failed to fetch sets' }, { status: 502 });
+    const data = await tcgRes.json();
+
+    // Deutschen Namen in jeden Set-Eintrag mergen
+    if (Array.isArray(data.data)) {
+      data.data = data.data.map((set: { id: string; name: string }) => ({
+        ...set,
+        nameDe: resolveNameDe(set.id, namesMap, set.name),
+      }));
+    }
+    return NextResponse.json(data);
+
   } catch {
     return NextResponse.json({ error: 'Failed to fetch set(s)' }, { status: 500 });
   } finally {

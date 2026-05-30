@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { ChevronLeft, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { getCards } from '@/lib/firestore/cards';
 import { getCardsBySetId } from '@/lib/firestore/catalog';
-import { getSetNameDe } from '@/lib/set-names-de';
+import { toTcgdexId } from '@/lib/tcgdex';
 import type { CatalogCard } from '@/lib/firestore/catalog';
 import type { CardDoc } from '@/types';
 
@@ -66,9 +66,9 @@ type SortDir = 'asc' | 'desc';
 export default function SetDetailPage() {
   const { setId } = useParams<{ setId: string }>();
 
-  const [cards, setCards]     = useState<CatalogCard[]>([]);
-  const [owned, setOwned]     = useState<CardDoc[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [cards, setCards]       = useState<CatalogCard[]>([]);
+  const [owned, setOwned]       = useState<CardDoc[]>([]);
+  const [loading, setLoading]   = useState(true);
 
   const [filter, setFilter]   = useState<Filter>('all');
   const [sortKey, setSortKey] = useState<SortKey>('number');
@@ -93,7 +93,16 @@ export default function SetDetailPage() {
 
   const setName  = cards[0]?.setName ?? '';
   const logoUrl  = `https://images.pokemontcg.io/${setId}/logo.png`;
-  const nameDe   = getSetNameDe(setId, setName);
+  const [nameDe, setNameDe] = useState(setName);
+
+  useEffect(() => {
+    if (!setId) return;
+    const tcgdexId = toTcgdexId(setId);
+    fetch(`https://api.tcgdex.net/v2/de/sets/${tcgdexId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.name) setNameDe(d.name); })
+      .catch(() => {});
+  }, [setId]);
 
   const ownedTcgIds = useMemo(() => new Set(owned.map(c => c.tcgId).filter(Boolean)), [owned]);
 
