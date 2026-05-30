@@ -7,21 +7,32 @@ const headers: Record<string, string> = process.env.POKEMON_TCG_API_KEY
 
 export async function GET(req: NextRequest) {
   const id = new URL(req.url).searchParams.get('id');
-  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
   const abort = new AbortController();
-  const timeout = setTimeout(() => abort.abort(), 8000);
+  const timeout = setTimeout(() => abort.abort(), 10000);
+
   try {
-    const res = await fetch(`${TCG_BASE}/sets/${id}`, {
+    if (id) {
+      // Einzelnes Set
+      const res = await fetch(`${TCG_BASE}/sets/${id}`, {
+        headers,
+        next: { revalidate: 86400 },
+        signal: abort.signal,
+      });
+      if (!res.ok) return NextResponse.json({ error: 'Set not found' }, { status: 404 });
+      return NextResponse.json(await res.json());
+    }
+
+    // Alle Sets — nach releaseDate absteigend sortiert
+    const res = await fetch(`${TCG_BASE}/sets?orderBy=-releaseDate&pageSize=250`, {
       headers,
-      next: { revalidate: 86400 },
+      next: { revalidate: 3600 }, // 1h Cache — Sets kommen selten neu
       signal: abort.signal,
     });
-    if (!res.ok) return NextResponse.json({ error: 'Set not found' }, { status: 404 });
-    const data = await res.json();
-    return NextResponse.json(data);
+    if (!res.ok) return NextResponse.json({ error: 'Failed to fetch sets' }, { status: 502 });
+    return NextResponse.json(await res.json());
   } catch {
-    return NextResponse.json({ error: 'Failed to fetch set' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch set(s)' }, { status: 500 });
   } finally {
     clearTimeout(timeout);
   }

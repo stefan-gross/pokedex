@@ -1,3 +1,19 @@
+export const SERIES_NAMES_DE: Record<string, string> = {
+  'Scarlet & Violet':  'Karmesin & Purpur',
+  'Sword & Shield':    'Schwert & Schild',
+  'Sun & Moon':        'Sonne & Mond',
+  'XY':                'XY',
+  'Black & White':     'Schwarz & Weiß',
+  'HeartGold & SoulSilver': 'HeartGold & SoulSilver',
+  'Platinum':          'Platin',
+  'Diamond & Pearl':   'Diamant & Perl',
+  'EX':                'EX',
+  'e-Card':            'e-Card',
+  'Neo':               'Neo',
+  'Gym':               'Gym',
+  'Base':              'Basis',
+};
+
 const SET_NAMES_DE: Record<string, string> = {
   // Scarlet & Violet
   'sv1':      'Karmesin & Purpur',

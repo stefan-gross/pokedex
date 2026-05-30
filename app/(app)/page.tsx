@@ -96,7 +96,7 @@ export default function DashboardPage() {
                 <Percent size={13} />
               </ViewBtn>
             </div>
-            <Link href="/collection" className="text-xs" style={{ color: 'var(--pokedex-red)' }}>Alle</Link>
+            <Link href="/sets" className="text-xs" style={{ color: 'var(--pokedex-red)' }}>Alle</Link>
           </div>
         </div>
         <div className="space-y-2">
