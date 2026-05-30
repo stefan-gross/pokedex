@@ -3,7 +3,7 @@ import type { CatalogCard, SyncMeta } from './firestore/catalog';
 
 const TCG_BASE = 'https://api.pokemontcg.io/v2';
 const PAGE_SIZE = 250;
-const MAX_WRITES_PER_DAY = 19000;
+const MAX_PAGES_PER_REQUEST = 3;   // 750 Karten pro Aufruf (~5-8 Sek.) → kein Vercel-Timeout
 const COL = 'tcg_catalog';
 const META_COL = 'tcg_catalog_meta';
 
@@ -110,9 +110,8 @@ export async function runSync(mode: 'auto' | 'update' = 'auto'): Promise<SyncRes
     return { status: 'up-to-date', message: `Alle ${syncedTotal.toLocaleString()} Karten sind aktuell`, syncedTotal, currentTotal };
   }
 
-  const maxPagesThisRun = Math.floor(MAX_WRITES_PER_DAY / PAGE_SIZE);
   const startPage = lastPage + 1;
-  const endPage = Math.min(startPage + maxPagesThisRun - 1, totalPages);
+  const endPage = Math.min(startPage + MAX_PAGES_PER_REQUEST - 1, totalPages);
 
   let written = 0;
   for (let p = startPage; p <= endPage; p++) {

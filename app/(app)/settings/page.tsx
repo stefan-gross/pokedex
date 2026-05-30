@@ -47,17 +47,36 @@ export default function SettingsPage() {
     setSyncing(true);
     setSyncResult(null);
 
-    // Während der Sync läuft: alle 2 Sek. Status aus Firestore lesen → Live-Fortschritt
+    // Alle 2 Sek. Status aus Firestore lesen → Live-Fortschritt im UI
     const poller = setInterval(() => loadSyncStatus(), 2000);
 
     try {
-      const res  = await fetch(`/api/admin/trigger-sync?mode=${mode}`, { method: 'POST' });
-      const text = await res.text();
-      try {
-        const data = JSON.parse(text);
-        setSyncResult(data.message ?? data.error ?? `Status ${res.status}`);
-      } catch {
-        setSyncResult(`Server-Fehler (${res.status}): ${text.slice(0, 200)}`);
+      // auto-Modus: Server verarbeitet 750 Karten pro Aufruf.
+      // Client loopt, bis done === true oder ein Fehler auftritt.
+      while (true) {
+        const res  = await fetch(`/api/admin/trigger-sync?mode=${mode}`, { method: 'POST' });
+        const text = await res.text();
+
+        if (!res.ok) {
+          setSyncResult(`Server-Fehler (${res.status}): ${text.slice(0, 200)}`);
+          break;
+        }
+
+        let data: { done?: boolean; status?: string; message?: string; error?: string } = {};
+        try { data = JSON.parse(text); } catch { /* ignore */ }
+
+        // Bei update-Modus oder wenn fertig: einmal reicht
+        if (mode === 'update' || data.done || data.status === 'complete' || data.status === 'up-to-date') {
+          setSyncResult(data.message ?? '✅ Fertig');
+          break;
+        }
+        // Fehler im Response-Body
+        if (data.status === 'error' || data.error) {
+          setSyncResult(data.error ?? data.message ?? 'Unbekannter Fehler');
+          break;
+        }
+        // Nächsten Chunk starten (in-progress) — kurze Pause damit Firestore schreiben kann
+        await new Promise(r => setTimeout(r, 300));
       }
       await loadSyncStatus();
     } catch (err) {
