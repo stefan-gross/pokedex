@@ -46,6 +46,10 @@ export default function SettingsPage() {
   async function runSync(mode: 'auto' | 'update') {
     setSyncing(true);
     setSyncResult(null);
+
+    // Während der Sync läuft: alle 2 Sek. Status aus Firestore lesen → Live-Fortschritt
+    const poller = setInterval(() => loadSyncStatus(), 2000);
+
     try {
       const res  = await fetch(`/api/admin/trigger-sync?mode=${mode}`, { method: 'POST' });
       const text = await res.text();
@@ -59,6 +63,7 @@ export default function SettingsPage() {
     } catch (err) {
       setSyncResult('Netzwerk-Fehler: ' + String(err));
     } finally {
+      clearInterval(poller);
       setSyncing(false);
     }
   }
@@ -176,10 +181,7 @@ export default function SettingsPage() {
                   disabled={syncing || (isComplete && !hasNew)}
                   className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-secondary disabled:opacity-40"
                 >
-                  {syncing
-                    ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin shrink-0" />
-                    : <RefreshCw size={18} className="text-muted-foreground shrink-0" />
-                  }
+                  <RefreshCw size={18} className={`text-muted-foreground shrink-0 ${syncing ? 'animate-spin' : ''}`} />
                   <div>
                     <p className="text-sm font-medium">
                       {hasNew ? `${syncStatus!.newCards.toLocaleString('de-DE')} neue Karten holen` : 'Auf neue Karten prüfen'}
@@ -194,13 +196,16 @@ export default function SettingsPage() {
                     disabled={syncing}
                     className="w-full flex items-center gap-3 px-4 py-3.5 text-left border-t border-border transition-colors active:bg-secondary disabled:opacity-40"
                   >
-                    {syncing
-                      ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin shrink-0" />
-                      : <Database size={18} className="text-muted-foreground shrink-0" />
-                    }
+                    <Database size={18} className={`text-muted-foreground shrink-0 ${syncing ? 'animate-pulse' : ''}`} />
                     <div>
-                      <p className="text-sm font-medium">Initialen Sync fortsetzen</p>
-                      <p className="text-xs text-muted-foreground">Nächste 19.000 Karten in Firestore laden</p>
+                      <p className="text-sm font-medium">
+                        {syncing
+                          ? `Synchronisiert… ${(syncStatus?.syncedTotal ?? 0).toLocaleString('de-DE')} / ${(syncStatus?.currentTotal ?? 0).toLocaleString('de-DE')} Karten`
+                          : 'Initialen Sync fortsetzen'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {syncing ? `${pct}% abgeschlossen` : 'Nächste 19.000 Karten in Firestore laden'}
+                      </p>
                     </div>
                   </button>
                 )}
