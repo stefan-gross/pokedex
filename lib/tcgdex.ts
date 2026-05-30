@@ -37,38 +37,54 @@ export function toTcgdexId(pokemonTcgId: string): string {
   return id;
 }
 
-interface TcgdexSet {
+export interface TcgdexSetData {
+  name: string;
+  logo?: string; // Deutsches Logo-URL (mit .png Extension)
+}
+
+interface TcgdexApiSet {
   id: string;
   name: string;
+  logo?: string;
 }
 
 /**
- * Holt alle deutschen Set-Namen von TCGdex.
- * Gibt eine Map zurück: tcgdexId → deutscher Name
+ * Holt alle deutschen Set-Daten (Name + Logo) von TCGdex.
+ * Gibt eine Map zurück: tcgdexId → { name, logo }
  * (Next.js cached den fetch serverseitig für 6h)
  */
-export async function fetchTcgdexNamesMap(): Promise<Map<string, string>> {
+export async function fetchTcgdexDataMap(): Promise<Map<string, TcgdexSetData>> {
   try {
     const res = await fetch(`${TCGDEX_BASE}/sets`, {
       next: { revalidate: 21600 }, // 6h Cache
     });
     if (!res.ok) return new Map();
-    const sets: TcgdexSet[] = await res.json();
-    return new Map(sets.map(s => [s.id, s.name]));
+    const sets: TcgdexApiSet[] = await res.json();
+    return new Map(sets.map(s => [
+      s.id,
+      {
+        name: s.name,
+        // Logo-URL bekommt .png Extension damit der Browser es als Bild lädt
+        logo: s.logo ? `${s.logo}.png` : undefined,
+      },
+    ]));
   } catch {
     return new Map();
   }
 }
 
 /**
- * Gibt den deutschen Namen für eine pokemontcg.io-ID zurück.
- * Konvertiert die ID intern zu TCGdex-Format und schlägt nach.
+ * Gibt deutschen Namen + Logo für eine pokemontcg.io-ID zurück.
  */
-export function resolveNameDe(
+export function resolveSetDe(
   pokemonTcgId: string,
-  namesMap: Map<string, string>,
-  fallback: string,
-): string {
+  dataMap: Map<string, TcgdexSetData>,
+  fallbackName: string,
+): { nameDe: string; logoDe?: string } {
   const tcgdexId = toTcgdexId(pokemonTcgId);
-  return namesMap.get(tcgdexId) ?? fallback;
+  const data = dataMap.get(tcgdexId);
+  return {
+    nameDe: data?.name ?? fallbackName,
+    logoDe: data?.logo,
+  };
 }

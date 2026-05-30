@@ -92,17 +92,22 @@ export default function SetDetailPage() {
   }, [setId]);
 
   const setName  = cards[0]?.setName ?? '';
-  const logoUrl  = `https://images.pokemontcg.io/${setId}/logo.png`;
   const [nameDe, setNameDe] = useState(setName);
+  const [logoDe, setLogoDe] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (!setId) return;
     const tcgdexId = toTcgdexId(setId);
     fetch(`https://api.tcgdex.net/v2/de/sets/${tcgdexId}`)
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.name) setNameDe(d.name); })
+      .then(d => {
+        if (d?.name) setNameDe(d.name);
+        if (d?.logo) setLogoDe(`${d.logo}.png`);
+      })
       .catch(() => {});
   }, [setId]);
+
+  const logoUrl = logoDe ?? `https://images.pokemontcg.io/${setId}/logo.png`;
 
   const ownedTcgIds = useMemo(() => new Set(owned.map(c => c.tcgId).filter(Boolean)), [owned]);
 

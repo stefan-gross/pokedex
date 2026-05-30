@@ -11,6 +11,7 @@ interface TcgSet {
   id: string;
   name: string;
   nameDe?: string;
+  logoDe?: string;
   series: string;
   printedTotal: number;
   total: number;
@@ -104,14 +105,21 @@ export default function SetsPage() {
                       href={`/sets/${set.id}`}
                       className={`flex items-center gap-3 px-4 py-3 active:bg-secondary transition-colors${isLast ? '' : ' border-b border-border'}`}
                     >
-                      {/* Logo */}
+                      {/* Logo: deutsch (TCGdex) → englisch (pokemontcg.io) → verstecken */}
                       <div className="w-14 h-8 shrink-0 flex items-center justify-center">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={`https://images.pokemontcg.io/${set.id}/logo.png`}
+                          src={set.logoDe ?? `https://images.pokemontcg.io/${set.id}/logo.png`}
                           alt={set.nameDe ?? set.name}
                           className="max-w-[56px] max-h-[28px] object-contain"
-                          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                          onError={e => {
+                            const img = e.currentTarget as HTMLImageElement;
+                            if (set.logoDe && img.src === set.logoDe) {
+                              img.src = `https://images.pokemontcg.io/${set.id}/logo.png`;
+                            } else {
+                              img.style.display = 'none';
+                            }
+                          }}
                         />
                       </div>
 
