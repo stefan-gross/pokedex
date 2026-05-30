@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { getCards } from '@/lib/firestore/cards';
+import { getSetNameDe } from '@/lib/set-names-de';
 import type { TcgApiCard } from '@/lib/pokemon-tcg';
 import type { CardDoc } from '@/types';
 
@@ -22,7 +23,7 @@ const RARITY_GROUPS: { label: string; symbol: string; color: string; keys: strin
 
 function getRarityGroup(rarity: string) {
   const lower = rarity.toLowerCase();
-  return RARITY_GROUPS.find(g => g.keys.some(k => lower.includes(k)));
+  return RARITY_GROUPS.find(g => g.keys.some(k => lower === k));
 }
 
 /* ── Sort / Filter types ─────────────────────────────────────── */
@@ -107,7 +108,8 @@ export default function SetDetailPage() {
   }, [cards, filter, sortKey, sortDir, ownedTcgIds]);
 
   const ownedCount = cards.filter(c => ownedTcgIds.has(c.id)).length;
-  const pct        = set ? Math.round((ownedCount / (set.printedTotal || set.total)) * 100) : 0;
+  const totalCount = cards.length || set?.total || 0;
+  const pct        = totalCount ? Math.round((ownedCount / totalCount) * 100) : 0;
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -130,7 +132,7 @@ export default function SetDetailPage() {
           <div className="flex items-center gap-2 min-w-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={set.images.logo} alt={set.name} className="h-6 max-w-[80px] object-contain shrink-0" />
-            <span className="font-semibold text-sm truncate">{set.name}</span>
+            <span className="font-semibold text-sm truncate">{getSetNameDe(setId, set.name)}</span>
             {set.ptcgoCode && (
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border shrink-0"
                 style={{ color: 'var(--foreground)', borderColor: 'var(--foreground)' }}>
@@ -151,18 +153,14 @@ export default function SetDetailPage() {
         <>
           {/* Set info */}
           <div className="px-4 pt-4 pb-3 space-y-3 border-b border-border">
-            {/* Logo + stats */}
-            <div className="flex items-center gap-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={set.images.logo} alt={set.name} className="h-12 max-w-[120px] object-contain shrink-0" />
-              <div className="flex-1 min-w-0 space-y-1.5">
-                <div className="flex justify-between items-baseline">
-                  <span className="text-sm font-semibold">{ownedCount} / {set.printedTotal} Karten</span>
-                  <span className="text-xs text-muted-foreground">{pct}%</span>
-                </div>
-                <div className="h-2 rounded-full bg-secondary overflow-hidden">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: 'var(--pokedex-red)' }} />
-                </div>
+            {/* Stats */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between items-baseline">
+                <span className="text-sm font-semibold">{ownedCount} / {totalCount} Karten</span>
+                <span className="text-xs text-muted-foreground">{pct}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-secondary overflow-hidden">
+                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: 'var(--pokedex-red)' }} />
               </div>
             </div>
 
