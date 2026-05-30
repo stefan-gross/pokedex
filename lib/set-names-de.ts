@@ -18,12 +18,12 @@ export const SERIES_NAMES_DE: Record<string, string> = {
 };
 
 const SET_NAMES_DE: Record<string, string> = {
-  // ── Mega Evolution (2026, noch kein offizieller DE-Release) ──────────────
-  'me1':       'Mega Evolution',
-  'me2':       'Phantasmal Flames',
-  'me2pt5':    'Ascended Heroes',
-  'me3':       'Perfect Order',
-  'me4':       'Chaos Rising',
+  // ── Mega-Entwicklung ─────────────────────────────────────────────────────
+  'me1':       'Mega-Entwicklung',
+  'me2':       'Fatale Flammen',
+  'me2pt5':    'Erhabene Helden',
+  'me3':       'Optimale Ordnung',
+  'me4':       'Wachsendes Chaos',
 
   // ── Karmesin & Purpur ────────────────────────────────────────────────────
   'sv1':       'Karmesin & Purpur',
