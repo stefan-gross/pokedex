@@ -1,0 +1,350 @@
+# Pokémon-Kartensammlung App — Implementierungsplan
+
+## Context
+
+Aufbau einer vollständigen Sammlungsverwaltungs-App für Pokémon-Karten im leeren Verzeichnis `/Users/sgr/Entwicklung/AI/pokedex`. Die App soll Karten via Kamera erfassen, in Mappen/Boxen verwalten, Marktpreise anzeigen, eine Pokémon-Wiki bieten und Wunschlisten als PDF exportieren können.
+
+---
+
+## Tech Stack
+
+| Bereich | Technologie |
+|---------|-------------|
+| Framework | **Next.js 15** (App Router, TypeScript) |
+| UI | **Tailwind CSS + shadcn/ui** |
+| Datenbank | **Firebase Firestore** (Cloud NoSQL, Echtzeit-Sync) |
+| Bilder | **pokemontcg.io API** (offizielle Kartenbilder, via Next.js Image-Optimierung gecacht) |
+| Karten-API | **pokemontcg.io** (kostenfrei, API-Key) |
+| Pokémon-Wiki | **PokéAPI** (pokeapi.co, kein Auth) |
+| Preise | **TCGPlayer/Cardmarket** via PokéWallet API |
+| KI-Erkennung | **Google Gemini Vision** (AI Studio API-Key) |
+| PDF | **@react-pdf/renderer** |
+| Scanner | Browser `MediaDevices` API (Kamera) |
+
+---
+
+## Vorgeschlagene Zusatz-Features
+
+- **Kartenzustand** (Mint, Near Mint, Lightly Played, etc.)
+- **Duplikat-Zähler** (Anzahl je Karte)
+- **Set-Vollständigkeit** (X/Y Karten je Set)
+- **Sammlungsstatistiken** (Gesamtwert, Wertentwicklung)
+- **Tausch-Liste** (separate Liste für Karten die getauscht werden sollen)
+- **Preisalerts** (Email/Browser-Notification wenn Wunschlistenkarte unter Preis fällt)
+- **Sprach-Filter** (DE/EN/JP Karten unterscheiden)
+
+---
+
+## Projektstruktur
+
+```
+pokedex/
+├── app/
+│   ├── layout.tsx                    # Root Layout + Navigation
+│   ├── page.tsx                      # Dashboard (Statistiken, Schnellzugriff)
+│   ├── scanner/page.tsx              # Kamera-Scanner + KI-Erkennung
+│   ├── collection/
+│   │   ├── page.tsx                  # Sammlung (Grid/Liste, Filter)
+│   │   └── [id]/page.tsx             # Kartendetail
+│   ├── binders/
+│   │   ├── page.tsx                  # Mappen/Boxen Übersicht
+│   │   └── [id]/page.tsx             # Einzelne Mappe (drag & drop)
+│   ├── wishlist/
+│   │   ├── page.tsx                  # Wunschlisten Übersicht
+│   │   └── [id]/page.tsx             # Einzelne Wunschliste
+│   ├── pokedex/
+│   │   ├── page.tsx                  # Pokémon-Wiki (Suche, Filter)
+│   │   └── [nameOrId]/page.tsx       # Pokémon-Detail (Stats, Typen, Evolution)
+│   ├── prices/page.tsx               # Marktpreise & Trends
+│   └── api/
+│       ├── cards/route.ts            # CRUD eigene Karten
+│       ├── binders/route.ts          # CRUD Mappen
+│       ├── wishlist/route.ts         # CRUD Wunschlisten
+│       ├── scan/route.ts             # Claude Vision → Kartenerkennung
+│       ├── tcg/route.ts              # pokemontcg.io Proxy (caching)
+│       ├── pokemon/route.ts          # PokéAPI Proxy (caching)
+│       ├── prices/route.ts           # Preisabfrage + History
+│       └── pdf/route.ts             # PDF-Generierung
+├── components/
+│   ├── ui/                           # shadcn/ui Komponenten
+│   ├── scanner/CameraCapture.tsx     # Kamera-Komponente
+│   ├── scanner/CardScanResult.tsx    # Erkennungsergebnis + Bestätigung
+│   ├── card/CardGrid.tsx             # Sammlungs-Grid
+│   ├── card/CardDetail.tsx           # Kartendetail-Modal
+│   ├── card/CardFilters.tsx          # Filter (Set, Typ, Seltenheit, etc.)
+│   ├── binder/BinderView.tsx         # Mappenansicht mit Slots
+│   ├── wishlist/WishlistCard.tsx
+│   └── pdf/CollectionDocument.tsx    # react-pdf Dokument
+├── lib/
+│   ├── firebase.ts                   # Firebase Client + Admin SDK Init
+│   ├── firestore/
+│   │   ├── cards.ts                  # Cards Collection CRUD
+│   │   ├── binders.ts                # Binders Collection CRUD
+│   │   ├── wishlist.ts               # Wishlist Collection CRUD
+│   │   └── prices.ts                 # PriceHistory Collection
+│   ├── pokemon-tcg.ts                # pokemontcg.io API-Wrapper
+│   ├── pokeapi.ts                    # PokéAPI-Wrapper mit Cache
+│   ├── gemini-vision.ts              # Google AI Studio Bildanalyse (nur für Scanner)
+│   └── pdf.ts                        # PDF-Generierung Hilfsfunktionen
+├── public/
+├── .env.local                        # API Keys (Firebase, Gemini, pokemontcg)
+└── package.json
+```
+
+---
+
+## Firestore Collections & Datenstruktur
+
+Kein starres Schema — Firestore ist NoSQL. Struktur als TypeScript-Typen:
+
+```typescript
+// Collection: "cards"
+interface CardDoc {
+  id: string;                  // Firestore auto-ID
+  tcgId?: string;              // pokemontcg.io ID
+  name: string;
+  setId: string;
+  setName: string;
+  series?: string;
+  number: string;
+  rarity?: string;
+  pokemonType?: string;        // Fire, Water, etc.
+  supertype?: string;          // Pokémon, Trainer, Energy
+  condition: "NM"|"LP"|"MP"|"HP"|"Poor";
+  language: "de"|"en"|"jp";
+  isFoil: boolean;
+  isFirstEd: boolean;
+  quantity: number;
+  tcgImageUrl?: string;        // Offizielle Karten-URL von pokemontcg.io
+  notes?: string;
+  addedAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+// Collection: "binders"
+interface BinderDoc {
+  id: string;
+  name: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  sortOrder: number;
+  cardIds: string[];           // geordnete Karten-IDs
+  createdAt: Timestamp;
+}
+
+// Collection: "wishlists"
+interface WishlistDoc {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: Timestamp;
+  items: WishlistItem[];       // embedded subcollection
+}
+
+interface WishlistItem {
+  tcgId?: string;
+  name: string;
+  setName?: string;
+  maxPrice?: number;
+  priority: 1|2|3;
+  notes?: string;
+  acquired: boolean;
+}
+
+// Subcollection: "cards/{cardId}/priceHistory"
+interface PriceHistoryDoc {
+  price: number;
+  currency: "EUR"|"USD";
+  source: "cardmarket"|"tcgplayer";
+  trend?: "average"|"trend"|"low"|"high";
+  recordedAt: Timestamp;
+}
+```
+
+---
+
+## Auth-Integration (vor Phase 1 abzuschließen)
+
+### Ausgangslage
+Die contracts-app (`/Users/sgr/Entwicklung/AI/contracts-app`) hat bereits die fertige Auth-Infrastruktur:
+- Firebase Email/Password Auth
+- Session-Cookie `__session` auf **`.smartfamilyzone.de`** (alle Subdomains)
+- JWT-Verifikation via `jose` (kein Service Account nötig)
+- `AuthRefresh`-Komponente für automatische Token-Erneuerung alle ~55 Min
+
+**SSO-Effekt**: Login in einer App → automatisch eingeloggt in allen `*.smartfamilyzone.de`-Apps.
+
+### Zu entfernen (falsch hinzugefügt)
+- `components/AuthProvider.tsx` — löschen
+- `lib/firebase.ts` — `ensureAuth()`, `signInAnonymously`, `onAuthStateChanged` entfernen
+- `app/layout.tsx` — `<AuthProvider>` entfernen
+
+### Dateien 1:1 aus contracts-app kopieren
+| Ziel | Quelle |
+|------|--------|
+| `lib/auth.ts` | `contracts-app/lib/auth.ts` |
+| `lib/firebase/client.ts` | `contracts-app/lib/firebase/client.ts` |
+| `middleware.ts` | `contracts-app/middleware.ts` |
+| `app/api/auth/login/route.ts` | `contracts-app/app/api/auth/login/route.ts` |
+| `app/api/auth/logout/route.ts` | `contracts-app/app/api/auth/logout/route.ts` |
+| `components/AuthRefresh.tsx` | `family-hub/components/AuthRefresh.tsx` (Import-Pfad anpassen) |
+
+### Angepasste Dateien
+- `lib/firebase.ts` → **löschen**, stattdessen `lib/firebase/client.ts` verwenden; alle Imports in `lib/firestore/*.ts` aktualisieren
+- `app/login/page.tsx` — Gleiche Logik wie contracts-app, aber Pokédex-Branding (dark, mobile-first)
+- `app/layout.tsx` — `<AuthRefresh />` direkt einbinden (kein Provider-Wrapper)
+
+### .env.local ergänzen
+```
+NEXT_PUBLIC_DOMAIN=smartfamilyzone.de
+```
+
+### Abhängigkeit
+```bash
+npm install jose
+```
+
+### Firestore Rules
+Keine Änderung nötig — `request.auth != null` wird durch echten Firebase-User erfüllt.
+
+### Verifikation
+1. Dev-Server → `localhost:3000` leitet zu `/login` weiter
+2. Login mit Firebase-Credentials → Dashboard erscheint
+3. Cookie `__session` in DevTools sichtbar
+4. Production: Login in contracts-app → pokedex automatisch eingeloggt (SSO)
+
+---
+
+## Implementierungsphasen
+
+### Phase 0 — UI-Mockups (vor der Umsetzung)
+Interaktive HTML-Mockups für alle Hauptansichten, bevor echte Komponenten gebaut werden:
+- Dashboard (Statistiken, Schnellzugriff)
+- Sammlung / Kartenraster mit Filterleiste
+- Scanner-Ansicht (Kamera + Erkennungsergebnis)
+- Mappe/Binder-Ansicht
+- Wunschliste
+- Pokémon-Wiki-Detailseite
+- Marktpreise-Übersicht
+
+### Phase 1 — Projektgerüst & Firebase
+1. `npx create-next-app@latest` mit TypeScript, Tailwind, App Router
+2. Firebase-Projekt erstellen + Firestore + Storage aktivieren
+3. `firebase` + `firebase-admin` SDK installieren und initialisieren
+4. shadcn/ui initialisieren
+5. Navigation + Layout-Komponente
+6. `.env.local` mit API Keys (Firebase, Gemini AI Studio, pokemontcg.io)
+
+### Phase 2 — Scanner & Karteneingabe
+1. `CameraCapture.tsx` — Browser MediaDevices API, Foto schießen
+2. API Route `/api/scan` — Foto (base64) an **Gemini Vision** (Google AI Studio) → Kartenname + Set extrahieren; Foto wird danach **verworfen**, nicht gespeichert
+3. Abgleich gegen pokemontcg.io API → Kartenvorschlag mit offiziellem Bild + Metadaten
+4. Bestätigungsformular (Zustand, Sprache, Anzahl, Mappe zuordnen)
+5. Karte mit `tcgImageUrl` (API-Bild) in **Firestore** speichern
+
+### Phase 3 — Sammlung & Filterung
+1. `CardGrid.tsx` — Raster-Ansicht mit Lazy Loading
+2. `CardFilters.tsx` — Filter nach Set, Typ, Seltenheit, Zustand, Sprache
+3. Volltextsuche über Name
+4. Kartendetail-Seite (Foto, alle Metadaten, Preishistorie)
+5. Inline-Bearbeitung (Zustand, Anzahl, Notizen)
+
+### Phase 4 — Mappen & Boxen
+1. Binder CRUD (erstellen, umbenennen, löschen)
+2. `BinderView.tsx` — visuelle Mappenansicht (9/12/16 Karten pro Seite)
+3. Karten per Drag & Drop in Mappen verschieben
+4. Mappe als PDF exportieren
+
+### Phase 5 — Pokémon-Wiki
+1. PokéAPI-Integration (species, types, abilities, evolution chain)
+2. Pokémon-Suchseite mit Typ-Filter
+3. Pokémon-Detailseite (Stats, Moves, Evolutions, eigene Karten zu diesem Pokémon)
+
+### Phase 6 — Marktpreise
+1. PokéWallet API für Cardmarket-Preise einbinden
+2. Preishistorie in DB speichern (täglicher Cron/manuell)
+3. Preistabelle auf Kartendetailseite
+4. Gesamtwert der Sammlung im Dashboard
+
+### Phase 7 — Wunschlisten & PDF
+1. Wunschlisten CRUD
+2. Karten aus pokemontcg.io zur Wunschliste hinzufügen
+3. `CollectionDocument.tsx` — react-pdf Layout für Sammlung/Wunschliste
+4. PDF-Download + Browser-Druck-Dialog
+
+---
+
+## Externe APIs
+
+| API | Zweck | Auth | Kosten |
+|-----|-------|------|--------|
+| pokemontcg.io | Kartendatenbank, Bilder | API Key (Header) | Kostenlos |
+| pokeapi.co | Pokémon-Wiki-Daten | Keine | Kostenlos |
+| Google AI Studio (Gemini) | Bildanalyse für Scanner | API Key | Großzügiges Free Tier |
+| Firebase Firestore | Datenbank | Firebase Config | Spark Plan kostenlos |
+| PokéWallet | Cardmarket-Preise | API Key | 10K req/Mo kostenlos |
+
+---
+
+## Verifikation
+
+Nach Implementierung testen:
+1. **Scanner**: Pokémon-Karte vor Kamera halten → Erkennung → Karte in DB gespeichert
+2. **Sammlung**: Filter nach Set/Typ funktioniert, Bilder laden korrekt
+3. **Mappe**: Karte per Drag & Drop hinzufügen, Position wird gespeichert
+4. **Wiki**: Pokémon suchen, Evolutionskette + Stats anzeigen
+5. **Preise**: Karte aufrufen → Marktpreis geladen, in History gespeichert
+6. **PDF**: Wunschliste generieren → PDF herunterladbar mit Karten-Thumbnails
+
+---
+
+## Aktueller Implementierungsstand (Stand: 2026-05-29)
+
+### ✅ Fertig
+
+| Phase | Was | Dateien |
+|-------|-----|---------|
+| 0 | Mockup | `public/mockup.html` |
+| 1 | Next.js 16 + Tailwind + shadcn/ui + Firebase + Layout + Dashboard | `app/layout.tsx`, `app/page.tsx`, `components/BottomNav.tsx` |
+| 2 | Scanner (Kamera + Gemini Vision + Add-Modal) | `app/scanner/page.tsx`, `components/scanner/*` |
+| 3 | Suche (pokemontcg.io, Live-Wildcard-Suche, Karten-Grid) | `app/collection/page.tsx`, `components/card/CardTile.tsx` |
+| 4 (teilw.) | Mappen: Übersicht + Detailseite + Create/Edit Modal | `app/binders/*`, `components/binder/*` |
+| Auth | Firebase Email/Password, Session-Cookie `.smartfamilyzone.de`, proxy.ts | `proxy.ts`, `app/login/page.tsx`, `lib/auth.ts`, `components/AuthRefresh.tsx` |
+| Catalog | Firestore `tcg_catalog`, Admin SDK, `/admin`-Seite, wöch. Cron | `lib/sync-catalog.ts`, `lib/firebase/admin.ts`, `app/admin/page.tsx`, `vercel.json` |
+
+### 🔲 Noch offen
+
+- **Phase 4 (Rest)** — Karten per Drag & Drop in Mappen verschieben, Mappe als PDF
+- **Phase 5** — Wunschlisten: CRUD, Karten zuordnen, Binder-Planung (WL-Karten in Mappen), PDF-Export
+- **Phase 6** — Marktpreise: Cardmarket API (trendPrice, EUR), Preishistorie, Gesamtwert im Dashboard
+- **Phase 7** — PDF-Export für Sammlung/Wunschliste (`@react-pdf/renderer`)
+- **Pokédex/Wiki** — PokéAPI Integration (noch nicht begonnen)
+
+### Deployment
+
+- **Repo**: GitHub → `stefan-gross/pokedex` (main)
+- **Hosting**: Vercel → automatisches Deploy bei Push
+- **URL**: `https://pokedex.smartfamilyzone.de`
+- **DNS**: IONOS CNAME → Vercel
+
+### Ausstehende Vercel Env Vars
+
+```
+FIREBASE_ADMIN_PROJECT_ID=smartfamilyzone-d9657
+FIREBASE_ADMIN_CLIENT_EMAIL=firebase-adminsdk-fbsvc@smartfamilyzone-d9657.iam.gserviceaccount.com
+FIREBASE_ADMIN_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n..."
+CRON_SECRET=sfz-cron-2026-pokedex
+```
+
+### Firebase
+
+- **Projekt**: `smartfamilyzone-d9657` (geteilt mit contracts-app)
+- **Firestore Collections**: `cards`, `binders`, `wishlists`, `tcg_catalog`, `tcg_catalog_meta`
+- **Rules**: `/{document=**} if request.auth != null` — Admin SDK umgeht das
+- **Auth**: Email/Password aktiviert
+
+### Ausstehende API Keys
+
+- `POKEMON_TCG_API_KEY` — pokemontcg.io (nach Registrierung)
+- `CARDMARKET_*` — Cardmarket OAuth (nach Registrierung)
