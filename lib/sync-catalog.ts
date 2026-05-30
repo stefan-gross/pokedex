@@ -3,7 +3,7 @@ import type { CatalogCard, SyncMeta } from './firestore/catalog';
 
 const TCG_BASE = 'https://api.pokemontcg.io/v2';
 const PAGE_SIZE = 250;
-const MAX_PAGES_PER_REQUEST = 3;   // 750 Karten pro Aufruf (~5-8 Sek.) → kein Vercel-Timeout
+const MAX_PAGES_PER_REQUEST = 2;   // 500 Karten pro Aufruf (~4-6 Sek.) → sicher unter Vercel-Timeout
 const COL = 'tcg_catalog';
 const META_COL = 'tcg_catalog_meta';
 
@@ -80,9 +80,15 @@ export interface SyncResult {
 
 export async function runSync(mode: 'auto' | 'update' = 'auto'): Promise<SyncResult> {
   const meta = await getMeta();
-  const currentTotal = await fetchCurrentTotal();
   const syncedTotal = meta?.syncedTotal ?? 0;
   const lastPage = meta?.lastPage ?? 0;
+
+  // currentTotal nur beim update-Modus frisch von der API holen (braucht extra Aufruf).
+  // Beim initialen Sync nehmen wir den gecachten Wert — spart ~1-2s pro Request.
+  const currentTotal = mode === 'update' || !meta?.currentTotal
+    ? await fetchCurrentTotal()
+    : meta.currentTotal;
+
   const totalPages = Math.ceil(currentTotal / PAGE_SIZE);
   const isFullySynced = syncedTotal >= currentTotal;
 
