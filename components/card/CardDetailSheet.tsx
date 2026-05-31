@@ -122,7 +122,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
   if (!card) return null;
 
   const rarityInfo = card.rarity ? getRarityInfo(card.rarity) : null;
-  const variants   = card.variants?.length ? card.variants : (card.rarity ? detectVariants(card.rarity) : ['standard']);
+  const variants   = (card.variants?.length ? card.variants : (card.rarity ? detectVariants(card.rarity) : ['standard' as const])) as import('@/types').CardVariant[];
   const tcgApiCard = toTcgApiCard(card);
   const displayName = germanName ?? card.name;
 
