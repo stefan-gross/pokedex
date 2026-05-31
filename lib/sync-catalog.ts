@@ -1,5 +1,6 @@
 import { getAdminDb } from './firebase/admin';
 import type { CatalogCard, SyncMeta } from './firestore/catalog';
+import { detectVariants } from './card-constants';
 
 const TCG_BASE = 'https://api.pokemontcg.io/v2';
 const PAGE_SIZE = 250;
@@ -43,6 +44,7 @@ async function fetchPage(page: number): Promise<CatalogCard[]> {
     types: c.types ?? [],
     imgSmall: c.images.small,
     imgLarge: c.images.large,
+    variants: detectVariants(c.rarity ?? ''),
   }));
 }
 

@@ -3,6 +3,7 @@ import {
   query, where, limit, writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
+import type { CardVariant } from '@/types';
 
 export interface CatalogCard {
   id: string;
@@ -17,6 +18,7 @@ export interface CatalogCard {
   types: string[];
   imgSmall: string;
   imgLarge: string;
+  variants?: CardVariant[];  // mögliche Varianten, abgeleitet aus rarity
 }
 
 export interface SyncMeta {

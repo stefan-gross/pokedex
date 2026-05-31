@@ -156,7 +156,7 @@ function ViewBtn({ active, onClick, label, children }: {
 function SetProgress({ name, code, setId, owned, total }: SetEntry) {
   const pct = Math.round((owned / total) * 100);
   return (
-    <Link href={`/sets/${setId}`} className="bg-card border border-border rounded-xl px-3 py-2.5 flex items-center gap-3 active:opacity-70 transition-opacity">
+    <Link href={`/sets/${setId}?from=dashboard`} className="bg-card border border-border rounded-xl px-3 py-2.5 flex items-center gap-3 active:opacity-70 transition-opacity">
       {/* Logo */}
       <div className="w-14 shrink-0 flex items-center justify-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}

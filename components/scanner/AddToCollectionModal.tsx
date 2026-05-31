@@ -6,6 +6,7 @@ import type { TcgApiCard } from '@/lib/pokemon-tcg';
 import type { CardCondition, CardLanguage, CardVariant } from '@/types';
 import { addCard } from '@/lib/firestore/cards';
 import { getBinders, addCardToBinder } from '@/lib/firestore/binders';
+import { LANGUAGES, CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
 import type { BinderDoc } from '@/types';
 
 interface Props {
@@ -15,29 +16,9 @@ interface Props {
   onSaved: () => void;
 }
 
-const CONDITIONS: { value: CardCondition; label: string }[] = [
-  { value: 'NM', label: 'NM' },
-  { value: 'LP', label: 'LP' },
-  { value: 'MP', label: 'MP' },
-  { value: 'HP', label: 'HP' },
-  { value: 'Poor', label: 'Poor' },
-];
-
-const LANGUAGES: { value: CardLanguage; label: string }[] = [
-  { value: 'de', label: 'DE' },
-  { value: 'en', label: 'EN' },
-  { value: 'jp', label: 'JP' },
-  { value: 'fr', label: 'FR' },
-];
-
-const VARIANTS: { value: CardVariant; label: string }[] = [
-  { value: 'standard', label: 'Standard' },
-  { value: 'holo', label: 'Holo' },
-  { value: 'reverse', label: 'Reverse Holo' },
-  { value: 'alt-art', label: 'Alt Art' },
-  { value: '1st-ed', label: '1st Edition' },
-  { value: 'promo', label: 'Promo' },
-];
+const VARIANTS: { value: CardVariant; label: string }[] = (
+  Object.entries(VARIANT_LABELS) as [CardVariant, string][]
+).map(([value, label]) => ({ value, label }));
 
 export function AddToCollectionModal({ card, preVariant, onClose, onSaved }: Props) {
   const [variant, setVariant] = useState<CardVariant>(preVariant ?? 'standard');

@@ -1,24 +1,26 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
-import { useParams } from 'next/navigation';
+import { useEffect, useState, useMemo, Suspense } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ChevronLeft, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { ChevronLeft, ChevronDown } from 'lucide-react';
+
 import { getCards } from '@/lib/firestore/cards';
 import { getCardsBySetId } from '@/lib/firestore/catalog';
-import { toTcgdexId } from '@/lib/tcgdex';
+import { getBinders } from '@/lib/firestore/binders';
+import { ButtonGroup } from '@/components/ui/button-group';
+import { CardDetailSheet } from '@/components/card/CardDetailSheet';
+import { detectVariants } from '@/lib/card-constants';
 import type { CatalogCard } from '@/lib/firestore/catalog';
-import type { CardDoc } from '@/types';
+import type { CardDoc, BinderDoc } from '@/types';
 
 /* Wenn der Catalog dieses Set noch nicht hat → pokemontcg.io API als Fallback */
 async function loadSetCards(setId: string): Promise<CatalogCard[]> {
   const catalogCards = await getCardsBySetId(setId);
   if (catalogCards.length > 0) return catalogCards;
 
-  // Fallback: API
   const res = await fetch(`/api/tcg?q=${encodeURIComponent(`set.id:${setId}`)}&pageSize=250`);
   const data = await res.json();
-  // API-Response in CatalogCard-Shape mappen
   return (data.data ?? []).map((c: {
     id: string; name: string; number: string;
     set: { id: string; name: string; series: string };
@@ -37,19 +39,20 @@ async function loadSetCards(setId: string): Promise<CatalogCard[]> {
     types: c.types ?? [],
     imgSmall: c.images.small,
     imgLarge: c.images.large,
+    variants: detectVariants(c.rarity ?? ''),
   }));
 }
 
 /* ── Rarity helpers ──────────────────────────────────────────── */
 const RARITY_GROUPS: { label: string; symbol: string; color: string; keys: string[] }[] = [
-  { label: 'Common',          symbol: '◆',   color: '#9ca3af', keys: ['common'] },
-  { label: 'Uncommon',        symbol: '◆◆',  color: '#60a5fa', keys: ['uncommon'] },
-  { label: 'Rare',            symbol: '★',   color: '#fbbf24', keys: ['rare'] },
-  { label: 'Rare Holo',       symbol: '★✦',  color: '#f59e0b', keys: ['rare holo'] },
-  { label: 'Ultra Rare',      symbol: '★★',  color: '#a78bfa', keys: ['double rare', 'ace spec rare', 'ultra rare', 'rare ultra', 'rare rainbow', 'hyper rare', 'rare secret'] },
-  { label: 'ex / V',          symbol: '◈',   color: '#34d399', keys: ['rare holo ex', 'rare holo v', 'rare holo vmax', 'rare holo vstar', 'rare holo gx', 'rare holo lv.x'] },
-  { label: 'Illustration',    symbol: '🎨',  color: '#f472b6', keys: ['illustration rare', 'special illustration rare'] },
-  { label: 'Promo',           symbol: 'P',   color: '#fb923c', keys: ['promo', 'classic collection'] },
+  { label: 'Common',       symbol: '◆',  color: '#9ca3af', keys: ['common'] },
+  { label: 'Uncommon',     symbol: '◆◆', color: '#60a5fa', keys: ['uncommon'] },
+  { label: 'Rare',         symbol: '★',  color: '#fbbf24', keys: ['rare'] },
+  { label: 'Rare Holo',    symbol: '★✦', color: '#f59e0b', keys: ['rare holo'] },
+  { label: 'Ultra Rare',   symbol: '★★', color: '#a78bfa', keys: ['double rare', 'ace spec rare', 'ultra rare', 'rare ultra', 'rare rainbow', 'hyper rare', 'rare secret'] },
+  { label: 'ex / V',       symbol: '◈',  color: '#34d399', keys: ['rare holo ex', 'rare holo v', 'rare holo vmax', 'rare holo vstar', 'rare holo gx', 'rare holo lv.x'] },
+  { label: 'Illustration', symbol: '🎨', color: '#f472b6', keys: ['illustration rare', 'special illustration rare'] },
+  { label: 'Promo',        symbol: 'P',  color: '#fb923c', keys: ['promo', 'classic collection'] },
 ];
 
 function getRarityGroup(rarity: string) {
@@ -57,33 +60,76 @@ function getRarityGroup(rarity: string) {
   return RARITY_GROUPS.find(g => g.keys.some(k => lower === k));
 }
 
-/* ── Sort / Filter types ─────────────────────────────────────── */
-type Filter = 'all' | 'owned' | 'missing';
-type SortKey = 'number' | 'name';
-type SortDir = 'asc' | 'desc';
+/* ── Types ───────────────────────────────────────────────────── */
+type Filter  = 'all' | 'owned' | 'missing';
+type SortKey = 'number-asc' | 'number-desc' | 'name-asc' | 'name-desc';
 
-/* ── Page ────────────────────────────────────────────────────── */
-export default function SetDetailPage() {
-  const { setId } = useParams<{ setId: string }>();
+const FILTER_OPTIONS: { value: Filter; label: string }[] = [
+  { value: 'all',     label: 'Alle' },
+  { value: 'owned',   label: 'Vorhanden' },
+  { value: 'missing', label: 'Fehlen' },
+];
 
-  const [cards, setCards]       = useState<CatalogCard[]>([]);
-  const [owned, setOwned]       = useState<CardDoc[]>([]);
-  const [loading, setLoading]   = useState(true);
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: 'number-asc',  label: 'Nummer ↑' },
+  { value: 'number-desc', label: 'Nummer ↓' },
+  { value: 'name-asc',    label: 'Name A–Z' },
+  { value: 'name-desc',   label: 'Name Z–A' },
+];
 
-  const [filter, setFilter]   = useState<Filter>('all');
-  const [sortKey, setSortKey] = useState<SortKey>('number');
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
+function pluralKarten(n: number) {
+  return n === 1 ? '1 Karte' : `${n} Karten`;
+}
+
+/* ── Inner page (needs useSearchParams) ─────────────────────── */
+function SetDetailContent() {
+  const { setId }    = useParams<{ setId: string }>();
+  const searchParams = useSearchParams();
+  const from         = searchParams.get('from');
+
+  const backHref  = from === 'dashboard' ? '/' : '/sets';
+  const backLabel = from === 'dashboard' ? 'Dashboard' : 'Alle Sets';
+
+  const [cards, setCards]           = useState<CatalogCard[]>([]);
+  const [owned, setOwned]           = useState<CardDoc[]>([]);
+  const [binders, setBinders]       = useState<BinderDoc[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [selectedCard, setSelectedCard] = useState<CatalogCard | null>(null);
+
+  const [filter, setFilter]           = useState<Filter>('all');
+  const [sort, setSort]               = useState<SortKey>('number-asc');
+  const [rarityFilter, setRarityFilter] = useState<Set<string>>(new Set());
+
+  /* Set meta */
+  const [nameDe, setNameDe]         = useState('');
+  const [logoDe, setLogoDe]         = useState<string | undefined>(undefined);
+  const [releaseYear, setReleaseYear] = useState<string | undefined>(undefined);
+  const [ptcgoCode, setPtcgoCode]   = useState<string | undefined>(undefined);
 
   useEffect(() => {
     async function load() {
       setLoading(true);
       try {
-        const [catalogCards, ownedCards] = await Promise.all([
+        const [catalogCards, ownedCards, setsData, bindersData] = await Promise.all([
           loadSetCards(setId),
           getCards(),
+          fetch('/api/sets').then(r => r.json()),
+          getBinders(),
         ]);
         setCards(catalogCards);
         setOwned(ownedCards);
+        setBinders(bindersData);
+
+        const set = (setsData.data ?? []).find((s: {
+          id: string; name: string; nameDe?: string; logoDe?: string;
+          releaseDate?: string; ptcgoCode?: string;
+        }) => s.id === setId);
+        if (set) {
+          setNameDe(set.nameDe ?? set.name);
+          if (set.logoDe)      setLogoDe(set.logoDe);
+          if (set.releaseDate) setReleaseYear(set.releaseDate.slice(0, 4));
+          if (set.ptcgoCode)   setPtcgoCode(set.ptcgoCode);
+        }
       } finally {
         setLoading(false);
       }
@@ -91,31 +137,15 @@ export default function SetDetailPage() {
     load();
   }, [setId]);
 
-  const setName  = cards[0]?.setName ?? '';
-  const [nameDe, setNameDe] = useState(setName);
-  const [logoDe, setLogoDe] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    if (!setId) return;
-    const tcgdexId = toTcgdexId(setId);
-    fetch(`https://api.tcgdex.net/v2/de/sets/${tcgdexId}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (d?.name) setNameDe(d.name);
-        if (d?.logo) setLogoDe(`${d.logo}.png`);
-      })
-      .catch(() => {});
-  }, [setId]);
-
   const logoUrl = logoDe ?? `https://images.pokemontcg.io/${setId}/logo.png`;
 
   const ownedTcgIds = useMemo(() => new Set(owned.map(c => c.tcgId).filter(Boolean)), [owned]);
 
-  /* Rarity breakdown */
+  /* Rarity breakdown — only groups that exist in this set */
   const rarityBreakdown = useMemo(() => {
     const map = new Map<string, { group: typeof RARITY_GROUPS[number]; count: number; ownedCount: number }>();
     for (const card of cards) {
-      const g = card.rarity ? getRarityGroup(card.rarity) : null;
+      const g   = card.rarity ? getRarityGroup(card.rarity) : null;
       const key = g?.label ?? 'Sonstige';
       const entry = map.get(key) ?? { group: g ?? { label: key, symbol: '?', color: '#6b7280', keys: [] }, count: 0, ownedCount: 0 };
       entry.count++;
@@ -125,54 +155,57 @@ export default function SetDetailPage() {
     return Array.from(map.values()).sort((a, b) => b.count - a.count);
   }, [cards, ownedTcgIds]);
 
+  /* Toggle rarity filter */
+  function toggleRarity(label: string) {
+    setRarityFilter(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  }
+
   /* Filtered + sorted cards */
   const displayed = useMemo(() => {
     let result = [...cards];
     if (filter === 'owned')   result = result.filter(c => ownedTcgIds.has(c.id));
     if (filter === 'missing') result = result.filter(c => !ownedTcgIds.has(c.id));
 
+    if (rarityFilter.size > 0) {
+      result = result.filter(c => {
+        const g = c.rarity ? getRarityGroup(c.rarity) : null;
+        const label = g?.label ?? 'Sonstige';
+        return rarityFilter.has(label);
+      });
+    }
+
     result.sort((a, b) => {
       let cmp = 0;
-      if (sortKey === 'number') {
+      const key = sort.replace(/-asc|-desc/, '') as 'number' | 'name';
+      if (key === 'number') {
         const na = parseInt(a.number) || 0;
         const nb = parseInt(b.number) || 0;
         cmp = na !== nb ? na - nb : a.number.localeCompare(b.number);
       }
-      if (sortKey === 'name') cmp = a.name.localeCompare(b.name);
-      return sortDir === 'asc' ? cmp : -cmp;
+      if (key === 'name') cmp = a.name.localeCompare(b.name);
+      return sort.endsWith('-desc') ? -cmp : cmp;
     });
     return result;
-  }, [cards, filter, sortKey, sortDir, ownedTcgIds]);
+  }, [cards, filter, sort, rarityFilter, ownedTcgIds]);
 
   const ownedCount = useMemo(() => cards.filter(c => ownedTcgIds.has(c.id)).length, [cards, ownedTcgIds]);
   const totalCount = cards.length;
   const pct        = totalCount ? Math.round((ownedCount / totalCount) * 100) : 0;
 
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(key); setSortDir('asc'); }
-  }
-
-  const SortIcon = ({ k }: { k: SortKey }) => {
-    if (sortKey !== k) return <ArrowUpDown size={11} />;
-    return sortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />;
-  };
-
   return (
     <div className="min-h-screen">
-      {/* Sticky header */}
-      <div className="sticky top-safe z-20 bg-background border-b border-border px-4 pt-4 pb-3 flex items-center gap-3">
-        <Link href="/" className="text-muted-foreground shrink-0">
-          <ChevronLeft size={22} />
+
+      {/* ── Sticky top bar ── */}
+      <div className="sticky top-safe z-20 bg-background border-b border-border px-4 pt-4 pb-3">
+        <Link href={backHref} className="inline-flex items-center gap-1 text-sm text-muted-foreground">
+          <ChevronLeft size={18} strokeWidth={2} />
+          {backLabel}
         </Link>
-        <div className="flex items-center gap-2 min-w-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={logoUrl} alt={nameDe} className="h-6 max-w-[80px] object-contain shrink-0"
-            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-          <span className="font-semibold text-sm truncate">
-            {loading ? 'Wird geladen…' : nameDe}
-          </span>
-        </div>
       </div>
 
       {loading ? (
@@ -181,72 +214,130 @@ export default function SetDetailPage() {
         </div>
       ) : (
         <>
-          {/* Set info */}
-          <div className="px-4 pt-4 pb-3 space-y-3 border-b border-border">
-            {/* Stats */}
+          {/* ── Set info header (scrolls away) ── */}
+          <div className="px-4 pt-5 pb-4 border-b border-border space-y-4">
+            {/* Logo + Meta */}
+            <div className="flex items-center gap-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={logoUrl}
+                alt={nameDe}
+                className="h-12 max-w-[120px] object-contain shrink-0"
+                onError={e => {
+                  const img = e.currentTarget as HTMLImageElement;
+                  if (logoDe && img.src === logoDe) {
+                    img.src = `https://images.pokemontcg.io/${setId}/logo.png`;
+                  } else {
+                    img.style.display = 'none';
+                  }
+                }}
+              />
+              <div className="min-w-0">
+                <h1 className="text-lg font-bold leading-tight truncate">
+                  {nameDe || <span className="text-muted-foreground">…</span>}
+                </h1>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  {releaseYear && (
+                    <span className="text-xs text-muted-foreground">{releaseYear}</span>
+                  )}
+                  {releaseYear && ptcgoCode && <span className="text-muted-foreground/40 text-xs">·</span>}
+                  {ptcgoCode && (
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border"
+                          style={{ color: 'var(--foreground)', borderColor: 'var(--foreground)' }}>
+                      {ptcgoCode}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Progress */}
             <div className="space-y-1.5">
               <div className="flex justify-between items-baseline">
                 <span className="text-sm font-semibold">{ownedCount} / {totalCount} Karten</span>
                 <span className="text-xs text-muted-foreground">{pct}%</span>
               </div>
               <div className="h-2 rounded-full bg-secondary overflow-hidden">
-                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: 'var(--pokedex-red)' }} />
+                <div className="h-full rounded-full transition-all"
+                     style={{ width: `${pct}%`, background: pct === 100 ? '#48bb78' : 'var(--pokedex-red)' }} />
               </div>
             </div>
 
-            {/* Rarity breakdown */}
-            <div className="flex flex-wrap gap-x-3 gap-y-1.5">
-              {rarityBreakdown.map(({ group, count, ownedCount: oc }) => (
-                <div key={group.label} className="flex items-center gap-1">
-                  <span className="text-xs font-bold" style={{ color: group.color }}>{group.symbol}</span>
-                  <span className="text-xs text-muted-foreground">{oc}/{count}</span>
-                </div>
-              ))}
-            </div>
+            {/* Rarity breakdown — klickbar als Filter */}
+            {rarityBreakdown.length > 0 && (
+              <div className="flex flex-wrap gap-x-2 gap-y-1.5">
+                {rarityBreakdown.map(({ group, count, ownedCount: oc }) => {
+                  const active = rarityFilter.has(group.label);
+                  return (
+                    <button
+                      key={group.label}
+                      onClick={() => toggleRarity(group.label)}
+                      className="flex items-center gap-1 rounded-full transition-all px-2 py-0.5 border"
+                      style={active ? {
+                        background: `${group.color}22`,
+                        borderColor: group.color,
+                      } : {
+                        borderColor: 'transparent',
+                      }}
+                    >
+                      <span className="text-xs font-bold" style={{ color: group.color }}>{group.symbol}</span>
+                      <span className="text-xs" style={{ color: active ? group.color : 'var(--muted-foreground)' }}>
+                        {oc}/{count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {/* Filter + Sort bar */}
-          <div className="sticky z-10 bg-background border-b border-border px-4 py-2 space-y-2"
-               style={{ top: 'calc(env(safe-area-inset-top, 0px) + 53px)' }}>
-            {/* Filter pills */}
-            <div className="flex gap-2">
-              {(['all', 'owned', 'missing'] as Filter[]).map(f => (
-                <button key={f} onClick={() => setFilter(f)}
-                  className="px-3 py-1 rounded-full text-xs font-medium transition-colors"
-                  style={{
-                    background: filter === f ? 'var(--pokedex-red)' : 'var(--secondary)',
-                    color: filter === f ? '#fff' : 'var(--muted-foreground)',
-                  }}>
-                  {f === 'all' ? 'Alle' : f === 'owned' ? 'Im Besitz' : 'Fehlt'}
-                </button>
-              ))}
-              <span className="ml-auto text-xs text-muted-foreground self-center">{displayed.length}</span>
+          {/* ── Sticky filter + sort bar ── */}
+          <div className="sticky z-10 bg-background border-b border-border px-4 py-2.5"
+               style={{ top: 'calc(env(safe-area-inset-top, 0px) + 49px)' }}>
+
+            {/* Row 1: filter + sort + count */}
+            <div className="flex items-center gap-2">
+              <ButtonGroup
+                options={FILTER_OPTIONS}
+                value={filter}
+                onChange={setFilter}
+              />
+
+              <div className="relative flex items-center">
+                <select
+                  value={sort}
+                  onChange={e => setSort(e.target.value as SortKey)}
+                  className="text-xs rounded-lg pl-2.5 pr-6 py-1.5 border border-border bg-secondary text-foreground appearance-none cursor-pointer"
+                >
+                  {SORT_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                <ChevronDown size={12} className="absolute right-1.5 pointer-events-none text-muted-foreground" />
+              </div>
+
+              <span className="text-xs text-muted-foreground tabular-nums shrink-0 ml-auto">
+                {pluralKarten(displayed.length)}
+              </span>
             </div>
 
-            {/* Sort buttons */}
-            <div className="flex gap-2">
-              {([['number', 'Nummer'], ['name', 'Name']] as [SortKey, string][]).map(([k, label]) => (
-                <button key={k} onClick={() => toggleSort(k)}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors"
-                  style={{
-                    background: sortKey === k ? 'color-mix(in srgb, var(--pokedex-red) 12%, transparent)' : 'var(--secondary)',
-                    color: sortKey === k ? 'var(--pokedex-red)' : 'var(--muted-foreground)',
-                  }}>
-                  {label}
-                  <SortIcon k={k} />
-                </button>
-              ))}
-            </div>
           </div>
 
-          {/* Card grid */}
+          {/* ── Card grid ── */}
           <div className="px-3 py-3 grid grid-cols-3 gap-2">
             {displayed.map(card => {
-              const isOwned = ownedTcgIds.has(card.id);
+              const isOwned     = ownedTcgIds.has(card.id);
+              const rarityColor = card.rarity ? (getRarityGroup(card.rarity)?.color ?? null) : null;
               return (
-                <Link key={card.id} href={`/collection?q=${encodeURIComponent(card.name)}`}
-                  className="flex flex-col items-center gap-1">
-                  <div className="w-full aspect-[2/3] rounded-lg overflow-hidden border border-border relative">
+                <button
+                  key={card.id}
+                  onClick={() => setSelectedCard(card)}
+                  className="flex flex-col items-center gap-1 active:opacity-70 transition-opacity"
+                >
+                  <div
+                    className="w-full aspect-[2/3] rounded-lg overflow-hidden border-2 relative"
+                    style={{ borderColor: rarityColor ?? 'var(--border)' }}
+                  >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={card.imgSmall}
@@ -256,12 +347,34 @@ export default function SetDetailPage() {
                     />
                   </div>
                   <span className="text-[9px] text-muted-foreground tabular-nums">{card.number}</span>
-                </Link>
+                </button>
               );
             })}
           </div>
         </>
       )}
+      {/* ── Card Detail Sheet ── */}
+      <CardDetailSheet
+        card={selectedCard}
+        ownedCopies={owned.filter(c => c.tcgId === selectedCard?.id)}
+        binders={binders}
+        setMeta={{ nameDe: (nameDe || cards[0]?.setName) ?? '', logoUrl, total: totalCount }}
+        onClose={() => setSelectedCard(null)}
+        onSaved={() => { setSelectedCard(null); }}
+      />
     </div>
+  );
+}
+
+/* ── Page wrapper (Suspense für useSearchParams) ─────────────── */
+export default function SetDetailPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex justify-center pt-16">
+        <div className="w-8 h-8 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <SetDetailContent />
+    </Suspense>
   );
 }

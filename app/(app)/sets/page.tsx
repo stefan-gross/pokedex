@@ -102,16 +102,16 @@ export default function SetsPage() {
                   return (
                     <Link
                       key={set.id}
-                      href={`/sets/${set.id}`}
+                      href={`/sets/${set.id}?from=sets`}
                       className={`flex items-center gap-3 px-4 py-3 active:bg-secondary transition-colors${isLast ? '' : ' border-b border-border'}`}
                     >
                       {/* Logo: deutsch (TCGdex) → englisch (pokemontcg.io) → verstecken */}
-                      <div className="w-14 h-8 shrink-0 flex items-center justify-center">
+                      <div className="w-14 shrink-0 flex items-center justify-center">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={set.logoDe ?? `https://images.pokemontcg.io/${set.id}/logo.png`}
                           alt={set.nameDe ?? set.name}
-                          className="max-w-[56px] max-h-[28px] object-contain"
+                          className="max-h-8 max-w-[56px] object-contain"
                           onError={e => {
                             const img = e.currentTarget as HTMLImageElement;
                             if (set.logoDe && img.src === set.logoDe) {
@@ -124,30 +124,29 @@ export default function SetsPage() {
                       </div>
 
                       {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{set.nameDe ?? set.name}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <div className="h-1.5 w-24 rounded-full bg-secondary overflow-hidden shrink-0">
-                            <div
-                              className="h-full rounded-full"
-                              style={{
-                                width: `${pct}%`,
-                                background: pct === 100 ? '#48bb78' : 'var(--pokedex-red)',
-                              }}
-                            />
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        {/* Row 1: Name + Code + Count */}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium truncate">{set.nameDe ?? set.name}</span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {set.ptcgoCode && (
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border" style={{ color: 'var(--foreground)', borderColor: 'var(--foreground)' }}>
+                                {set.ptcgoCode}
+                              </span>
+                            )}
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              {ownedCount}/{set.total}
+                            </span>
                           </div>
-                          <span className="text-xs text-muted-foreground tabular-nums">
-                            {ownedCount}/{set.total}
-                          </span>
+                        </div>
+                        {/* Row 2: Progress bar */}
+                        <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+                          <div
+                            className="h-full rounded-full"
+                            style={{ width: `${pct}%`, background: 'var(--pokedex-red)' }}
+                          />
                         </div>
                       </div>
-
-                      {/* Code */}
-                      {set.ptcgoCode && (
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border border-border text-muted-foreground shrink-0">
-                          {set.ptcgoCode}
-                        </span>
-                      )}
                     </Link>
                   );
                 })}

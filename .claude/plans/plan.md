@@ -314,13 +314,16 @@ Nach Implementierung testen:
 | Phase 4 (teilw.) | Mappen: Übersicht + Detailseite + Create/Edit Modal | `app/(app)/binders/*`, `components/binder/*` |
 | Phase 6 (teilw.) | Preissystem: TCGPlayer via pokemontcg.io, Provider-Interface | `lib/prices/`, `app/api/prices/route.ts`, `components/card/CardPrices.tsx` |
 | Auth | Firebase Email/Password, Session-Cookie `.smartfamilyzone.de`, Middleware | `middleware.ts`, `app/login/page.tsx`, `lib/auth.ts`, `components/AuthRefresh.tsx` |
-| Catalog-Sync | Firestore `tcg_catalog`, Admin SDK, Sync in Einstellungen, wöch. Cron | `lib/sync-catalog.ts`, `lib/firebase/admin.ts` |
+| Catalog-Sync | Firestore `tcg_catalog`, Admin SDK, Sync in Einstellungen, wöch. Cron; `variants`-Feld beim Sync befüllt | `lib/sync-catalog.ts`, `lib/firebase/admin.ts` |
 | Settings | Theme, App-Reload, Abmelden, **Catalog-Sync** (inkl. Live-Fortschritt) | `app/(app)/settings/page.tsx`, `components/ThemeProvider.tsx` |
-| Set-Detailseite | `/sets/[setId]`: Header, Rarity-Breakdown, Filter, 3-Spalten-Grid | `app/(app)/sets/[setId]/page.tsx` |
-| Sets-Übersicht | `/sets`: Alle Sets gruppiert nach Serie, Card-Layout, owned-Zähler | `app/(app)/sets/page.tsx` |
+| Set-Detailseite | `/sets/[setId]`: Header (Logo+Name+Jahr+Code), Fortschritt, Rarity-Filter per Klick im Header, ButtonGroup-Filter, Sort-Dropdown, 3-Spalten-Grid mit Rarity-Rahmen, Karten-Detailsheet | `app/(app)/sets/[setId]/page.tsx` |
+| Sets-Übersicht | `/sets`: Alle Sets gruppiert nach Serie, Dashboard-Style Zeilen (Name+Code+Fortschritt) | `app/(app)/sets/page.tsx` |
+| Karten-Detailansicht | Bottom-Sheet: deutsches Karten-Bild (TCGdex), dt. Pokémon-Name (PokéAPI), Set-Logo+Name, Nummer (001/258), Rarity-Icon, Varianten, eigene Kopien mit Binder-Zuordnung, Aktionen | `components/card/CardDetailSheet.tsx` |
+| Karten-Konstanten | Sprachen (Deutsch/Englisch/Französisch/Japanisch), Zustände (Near Mint/LP/…), Varianten, detectVariants() | `lib/card-constants.ts` |
+| Dashboard | Sets-Sektion mit Favoriten/Zuletzt/Vollständig-Filter, Set-Zeilen im Dashboard-Stil | `app/(app)/page.tsx` |
 | PWA | Pokeball-Favicon (PNG + SVG + Apple-Icon), Manifest-Icons | `app/icon.png`, `app/icon.svg`, `app/apple-icon.png`, `public/icon-*.png` |
-| UI | Plus Jakarta Sans, Login-Split-Panel, Dashboard-Redesign | `app/layout.tsx`, `app/login/page.tsx`, `app/(app)/page.tsx` |
-| Mehrsprachigkeit | Deutsche Set-/Seriennamen live von TCGdex API, deutsche Logos | `lib/tcgdex.ts`, `lib/set-names-de.ts` |
+| UI | Plus Jakarta Sans, Login-Split-Panel, Dashboard-Redesign, ButtonGroup-Komponente | `app/layout.tsx`, `app/login/page.tsx`, `app/(app)/page.tsx`, `components/ui/button-group.tsx` |
+| Mehrsprachigkeit | Deutsche Set-/Seriennamen live von TCGdex API, deutsche Logos, CatalogCard.variants-Feld | `lib/tcgdex.ts`, `lib/set-names-de.ts`, `lib/firestore/catalog.ts` |
 
 ### 🔲 Noch offen
 
@@ -330,8 +333,9 @@ Nach Implementierung testen:
 - **Phase 7** — PDF-Export für Sammlung/Wunschliste (`@react-pdf/renderer`)
 - **Pokédex/Wiki** — PokéAPI Integration (noch nicht begonnen, geplant: `app/(app)/pokedex/`)
 - **Dashboard** — Stat-Tiles und Sets live aus Firestore (aktuell Mock-Daten)
-- **Phase 4 (Rest)** — Set-Favoriten in Firestore speichern (aktuell nur Mock)
+- **Set-Favoriten** — in Firestore speichern (aktuell nur Mock)
 - **Catalog-Sync** — noch ~85% ausstehend (3.000 von 20.000 Karten), Sync läuft in 750-Karten-Chunks
+- **Karten-Detailansicht** — Wunschlisten-Aktion, Preisanzeige im Sheet
 
 ### Wichtige Architektur-Entscheidungen
 
@@ -344,14 +348,20 @@ Nach Implementierung testen:
 - Font: Plus Jakarta Sans via `next/font/google`, Variable auf `<html>` (nicht `<body>`)
 - Set-Detailseite: lädt Karten aus Firestore Catalog (`tcg_catalog`), Fallback auf pokemontcg.io API
 - Deutsche Namen + Logos: TCGdex API (`api.tcgdex.net/v2/de`), 6h Server-Cache, ID-Normalisierung in `lib/tcgdex.ts`
-- `/admin`-Route entfernt — Catalog-Sync-UI ist in Einstellungen integriert
+- Karten-Konstanten zentral in `lib/card-constants.ts`: LANGUAGES, CONDITIONS, VARIANT_LABELS, detectVariants()
+- CatalogCard hat `variants?: CardVariant[]` — beim Catalog-Sync befüllt, Fallback auf lokale Erkennung
+- ButtonGroup-Komponente in `components/ui/button-group.tsx` — app-weit nutzbar
+- Navigations-Kontext: `?from=dashboard` / `?from=sets` → Back-Button zeigt korrektes Ziel
+- Karten-Bilder: pokemontcg.io (EN), für DE-Bilder → TCGdex `assets.tcgdex.net/de/{tcgdexSetId}/{num}/high.webp`
+- Deutsche Pokémon-Namen: PokéAPI `pokeapi.co/api/v2/pokemon-species/{name}` → `names[de]`
 
 ### Externe APIs
 
 | API | Zweck | Auth |
 |-----|-------|------|
 | `pokemontcg.io` | Kartendatenbank, Bilder, Set-Metadaten | API Key |
-| `api.tcgdex.net/v2/de` | Deutsche Set-Namen + Logos (kein Auth, 6h gecacht) | — |
+| `api.tcgdex.net/v2/de` | Deutsche Set-Namen + Logos + Karten-Bilder (kein Auth, 6h gecacht) | — |
+| `pokeapi.co` | Deutsche Pokémon-Namen (kein Auth) | — |
 | Firebase Firestore | Sammlung, Mappen, Catalog | Firebase Config |
 | Google Gemini Vision | Scanner-Bilderkennung | API Key |
 
