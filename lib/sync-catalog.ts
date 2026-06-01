@@ -29,7 +29,7 @@ async function fetchPage(page: number): Promise<CatalogCard[]> {
   return (data.data ?? []).map((c: {
     id: string; name: string; number: string;
     set: { id: string; name: string; series: string };
-    rarity?: string; supertype?: string; types?: string[];
+    rarity?: string; supertype?: string; types?: string[]; subtypes?: string[];
     hp?: string;
     nationalPokedexNumbers?: number[];
     images: { small: string; large: string };
@@ -44,6 +44,7 @@ async function fetchPage(page: number): Promise<CatalogCard[]> {
     rarity: c.rarity ?? '',
     supertype: c.supertype ?? '',
     types: c.types ?? [],
+    subtypes: c.subtypes ?? [],
     ...(c.hp                          ? { hp: parseInt(c.hp) }                          : {}),
     ...(c.nationalPokedexNumbers?.[0] ? { nationalDexNumber: c.nationalPokedexNumbers[0] } : {}),
     imgSmall: c.images.small,

@@ -7,7 +7,7 @@ import { CardGrid } from '@/components/card/CardGrid';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { getCards } from '@/lib/firestore/cards';
-import { searchCatalog, getCatalogCount, getCatalogFilterCounts } from '@/lib/firestore/catalog';
+import { searchCatalog, getCatalogCount, getCatalogFilterCounts, type FilterCounts } from '@/lib/firestore/catalog';
 import { catalogCardToInfo, tcgApiCardToInfo, type CardInfo } from '@/lib/card-info';
 import { getRarityGroup } from '@/lib/card-constants';
 import { useCardBrowser, TCG_TYPES, type TcgType, type CardBrowserFilter } from '@/lib/hooks/useCardBrowser';
@@ -19,7 +19,6 @@ import type { BrowseSortKey } from '@/lib/firestore/catalog';
 type OwnedFilter  = 'all' | 'owned' | 'missing';
 type SearchSortKey = 'number' | 'name';
 type Supertype    = 'Pokémon' | 'Trainer' | 'Energy';
-type FilterCounts = { types: Record<string, number>; supertypes: Record<string, number> };
 
 const OWNED_OPTIONS: { value: OwnedFilter; label: string }[] = [
   { value: 'all',     label: 'Alle'      },
@@ -33,8 +32,29 @@ const BROWSE_SORT_OPTIONS: { value: BrowseSortKey; label: string }[] = [
   { value: 'pokedex', label: 'Pokédex-Nr.'  },
 ];
 
-function fmt(n: number) {
-  return n.toLocaleString('de');
+const EVOLUTION_OPTIONS: { value: string | null; label: string }[] = [
+  { value: null,      label: 'Alle Stufen' },
+  { value: 'Basic',   label: 'Basis'       },
+  { value: 'Stage 1', label: 'Phase 1'     },
+  { value: 'Stage 2', label: 'Phase 2'     },
+];
+
+function fmt(n: number) { return n.toLocaleString('de'); }
+
+/* ── Kleine Chip-Komponente für den kompakten Filter-Strip ──── */
+function FilterChip({ label, onRemove, color }: { label: string; onRemove: () => void; color?: string }) {
+  return (
+    <button
+      onClick={onRemove}
+      className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border shrink-0 transition-colors"
+      style={color
+        ? { borderColor: color, background: `${color}22`, color }
+        : { borderColor: 'var(--border)', background: 'var(--secondary)', color: 'var(--foreground)' }
+      }
+    >
+      {label} <X size={10} />
+    </button>
+  );
 }
 
 function CollectionContent() {
@@ -42,35 +62,64 @@ function CollectionContent() {
   const router       = useRouter();
   const initialQ     = searchParams.get('q') ?? '';
 
-  // ── Suche ─────────────────────────────────────────────────────
-  const [inputValue,       setInputValue]       = useState(initialQ);
-  const [results,          setResults]          = useState<CardInfo[]>([]);
-  const [ownedCards,       setOwnedCards]       = useState<CardDoc[]>([]);
-  const [searchLoading,    setSearchLoading]    = useState(false);
-  const [searchSort,       setSearchSort]       = useState<SearchSortKey>('number');
-  const [filterSet,        setFilterSet]        = useState('');
-  const [sets,             setSets]             = useState<{ id: string; name: string }[]>([]);
-  const [catalogCount,     setCatalogCount]     = useState(0);
-  const [source,           setSource]           = useState<'catalog' | 'api' | null>(null);
-  const [searchOwned,      setSearchOwned]      = useState<OwnedFilter>('all');
-  const [activeRarities,   setActiveRarities]   = useState<Set<string>>(new Set());
-  const [searchSupertype,  setSearchSupertype]  = useState<Supertype | 'all'>('all');
-  const [searchType,       setSearchType]       = useState<TcgType | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ── Geteilter Filter-State (Browse + Suche) ───────────────────
+  const [activeType,      setActiveType]      = useState<TcgType | null>(null);
+  const [activeSupertype, setActiveSupertype] = useState<Supertype | 'all'>('all');
+  const [ownedFilter,     setOwnedFilter]     = useState<OwnedFilter>('all');
+  const [activeRarity,    setActiveRarity]    = useState<string | null>(null);
+  const [activeEvolution, setActiveEvolution] = useState<string | null>(null);
 
-  // ── Browse (State jetzt hier, damit Filter sticky im Header) ──
-  const [browseSort,       setBrowseSort]       = useState<BrowseSortKey>('name');
-  const [browseOwned,      setBrowseOwned]      = useState<OwnedFilter>('all');
-  const [browseSupertype,  setBrowseSupertype]  = useState<Supertype | 'all'>('all');
-  const [browseType,       setBrowseType]       = useState<TcgType | null>(null);
-  const [browseRarity,     setBrowseRarity]     = useState<string | null>(null);
+  // ── Browse-spezifisch ─────────────────────────────────────────
+  const [browseSort, setBrowseSort] = useState<BrowseSortKey>('name');
+
+  // ── Suche ─────────────────────────────────────────────────────
+  const [inputValue,   setInputValue]   = useState(initialQ);
+  const [results,      setResults]      = useState<CardInfo[]>([]);
+  const [ownedCards,   setOwnedCards]   = useState<CardDoc[]>([]);
+  const [searchLoading,setSearchLoading]= useState(false);
+  const [searchSort,   setSearchSort]   = useState<SearchSortKey>('number');
+  const [filterSet,    setFilterSet]    = useState('');
+  const [sets,         setSets]         = useState<{ id: string; name: string }[]>([]);
+  const [catalogCount, setCatalogCount] = useState(0);
+  const [source,       setSource]       = useState<'catalog' | 'api' | null>(null);
+
+  // ── UI-State ──────────────────────────────────────────────────
   const [filterCounts,     setFilterCounts]     = useState<FilterCounts | null>(null);
+  const [filtersCollapsed, setFiltersCollapsed] = useState(false);
+  const lastScrollY = useRef(0);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   // ── Init ──────────────────────────────────────────────────────
   useEffect(() => {
     getCards().then(setOwnedCards).catch(() => {});
     getCatalogCount().then(setCatalogCount).catch(() => {});
     getCatalogFilterCounts().then(setFilterCounts).catch(() => {});
+  }, []);
+
+  // ── Dynamische Counts (debounced, bei Filter-Änderung) ────────
+  useEffect(() => {
+    if (countTimerRef.current) clearTimeout(countTimerRef.current);
+    countTimerRef.current = setTimeout(() => {
+      getCatalogFilterCounts({
+        type:      activeType ?? undefined,
+        supertype: activeSupertype !== 'all' ? activeSupertype : undefined,
+      }).then(setFilterCounts).catch(() => {});
+    }, 300);
+    return () => { if (countTimerRef.current) clearTimeout(countTimerRef.current); };
+  }, [activeType, activeSupertype]);
+
+  // ── Scroll-Collapse ───────────────────────────────────────────
+  useEffect(() => {
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (y > lastScrollY.current + 8 && y > 60) setFiltersCollapsed(true);
+      else if (y < lastScrollY.current - 8)       setFiltersCollapsed(false);
+      lastScrollY.current = y;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
   // ── Derived ───────────────────────────────────────────────────
@@ -89,17 +138,33 @@ function CollectionContent() {
   const ownedIds = useMemo(() => new Set(ownedMap.keys()), [ownedMap]);
 
   const browserFilter = useMemo<CardBrowserFilter>(() => ({
-    supertype:   browseSupertype !== 'all' ? browseSupertype : undefined,
-    type:        browseType      ?? undefined,
-    rarity:      browseRarity    ?? undefined,
-    ownedFilter: browseOwned,
+    supertype:      activeSupertype !== 'all' ? activeSupertype : undefined,
+    type:           activeType      ?? undefined,
+    evolutionStage: activeEvolution ?? undefined,
+    rarity:         activeRarity    ?? undefined,
+    ownedFilter,
     ownedIds,
-  }), [browseSupertype, browseType, browseRarity, browseOwned, ownedIds]);
+  }), [activeSupertype, activeType, activeEvolution, activeRarity, ownedFilter, ownedIds]);
 
-  const { cards: browseCards, loading: browseLoading, loadingMore, hasMore, loadMore, hasAnyFilter } =
-    useCardBrowser(browseSort, browserFilter);
+  const {
+    cards: browseCards, loading: browseLoading,
+    loadingMore, hasMore, loadMore, hasAnyFilter,
+  } = useCardBrowser(browseSort, browserFilter);
 
-  // ── Suche Logik ───────────────────────────────────────────────
+  // ── Infinite Scroll ───────────────────────────────────────────
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !isBrowseMode) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && hasMore && !loadingMore && !browseLoading) loadMore();
+    }, { rootMargin: '300px' });
+    observer.observe(el);
+    return () => observer.disconnect();
+  // isBrowseMode depends on inputValue, but we keep it stable via deps below
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMore, loadingMore, browseLoading, loadMore, inputValue]);
+
+  // ── Suche ─────────────────────────────────────────────────────
   const doSearch = useCallback(async (q: string) => {
     if (!q.trim()) { setResults([]); setSets([]); setSource(null); return; }
     setSearchLoading(true);
@@ -144,17 +209,16 @@ function CollectionContent() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [inputValue, doSearch, router]);
 
+  // Sucherg. durch geteilte Filter gefiltert
   const displayed = useMemo(() => {
     let r = [...results];
-    if (searchOwned === 'owned')   r = r.filter(c => ownedIds.has(c.id));
-    if (searchOwned === 'missing') r = r.filter(c => !ownedIds.has(c.id));
-    if (searchSupertype !== 'all') r = r.filter(c => c.supertype?.toLowerCase() === searchSupertype.toLowerCase());
-    if (searchType)                r = r.filter(c => c.types?.includes(searchType));
-    if (activeRarities.size > 0) {
-      r = r.filter(c => {
-        const g = c.rarity ? getRarityGroup(c.rarity) : null;
-        return activeRarities.has(g?.label ?? 'Sonstige');
-      });
+    if (ownedFilter === 'owned')     r = r.filter(c => ownedIds.has(c.id));
+    if (ownedFilter === 'missing')   r = r.filter(c => !ownedIds.has(c.id));
+    if (activeSupertype !== 'all')   r = r.filter(c => c.supertype?.toLowerCase() === activeSupertype.toLowerCase());
+    const _type = activeType;
+    if (_type)                       r = r.filter(c => c.types?.includes(_type));
+    if (activeRarity) {
+      r = r.filter(c => (getRarityGroup(c.rarity ?? '')?.label ?? 'Sonstige') === activeRarity);
     }
     r.sort((a, b) =>
       searchSort === 'name'
@@ -162,7 +226,9 @@ function CollectionContent() {
         : (parseInt(a.number) || 0) - (parseInt(b.number) || 0),
     );
     return r;
-  }, [results, searchOwned, searchSupertype, searchType, activeRarities, ownedIds, searchSort]);
+  }, [results, ownedFilter, activeSupertype, activeType, activeRarity, ownedIds, searchSort]);
+
+  const isBrowseMode = !inputValue;
 
   const clearSearch = () => {
     setInputValue('');
@@ -172,20 +238,24 @@ function CollectionContent() {
     router.replace('/collection', { scroll: false });
   };
 
-  const isBrowseMode = !inputValue;
+  // Aktive Filter als Chips
+  const hasActiveFilter = !!(activeType || activeSupertype !== 'all' || ownedFilter !== 'all' || activeRarity || activeEvolution);
 
-  // Supertype-Optionen mit Counts
   const supertypeOptions = useMemo(() => [
     { value: 'all',     label: filterCounts ? `Alle ${fmt(Object.values(filterCounts.supertypes).reduce((a, b) => a + b, 0))}` : 'Alle' },
-    { value: 'Pokémon', label: filterCounts ? `Pokémon ${fmt(filterCounts.supertypes['Pokémon'] ?? 0)}` : 'Pokémon' },
-    { value: 'Trainer', label: filterCounts ? `Trainer ${fmt(filterCounts.supertypes['Trainer'] ?? 0)}` : 'Trainer' },
-    { value: 'Energy',  label: filterCounts ? `Energie ${fmt(filterCounts.supertypes['Energy'] ?? 0)}` : 'Energie' },
+    { value: 'Pokémon', label: filterCounts?.supertypes['Pokémon'] ? `Pokémon ${fmt(filterCounts.supertypes['Pokémon'])}` : 'Pokémon' },
+    { value: 'Trainer', label: filterCounts?.supertypes['Trainer'] ? `Trainer ${fmt(filterCounts.supertypes['Trainer'])}` : 'Trainer' },
+    { value: 'Energy',  label: filterCounts?.supertypes['Energy']  ? `Energie ${fmt(filterCounts.supertypes['Energy'])}` : 'Energie' },
   ], [filterCounts]);
 
+  const showTypePills = activeSupertype === 'all' || activeSupertype === 'Pokémon';
+  const showEvolution = showTypePills;
+
+  // ── Render ────────────────────────────────────────────────────
   return (
     <div className="flex flex-col min-h-screen">
 
-      {/* ── Sticky Header ─────────────────────────────────────── */}
+      {/* ── Sticky Header ──────────────────────────────────────── */}
       <div className="sticky top-safe z-20 bg-background px-4 pt-4 pb-3 border-b border-border space-y-2">
 
         {/* Suchfeld */}
@@ -206,52 +276,92 @@ function CollectionContent() {
           )}
         </div>
 
-        {/* ── Browse-Filter (sticky, immer sichtbar) ────────── */}
-        {isBrowseMode && (
-          <div className="space-y-2">
-
-            {/* Zeile 1: Vorhanden/Fehlen + Sort */}
+        {/* ── Filter-Block (Browse + Suche) ──────────────────── */}
+        {filtersCollapsed ? (
+          /* Kompakter Strip mit aktiven Filter-Chips */
+          hasActiveFilter ? (
+            <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
+              {activeSupertype !== 'all' && (
+                <FilterChip label={activeSupertype} onRemove={() => setActiveSupertype('all')} />
+              )}
+              {activeType && (
+                <FilterChip
+                  label={ENERGY_META[activeType].de}
+                  onRemove={() => setActiveType(null)}
+                  color={ENERGY_META[activeType].bg}
+                />
+              )}
+              {activeEvolution && (
+                <FilterChip
+                  label={EVOLUTION_OPTIONS.find(o => o.value === activeEvolution)?.label ?? activeEvolution}
+                  onRemove={() => setActiveEvolution(null)}
+                />
+              )}
+              {ownedFilter !== 'all' && (
+                <FilterChip
+                  label={OWNED_OPTIONS.find(o => o.value === ownedFilter)?.label ?? ownedFilter}
+                  onRemove={() => setOwnedFilter('all')}
+                />
+              )}
+              {activeRarity && (
+                <FilterChip label={activeRarity} onRemove={() => setActiveRarity(null)} />
+              )}
+            </div>
+          ) : null
+        ) : (
+          /* Vollständige Filter-Zeilen */
+          <>
+            {/* Zeile 1: Vorhanden/Fehlen + Sort (Browse) / Set+Sort (Suche) */}
             <div className="flex items-center gap-2">
-              <ButtonGroup
-                options={OWNED_OPTIONS}
-                value={browseOwned}
-                onChange={v => setBrowseOwned(v as OwnedFilter)}
-              />
-              <div className="relative flex items-center ml-auto">
-                <select
-                  value={browseSort}
-                  onChange={e => setBrowseSort(e.target.value as BrowseSortKey)}
-                  className="h-8 pl-2.5 pr-6 rounded-lg bg-secondary border border-border text-xs appearance-none cursor-pointer"
-                >
-                  {BROWSE_SORT_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
+              <ButtonGroup options={OWNED_OPTIONS} value={ownedFilter} onChange={v => setOwnedFilter(v as OwnedFilter)} />
+              {isBrowseMode && (
+                <div className="relative flex items-center ml-auto">
+                  <select
+                    value={browseSort}
+                    onChange={e => setBrowseSort(e.target.value as BrowseSortKey)}
+                    className="h-8 pl-2.5 pr-6 rounded-lg bg-secondary border border-border text-xs appearance-none cursor-pointer"
+                  >
+                    {BROWSE_SORT_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={12} className="absolute right-1.5 pointer-events-none text-muted-foreground" />
+                </div>
+              )}
+              {!isBrowseMode && sets.length > 1 && (
+                <select value={filterSet} onChange={e => setFilterSet(e.target.value)}
+                  className="h-8 px-2 rounded-lg bg-secondary border border-border text-xs max-w-[120px] ml-auto">
+                  <option value="">Alle Sets</option>
+                  {sets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
-                <ChevronDown size={12} className="absolute right-1.5 pointer-events-none text-muted-foreground" />
-              </div>
+              )}
+              {!isBrowseMode && (
+                <select value={searchSort} onChange={e => setSearchSort(e.target.value as SearchSortKey)}
+                  className="h-8 px-2 rounded-lg bg-secondary border border-border text-xs">
+                  <option value="number">Nummer</option>
+                  <option value="name">Name</option>
+                </select>
+              )}
             </div>
 
             {/* Zeile 2: Supertype mit Counts */}
             <ButtonGroup
               options={supertypeOptions}
-              value={browseSupertype}
-              onChange={v => {
-                setBrowseSupertype(v as Supertype | 'all');
-                setBrowseType(null);
-              }}
+              value={activeSupertype}
+              onChange={v => { setActiveSupertype(v as Supertype | 'all'); setActiveType(null); setActiveEvolution(null); }}
             />
 
-            {/* Zeile 3: Energie-Typ-Pills mit Counts */}
-            {(browseSupertype === 'all' || browseSupertype === 'Pokémon') && (
+            {/* Zeile 3: Typ-Pills mit Counts (nur bei Pokémon/Alle) */}
+            {showTypePills && (
               <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
                 {TCG_TYPES.map(t => {
-                  const active = browseType === t;
+                  const active = activeType === t;
                   const meta   = ENERGY_META[t];
                   const count  = filterCounts?.types[t];
                   return (
                     <button
                       key={t}
-                      onClick={() => setBrowseType(active ? null : t)}
+                      onClick={() => { setActiveType(active ? null : t); setActiveEvolution(null); }}
                       className="flex items-center gap-1.5 text-xs pl-1 pr-2.5 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0"
                       style={{
                         borderColor: active ? meta.bg : 'transparent',
@@ -262,7 +372,7 @@ function CollectionContent() {
                     >
                       <EnergyIcon type={t} size={18} />
                       {meta.de}
-                      {count != null && (
+                      {count != null && count > 0 && (
                         <span className="text-[10px] opacity-50 font-normal">{fmt(count)}</span>
                       )}
                     </button>
@@ -270,83 +380,43 @@ function CollectionContent() {
                 })}
               </div>
             )}
-          </div>
-        )}
 
-        {/* ── Such-Filter ───────────────────────────────────── */}
-        {!isBrowseMode && results.length > 0 && (
-          <div className="space-y-2 pt-1">
-            <div className="flex items-center gap-2 flex-wrap">
+            {/* Zeile 4: Entwicklungsstufe (Basis/Phase 1/Phase 2) */}
+            {showEvolution && isBrowseMode && (
               <ButtonGroup
-                options={OWNED_OPTIONS}
-                value={searchOwned}
-                onChange={v => setSearchOwned(v as OwnedFilter)}
+                options={EVOLUTION_OPTIONS.map(o => ({ value: o.value ?? 'all', label: o.label }))}
+                value={activeEvolution ?? 'all'}
+                onChange={v => setActiveEvolution(v === 'all' ? null : v)}
               />
-              {sets.length > 1 && (
-                <select value={filterSet} onChange={e => setFilterSet(e.target.value)}
-                  className="h-8 px-2 rounded-lg bg-secondary border border-border text-xs max-w-[150px]">
-                  <option value="">Alle Sets ({sets.length})</option>
-                  {sets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              )}
-              <select value={searchSort} onChange={e => setSearchSort(e.target.value as SearchSortKey)}
-                className="h-8 px-2 rounded-lg bg-secondary border border-border text-xs">
-                <option value="number">Nummer</option>
-                <option value="name">Name</option>
-              </select>
-            </div>
-            <ButtonGroup
-              options={[
-                { value: 'all',     label: 'Alle'    },
-                { value: 'Pokémon', label: 'Pokémon' },
-                { value: 'Trainer', label: 'Trainer' },
-                { value: 'Energy',  label: 'Energie' },
-              ]}
-              value={searchSupertype}
-              onChange={v => { setSearchSupertype(v as Supertype | 'all'); setSearchType(null); }}
-            />
-            {(searchSupertype === 'all' || searchSupertype === 'Pokémon') && (
-              <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
-                {TCG_TYPES.map(t => {
-                  const active = searchType === t;
-                  const meta   = ENERGY_META[t];
-                  return (
-                    <button key={t} onClick={() => setSearchType(active ? null : t)}
-                      className="flex items-center gap-1.5 text-xs pl-1 pr-2.5 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0"
-                      style={{
-                        borderColor: active ? meta.bg : 'transparent',
-                        background:  active ? `${meta.bg}22` : 'var(--secondary)',
-                        color:       active ? meta.bg : 'var(--muted-foreground)',
-                        fontWeight:  active ? 600 : 400,
-                      }}>
-                      <EnergyIcon type={t} size={18} />
-                      {meta.de}
-                    </button>
-                  );
-                })}
-              </div>
             )}
-            <RarityFilterBar
-              cards={results}
-              ownedIds={ownedIds}
-              activeRarities={activeRarities}
-              onToggle={label => setActiveRarities(prev => {
-                const next = new Set(prev);
-                if (next.has(label)) next.delete(label); else next.add(label);
-                return next;
-              })}
-            />
-          </div>
+
+            {/* Zeile 5: Rarity-Chips (wenn Karten geladen) */}
+            {isBrowseMode && browseCards.length > 0 && (
+              <RarityFilterBar
+                cards={browseCards}
+                ownedIds={ownedIds}
+                activeRarities={activeRarity ? new Set([activeRarity]) : new Set()}
+                onToggle={label => setActiveRarity(prev => prev === label ? null : label)}
+              />
+            )}
+            {!isBrowseMode && displayed.length > 0 && (
+              <RarityFilterBar
+                cards={results}
+                ownedIds={ownedIds}
+                activeRarities={activeRarity ? new Set([activeRarity]) : new Set()}
+                onToggle={label => setActiveRarity(prev => prev === label ? null : label)}
+              />
+            )}
+          </>
         )}
       </div>
 
-      {/* ── Content ───────────────────────────────────────────── */}
+      {/* ── Content ─────────────────────────────────────────────── */}
       <div className="flex-1 px-3 py-3">
 
         {/* Browse-Modus */}
         {isBrowseMode && (
           <>
-            {/* Kein Filter → Hinweis */}
             {!hasAnyFilter && (
               <div className="flex flex-col items-center justify-center pt-16 gap-3 text-center">
                 <div className="text-4xl">🔍</div>
@@ -357,41 +427,25 @@ function CollectionContent() {
               </div>
             )}
 
-            {/* Rarity-Chips */}
-            {hasAnyFilter && browseCards.length > 0 && (
-              <RarityFilterBar
-                cards={browseCards}
-                ownedIds={ownedIds}
-                activeRarities={browseRarity ? new Set([browseRarity]) : new Set()}
-                onToggle={label => setBrowseRarity(prev => prev === label ? null : label)}
-              />
-            )}
-
-            {/* Grid */}
             {hasAnyFilter && (
-              browseLoading ? (
+              browseLoading && browseCards.length === 0 ? (
                 <div className="flex justify-center pt-12">
                   <div className="w-8 h-8 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
                 </div>
               ) : (
                 <>
-                  {browseCards.length === 0 && (
+                  {browseCards.length === 0 && !browseLoading && (
                     <p className="text-center text-muted-foreground text-sm pt-12">
                       Keine Karten für diesen Filter.
                     </p>
                   )}
                   <CardGrid cards={browseCards} ownedMap={ownedMap} />
 
-                  {hasMore && (
-                    <div className="flex justify-center pt-4 pb-8">
-                      <button
-                        onClick={loadMore}
-                        disabled={loadingMore}
-                        className="px-5 py-2 rounded-xl text-sm font-medium bg-secondary border border-border transition-opacity"
-                        style={{ opacity: loadingMore ? 0.5 : 1 }}
-                      >
-                        {loadingMore ? 'Lädt…' : 'Weitere 50 Karten laden'}
-                      </button>
+                  {/* Infinite-scroll Sentinel */}
+                  <div ref={sentinelRef} className="h-1" />
+                  {loadingMore && (
+                    <div className="flex justify-center py-4">
+                      <div className="w-6 h-6 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
                     </div>
                   )}
                 </>

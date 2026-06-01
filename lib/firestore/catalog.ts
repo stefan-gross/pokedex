@@ -1,6 +1,6 @@
 import {
   collection, doc, getDocs, setDoc, getDoc,
-  query, where, limit, orderBy, startAfter, writeBatch, getCountFromServer,
+  query, where, limit, startAfter, writeBatch, getCountFromServer,
   type QueryDocumentSnapshot, type QueryConstraint,
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
@@ -9,7 +9,7 @@ import type { CardVariant } from '@/types';
 export interface CatalogCard {
   id: string;
   name: string;
-  nameLower: string;         // für case-insensitive Prefix-Suche
+  nameLower: string;          // für case-insensitive Prefix-Suche
   number: string;
   setId: string;
   setName: string;
@@ -17,11 +17,12 @@ export interface CatalogCard {
   rarity: string;
   supertype: string;
   types: string[];
-  hp?: number;               // Trefferpunkte (nur Pokémon-Karten)
+  subtypes?: string[];        // z.B. ['Basic'] | ['Stage 1'] | ['Item'] — für Stufen-Filter (ab nächstem Sync)
+  hp?: number;                // Trefferpunkte (nur Pokémon-Karten)
   nationalDexNumber?: number; // Nationaler Pokédex-Eintrag (erster, falls mehrere)
   imgSmall: string;
   imgLarge: string;
-  variants?: CardVariant[];  // mögliche Varianten, abgeleitet aus rarity
+  variants?: CardVariant[];   // mögliche Varianten, abgeleitet aus rarity
 }
 
 export interface SyncMeta {
@@ -32,12 +33,17 @@ export interface SyncMeta {
   lastSynced: string;
 }
 
+export type FilterCounts = {
+  types:      Record<string, number>;
+  supertypes: Record<string, number>;
+};
+
 const COL = 'tcg_catalog';
 
 // Prefix-Suche nach Name (case-insensitive) — liest nur Treffer, nicht die gesamte Collection
 export async function searchCatalog(q: string, setId = '', maxResults = 80): Promise<CatalogCard[]> {
   const lower = q.toLowerCase();
-  const end = lower + ''; // Unicode-Trick für Prefix-Range
+  const end = lower + ''; // Unicode-Trick für Prefix-Range
 
   const constraints = setId
     ? [where('setId', '==', setId), where('nameLower', '>=', lower), where('nameLower', '<=', end), limit(maxResults)]
@@ -74,7 +80,6 @@ export async function getCardsBySetId(setId: string): Promise<CatalogCard[]> {
     query(collection(db, COL), where('setId', '==', setId))
   );
   const cards = snap.docs.map(d => d.data() as CatalogCard);
-  // client-seitig nach Nummer sortieren (Firestore braucht sonst Composite-Index)
   cards.sort((a, b) => {
     const na = parseInt(a.number) || 0;
     const nb = parseInt(b.number) || 0;
@@ -89,25 +94,40 @@ export async function getCatalogCount(): Promise<number> {
   return meta?.syncedTotal ?? 0;
 }
 
-// Counts pro Typ und Supertype — einmalig laden, kein Dokument-Inhalt übertragen
-export async function getCatalogFilterCounts(): Promise<{
-  types: Record<string, number>;
-  supertypes: Record<string, number>;
-}> {
+/**
+ * Counts pro Typ und Supertype — dynamisch basierend auf aktivem Filter.
+ * Wenn z.B. supertype='Pokémon' aktiv → Typ-Counts zeigen nur Pokémon-Karten.
+ * Hinweis: Kombination type+supertype braucht Firestore Composite-Index.
+ * Bei fehlendem Index fällt safeCount auf 0 zurück (Link zum Anlegen im Firebase-Console).
+ */
+export async function getCatalogFilterCounts(activeFilter: BrowseFilter = {}): Promise<FilterCounts> {
   const TYPES = [
     'Fire', 'Water', 'Grass', 'Lightning', 'Psychic',
     'Fighting', 'Darkness', 'Metal', 'Dragon', 'Fairy', 'Colorless',
   ];
   const SUPERTYPES = ['Pokémon', 'Trainer', 'Energy'];
 
+  const safeCount = async (constraints: QueryConstraint[]): Promise<number> => {
+    try {
+      const snap = await getCountFromServer(query(collection(db, COL), ...constraints));
+      return snap.data().count;
+    } catch {
+      return 0; // Composite-Index fehlt → in Firebase Console anlegen
+    }
+  };
+
   const [typeCounts, supertypeCounts] = await Promise.all([
+    // Typ-Counts: optional nach aktivem Supertype gefiltert
     Promise.all(TYPES.map(async t => {
-      const snap = await getCountFromServer(query(collection(db, COL), where('types', 'array-contains', t)));
-      return [t, snap.data().count] as [string, number];
+      const c: QueryConstraint[] = [where('types', 'array-contains', t)];
+      if (activeFilter.supertype) c.push(where('supertype', '==', activeFilter.supertype));
+      return [t, await safeCount(c)] as [string, number];
     })),
+    // Supertype-Counts: optional nach aktivem Typ gefiltert
     Promise.all(SUPERTYPES.map(async s => {
-      const snap = await getCountFromServer(query(collection(db, COL), where('supertype', '==', s)));
-      return [s, snap.data().count] as [string, number];
+      const c: QueryConstraint[] = [where('supertype', '==', s)];
+      if (activeFilter.type) c.push(where('types', 'array-contains', activeFilter.type));
+      return [s, await safeCount(c)] as [string, number];
     })),
   ]);
 
@@ -118,18 +138,19 @@ export async function getCatalogFilterCounts(): Promise<{
 }
 
 /* ── Browse (paginiert, server-seitig gefiltert) ────────────────
- * type  → array-contains (kein Composite-Index nötig)
- * supertype → equality   (kein Composite-Index nötig)
- * Beide zusammen → nur type server-seitig, supertype client-seitig im Hook
- * Sortierung läuft client-seitig im Hook (vermeidet Composite-Indexes)
+ * Priorität server-seitig: type > evolutionStage > supertype
+ * (Kombination mehrerer would brauchen Composite-Indexes)
+ * Restliche Filter (rarity, owned, client-supertype) laufen im Hook
  */
 export type BrowseSortKey = 'name' | 'hp' | 'pokedex';
 
 export interface BrowseFilter {
-  /** Pokémon-Typ (englisch), z.B. 'Darkness', 'Fire' — Firestore array-contains */
+  /** Pokémon-Typ (englisch), z.B. 'Darkness' — array-contains */
   type?: string;
-  /** Supertype: 'Pokémon' | 'Trainer' | 'Energy' — Firestore equality */
+  /** Supertype: 'Pokémon' | 'Trainer' | 'Energy' — equality */
   supertype?: string;
+  /** Entwicklungsstufe: 'Basic' | 'Stage 1' | 'Stage 2' — array-contains auf subtypes */
+  evolutionStage?: string;
 }
 
 export interface BrowsePage {
@@ -145,9 +166,11 @@ export async function browseCatalog(
 ): Promise<BrowsePage> {
   const constraints: QueryConstraint[] = [];
 
-  // type hat Vorrang — array-contains + equality braucht Composite-Index
+  // Priorität: type > evolutionStage > supertype (je nur einer server-seitig)
   if (filter.type) {
     constraints.push(where('types', 'array-contains', filter.type));
+  } else if (filter.evolutionStage) {
+    constraints.push(where('subtypes', 'array-contains', filter.evolutionStage));
   } else if (filter.supertype) {
     constraints.push(where('supertype', '==', filter.supertype));
   }
