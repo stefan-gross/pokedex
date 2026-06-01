@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Nicht eingeloggt' }, { status: 401 });
   }
   try {
-    const mode = (req.nextUrl.searchParams.get('mode') ?? 'auto') as 'auto' | 'update';
+    const mode = (req.nextUrl.searchParams.get('mode') ?? 'auto') as 'auto' | 'update' | 'reset';
     const result = await runSync(mode);
     return NextResponse.json(result);
   } catch (err) {

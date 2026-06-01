@@ -85,7 +85,7 @@ export interface SyncResult {
   done?: boolean;
 }
 
-export async function runSync(mode: 'auto' | 'update' = 'auto'): Promise<SyncResult> {
+export async function runSync(mode: 'auto' | 'update' | 'reset' = 'auto'): Promise<SyncResult> {
   const meta = await getMeta();
   const syncedTotal = meta?.syncedTotal ?? 0;
   const lastPage = meta?.lastPage ?? 0;
@@ -98,6 +98,18 @@ export async function runSync(mode: 'auto' | 'update' = 'auto'): Promise<SyncRes
 
   const totalPages = Math.ceil(currentTotal / PAGE_SIZE);
   const isFullySynced = syncedTotal >= currentTotal;
+
+  // ── RESET: Meta zurücksetzen → Auto-Sync startet von Seite 1 ───────────
+  if (mode === 'reset') {
+    await setMeta({ lastPage: 0, syncedTotal: 0, currentTotal, totalPages, lastSynced: new Date().toISOString() });
+    return {
+      status: 'in-progress',
+      message: `↺ Catalog zurückgesetzt — ${currentTotal.toLocaleString()} Karten werden neu geladen`,
+      syncedTotal: 0,
+      currentTotal,
+      done: false,
+    };
+  }
 
   // ── UPDATE: Nur neue Karten ──────────────────────────────────────────────
   if (mode === 'update') {

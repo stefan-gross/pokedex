@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, Sun, Moon, Smartphone, RefreshCw,
-  Database, CheckCircle, Clock, AlertCircle,
+  Database, CheckCircle, Clock, AlertCircle, RotateCcw,
 } from 'lucide-react';
 import Link from 'next/link';
 import type { SyncMeta } from '@/lib/firestore/catalog';
@@ -40,6 +40,21 @@ export default function SettingsPage() {
       }
     } catch { /* ignore */ } finally {
       setSyncLoading(false);
+    }
+  }
+
+  async function resetAndResync() {
+    if (!confirm('Catalog zurücksetzen und alle Karten neu laden?\nDas überschreibt alle vorhandenen Catalog-Daten und kann einige Minuten dauern.')) return;
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      // Schritt 1: Meta zurücksetzen
+      await fetch('/api/admin/trigger-sync?mode=reset', { method: 'POST' });
+      await loadSyncStatus();
+      // Schritt 2: normaler Auto-Sync (läuft durch bis fertig)
+      await runSync('auto');
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -223,11 +238,24 @@ export default function SettingsPage() {
                           : 'Initialen Sync fortsetzen'}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {syncing ? `${pct}% abgeschlossen` : 'Nächste 19.000 Karten in Firestore laden'}
+                        {syncing ? `${pct}% abgeschlossen` : 'Nächste Karten in Firestore laden'}
                       </p>
                     </div>
                   </button>
                 )}
+
+                {/* Catalog komplett neu aufbauen (z.B. nach Schema-Änderung) */}
+                <button
+                  onClick={resetAndResync}
+                  disabled={syncing}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left border-t border-border transition-colors active:bg-secondary disabled:opacity-40"
+                >
+                  <RotateCcw size={18} className="text-orange-500 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-orange-500">Catalog komplett neu aufbauen</p>
+                    <p className="text-xs text-muted-foreground">Alle Karten neu laden · z.B. nach Datenbank-Update</p>
+                  </div>
+                </button>
               </>
             )}
           </div>
