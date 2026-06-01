@@ -2,42 +2,43 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import type { TcgApiCard } from '@/lib/pokemon-tcg';
+import { cardInfoToTcgApi, type CardInfo } from '@/lib/card-info';
 import type { CardDoc } from '@/types';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 
 interface Props {
-  card: TcgApiCard;
+  card: CardInfo;
   ownedCards?: CardDoc[];
-  onWishlist?: (card: TcgApiCard) => void;
+  onCardClick?: () => void;
+  onWishlist?: () => void;
   isWishlisted?: boolean;
 }
 
 const MULTI_VARIANT_RARITIES = ['holo', 'reverse', 'illustration', 'special'];
 
-function hasMultipleVariants(card: TcgApiCard) {
-  const r = (card.rarity ?? '').toLowerCase();
+function hasMultipleVariants(rarity?: string) {
+  const r = (rarity ?? '').toLowerCase();
   return MULTI_VARIANT_RARITIES.some(v => r.includes(v));
 }
 
-export function CardTile({ card, ownedCards = [], onWishlist, isWishlisted }: Props) {
+export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWishlisted }: Props) {
   const [showModal, setShowModal] = useState(false);
-  const [saved, setSaved] = useState(false);
 
   const totalOwned = ownedCards.reduce((s, c) => s + c.quantity, 0);
-  const isOwned = totalOwned > 0;
-  const multi = hasMultipleVariants(card);
+  const isOwned    = totalOwned > 0;
+  const multi      = hasMultipleVariants(card.rarity);
 
   return (
     <>
       <div className="relative flex flex-col">
-        {/* Card image */}
+        {/* Card image — tap → Detail */}
         <div
-          className="relative rounded-xl overflow-hidden border border-border"
+          className="relative rounded-xl overflow-hidden border border-border cursor-pointer"
           style={{ background: isOwned ? undefined : '#080808' }}
+          onClick={onCardClick}
         >
           <Image
-            src={card.images.small}
+            src={card.imgSmall}
             alt={card.name}
             width={245}
             height={342}
@@ -58,10 +59,12 @@ export function CardTile({ card, ownedCards = [], onWishlist, isWishlisted }: Pr
           )}
 
           {/* Bottom overlay: Add + Wishlist */}
-          <div className="absolute bottom-0 left-0 right-0 flex justify-between items-center px-1.5 pb-1.5 pt-4"
+          <div
+            className="absolute bottom-0 left-0 right-0 flex justify-between items-center px-1.5 pb-1.5 pt-4"
             style={{ background: 'linear-gradient(to top, rgba(0,0,0,.7) 0%, transparent 100%)' }}
+            onClick={e => e.stopPropagation()} // Buttons stoppen Click-Bubbling zum Detail
           >
-            {/* Add button */}
+            {/* Add-to-collection button */}
             <button
               onClick={() => setShowModal(true)}
               className="w-7 h-7 rounded-lg flex items-center justify-center"
@@ -69,14 +72,12 @@ export function CardTile({ card, ownedCards = [], onWishlist, isWishlisted }: Pr
               aria-label="Zur Sammlung hinzufügen"
             >
               {multi ? (
-                // Stack icon
                 <svg width="16" height="13" viewBox="0 0 22 20" fill="none" stroke="#fff" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="8" y="0" width="12" height="17" rx="1.5" strokeWidth="1.5" opacity="0.4" />
                   <rect x="4" y="2" width="12" height="17" rx="1.5" strokeWidth="1.6" opacity="0.65" />
                   <rect x="0" y="4" width="12" height="16" rx="1.5" strokeWidth="2" />
                 </svg>
               ) : (
-                // Single card icon
                 <svg width="11" height="14" viewBox="0 0 13 18" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="1" y="1" width="11" height="16" rx="1.5" />
                   <line x1="3" y1="6" x2="10" y2="6" />
@@ -86,7 +87,7 @@ export function CardTile({ card, ownedCards = [], onWishlist, isWishlisted }: Pr
 
             {/* Wishlist button */}
             <button
-              onClick={() => onWishlist?.(card)}
+              onClick={onWishlist}
               className="w-7 h-7 rounded-lg flex items-center justify-center"
               style={{ background: isWishlisted ? 'rgba(236,72,153,.85)' : 'rgba(0,0,0,.5)' }}
               aria-label="Zur Wunschliste"
@@ -100,15 +101,15 @@ export function CardTile({ card, ownedCards = [], onWishlist, isWishlisted }: Pr
 
         {/* Card number */}
         <div className="text-[10px] text-muted-foreground text-center mt-1 truncate px-0.5">
-          {card.number}/{card.set.printedTotal ?? card.set.total}
+          {card.number}{(card.printedTotal ?? card.total) ? `/${card.printedTotal ?? card.total}` : ''}
         </div>
       </div>
 
       {showModal && (
         <AddToCollectionModal
-          card={card}
+          card={cardInfoToTcgApi(card)}
           onClose={() => setShowModal(false)}
-          onSaved={() => { setShowModal(false); setSaved(true); }}
+          onSaved={() => setShowModal(false)}
         />
       )}
     </>

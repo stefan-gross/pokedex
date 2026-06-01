@@ -3,27 +3,10 @@
 import { useEffect, useState } from 'react';
 import { X, Plus, Heart } from 'lucide-react';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
-import { detectVariants, VARIANT_LABELS } from '@/lib/card-constants';
+import { detectVariants, VARIANT_LABELS, getRarityGroup } from '@/lib/card-constants';
 import { toTcgdexId } from '@/lib/tcgdex';
-import type { CatalogCard } from '@/lib/firestore/catalog';
+import { cardInfoToTcgApi, type CardInfo } from '@/lib/card-info';
 import type { CardDoc, BinderDoc } from '@/types';
-
-/* ── Rarity lookup ───────────────────────────────────────────── */
-const RARITY_GROUPS = [
-  { label: 'Common',       symbol: '◆',  color: '#9ca3af', keys: ['common'] },
-  { label: 'Uncommon',     symbol: '◆◆', color: '#60a5fa', keys: ['uncommon'] },
-  { label: 'Rare',         symbol: '★',  color: '#fbbf24', keys: ['rare'] },
-  { label: 'Rare Holo',    symbol: '★✦', color: '#f59e0b', keys: ['rare holo'] },
-  { label: 'Ultra Rare',   symbol: '★★', color: '#a78bfa', keys: ['double rare', 'ace spec rare', 'ultra rare', 'rare ultra', 'rare rainbow', 'hyper rare', 'rare secret'] },
-  { label: 'ex / V',       symbol: '◈',  color: '#34d399', keys: ['rare holo ex', 'rare holo v', 'rare holo vmax', 'rare holo vstar', 'rare holo gx', 'rare holo lv.x'] },
-  { label: 'Illustration', symbol: '🎨', color: '#f472b6', keys: ['illustration rare', 'special illustration rare'] },
-  { label: 'Promo',        symbol: 'P',  color: '#fb923c', keys: ['promo', 'classic collection'] },
-];
-
-function getRarityInfo(rarity: string) {
-  const lower = rarity.toLowerCase();
-  return RARITY_GROUPS.find(g => g.keys.some(k => lower === k));
-}
 
 const LANGUAGE_FLAGS: Record<string, string> = {
   de: '🇩🇪', en: '🇬🇧', jp: '🇯🇵', fr: '🇫🇷',
@@ -64,19 +47,6 @@ async function fetchGermanName(cardName: string, supertype?: string): Promise<st
   }
 }
 
-/* ── CatalogCard → TcgApiCard Adapter ───────────────────────── */
-function toTcgApiCard(card: CatalogCard) {
-  return {
-    id: card.id,
-    name: card.name,
-    number: card.number,
-    rarity: card.rarity,
-    supertype: card.supertype,
-    types: card.types,
-    set: { id: card.setId, name: card.setName, series: card.series, total: 0, printedTotal: 0 },
-    images: { small: card.imgSmall, large: card.imgLarge },
-  };
-}
 
 /* ── Props ───────────────────────────────────────────────────── */
 interface SetMeta {
@@ -85,8 +55,10 @@ interface SetMeta {
   total: number;
 }
 
+export type { SetMeta };
+
 interface Props {
-  card: CatalogCard | null;
+  card: CardInfo | null;
   ownedCopies: CardDoc[];
   binders: BinderDoc[];
   setMeta?: SetMeta;
@@ -121,9 +93,9 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
 
   if (!card) return null;
 
-  const rarityInfo = card.rarity ? getRarityInfo(card.rarity) : null;
+  const rarityInfo = card.rarity ? getRarityGroup(card.rarity) : null;
   const variants   = (card.variants?.length ? card.variants : (card.rarity ? detectVariants(card.rarity) : ['standard' as const])) as import('@/types').CardVariant[];
-  const tcgApiCard = toTcgApiCard(card);
+  const tcgApiCard = cardInfoToTcgApi(card);
   const displayName = germanName ?? card.name;
 
   /* Kartennummer formatieren: "1" → "001/258" */

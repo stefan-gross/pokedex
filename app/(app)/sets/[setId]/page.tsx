@@ -9,8 +9,10 @@ import { getCards } from '@/lib/firestore/cards';
 import { getCardsBySetId } from '@/lib/firestore/catalog';
 import { getBinders } from '@/lib/firestore/binders';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { CardDetailSheet } from '@/components/card/CardDetailSheet';
-import { detectVariants } from '@/lib/card-constants';
+import { CardGrid } from '@/components/card/CardGrid';
+import { RarityFilterBar } from '@/components/card/RarityFilterBar';
+import { detectVariants, getRarityGroup } from '@/lib/card-constants';
+import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import type { CatalogCard } from '@/lib/firestore/catalog';
 import type { CardDoc, BinderDoc } from '@/types';
 
@@ -43,23 +45,6 @@ async function loadSetCards(setId: string): Promise<CatalogCard[]> {
   }));
 }
 
-/* ── Rarity helpers ──────────────────────────────────────────── */
-const RARITY_GROUPS: { label: string; symbol: string; color: string; keys: string[] }[] = [
-  { label: 'Common',       symbol: '◆',  color: '#9ca3af', keys: ['common'] },
-  { label: 'Uncommon',     symbol: '◆◆', color: '#60a5fa', keys: ['uncommon'] },
-  { label: 'Rare',         symbol: '★',  color: '#fbbf24', keys: ['rare'] },
-  { label: 'Rare Holo',    symbol: '★✦', color: '#f59e0b', keys: ['rare holo'] },
-  { label: 'Ultra Rare',   symbol: '★★', color: '#a78bfa', keys: ['double rare', 'ace spec rare', 'ultra rare', 'rare ultra', 'rare rainbow', 'hyper rare', 'rare secret'] },
-  { label: 'ex / V',       symbol: '◈',  color: '#34d399', keys: ['rare holo ex', 'rare holo v', 'rare holo vmax', 'rare holo vstar', 'rare holo gx', 'rare holo lv.x'] },
-  { label: 'Illustration', symbol: '🎨', color: '#f472b6', keys: ['illustration rare', 'special illustration rare'] },
-  { label: 'Promo',        symbol: 'P',  color: '#fb923c', keys: ['promo', 'classic collection'] },
-];
-
-function getRarityGroup(rarity: string) {
-  const lower = rarity.toLowerCase();
-  return RARITY_GROUPS.find(g => g.keys.some(k => lower === k));
-}
-
 /* ── Types ───────────────────────────────────────────────────── */
 type Filter  = 'all' | 'owned' | 'missing';
 type SortKey = 'number-asc' | 'number-desc' | 'name-asc' | 'name-desc';
@@ -90,11 +75,13 @@ function SetDetailContent() {
   const backHref  = from === 'dashboard' ? '/' : '/sets';
   const backLabel = from === 'dashboard' ? 'Dashboard' : 'Alle Sets';
 
-  const [cards, setCards]           = useState<CatalogCard[]>([]);
+  const [rawCards, setRawCards]     = useState<CatalogCard[]>([]);
   const [owned, setOwned]           = useState<CardDoc[]>([]);
   const [binders, setBinders]       = useState<BinderDoc[]>([]);
   const [loading, setLoading]       = useState(true);
-  const [selectedCard, setSelectedCard] = useState<CatalogCard | null>(null);
+
+  // CatalogCard → CardInfo normalisieren
+  const cards = useMemo(() => rawCards.map(catalogCardToInfo), [rawCards]);
 
   const [filter, setFilter]           = useState<Filter>('all');
   const [sort, setSort]               = useState<SortKey>('number-asc');
@@ -116,7 +103,7 @@ function SetDetailContent() {
           fetch('/api/sets').then(r => r.json()),
           getBinders(),
         ]);
-        setCards(catalogCards);
+        setRawCards(catalogCards);
         setOwned(ownedCards);
         setBinders(bindersData);
 
@@ -139,21 +126,19 @@ function SetDetailContent() {
 
   const logoUrl = logoDe ?? `https://images.pokemontcg.io/${setId}/logo.png`;
 
-  const ownedTcgIds = useMemo(() => new Set(owned.map(c => c.tcgId).filter(Boolean)), [owned]);
+  const ownedMap = useMemo(() => {
+    const map = new Map<string, CardDoc[]>();
+    owned.forEach(c => {
+      if (c.tcgId) {
+        const arr = map.get(c.tcgId) ?? [];
+        arr.push(c);
+        map.set(c.tcgId, arr);
+      }
+    });
+    return map;
+  }, [owned]);
 
-  /* Rarity breakdown — only groups that exist in this set */
-  const rarityBreakdown = useMemo(() => {
-    const map = new Map<string, { group: typeof RARITY_GROUPS[number]; count: number; ownedCount: number }>();
-    for (const card of cards) {
-      const g   = card.rarity ? getRarityGroup(card.rarity) : null;
-      const key = g?.label ?? 'Sonstige';
-      const entry = map.get(key) ?? { group: g ?? { label: key, symbol: '?', color: '#6b7280', keys: [] }, count: 0, ownedCount: 0 };
-      entry.count++;
-      if (ownedTcgIds.has(card.id)) entry.ownedCount++;
-      map.set(key, entry);
-    }
-    return Array.from(map.values()).sort((a, b) => b.count - a.count);
-  }, [cards, ownedTcgIds]);
+  const ownedTcgIds = useMemo(() => new Set(ownedMap.keys()), [ownedMap]);
 
   /* Toggle rarity filter */
   function toggleRarity(label: string) {
@@ -174,8 +159,7 @@ function SetDetailContent() {
     if (rarityFilter.size > 0) {
       result = result.filter(c => {
         const g = c.rarity ? getRarityGroup(c.rarity) : null;
-        const label = g?.label ?? 'Sonstige';
-        return rarityFilter.has(label);
+        return rarityFilter.has(g?.label ?? 'Sonstige');
       });
     }
 
@@ -191,7 +175,7 @@ function SetDetailContent() {
       return sort.endsWith('-desc') ? -cmp : cmp;
     });
     return result;
-  }, [cards, filter, sort, rarityFilter, ownedTcgIds]);
+  }, [cards, filter, sort, rarityFilter, ownedTcgIds, getRarityGroup]);
 
   const ownedCount = useMemo(() => cards.filter(c => ownedTcgIds.has(c.id)).length, [cards, ownedTcgIds]);
   const totalCount = cards.length;
@@ -264,31 +248,12 @@ function SetDetailContent() {
             </div>
 
             {/* Rarity breakdown — klickbar als Filter */}
-            {rarityBreakdown.length > 0 && (
-              <div className="flex flex-wrap gap-x-2 gap-y-1.5">
-                {rarityBreakdown.map(({ group, count, ownedCount: oc }) => {
-                  const active = rarityFilter.has(group.label);
-                  return (
-                    <button
-                      key={group.label}
-                      onClick={() => toggleRarity(group.label)}
-                      className="flex items-center gap-1 rounded-full transition-all px-2 py-0.5 border"
-                      style={active ? {
-                        background: `${group.color}22`,
-                        borderColor: group.color,
-                      } : {
-                        borderColor: 'transparent',
-                      }}
-                    >
-                      <span className="text-xs font-bold" style={{ color: group.color }}>{group.symbol}</span>
-                      <span className="text-xs" style={{ color: active ? group.color : 'var(--muted-foreground)' }}>
-                        {oc}/{count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            <RarityFilterBar
+              cards={cards}
+              ownedIds={ownedTcgIds}
+              activeRarities={rarityFilter}
+              onToggle={toggleRarity}
+            />
           </div>
 
           {/* ── Sticky filter + sort bar ── */}
@@ -323,45 +288,17 @@ function SetDetailContent() {
 
           </div>
 
-          {/* ── Card grid ── */}
-          <div className="px-3 py-3 grid grid-cols-3 gap-2">
-            {displayed.map(card => {
-              const isOwned     = ownedTcgIds.has(card.id);
-              const rarityColor = card.rarity ? (getRarityGroup(card.rarity)?.color ?? null) : null;
-              return (
-                <button
-                  key={card.id}
-                  onClick={() => setSelectedCard(card)}
-                  className="flex flex-col items-center gap-1 active:opacity-70 transition-opacity"
-                >
-                  <div
-                    className="w-full aspect-[2/3] rounded-lg overflow-hidden border-2 relative"
-                    style={{ borderColor: rarityColor ?? 'var(--border)' }}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={card.imgSmall}
-                      alt={card.name}
-                      className="w-full h-full object-cover transition-all"
-                      style={!isOwned ? { filter: 'brightness(0.55) saturate(0.3)' } : undefined}
-                    />
-                  </div>
-                  <span className="text-[9px] text-muted-foreground tabular-nums">{card.number}</span>
-                </button>
-              );
-            })}
+          {/* ── Card grid + Detail Sheet ── */}
+          <div className="px-3 py-3">
+            <CardGrid
+              cards={displayed}
+              ownedMap={ownedMap}
+              binders={binders}
+              setMeta={{ nameDe: (nameDe || cards[0]?.setName) ?? '', logoUrl, total: totalCount }}
+            />
           </div>
         </>
       )}
-      {/* ── Card Detail Sheet ── */}
-      <CardDetailSheet
-        card={selectedCard}
-        ownedCopies={owned.filter(c => c.tcgId === selectedCard?.id)}
-        binders={binders}
-        setMeta={{ nameDe: (nameDe || cards[0]?.setName) ?? '', logoUrl, total: totalCount }}
-        onClose={() => setSelectedCard(null)}
-        onSaved={() => { setSelectedCard(null); }}
-      />
     </div>
   );
 }

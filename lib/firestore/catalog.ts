@@ -1,6 +1,7 @@
 import {
   collection, doc, getDocs, setDoc, getDoc,
-  query, where, limit, writeBatch,
+  query, where, limit, orderBy, startAfter, writeBatch,
+  type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import type { CardVariant } from '@/types';
@@ -8,7 +9,7 @@ import type { CardVariant } from '@/types';
 export interface CatalogCard {
   id: string;
   name: string;
-  nameLower: string;    // für case-insensitive Prefix-Suche
+  nameLower: string;         // für case-insensitive Prefix-Suche
   number: string;
   setId: string;
   setName: string;
@@ -16,6 +17,8 @@ export interface CatalogCard {
   rarity: string;
   supertype: string;
   types: string[];
+  hp?: number;               // Trefferpunkte (nur Pokémon-Karten)
+  nationalDexNumber?: number; // Nationaler Pokédex-Eintrag (erster, falls mehrere)
   imgSmall: string;
   imgLarge: string;
   variants?: CardVariant[];  // mögliche Varianten, abgeleitet aus rarity
@@ -84,4 +87,39 @@ export async function getCardsBySetId(setId: string): Promise<CatalogCard[]> {
 export async function getCatalogCount(): Promise<number> {
   const meta = await getSyncMeta();
   return meta?.syncedTotal ?? 0;
+}
+
+/* ── Browse (paginiert, ohne Suche) ─────────────────────────────
+ * Kein Server-Filter für types/rarity → Firestore-Composite-Index unnötig.
+ * Filterung geschieht client-seitig im useCardBrowser-Hook.
+ * Sortierung läuft server-seitig über orderBy.
+ */
+export type BrowseSortKey = 'name' | 'hp' | 'pokedex';
+
+export interface BrowsePage {
+  cards: CatalogCard[];
+  cursor: QueryDocumentSnapshot | null;
+  hasMore: boolean;
+}
+
+export async function browseCatalog(
+  sort: BrowseSortKey = 'name',
+  cursor: QueryDocumentSnapshot | null = null,
+  pageSize = 100,
+): Promise<BrowsePage> {
+  const sortField  = sort === 'hp' ? 'hp' : sort === 'pokedex' ? 'nationalDexNumber' : 'nameLower';
+  const sortDir    = sort === 'hp' ? ('desc' as const) : ('asc' as const);
+
+  const constraints = [
+    orderBy(sortField, sortDir),
+    ...(cursor ? [startAfter(cursor)] : []),
+    limit(pageSize),
+  ];
+
+  const snap = await getDocs(query(collection(db, COL), ...constraints));
+  return {
+    cards:   snap.docs.map(d => d.data() as CatalogCard),
+    cursor:  snap.docs[snap.docs.length - 1] ?? null,
+    hasMore: snap.docs.length === pageSize,
+  };
 }

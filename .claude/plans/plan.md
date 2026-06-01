@@ -337,6 +337,13 @@ Nach Implementierung testen:
 - **Catalog-Sync** — noch ~85% ausstehend (3.000 von 20.000 Karten), Sync läuft in 750-Karten-Chunks
 - **Karten-Detailansicht** — Wunschlisten-Aktion, Preisanzeige im Sheet
 
+### Entwicklungs-Prinzipien
+
+- **Wiederverwendbarkeit first**: Vor jeder Implementierung prüfen ob Logik/Komponente bereits existiert oder künftig woanders gebraucht wird → dann sofort als gemeinsames Modul anlegen
+- **Single Source of Truth**: Logik (Filter, Sortierung, Typ-Konvertierung, Konstanten) gehört in ein Modul, nie in mehrere Pages kopieren
+- **Gemeinsame Komponenten**: Filter-UI, Grids, Sheets → immer als Komponente, nie inline duplizieren
+- **Wiederverwendbare Hooks**: Zustandslogik die in mehreren Pages vorkommt → eigener `use*`-Hook
+
 ### Wichtige Architektur-Entscheidungen
 
 - `middleware.ts` (nicht `proxy.ts`) schützt alle Routen außer `/login` und `/api/auth`
@@ -348,7 +355,10 @@ Nach Implementierung testen:
 - Font: Plus Jakarta Sans via `next/font/google`, Variable auf `<html>` (nicht `<body>`)
 - Set-Detailseite: lädt Karten aus Firestore Catalog (`tcg_catalog`), Fallback auf pokemontcg.io API
 - Deutsche Namen + Logos: TCGdex API (`api.tcgdex.net/v2/de`), 6h Server-Cache, ID-Normalisierung in `lib/tcgdex.ts`
-- Karten-Konstanten zentral in `lib/card-constants.ts`: LANGUAGES, CONDITIONS, VARIANT_LABELS, detectVariants()
+- Karten-Konstanten zentral in `lib/card-constants.ts`: LANGUAGES, CONDITIONS, VARIANT_LABELS, RARITY_GROUPS, getRarityGroup(), detectVariants()
+- `lib/card-info.ts`: gemeinsamer `CardInfo`-Typ + Converter (catalogCardToInfo, tcgApiCardToInfo, cardInfoToTcgApi)
+- `components/card/CardGrid.tsx`: wiederverwendbares Grid + Detail-Sheet-Management (Suche, Set-Detail, Binder)
+- `components/card/RarityFilterBar.tsx`: wiederverwendbare Rarity-Chips inkl. buildRarityBreakdown()
 - CatalogCard hat `variants?: CardVariant[]` — beim Catalog-Sync befüllt, Fallback auf lokale Erkennung
 - ButtonGroup-Komponente in `components/ui/button-group.tsx` — app-weit nutzbar
 - Navigations-Kontext: `?from=dashboard` / `?from=sets` → Back-Button zeigt korrektes Ziel
