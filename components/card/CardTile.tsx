@@ -43,7 +43,7 @@ export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWis
             width={245}
             height={342}
             className="w-full aspect-[2.5/3.5] object-cover"
-            style={!isOwned ? { filter: 'grayscale(100%) brightness(35%)' } : undefined}
+            style={!isOwned ? { filter: 'grayscale(50%) brightness(60%)' } : undefined}
             loading="lazy"
             sizes="(max-width: 400px) 30vw, 120px"
           />
