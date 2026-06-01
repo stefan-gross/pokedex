@@ -111,8 +111,10 @@ export async function getCatalogFilterCounts(activeFilter: BrowseFilter = {}): P
     try {
       const snap = await getCountFromServer(query(collection(db, COL), ...constraints));
       return snap.data().count;
-    } catch {
-      return 0; // Composite-Index fehlt → in Firebase Console anlegen
+    } catch (err) {
+      // Firestore gibt hier einen Link zum Anlegen des fehlenden Composite-Index aus
+      console.error('[getCatalogFilterCounts] Firestore-Fehler (ggf. Composite-Index fehlt):', err);
+      return 0;
     }
   };
 

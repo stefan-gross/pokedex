@@ -1,4 +1,37 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "tcg_catalog",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "supertype", "order": "ASCENDING" },
+        { "fieldPath": "types",     "arrayConfig": "CONTAINS" }
+      ]
+    },
+    {
+      "collectionGroup": "tcg_catalog",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "types",    "arrayConfig": "CONTAINS" },
+        { "fieldPath": "supertype", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tcg_catalog",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "supertype", "order": "ASCENDING" },
+        { "fieldPath": "subtypes",  "arrayConfig": "CONTAINS" }
+      ]
+    },
+    {
+      "collectionGroup": "tcg_catalog",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "types",    "arrayConfig": "CONTAINS" },
+        { "fieldPath": "subtypes", "arrayConfig": "CONTAINS" }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }
