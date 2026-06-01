@@ -1,6 +1,6 @@
 import {
   collection, doc, getDocs, setDoc, getDoc,
-  query, where, limit, orderBy, startAfter, writeBatch,
+  query, where, limit, orderBy, startAfter, writeBatch, getCountFromServer,
   type QueryDocumentSnapshot, type QueryConstraint,
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
@@ -87,6 +87,34 @@ export async function getCardsBySetId(setId: string): Promise<CatalogCard[]> {
 export async function getCatalogCount(): Promise<number> {
   const meta = await getSyncMeta();
   return meta?.syncedTotal ?? 0;
+}
+
+// Counts pro Typ und Supertype — einmalig laden, kein Dokument-Inhalt übertragen
+export async function getCatalogFilterCounts(): Promise<{
+  types: Record<string, number>;
+  supertypes: Record<string, number>;
+}> {
+  const TYPES = [
+    'Fire', 'Water', 'Grass', 'Lightning', 'Psychic',
+    'Fighting', 'Darkness', 'Metal', 'Dragon', 'Fairy', 'Colorless',
+  ];
+  const SUPERTYPES = ['Pokémon', 'Trainer', 'Energy'];
+
+  const [typeCounts, supertypeCounts] = await Promise.all([
+    Promise.all(TYPES.map(async t => {
+      const snap = await getCountFromServer(query(collection(db, COL), where('types', 'array-contains', t)));
+      return [t, snap.data().count] as [string, number];
+    })),
+    Promise.all(SUPERTYPES.map(async s => {
+      const snap = await getCountFromServer(query(collection(db, COL), where('supertype', '==', s)));
+      return [s, snap.data().count] as [string, number];
+    })),
+  ]);
+
+  return {
+    types:      Object.fromEntries(typeCounts),
+    supertypes: Object.fromEntries(supertypeCounts),
+  };
 }
 
 /* ── Browse (paginiert, server-seitig gefiltert) ────────────────
