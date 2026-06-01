@@ -1,7 +1,7 @@
 import {
   collection, doc, getDocs, setDoc, getDoc,
   query, where, limit, orderBy, startAfter, writeBatch,
-  type QueryDocumentSnapshot,
+  type QueryDocumentSnapshot, type QueryConstraint,
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import type { CardVariant } from '@/types';
@@ -89,12 +89,20 @@ export async function getCatalogCount(): Promise<number> {
   return meta?.syncedTotal ?? 0;
 }
 
-/* ── Browse (paginiert, ohne Suche) ─────────────────────────────
- * Kein Server-Filter für types/rarity → Firestore-Composite-Index unnötig.
- * Filterung geschieht client-seitig im useCardBrowser-Hook.
- * Sortierung läuft server-seitig über orderBy.
+/* ── Browse (paginiert, server-seitig gefiltert) ────────────────
+ * type  → array-contains (kein Composite-Index nötig)
+ * supertype → equality   (kein Composite-Index nötig)
+ * Beide zusammen → nur type server-seitig, supertype client-seitig im Hook
+ * Sortierung läuft client-seitig im Hook (vermeidet Composite-Indexes)
  */
 export type BrowseSortKey = 'name' | 'hp' | 'pokedex';
+
+export interface BrowseFilter {
+  /** Pokémon-Typ (englisch), z.B. 'Darkness', 'Fire' — Firestore array-contains */
+  type?: string;
+  /** Supertype: 'Pokémon' | 'Trainer' | 'Energy' — Firestore equality */
+  supertype?: string;
+}
 
 export interface BrowsePage {
   cards: CatalogCard[];
@@ -103,18 +111,21 @@ export interface BrowsePage {
 }
 
 export async function browseCatalog(
-  sort: BrowseSortKey = 'name',
+  filter: BrowseFilter = {},
   cursor: QueryDocumentSnapshot | null = null,
-  pageSize = 100,
+  pageSize = 50,
 ): Promise<BrowsePage> {
-  const sortField  = sort === 'hp' ? 'hp' : sort === 'pokedex' ? 'nationalDexNumber' : 'nameLower';
-  const sortDir    = sort === 'hp' ? ('desc' as const) : ('asc' as const);
+  const constraints: QueryConstraint[] = [];
 
-  const constraints = [
-    orderBy(sortField, sortDir),
-    ...(cursor ? [startAfter(cursor)] : []),
-    limit(pageSize),
-  ];
+  // type hat Vorrang — array-contains + equality braucht Composite-Index
+  if (filter.type) {
+    constraints.push(where('types', 'array-contains', filter.type));
+  } else if (filter.supertype) {
+    constraints.push(where('supertype', '==', filter.supertype));
+  }
+
+  if (cursor) constraints.push(startAfter(cursor));
+  constraints.push(limit(pageSize));
 
   const snap = await getDocs(query(collection(db, COL), ...constraints));
   return {

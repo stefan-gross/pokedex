@@ -1,113 +1,130 @@
 'use client';
 
 /**
- * useCardBrowser — paginierter Browse-Hook für den Catalog.
+ * useCardBrowser — server-seitig gefilterter, paginierter Browse-Hook.
  *
- * Wiederverwendbar für: Suchseite (Browse-Modus), Mappen, zukünftige Listen.
- *
- * Architektur-Prinzip: keine Logik in Pages duplizieren.
- * Filter (type, supertype, rarity, owned) laufen client-seitig,
- * damit keine Firestore Composite-Indexes gebraucht werden.
+ * Architektur:
+ * - type / supertype → Firestore where-Clause (server-seitig, schnell)
+ * - rarity / owned   → client-seitig auf den 50 zurückgegebenen Karten
+ * - Sortierung       → client-seitig (vermeidet Composite-Indexes)
+ * - Pagination       → Cursor-basiert (startAfter), 50 Karten pro Seite
+ * - Kein Laden bis mindestens ein Filter aktiv ist
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { browseCatalog, type BrowseSortKey, type CatalogCard } from '@/lib/firestore/catalog';
+import { browseCatalog, type BrowseSortKey, type BrowseFilter, type CatalogCard } from '@/lib/firestore/catalog';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { getRarityGroup } from '@/lib/card-constants';
 import type { QueryDocumentSnapshot } from 'firebase/firestore';
 
 export type CardBrowserFilter = {
-  supertype?: string;    // 'Pokémon' | 'Trainer' | 'Energy' | undefined = alle
-  type?: string;         // 'Fire' | 'Water' | … | undefined = alle
-  rarity?: string;       // Rarity-Label aus RARITY_GROUPS | undefined = alle
+  supertype?: string;              // 'Pokémon' | 'Trainer' | 'Energy'
+  type?: string;                   // 'Fire' | 'Darkness' | … (englisch)
+  rarity?: string;                 // Rarity-Label aus RARITY_GROUPS
   ownedFilter?: 'all' | 'owned' | 'missing';
   ownedIds?: Set<string>;
 };
 
-const PAGE_TARGET   = 50;   // Wie viele Karten wir anzeigen wollen pro "Seite"
-const FETCH_SIZE    = 100;  // Wie viele wir pro Firestore-Request laden
+const PAGE_SIZE = 50;
 
-function matchesFilter(card: CatalogCard, f: CardBrowserFilter): boolean {
-  if (f.supertype && card.supertype?.toLowerCase() !== f.supertype.toLowerCase()) return false;
-  if (f.type      && !card.types?.includes(f.type))                               return false;
-  if (f.rarity) {
-    const g = card.rarity ? getRarityGroup(card.rarity) : null;
-    if ((g?.label ?? 'Sonstige') !== f.rarity) return false;
-  }
-  if (f.ownedFilter === 'owned'   && !f.ownedIds?.has(card.id)) return false;
-  if (f.ownedFilter === 'missing' &&  f.ownedIds?.has(card.id)) return false;
-  return true;
+/** Sortiert CatalogCards client-seitig (innerhalb einer Page) */
+function sortCatalogCards(cards: CatalogCard[], sort: BrowseSortKey): CatalogCard[] {
+  return [...cards].sort((a, b) => {
+    if (sort === 'hp')     return (b.hp ?? 0) - (a.hp ?? 0);
+    if (sort === 'pokedex') return (a.nationalDexNumber ?? 9999) - (b.nationalDexNumber ?? 9999);
+    return (a.nameLower ?? a.name.toLowerCase()).localeCompare(b.nameLower ?? b.name.toLowerCase());
+  });
 }
 
-interface State {
-  cards: CardInfo[];
-  loading: boolean;
-  loadingMore: boolean;
-  hasMore: boolean;
+/** Client-seitige Filter: rarity + owned (supertype wenn type auch gesetzt) */
+function applyClientFilters(cards: CatalogCard[], filter: CardBrowserFilter): CatalogCard[] {
+  let r = cards;
+  // supertype client-seitig wenn type server-seitig gefiltert wird (kein Composite-Index)
+  if (filter.type && filter.supertype) {
+    r = r.filter(c => c.supertype?.toLowerCase() === filter.supertype!.toLowerCase());
+  }
+  if (filter.rarity) {
+    r = r.filter(c => (getRarityGroup(c.rarity)?.label ?? 'Sonstige') === filter.rarity);
+  }
+  if (filter.ownedFilter === 'owned')   r = r.filter(c => filter.ownedIds?.has(c.id));
+  if (filter.ownedFilter === 'missing') r = r.filter(c => !filter.ownedIds?.has(c.id));
+  return r;
 }
 
 export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter) {
-  const [state, setState] = useState<State>({
-    cards: [], loading: false, loadingMore: false, hasMore: true,
-  });
+  const [cards,       setCards]       = useState<CardInfo[]>([]);
+  const [loading,     setLoading]     = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore,     setHasMore]     = useState(false);
 
-  // Cursor und Buffer bleiben zwischen fetchMore-Aufrufen erhalten
-  const cursorRef  = useRef<QueryDocumentSnapshot | null>(null);
-  const bufferRef  = useRef<CatalogCard[]>([]);   // bereits gefetcht, noch nicht gefiltert angezeigt
-  const exhausted  = useRef(false);               // keine weiteren Firestore-Docs mehr
+  const cursorRef = useRef<QueryDocumentSnapshot | null>(null);
 
-  // Holt so viele Batches bis wir `needed` passende Karten haben
-  const loadUntilFull = useCallback(async (
-    already: CardInfo[],
-    needed: number,
-    isInitial: boolean,
-  ) => {
-    const collected: CardInfo[] = [...already];
+  /** Mindestens ein Filter muss aktiv sein */
+  const hasAnyFilter = !!(
+    filter.type ||
+    filter.supertype ||
+    (filter.ownedFilter && filter.ownedFilter !== 'all') ||
+    filter.rarity
+  );
 
-    while (collected.length < needed && !exhausted.current) {
-      // Zuerst aus dem Buffer bedienen
-      if (bufferRef.current.length > 0) {
-        const matching = bufferRef.current.filter(c => matchesFilter(c, filter));
-        bufferRef.current = bufferRef.current.filter(c => !matchesFilter(c, filter));
-        collected.push(...matching.map(catalogCardToInfo));
-        continue;
-      }
-      // Buffer leer → neuen Batch von Firestore holen
-      const page = await browseCatalog(sort, cursorRef.current, FETCH_SIZE);
-      cursorRef.current = page.cursor;
-      if (!page.hasMore) exhausted.current = true;
-
-      const matching    = page.cards.filter(c => matchesFilter(c, filter));
-      const notMatching = page.cards.filter(c => !matchesFilter(c, filter));
-      bufferRef.current = notMatching; // rest in Buffer für nächstes loadMore
-      collected.push(...matching.map(catalogCardToInfo));
+  // Initial-Fetch: reset bei Filter- oder Sort-Änderung
+  useEffect(() => {
+    if (!hasAnyFilter) {
+      setCards([]);
+      setHasMore(false);
+      setLoading(false);
+      return;
     }
 
-    setState({
-      cards:       collected.slice(0, needed),
-      loading:     false,
-      loadingMore: false,
-      hasMore:     collected.length >= needed || !exhausted.current,
-    });
-  }, [sort, filter]);
+    let cancelled = false;
+    cursorRef.current = null;
+    setCards([]);
+    setLoading(true);
 
-  // Reset + neu laden wenn sort oder filter sich ändern
-  useEffect(() => {
-    cursorRef.current  = null;
-    bufferRef.current  = [];
-    exhausted.current  = false;
-    setState({ cards: [], loading: true, loadingMore: false, hasMore: true });
-    loadUntilFull([], PAGE_TARGET, true);
+    const run = async () => {
+      try {
+        const browseFilter: BrowseFilter = {
+          type:      filter.type,
+          supertype: filter.type ? undefined : filter.supertype, // type hat Vorrang
+        };
+        const page = await browseCatalog(browseFilter, null, PAGE_SIZE);
+        if (cancelled) return;
+
+        const sorted = sortCatalogCards(applyClientFilters(page.cards, filter), sort);
+        cursorRef.current = page.cursor;
+        setCards(sorted.map(catalogCardToInfo));
+        setHasMore(page.hasMore);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    run();
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sort, JSON.stringify(filter)]);
+  }, [filter.type, filter.supertype, filter.rarity, filter.ownedFilter, sort]);
 
-  const loadMore = useCallback(() => {
-    if (state.loadingMore || !state.hasMore) return;
-    setState(s => ({ ...s, loadingMore: true }));
-    loadUntilFull(state.cards, state.cards.length + PAGE_TARGET, false);
-  }, [state, loadUntilFull]);
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore || !cursorRef.current) return;
+    setLoadingMore(true);
 
-  return { ...state, loadMore };
+    try {
+      const browseFilter: BrowseFilter = {
+        type:      filter.type,
+        supertype: filter.type ? undefined : filter.supertype,
+      };
+      const page = await browseCatalog(browseFilter, cursorRef.current, PAGE_SIZE);
+
+      const sorted = sortCatalogCards(applyClientFilters(page.cards, filter), sort);
+      cursorRef.current = page.cursor;
+      setCards(prev => [...prev, ...sorted.map(catalogCardToInfo)]);
+      setHasMore(page.hasMore);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, filter, sort]);
+
+  return { cards, loading, loadMore, loadingMore, hasMore, hasAnyFilter };
 }
 
 export { ENERGY_META } from '@/components/ui/EnergyIcon';

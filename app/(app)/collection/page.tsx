@@ -58,7 +58,7 @@ function BrowseMode({ ownedMap, ownedIds }: {
     ownedIds,
   }), [activeSupertype, activeType, activeRarity, ownedFilter, ownedIds]);
 
-  const { cards, loading, loadingMore, hasMore, loadMore } = useCardBrowser(browseSort, browserFilter);
+  const { cards, loading, loadingMore, hasMore, loadMore, hasAnyFilter } = useCardBrowser(browseSort, browserFilter);
 
   return (
     <div className="space-y-3">
@@ -120,8 +120,19 @@ function BrowseMode({ ownedMap, ownedIds }: {
         </div>
       )}
 
-      {/* Zeile 4: Rarity-Chips */}
-      {cards.length > 0 && (
+      {/* Leerer State: kein Filter gewählt */}
+      {!hasAnyFilter && (
+        <div className="flex flex-col items-center justify-center pt-16 gap-3 text-center">
+          <div className="text-4xl">🔍</div>
+          <p className="text-sm font-medium text-foreground">Filter wählen</p>
+          <p className="text-xs text-muted-foreground max-w-[220px]">
+            Wähle einen Typ, eine Kategorie oder „Vorhanden / Fehlen" um Karten zu laden.
+          </p>
+        </div>
+      )}
+
+      {/* Zeile 4: Rarity-Chips (nur wenn Ergebnisse da) */}
+      {hasAnyFilter && cards.length > 0 && (
         <RarityFilterBar
           cards={cards}
           ownedIds={ownedIds}
@@ -131,27 +142,34 @@ function BrowseMode({ ownedMap, ownedIds }: {
       )}
 
       {/* Grid */}
-      {loading ? (
-        <div className="flex justify-center pt-12">
-          <div className="w-8 h-8 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
-        </div>
-      ) : (
-        <>
-          <CardGrid cards={cards} ownedMap={ownedMap} />
+      {hasAnyFilter && (
+        loading ? (
+          <div className="flex justify-center pt-12">
+            <div className="w-8 h-8 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : (
+          <>
+            {cards.length === 0 && (
+              <p className="text-center text-muted-foreground text-sm pt-12">
+                Keine Karten für diesen Filter.
+              </p>
+            )}
+            <CardGrid cards={cards} ownedMap={ownedMap} />
 
-          {hasMore && (
-            <div className="flex justify-center pt-4 pb-8">
-              <button
-                onClick={loadMore}
-                disabled={loadingMore}
-                className="px-5 py-2 rounded-xl text-sm font-medium bg-secondary border border-border transition-opacity"
-                style={{ opacity: loadingMore ? 0.5 : 1 }}
-              >
-                {loadingMore ? 'Lädt…' : 'Weitere Karten laden'}
-              </button>
-            </div>
-          )}
-        </>
+            {hasMore && (
+              <div className="flex justify-center pt-4 pb-8">
+                <button
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="px-5 py-2 rounded-xl text-sm font-medium bg-secondary border border-border transition-opacity"
+                  style={{ opacity: loadingMore ? 0.5 : 1 }}
+                >
+                  {loadingMore ? 'Lädt…' : 'Weitere 50 Karten laden'}
+                </button>
+              </div>
+            )}
+          </>
+        )
       )}
     </div>
   );
@@ -357,15 +375,7 @@ function CollectionContent() {
 
         {/* Browse-Modus */}
         {isBrowseMode && (
-          catalogCount > 0 ? (
-            <BrowseMode ownedMap={ownedMap} ownedIds={ownedIds} />
-          ) : (
-            <div className="text-center pt-16 space-y-2">
-              <Search size={36} className="mx-auto text-muted-foreground/30" />
-              <p className="text-muted-foreground text-sm">Tippe einen Pokémon-Namen</p>
-              <p className="text-muted-foreground/50 text-xs">Catalog wird befüllt…</p>
-            </div>
-          )
+          <BrowseMode ownedMap={ownedMap} ownedIds={ownedIds} />
         )}
 
         {/* Such-Modus */}
