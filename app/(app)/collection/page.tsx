@@ -7,8 +7,7 @@ import { CardGrid } from '@/components/card/CardGrid';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { getCards } from '@/lib/firestore/cards';
-import { searchCatalog, getCatalogCardsByIds, getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts } from '@/lib/firestore/catalog';
-import { searchTcgdexDe } from '@/lib/tcgdex';
+import { searchCatalog, getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts } from '@/lib/firestore/catalog';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import { catalogCardToInfo, tcgApiCardToInfo, type CardInfo } from '@/lib/card-info';
 import { getRarityGroup } from '@/lib/card-constants';
@@ -210,25 +209,10 @@ function CollectionContent() {
     setSearchLoading(true);
     try {
       if (catalogCount > 0) {
-        // Englisch (Firestore) + Deutsch (TCGdex) immer parallel — dann zusammenführen
-        const [enHits, tcgdexIds] = await Promise.all([
-          searchCatalog(q, filterSet, 80),
-          searchTcgdexDe(q),
-        ]);
-        const deHits = tcgdexIds.length > 0
-          ? await getCatalogCardsByIds(tcgdexIds.slice(0, 80))
-          : [];
-
-        // Zusammenführen + Duplikate entfernen (gleiche id)
-        const seen = new Set<string>();
-        const merged = [...enHits, ...deHits].filter(c => {
-          if (seen.has(c.id)) return false;
-          seen.add(c.id);
-          return true;
-        });
-
-        if (merged.length > 0) {
-          const cards = merged.map(catalogCardToInfo);
+        // searchCatalog: erst Deutsch (nameDeLower), Fallback Englisch (nameLower)
+        const hits = await searchCatalog(q, filterSet, 80);
+        if (hits.length > 0) {
+          const cards = hits.map(catalogCardToInfo);
           const setMap = new Map<string, string>();
           cards.forEach(c => setMap.set(c.setId, c.setName));
           setSets(Array.from(setMap.entries()).map(([id, name]) => ({ id, name })));

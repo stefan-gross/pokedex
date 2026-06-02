@@ -55,23 +55,13 @@ export async function searchCatalog(q: string, setId = '', maxResults = 80): Pro
       ? [where('setId', '==', setId), where(field, '>=', lower), where(field, '<=', end), limit(maxResults)]
       : [where(field, '>=', lower), where(field, '<=', end), limit(maxResults)];
 
-  const [enSnap, deSnap] = await Promise.all([
-    getDocs(query(collection(db, COL), ...makeConstraints('nameLower'))),
-    getDocs(query(collection(db, COL), ...makeConstraints('nameDeLower'))),
-  ]);
-
-  // Zusammenführen + Duplikate entfernen
-  const seen = new Set<string>();
-  const results: CatalogCard[] = [];
-  for (const snap of [enSnap, deSnap]) {
-    for (const doc of snap.docs) {
-      if (!seen.has(doc.id)) {
-        seen.add(doc.id);
-        results.push(doc.data() as CatalogCard);
-      }
-    }
+  // Erst Deutsch — nur wenn kein Treffer, Englisch als Fallback
+  const deSnap = await getDocs(query(collection(db, COL), ...makeConstraints('nameDeLower')));
+  if (!deSnap.empty) {
+    return deSnap.docs.map(d => d.data() as CatalogCard);
   }
-  return results;
+  const enSnap = await getDocs(query(collection(db, COL), ...makeConstraints('nameLower')));
+  return enSnap.docs.map(d => d.data() as CatalogCard);
 }
 
 // Lookup mehrerer Karten per ID (für Deutsch-Suche via TCGdex)
