@@ -62,13 +62,13 @@ export function RarityFilterBar({ cards, ownedIds, activeRarities, onToggle, rar
 
   if (breakdown.length === 0) return null;
 
-  const hasCards = cards.length > 0;
-
   return (
     <div className="flex flex-wrap gap-x-2 gap-y-1.5">
       {breakdown.map(({ group, count, ownedCount }) => {
+        // Wenn Firestore-Counts vorhanden: diese als Gesamtzahl nutzen (nicht die 50 geladenen Karten)
+        const totalCount   = rarityCounts?.[group.label] ?? count;
         const active       = activeRarities.has(group.label);
-        const disabled     = count === 0;
+        const disabled     = totalCount === 0;
         const isCssVar     = group.color.startsWith('var(');
         const activeBg     = isCssVar ? 'var(--muted)' : `${group.color}22`;
         const activeBorder = isCssVar ? 'var(--foreground)' : group.color;
@@ -102,7 +102,7 @@ export function RarityFilterBar({ cards, ownedIds, activeRarities, onToggle, rar
               </span>
             )}
             <span className="text-xs" style={{ color: active ? activeBorder : 'var(--muted-foreground)' }}>
-              {hasCards ? `${ownedCount}/${count}` : count.toLocaleString('de')}
+              {totalCount.toLocaleString('de')}
             </span>
           </button>
         );
