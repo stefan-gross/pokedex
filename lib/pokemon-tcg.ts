@@ -4,6 +4,7 @@ export interface TcgApiCard {
   number: string;
   rarity?: string;
   supertype?: string;
+  subtypes?: string[];
   types?: string[];
   set: { id: string; name: string; series: string; total: number; printedTotal: number };
   images: { small: string; large: string };

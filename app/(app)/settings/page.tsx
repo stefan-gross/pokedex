@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, Sun, Moon, Smartphone, RefreshCw,
-  Database, CheckCircle, Clock, AlertCircle, RotateCcw,
+  Database, CheckCircle, Clock, AlertCircle, RotateCcw, GitBranch,
 } from 'lucide-react';
 import Link from 'next/link';
 import type { SyncMeta } from '@/lib/firestore/catalog';
@@ -28,6 +28,8 @@ export default function SettingsPage() {
   const [syncLoading, setSyncLoading] = useState(true);
   const [syncing, setSyncing]         = useState(false);
   const [syncResult, setSyncResult]   = useState<string | null>(null);
+  const [enriching, setEnriching]     = useState(false);
+  const [enrichResult, setEnrichResult] = useState<string | null>(null);
 
   useEffect(() => { setMounted(true); loadSyncStatus(); }, []);
 
@@ -40,6 +42,30 @@ export default function SettingsPage() {
       }
     } catch { /* ignore */ } finally {
       setSyncLoading(false);
+    }
+  }
+
+  async function enrichEvolution() {
+    setEnriching(true);
+    setEnrichResult(null);
+    try {
+      let total = 0;
+      while (true) {
+        const res = await fetch('/api/admin/enrich-evolution', { method: 'POST' });
+        const data = await res.json();
+        total += data.enriched ?? 0;
+        setEnrichResult(`📥 ${total} Karten angereichert…`);
+        if (data.status !== 'in-progress') {
+          setEnrichResult(data.status === 'complete'
+            ? `✅ ${total} Karten mit Evolutionsdaten angereichert`
+            : data.message);
+          break;
+        }
+      }
+    } catch (e) {
+      setEnrichResult(`Fehler: ${e}`);
+    } finally {
+      setEnriching(false);
     }
   }
 
@@ -263,6 +289,24 @@ export default function SettingsPage() {
                     </div>
                   </button>
                 )}
+
+                {/* Evolutionsdaten anreichern */}
+                <button
+                  onClick={enrichEvolution}
+                  disabled={enriching || syncing}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left border-t border-border transition-colors active:bg-secondary disabled:opacity-40"
+                >
+                  {enriching
+                    ? <RefreshCw size={18} className="text-blue-500 shrink-0 animate-spin" />
+                    : <GitBranch size={18} className="text-blue-500 shrink-0" />
+                  }
+                  <div>
+                    <p className="text-sm font-medium text-blue-500">Evolutionsdaten anreichern</p>
+                    <p className="text-xs text-muted-foreground">
+                      {enrichResult ?? 'Evolutionslinien in alle Karten schreiben · einmalig nötig'}
+                    </p>
+                  </div>
+                </button>
 
                 {/* Catalog komplett neu aufbauen (z.B. nach Schema-Änderung) */}
                 <button

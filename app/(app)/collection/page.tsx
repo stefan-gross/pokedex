@@ -7,7 +7,9 @@ import { CardGrid } from '@/components/card/CardGrid';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { getCards } from '@/lib/firestore/cards';
-import { searchCatalog, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts } from '@/lib/firestore/catalog';
+import { searchCatalog, getCatalogCardsByIds, getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts } from '@/lib/firestore/catalog';
+import { searchTcgdexDe } from '@/lib/tcgdex';
+import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import { catalogCardToInfo, tcgApiCardToInfo, type CardInfo } from '@/lib/card-info';
 import { getRarityGroup } from '@/lib/card-constants';
 import { useCardBrowser, TCG_TYPES, type TcgType, type CardBrowserFilter } from '@/lib/hooks/useCardBrowser';
@@ -64,11 +66,12 @@ function CollectionContent() {
   const initialQ     = searchParams.get('q') ?? '';
 
   // ── Geteilter Filter-State ─────────────────────────────────────
-  const [activeTypes,     setActiveTypes]     = useState<Set<TcgType>>(new Set());
-  const [activeSupertype, setActiveSupertype] = useState<Supertype | 'all'>('all');
-  const [ownedFilter,     setOwnedFilter]     = useState<OwnedFilter>('all');
-  const [activeRarity,    setActiveRarity]    = useState<string | null>(null);
-  const [activeEvolution, setActiveEvolution] = useState<string | null>(null);
+  const [activeTypes,      setActiveTypes]      = useState<Set<TcgType>>(new Set());
+  const [activeSupertype,  setActiveSupertype]  = useState<Supertype | 'all'>('all');
+  const [ownedFilter,      setOwnedFilter]      = useState<OwnedFilter>('all');
+  const [activeRarity,     setActiveRarity]     = useState<string | null>(null);
+  const [activeEvolutions, setActiveEvolutions] = useState<Set<string>>(new Set());
+  const [evoLineActive,    setEvoLineActive]    = useState(false);
 
   // ── Browse-spezifisch ─────────────────────────────────────────
   const [browseSort, setBrowseSort] = useState<BrowseSortKey>('name');
@@ -88,7 +91,8 @@ function CollectionContent() {
   const [filterCounts,     setFilterCounts]     = useState<FilterCounts | null>(null);
   const [browseTotal,      setBrowseTotal]      = useState<number | null>(null);
   const [filtersCollapsed, setFiltersCollapsed] = useState(false);
-  const lastScrollY    = useRef(0);
+  const lastScrollY      = useRef(0);
+  const scrollLockRef    = useRef(false);
   const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sentinelRef    = useRef<HTMLDivElement>(null);
@@ -117,28 +121,44 @@ function CollectionContent() {
   }, [activeTypesKey, activeSupertype]);
 
   // ── Exakte Gesamtzahl für aktuellen Browse-Filter ─────────────
-  const hasActiveFilterForCount = !!(activeTypes.size || activeSupertype !== 'all' || activeEvolution || ownedFilter !== 'all' || activeRarity);
+  const activeEvolutionsKey = useMemo(() => [...activeEvolutions].sort().join(','), [activeEvolutions]);
+  const hasActiveFilterForCount = !!(activeTypes.size || activeSupertype !== 'all' || activeEvolutions.size || ownedFilter !== 'all' || activeRarity);
   useEffect(() => {
     if (!hasActiveFilterForCount) { setBrowseTotal(null); return; }
-    // Gleiche Priorität wie useCardBrowser: types[0] > evolutionStage > supertype
     const browseFilter = activeTypes.size > 0
       ? { type: [...activeTypes][0] }
-      : activeEvolution
-        ? { evolutionStage: activeEvolution }
+      : activeEvolutions.size === 1
+        ? { evolutionStage: [...activeEvolutions][0] }
         : activeSupertype !== 'all'
           ? { supertype: activeSupertype }
           : {};
     getBrowseCount(browseFilter).then(n => setBrowseTotal(n >= 0 ? n : null)).catch(() => setBrowseTotal(null));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTypesKey, activeSupertype, activeEvolution, hasActiveFilterForCount]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTypesKey, activeSupertype, activeEvolutionsKey, hasActiveFilterForCount]);
 
   // ── Scroll-Collapse ───────────────────────────────────────────
   useEffect(() => {
+    lastScrollY.current = window.scrollY;
     const onScroll = () => {
-      const y = window.scrollY;
-      if (y > lastScrollY.current + 8 && y > 60) setFiltersCollapsed(true);
-      else if (y < lastScrollY.current - 8)       setFiltersCollapsed(false);
-      lastScrollY.current = y;
+      if (scrollLockRef.current) return;
+      const y = Math.max(0, window.scrollY);
+      if (y > lastScrollY.current + 40 && y > 80) {
+        setFiltersCollapsed(true);
+        lastScrollY.current = y;
+        scrollLockRef.current = true;
+        setTimeout(() => {
+          lastScrollY.current = Math.max(0, window.scrollY);
+          scrollLockRef.current = false;
+        }, 200);
+      } else if (y < lastScrollY.current - 25) {
+        setFiltersCollapsed(false);
+        lastScrollY.current = y;
+        scrollLockRef.current = true;
+        setTimeout(() => {
+          lastScrollY.current = Math.max(0, window.scrollY);
+          scrollLockRef.current = false;
+        }, 200);
+      }
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
@@ -160,13 +180,13 @@ function CollectionContent() {
   const ownedIds = useMemo(() => new Set(ownedMap.keys()), [ownedMap]);
 
   const browserFilter = useMemo<CardBrowserFilter>(() => ({
-    supertype:      activeSupertype !== 'all' ? activeSupertype : undefined,
-    types:          activeTypes.size > 0 ? [...activeTypes] : undefined,
-    evolutionStage: activeEvolution ?? undefined,
-    rarity:         activeRarity    ?? undefined,
+    supertype:       activeSupertype !== 'all' ? activeSupertype : undefined,
+    types:           activeTypes.size > 0 ? [...activeTypes] : undefined,
+    evolutionStages: activeEvolutions.size > 0 ? [...activeEvolutions] : undefined,
+    rarity:          activeRarity ?? undefined,
     ownedFilter,
     ownedIds,
-  }), [activeSupertype, activeTypesKey, activeEvolution, activeRarity, ownedFilter, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [activeSupertype, activeTypesKey, activeEvolutionsKey, activeRarity, ownedFilter, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const {
     cards: browseCards, loading: browseLoading,
@@ -200,6 +220,21 @@ function CollectionContent() {
           setSource('catalog');
           return;
         }
+
+        // Kein Treffer auf Englisch → deutsch via TCGdex versuchen
+        const tcgdexIds = await searchTcgdexDe(q);
+        if (tcgdexIds.length > 0) {
+          const deHits = await getCatalogCardsByIds(tcgdexIds.slice(0, 80));
+          if (deHits.length > 0) {
+            const cards = deHits.map(catalogCardToInfo);
+            const setMap = new Map<string, string>();
+            cards.forEach(c => setMap.set(c.setId, c.setName));
+            setSets(Array.from(setMap.entries()).map(([id, name]) => ({ id, name })));
+            setResults(cards);
+            setSource('catalog');
+            return;
+          }
+        }
       }
       const qStr = `name:${q}*${filterSet ? ` set.id:${filterSet}` : ''}`;
       const res  = await fetch(`/api/tcg?q=${encodeURIComponent(qStr)}&pageSize=80`);
@@ -229,13 +264,50 @@ function CollectionContent() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [inputValue, doSearch, router]);
 
+  // ── Evo-Linie: Ergebnisse um gesamte Evolutionsfamilie erweitern ──
+  useEffect(() => {
+    if (!evoLineActive || results.length === 0) return;
+
+    const firstCard  = results.find(c => c.nationalDexNumber);
+    const baseDexNum = firstCard?.nationalDexNumber;
+    if (!baseDexNum) return;
+
+    let cancelled = false;
+    (async () => {
+      let extra: CardInfo[] = [];
+
+      // Firestore-First: evolutionFamily vorhanden → ein Query reicht
+      if (firstCard?.evolutionFamily && firstCard.evolutionFamily.length > 1) {
+        const hits = await getCardsByEvolutionFamily(baseDexNum);
+        extra = hits.map(catalogCardToInfo);
+      } else {
+        // Fallback: PokéAPI → dann getCardsByDexNumber pro Familienmitglied
+        const familyNums = await getEvolutionFamilyDexNumbers(baseDexNum);
+        const otherNums  = familyNums.filter(n => n !== baseDexNum);
+        if (otherNums.length > 0) {
+          const batches = await Promise.all(otherNums.map(n => getCardsByDexNumber(n)));
+          extra = batches.flat().map(catalogCardToInfo);
+        }
+      }
+
+      if (cancelled || extra.length === 0) return;
+      const existingIds = new Set(results.map(c => c.id));
+      const newCards    = extra.filter(c => !existingIds.has(c.id));
+      if (newCards.length > 0) setResults(prev => [...prev, ...newCards]);
+    })();
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evoLineActive, results.length > 0 && results[0]?.id]);
+
   // Sucherg. durch geteilte Filter gefiltert
   const displayed = useMemo(() => {
     let r = [...results];
-    if (ownedFilter === 'owned')     r = r.filter(c => ownedIds.has(c.id));
-    if (ownedFilter === 'missing')   r = r.filter(c => !ownedIds.has(c.id));
-    if (activeSupertype !== 'all')   r = r.filter(c => c.supertype?.toLowerCase() === activeSupertype.toLowerCase());
-    if (activeTypes.size > 0)        r = r.filter(c => c.types?.some(t => activeTypes.has(t as TcgType)));
+    if (ownedFilter === 'owned')       r = r.filter(c => ownedIds.has(c.id));
+    if (ownedFilter === 'missing')     r = r.filter(c => !ownedIds.has(c.id));
+    if (activeSupertype !== 'all')     r = r.filter(c => c.supertype?.toLowerCase() === activeSupertype.toLowerCase());
+    if (activeTypes.size > 0)          r = r.filter(c => c.types?.some(t => activeTypes.has(t as TcgType)));
+    if (activeEvolutions.size > 0)     r = r.filter(c => c.subtypes?.some(s => activeEvolutions.has(s)));
     if (activeRarity) {
       r = r.filter(c => (getRarityGroup(c.rarity ?? '')?.label ?? 'Sonstige') === activeRarity);
     }
@@ -245,10 +317,10 @@ function CollectionContent() {
         : (parseInt(a.number) || 0) - (parseInt(b.number) || 0),
     );
     return r;
-  }, [results, ownedFilter, activeSupertype, activeTypesKey, activeRarity, ownedIds, searchSort]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [results, ownedFilter, activeSupertype, activeTypesKey, activeEvolutionsKey, activeRarity, ownedIds, searchSort]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isBrowseMode  = !inputValue;
-  const hasActiveFilter = !!(activeTypes.size || activeSupertype !== 'all' || ownedFilter !== 'all' || activeRarity || activeEvolution);
+  const isBrowseMode    = !inputValue;
+  const hasActiveFilter = !!(activeTypes.size || activeSupertype !== 'all' || ownedFilter !== 'all' || activeRarity || activeEvolutions.size);
 
   const clearSearch = () => {
     setInputValue('');
@@ -266,6 +338,14 @@ function CollectionContent() {
     });
   };
 
+  const toggleEvolution = (stage: string) => {
+    setActiveEvolutions(prev => {
+      const next = new Set(prev);
+      if (next.has(stage)) next.delete(stage); else next.add(stage);
+      return next;
+    });
+  };
+
   // Ergebniszahl — im Browse-Modus exakte Zahl aus Firestore, sonst geladene Anzahl
   const resultCount = isBrowseMode
     ? browseTotal != null ? fmt(browseTotal) : browseCards.length > 0 ? `${browseCards.length}${hasMore ? '+' : ''}` : null
@@ -274,8 +354,6 @@ function CollectionContent() {
 
   // Disabled-Logik für Type-Pills
   const typeCountInContext = useMemo(() => {
-    // Browse: aus filterCounts (Firestore-Counts im aktuellen Supertype-Kontext)
-    // Suche: aus search results
     const source = isBrowseMode ? filterCounts?.types : null;
     if (source) return source;
     if (!isBrowseMode) {
@@ -284,16 +362,27 @@ function CollectionContent() {
     return null;
   }, [isBrowseMode, filterCounts, results]);
 
+  // Disabled-Logik für Entwicklungsstufen-Pills
+  const evolutionCountInContext = useMemo(() => {
+    const cards = isBrowseMode ? browseCards : results;
+    if (cards.length === 0) return null;
+    return {
+      'Basic':   cards.filter(c => c.subtypes?.includes('Basic')).length,
+      'Stage 1': cards.filter(c => c.subtypes?.includes('Stage 1')).length,
+      'Stage 2': cards.filter(c => c.subtypes?.includes('Stage 2')).length,
+    };
+  }, [isBrowseMode, browseCards, results]);
+
   // Supertype-Optionen mit Counts
   const supertypeOptions = useMemo(() => [
-    { value: 'all',     label: filterCounts ? `Alle ${fmt(Object.values(filterCounts.supertypes).reduce((a, b) => a + b, 0))}` : 'Alle' },
-    { value: 'Pokémon', label: filterCounts?.supertypes['Pokémon'] ? `Pokémon ${fmt(filterCounts.supertypes['Pokémon'])}` : 'Pokémon' },
-    { value: 'Trainer', label: filterCounts?.supertypes['Trainer'] ? `Trainer ${fmt(filterCounts.supertypes['Trainer'])}` : 'Trainer' },
-    { value: 'Energy',  label: filterCounts?.supertypes['Energy']  ? `Energie ${fmt(filterCounts.supertypes['Energy'])}` : 'Energie' },
+    { value: 'all',     label: 'Alle',    count: filterCounts ? Object.values(filterCounts.supertypes).reduce((a, b) => a + b, 0) : undefined },
+    { value: 'Pokémon', label: 'Pokémon', count: filterCounts?.supertypes['Pokémon'] },
+    { value: 'Trainer', label: 'Trainer', count: filterCounts?.supertypes['Trainer'] ?? (filterCounts ? 0 : undefined) },
+    { value: 'Energy',  label: 'Energie', count: filterCounts?.supertypes['Energy']  ?? (filterCounts ? 0 : undefined) },
   ], [filterCounts]);
 
   const showTypePills = activeSupertype === 'all' || activeSupertype === 'Pokémon';
-  const showEvolution = showTypePills && isBrowseMode;
+  const showEvolution = showTypePills;
 
   // Karten für RarityFilterBar (browseModus = geladene Karten; Suche = Suchergebnisse)
   const rarityCards  = isBrowseMode ? browseCards : results;
@@ -339,12 +428,13 @@ function CollectionContent() {
                   icon={<EnergyIcon type={t} size={14} />}
                 />
               ))}
-              {activeEvolution && (
+              {[...activeEvolutions].map(s => (
                 <FilterChip
-                  label={EVOLUTION_OPTIONS.find(o => o.value === activeEvolution)?.label ?? activeEvolution}
-                  onRemove={() => setActiveEvolution(null)}
+                  key={s}
+                  label={EVOLUTION_OPTIONS.find(o => o.value === s)?.label ?? s}
+                  onRemove={() => toggleEvolution(s)}
                 />
-              )}
+              ))}
               {ownedFilter !== 'all' && (
                 <FilterChip
                   label={OWNED_OPTIONS.find(o => o.value === ownedFilter)?.label ?? ownedFilter}
@@ -359,35 +449,14 @@ function CollectionContent() {
         ) : (
           /* Vollständige Filter-Zeilen */
           <>
-            {/* Zeile 1: Vorhanden/Fehlen + Sort/Set */}
+            {/* Zeile 1: Vorhanden/Fehlen (+ Set-Filter in Suche) */}
             <div className="flex items-center gap-2">
               <ButtonGroup options={OWNED_OPTIONS} value={ownedFilter} onChange={v => setOwnedFilter(v as OwnedFilter)} />
-              {isBrowseMode && (
-                <div className="relative flex items-center ml-auto">
-                  <select
-                    value={browseSort}
-                    onChange={e => setBrowseSort(e.target.value as BrowseSortKey)}
-                    className="h-8 pl-2.5 pr-6 rounded-lg bg-secondary border border-border text-xs appearance-none cursor-pointer"
-                  >
-                    {BROWSE_SORT_OPTIONS.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={12} className="absolute right-1.5 pointer-events-none text-muted-foreground" />
-                </div>
-              )}
               {!isBrowseMode && sets.length > 1 && (
                 <select value={filterSet} onChange={e => setFilterSet(e.target.value)}
                   className="h-8 px-2 rounded-lg bg-secondary border border-border text-xs max-w-[120px] ml-auto">
                   <option value="">Alle Sets</option>
                   {sets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              )}
-              {!isBrowseMode && (
-                <select value={searchSort} onChange={e => setSearchSort(e.target.value as SearchSortKey)}
-                  className="h-8 px-2 rounded-lg bg-secondary border border-border text-xs">
-                  <option value="number">Nummer</option>
-                  <option value="name">Name</option>
                 </select>
               )}
             </div>
@@ -396,7 +465,7 @@ function CollectionContent() {
             <ButtonGroup
               options={supertypeOptions}
               value={activeSupertype}
-              onChange={v => { setActiveSupertype(v as Supertype | 'all'); setActiveTypes(new Set()); setActiveEvolution(null); }}
+              onChange={v => { setActiveSupertype(v as Supertype | 'all'); setActiveTypes(new Set()); setActiveEvolutions(new Set()); }}
             />
 
             {/* Zeile 3: Typ-Pills (Mehrfachauswahl, OR) */}
@@ -431,32 +500,97 @@ function CollectionContent() {
               </div>
             )}
 
-            {/* Zeile 4: Entwicklungsstufe (nur Browse + Pokémon/Alle) */}
+            {/* Zeile 4: Entwicklungsstufe als Pills (Mehrfachauswahl, leer = alle) */}
             {showEvolution && (
-              <ButtonGroup
-                options={EVOLUTION_OPTIONS.map(o => ({ value: o.value ?? 'all', label: o.label }))}
-                value={activeEvolution ?? 'all'}
-                onChange={v => setActiveEvolution(v === 'all' ? null : v)}
-              />
+              <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
+                {EVOLUTION_OPTIONS.filter(o => o.value !== null).map(o => {
+                  const active     = activeEvolutions.has(o.value!);
+                  const count      = evolutionCountInContext?.[o.value!];
+                  const isDisabled = count === 0;
+                  return (
+                    <button
+                      key={o.value}
+                      onClick={() => !isDisabled && toggleEvolution(o.value!)}
+                      disabled={isDisabled}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                      style={{
+                        borderColor: active ? 'var(--pokedex-red)' : 'transparent',
+                        background:  active ? 'color-mix(in srgb, var(--pokedex-red) 15%, transparent)' : 'var(--secondary)',
+                        color:       active ? 'var(--pokedex-red)' : 'var(--muted-foreground)',
+                        fontWeight:  active ? 600 : 400,
+                      }}
+                    >
+                      {o.label}
+                      {count != null && count > 0 && (
+                        <span className="text-[10px] opacity-50 font-normal">{count}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             )}
 
-            {/* Zeile 5: Rarity — immer sichtbar (auch ohne geladene Karten via rarityCounts) */}
+            {/* Zeile 5: Rarity — Browse: globale Firestore-Counts; Suche: aus Ergebnissen */}
             <RarityFilterBar
               cards={rarityCards}
               ownedIds={ownedIds}
               activeRarities={activeRarity ? new Set([activeRarity]) : new Set()}
               onToggle={label => setActiveRarity(prev => prev === label ? null : label)}
-              rarityCounts={filterCounts?.rarities}
+              rarityCounts={isBrowseMode ? filterCounts?.rarities : undefined}
             />
           </>
         )}
 
-        {/* Ergebnisanzahl */}
-        {showResultCount && resultCount != null && (
-          <p className="text-xs text-muted-foreground text-right">
-            {resultCount} Karten
-          </p>
-        )}
+        {/* ── Sortierung + Ergebniszahl (immer sichtbar) ──────── */}
+        <div className="flex items-center justify-between pt-0.5">
+          <div className="relative flex items-center">
+            {isBrowseMode ? (
+              <>
+                <select
+                  value={browseSort}
+                  onChange={e => setBrowseSort(e.target.value as BrowseSortKey)}
+                  className="h-7 pl-2 pr-6 rounded-lg bg-secondary border border-border text-xs appearance-none cursor-pointer"
+                >
+                  {BROWSE_SORT_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                <ChevronDown size={11} className="absolute right-1.5 pointer-events-none text-muted-foreground" />
+              </>
+            ) : (
+              <>
+                <select
+                  value={searchSort}
+                  onChange={e => setSearchSort(e.target.value as SearchSortKey)}
+                  className="h-7 pl-2 pr-6 rounded-lg bg-secondary border border-border text-xs appearance-none cursor-pointer"
+                >
+                  <option value="number">Nummer</option>
+                  <option value="name">Name</option>
+                </select>
+                <ChevronDown size={11} className="absolute right-1.5 pointer-events-none text-muted-foreground" />
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-2 ml-auto">
+            {!isBrowseMode && (
+              <button
+                onClick={() => setEvoLineActive(p => !p)}
+                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-all"
+                style={{
+                  borderColor: evoLineActive ? 'var(--pokedex-red)' : 'var(--border)',
+                  background:  evoLineActive ? 'color-mix(in srgb, var(--pokedex-red) 12%, transparent)' : 'var(--secondary)',
+                  color:       evoLineActive ? 'var(--pokedex-red)' : 'var(--muted-foreground)',
+                  fontWeight:  evoLineActive ? 600 : 400,
+                }}
+              >
+                ↕ Evo-Linie
+              </button>
+            )}
+            {showResultCount && resultCount != null && (
+              <span className="text-xs text-muted-foreground">{resultCount} Karten</span>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ── Content ─────────────────────────────────────────────── */}

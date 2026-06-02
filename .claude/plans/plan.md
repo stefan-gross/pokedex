@@ -299,7 +299,7 @@ Nach Implementierung testen:
 
 ---
 
-## Aktueller Implementierungsstand (Stand: 2026-06-01)
+## Aktueller Implementierungsstand (Stand: 2026-06-02)
 
 > **Hinweis für Wiederaufnahme:** Alle Seiten liegen unter `app/(app)/` (Route Group). Root-Layout ist minimal. Login unter `app/login/page.tsx` ohne App-Chrome.
 
@@ -314,31 +314,37 @@ Nach Implementierung testen:
 | Phase 4 (teilw.) | Mappen: Übersicht + Detailseite + Create/Edit Modal | `app/(app)/binders/*`, `components/binder/*` |
 | Phase 6 (teilw.) | Preissystem: TCGPlayer via pokemontcg.io, Provider-Interface | `lib/prices/`, `app/api/prices/route.ts`, `components/card/CardPrices.tsx` |
 | Auth | Firebase Email/Password, Session-Cookie `.smartfamilyzone.de`, Middleware | `middleware.ts`, `app/login/page.tsx`, `lib/auth.ts`, `components/AuthRefresh.tsx` |
-| Catalog-Sync | Firestore `tcg_catalog`, Admin SDK, wöch. Cron; `variants`, `hp`, `nationalDexNumber` beim Sync befüllt | `lib/sync-catalog.ts`, `lib/firebase/admin.ts` |
-| Settings | Theme, App-Reload, Abmelden, Catalog-Sync (inkl. Live-Fortschritt) | `app/(app)/settings/page.tsx`, `components/ThemeProvider.tsx` |
+| Catalog-Sync | Firestore `tcg_catalog`, Admin SDK, wöch. Cron; `variants`, `hp`, `nationalDexNumber`, `subtypes`, `evolutionFamily` (nach Enrichment) | `lib/sync-catalog.ts`, `lib/firebase/admin.ts` |
+| Settings | Theme, App-Reload, Abmelden, Catalog-Sync, Evolutionsdaten-Anreicherung | `app/(app)/settings/page.tsx`, `components/ThemeProvider.tsx` |
 | Set-Detailseite | Header (Logo+Name+Jahr+Code), Fortschritt, RarityFilterBar, ButtonGroup, Sort, CardGrid | `app/(app)/sets/[setId]/page.tsx` |
 | Sets-Übersicht | Alle Sets gruppiert nach Serie, Dashboard-Style Zeilen | `app/(app)/sets/page.tsx` |
 | Karten-Detailansicht | Bottom-Sheet: dt. Bild (TCGdex), dt. Name (PokéAPI), Set-Logo, Nummer, Rarity-Icon, Varianten, Binder | `components/card/CardDetailSheet.tsx` |
 | Rarity-System | Vollständiges RARITY_GROUPS (alle offiziellen Typen inkl. Amazing/Radiant/Shiny), getRarityGroup(), korrekte Symbole + Farben | `lib/card-constants.ts` |
-| Karten-Architektur | `CardInfo`-Typ (normalisiert), `CardGrid`, `RarityFilterBar`, `CardTile` (mit onCardClick) | `lib/card-info.ts`, `components/card/*` |
+| Karten-Architektur | `CardInfo`-Typ (normalisiert, inkl. `subtypes`, `nationalDexNumber`, `evolutionFamily`), `CardGrid`, `RarityFilterBar`, `CardTile` | `lib/card-info.ts`, `components/card/*` |
 | Energie-Icons | 11 TCG-Typen als inline SVG mit offiziellen Farben + Symbolen, dt. Namen | `components/ui/EnergyIcon.tsx` |
-| Browse-Modus | Ohne Suchbegriff: paginiert, Sort (A-Z/KP/Pokédex), Filter (Supertype/Typ/Rarity/Owned) | `lib/hooks/useCardBrowser.ts` |
-| Dashboard | Sets-Sektion mit Favoriten/Zuletzt/Vollständig-Filter | `app/(app)/page.tsx` |
+| Browse-Modus | Ohne Suchbegriff: paginiert, Sort (A-Z/KP/Pokédex), Filter (Supertype/Typ/Rarity/Owned/Phase) | `lib/hooks/useCardBrowser.ts` |
+| Dashboard | Echte Firestore-Daten: Kartenanzahl, Sets, Wunschliste, zuletzt hinzugefügt, Set-Fortschrittsbalken | `app/(app)/page.tsx` |
 | PWA | Pokeball-Favicon (PNG + SVG + Apple-Icon), Manifest-Icons | `app/icon.png`, `app/icon.svg` |
 | UI | Plus Jakarta Sans, Login-Split-Panel, ButtonGroup, EnergyIcon | `components/ui/` |
 | Mehrsprachigkeit | Deutsche Set-/Seriennamen live von TCGdex API, deutsche Logos | `lib/tcgdex.ts`, `lib/set-names-de.ts` |
+| Suche — Suchseite | Deutsch/EN/Prefix-Suche, TCGdex-Fallback für deutsche Namen, Phase-Filter mit Disabled-States, Evo-Linie-Toggle, Rarity aus Ergebnissen | `app/(app)/collection/page.tsx` |
+| Suche — Evolutionslinie | Firestore-Query via `evolutionFamily array-contains`, PokéAPI-Fallback wenn noch nicht angereichert | `lib/firestore/catalog.ts`, `lib/pokeapi.ts` |
+| Suche — Evolutionsdaten-Enrichment | Admin-Route + Settings-Button; schreibt `evolutionFamily[]` in alle Pokémon-Karten via PokéAPI (einmalig) | `app/api/admin/enrich-evolution/route.ts`, `lib/sync-catalog.ts` |
+| Karten-Darstellung | Owned: Vollfarbe + ×N Badge; Unowned: dunkles Overlay + Schloss-Icon mittig | `components/card/CardTile.tsx` |
+| Filter-Collapse | Scroll-Collapse mit 200ms Lockout nach State-Change (verhindert Reflow-Flicker), aktive Filter als Chips | `app/(app)/collection/page.tsx` |
+| next.config.ts | `images.scrydex.com` + `assets.tcgdex.net` als erlaubte Bild-Hosts eingetragen | `next.config.ts` |
 
 ### 🔲 Noch offen
 
+- **Evolutionsdaten-Enrichment ausführen** — Settings → „Evolutionsdaten anreichern" einmal klicken; danach kein PokéAPI-Call mehr zur Laufzeit
 - **Karten-Detailansicht** — Wunschlisten-Aktion, Preisanzeige im Sheet
 - **Phase 4 (Rest)** — Karten per Drag & Drop in Mappen verschieben, Mappe als PDF
 - **Phase 5** — Wunschlisten: CRUD, Karten zuordnen, PDF-Export (`app/(app)/wishlist/` existiert noch nicht)
-- **Phase 6 (Rest)** — Preishistorie in Firestore, Gesamtwert im Dashboard live aus Firestore
+- **Phase 6 (Rest)** — Preishistorie in Firestore, Gesamtwert im Dashboard
 - **Phase 7** — PDF-Export für Sammlung/Wunschliste (`@react-pdf/renderer`)
 - **Pokédex/Wiki** — PokéAPI Integration (noch nicht begonnen, geplant: `app/(app)/pokedex/`)
-- **Dashboard** — Stat-Tiles und Sets live aus Firestore (aktuell Mock-Daten)
-- **Set-Favoriten** — in Firestore speichern (aktuell nur Mock)
-- **Catalog-Sync** — KP/Pokédex-Sortierung erst nach erneutem Sync aktiv (neue Felder `hp`+`nationalDexNumber` noch nicht in allen Docs)
+- **Suche — Mehrsprachiger Catalog** — `nameDe`, `nameFr` in `tcg_catalog` via TCGdex-Sync (geplant, nicht gebaut); aktuell nur TCGdex-Fallback bei 0 EN-Treffern
+- **Set-Favoriten** — in Firestore speichern (Dashboard-Favoriten-Tab zeigt aktuell meiste Karten)
 - **Energie-Icons** — SVG-Symbole noch nicht 1:1 mit offiziellen Icons (gut erkennbar, aber verbesserungsfähig)
 
 ### Entwicklungs-Prinzipien

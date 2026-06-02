@@ -1,5 +1,5 @@
 import {
-  collection, doc, getDocs, setDoc, getDoc,
+  collection, doc, getDocs, setDoc, getDoc, documentId,
   query, where, limit, startAfter, writeBatch, getCountFromServer,
   type QueryDocumentSnapshot, type QueryConstraint,
 } from 'firebase/firestore';
@@ -19,11 +19,12 @@ export interface CatalogCard {
   supertype: string;
   types: string[];
   subtypes?: string[];        // z.B. ['Basic'] | ['Stage 1'] | ['Item'] — für Stufen-Filter (ab nächstem Sync)
-  hp?: number;                // Trefferpunkte (nur Pokémon-Karten)
-  nationalDexNumber?: number; // Nationaler Pokédex-Eintrag (erster, falls mehrere)
+  hp?: number;                 // Trefferpunkte (nur Pokémon-Karten)
+  nationalDexNumber?: number;  // Nationaler Pokédex-Eintrag (erster, falls mehrere)
+  evolutionFamily?: number[];  // Alle Pokédex-Nummern der Evolutionslinie, z.B. [4,5,6] für Glumanda-Linie
   imgSmall: string;
   imgLarge: string;
-  variants?: CardVariant[];   // mögliche Varianten, abgeleitet aus rarity
+  variants?: CardVariant[];    // mögliche Varianten, abgeleitet aus rarity
 }
 
 export interface SyncMeta {
@@ -45,13 +46,41 @@ const COL = 'tcg_catalog';
 // Prefix-Suche nach Name (case-insensitive) — liest nur Treffer, nicht die gesamte Collection
 export async function searchCatalog(q: string, setId = '', maxResults = 80): Promise<CatalogCard[]> {
   const lower = q.toLowerCase();
-  const end = lower + ''; // Unicode-Trick für Prefix-Range
+  const end   = lower + ''; // Firestore Prefix-Range: alle Strings die mit lower beginnen
 
   const constraints = setId
     ? [where('setId', '==', setId), where('nameLower', '>=', lower), where('nameLower', '<=', end), limit(maxResults)]
     : [where('nameLower', '>=', lower), where('nameLower', '<=', end), limit(maxResults)];
 
   const snap = await getDocs(query(collection(db, COL), ...constraints));
+  return snap.docs.map(d => d.data() as CatalogCard);
+}
+
+// Lookup mehrerer Karten per ID (für Deutsch-Suche via TCGdex)
+export async function getCatalogCardsByIds(ids: string[]): Promise<CatalogCard[]> {
+  if (ids.length === 0) return [];
+  const results: CatalogCard[] = [];
+  for (let i = 0; i < ids.length; i += 30) {
+    const chunk = ids.slice(i, i + 30);
+    const snap = await getDocs(query(collection(db, COL), where(documentId(), 'in', chunk)));
+    results.push(...snap.docs.map(d => d.data() as CatalogCard));
+  }
+  return results;
+}
+
+// Alle Karten einer Pokédex-Nummer (Fallback für Evolutionslinie)
+export async function getCardsByDexNumber(dexNum: number, maxResults = 100): Promise<CatalogCard[]> {
+  const snap = await getDocs(
+    query(collection(db, COL), where('nationalDexNumber', '==', dexNum), limit(maxResults))
+  );
+  return snap.docs.map(d => d.data() as CatalogCard);
+}
+
+// Alle Karten einer Evolutionslinie via array-contains (benötigt Enrichment-Schritt)
+export async function getCardsByEvolutionFamily(dexNum: number, maxResults = 200): Promise<CatalogCard[]> {
+  const snap = await getDocs(
+    query(collection(db, COL), where('evolutionFamily', 'array-contains', dexNum), limit(maxResults))
+  );
   return snap.docs.map(d => d.data() as CatalogCard);
 }
 

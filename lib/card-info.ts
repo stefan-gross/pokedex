@@ -14,6 +14,7 @@ export interface CardInfo {
   number: string;
   rarity?: string;
   supertype?: string;
+  subtypes?: string[];
   types?: string[];
   setId: string;
   setName: string;
@@ -23,6 +24,7 @@ export interface CardInfo {
   imgSmall: string;
   imgLarge: string;
   variants?: CardVariant[];
+  nationalDexNumber?: number;
 }
 
 export function catalogCardToInfo(c: CatalogCard): CardInfo {
@@ -32,6 +34,7 @@ export function catalogCardToInfo(c: CatalogCard): CardInfo {
     number: c.number,
     rarity: c.rarity,
     supertype: c.supertype,
+    subtypes: c.subtypes,
     types: c.types,
     setId: c.setId,
     setName: c.setName,
@@ -39,6 +42,7 @@ export function catalogCardToInfo(c: CatalogCard): CardInfo {
     imgSmall: c.imgSmall,
     imgLarge: c.imgLarge,
     variants: c.variants,
+    nationalDexNumber: c.nationalDexNumber,
   };
 }
 
@@ -49,6 +53,7 @@ export function tcgApiCardToInfo(c: TcgApiCard): CardInfo {
     number: c.number,
     rarity: c.rarity,
     supertype: c.supertype,
+    subtypes: c.subtypes,
     types: c.types,
     setId: c.set.id,
     setName: c.set.name,

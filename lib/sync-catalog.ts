@@ -161,6 +161,95 @@ export async function runSync(mode: 'auto' | 'update' | 'reset' = 'auto'): Promi
   };
 }
 
+// ── Evolutionsfamilien-Anreicherung ────────────────────────────────────────
+// Einmaliger Schritt: liest alle Karten mit nationalDexNumber aber ohne evolutionFamily,
+// holt Evolutionsketten von PokéAPI (gecacht pro Run) und schreibt evolutionFamily zurück.
+
+const evoRunCache = new Map<number, number[]>();
+
+async function fetchEvoFamily(dexNum: number): Promise<number[]> {
+  if (evoRunCache.has(dexNum)) return evoRunCache.get(dexNum)!;
+  try {
+    const s = await fetch(`https://pokeapi.co/api/v2/pokemon-species/${dexNum}`);
+    if (!s.ok) { evoRunCache.set(dexNum, [dexNum]); return [dexNum]; }
+    const sd = await s.json();
+    const c = await fetch(sd.evolution_chain.url);
+    if (!c.ok) { evoRunCache.set(dexNum, [dexNum]); return [dexNum]; }
+    const cd = await c.json();
+    const nums: number[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    function walk(node: any) {
+      const id = parseInt(node.species.url.split('/').filter(Boolean).pop() ?? '0');
+      if (id > 0) nums.push(id);
+      node.evolves_to.forEach(walk);
+    }
+    walk(cd.chain);
+    nums.forEach(n => evoRunCache.set(n, nums)); // alle Familienmitglieder cachen
+    return nums.length > 0 ? nums : [dexNum];
+  } catch {
+    evoRunCache.set(dexNum, [dexNum]);
+    return [dexNum];
+  }
+}
+
+export interface EnrichResult {
+  status: 'complete' | 'in-progress' | 'up-to-date';
+  message: string;
+  enriched: number;
+  remaining: number;
+}
+
+export async function enrichEvolutionFamilies(batchSize = 500): Promise<EnrichResult> {
+  const db = getAdminDb();
+
+  // Karten mit nationalDexNumber aber ohne evolutionFamily
+  const snap = await db.collection(COL)
+    .where('nationalDexNumber', '>', 0)
+    .limit(batchSize + 1)
+    .get();
+
+  const toEnrich = snap.docs
+    .filter(d => !d.data().evolutionFamily)
+    .slice(0, batchSize);
+
+  if (toEnrich.length === 0) {
+    return { status: 'up-to-date', message: 'Alle Evolutionsdaten sind bereits vorhanden', enriched: 0, remaining: 0 };
+  }
+
+  // Unique Pokédex-Nummern sammeln
+  const uniqueDexNums = [...new Set(toEnrich.map(d => d.data().nationalDexNumber as number))];
+
+  // Evolutionsketten parallel (max 8 gleichzeitig) abrufen
+  const CONCURRENCY = 8;
+  for (let i = 0; i < uniqueDexNums.length; i += CONCURRENCY) {
+    await Promise.all(uniqueDexNums.slice(i, i + CONCURRENCY).map(fetchEvoFamily));
+  }
+
+  // Batch-Update
+  for (let i = 0; i < toEnrich.length; i += 500) {
+    const batch = db.batch();
+    toEnrich.slice(i, i + 500).forEach(doc => {
+      const dexNum = doc.data().nationalDexNumber as number;
+      const family = evoRunCache.get(dexNum) ?? [dexNum];
+      batch.update(doc.ref, { evolutionFamily: family });
+    });
+    await batch.commit();
+  }
+
+  // Prüfen ob noch mehr zu tun ist
+  const remaining = snap.docs.filter(d => !d.data().evolutionFamily).length - toEnrich.length;
+  const done = remaining <= 0 && snap.docs.length <= batchSize;
+
+  return {
+    status: done ? 'complete' : 'in-progress',
+    message: done
+      ? `✅ Evolutionsdaten vollständig (${toEnrich.length} Karten angereichert)`
+      : `📥 ${toEnrich.length} Karten angereichert — weitere vorhanden`,
+    enriched: toEnrich.length,
+    remaining: Math.max(0, remaining),
+  };
+}
+
 export async function getSyncStatus() {
   const meta = await getMeta();
   const currentTotal = await fetchCurrentTotal();

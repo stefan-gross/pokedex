@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Sets Übersicht – Layout-Optionen</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1117; --bg2: #161b27; --card: #1a2035;
+    --border: #252d42; --fg: #f0f4ff; --muted: #6b7fa8;
+    --red: #e53935; --red-dim: rgba(229,57,53,0.12);
+    --green: #48bb78; --yellow: #ecc94b;
+    --radius: 14px; --font: 'SF Pro Display', -apple-system, sans-serif;
+  }
+  body { background: var(--bg); color: var(--fg); font-family: var(--font); min-height: 100vh; }
+
+  /* ── Tab bar ── */
+  .tabs { display: flex; gap: 0; background: var(--bg2); border-bottom: 1px solid var(--border);
+          position: sticky; top: 0; z-index: 100; }
+  .tab { flex: 1; padding: 14px 4px 12px; text-align: center; font-size: 11px; font-weight: 600;
+         color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent;
+         transition: all .2s; letter-spacing: .02em; text-transform: uppercase; }
+  .tab.active { color: var(--red); border-bottom-color: var(--red); }
+
+  /* ── Shared header ── */
+  .page-header { display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px;
+                 border-bottom: 1px solid var(--border); background: var(--bg); }
+  .back-btn { color: var(--muted); font-size: 20px; line-height: 1; text-decoration: none; }
+  .page-title { font-size: 17px; font-weight: 700; }
+
+  /* ── Views ── */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ══════════════════════════════════════════════
+     VARIANTE A — Full-Width Rows
+  ══════════════════════════════════════════════ */
+  .series-label-fw {
+    padding: 20px 16px 8px;
+    font-size: 11px; font-weight: 700; color: var(--muted);
+    letter-spacing: .08em; text-transform: uppercase;
+  }
+  .fw-list { display: flex; flex-direction: column; }
+  .fw-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg); text-decoration: none; color: var(--fg);
+    transition: background .15s;
+  }
+  .fw-row:active { background: var(--card); }
+  .fw-logo { width: 52px; height: 32px; display: flex; align-items: center; justify-content: center; shrink: 0; }
+  .fw-logo img { max-width: 52px; max-height: 28px; object-fit: contain; }
+  .fw-info { flex: 1; min-width: 0; }
+  .fw-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fw-sub  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .fw-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; shrink: 0; }
+  .fw-count { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .fw-bar { width: 48px; height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; }
+  .fw-bar-fill { height: 100%; border-radius: 2px; background: var(--red); }
+  .fw-chevron { color: var(--border); font-size: 14px; }
+
+  /* ══════════════════════════════════════════════
+     VARIANTE B — Cards
+  ══════════════════════════════════════════════ */
+  .view-b { padding: 12px 14px 32px; display: flex; flex-direction: column; gap: 14px; }
+  .series-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .series-card-header {
+    padding: 11px 14px 10px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,0.025);
+  }
+  .series-card-title { font-size: 12px; font-weight: 700; color: var(--muted);
+                        text-transform: uppercase; letter-spacing: .07em; }
+  .series-badge { font-size: 10px; color: var(--muted); background: var(--border);
+                   padding: 2px 7px; border-radius: 20px; }
+  .card-row {
+    display: flex; align-items: center; gap: 11px;
+    padding: 10px 14px; border-bottom: 1px solid var(--border);
+    text-decoration: none; color: var(--fg); transition: background .15s;
+  }
+  .card-row:last-child { border-bottom: none; }
+  .card-row:active { background: rgba(255,255,255,.03); }
+  .card-logo { width: 48px; height: 28px; display: flex; align-items: center; justify-content: center; }
+  .card-logo img { max-width: 48px; max-height: 24px; object-fit: contain; }
+  .card-info { flex: 1; min-width: 0; }
+  .card-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card-prog { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  .card-prog-bar { flex: 1; height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; max-width: 80px; }
+  .card-prog-fill { height: 100%; border-radius: 2px; background: var(--red); }
+  .card-prog-txt { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .card-code { font-size: 9px; font-family: 'SF Mono', monospace; color: var(--muted);
+                border: 1px solid var(--border); padding: 1px 4px; border-radius: 4px; white-space: nowrap; }
+
+  /* ══════════════════════════════════════════════
+     VARIANTE C — Sticky Headers
+  ══════════════════════════════════════════════ */
+  .sticky-group { }
+  .sticky-header {
+    position: sticky; top: 45px; z-index: 10;
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    padding: 8px 16px 7px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+  .sticky-title { font-size: 13px; font-weight: 700; }
+  .sticky-count { font-size: 11px; color: var(--muted); }
+  .sh-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px 10px 20px; border-bottom: 1px solid var(--border);
+    background: var(--bg); text-decoration: none; color: var(--fg); transition: background .15s;
+  }
+  .sh-row:active { background: var(--card); }
+  .sh-logo { width: 52px; height: 30px; display: flex; align-items: center; justify-content: center; shrink: 0; }
+  .sh-logo img { max-width: 52px; max-height: 26px; object-fit: contain; }
+  .sh-info { flex: 1; min-width: 0; }
+  .sh-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sh-meta { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+  .sh-code { font-size: 9px; font-family: 'SF Mono', monospace; color: var(--muted);
+              border: 1px solid var(--border); padding: 1px 4px; border-radius: 4px; }
+  .sh-count { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .sh-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+  .sh-pct { font-size: 11px; color: var(--muted); }
+  .sh-bar { width: 40px; height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; }
+  .sh-bar-fill { height: 100%; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- Tab-Switcher -->
+<div class="tabs">
+  <div class="tab active" onclick="show('a',this)">A · Full-Width</div>
+  <div class="tab" onclick="show('b',this)">B · Cards</div>
+  <div class="tab" onclick="show('c',this)">C · Sticky</div>
+</div>
+
+<!-- Shared header (repeated per view via JS) -->
+
+<!-- ══ VARIANTE A ══ -->
+<div id="view-a" class="view active">
+  <div class="page-header">
+    <span class="back-btn">‹</span>
+    <span class="page-title">Alle Sets</span>
+  </div>
+
+  <div class="fw-list" id="list-a"></div>
+</div>
+
+<!-- ══ VARIANTE B ══ -->
+<div id="view-b" class="view">
+  <div class="page-header">
+    <span class="back-btn">‹</span>
+    <span class="page-title">Alle Sets</span>
+  </div>
+  <div class="view-b" id="list-b"></div>
+</div>
+
+<!-- ══ VARIANTE C ══ -->
+<div id="view-c" class="view">
+  <div class="page-header">
+    <span class="back-btn">‹</span>
+    <span class="page-title">Alle Sets</span>
+  </div>
+  <div id="list-c"></div>
+</div>
+
+<script>
+const SERIES = [
+  {
+    name: 'Karmesin & Purpur', short: 'SV', color: '#e53935',
+    sets: [
+      { id:'sv9',    name:'Reisende der Lüfte',        code:'JTG', owned:0,  total:182 },
+      { id:'sv8pt5', name:'Prismatische Entwicklungen',code:'PRE', owned:0,  total:131 },
+      { id:'sv8',    name:'Brausende Funken',          code:'SSP', owned:12, total:191 },
+      { id:'sv7',    name:'Sternenglanz',              code:'SCR', owned:0,  total:175 },
+      { id:'sv6pt5', name:'Verblassende Sagen',        code:'SFA', owned:0,  total:99  },
+      { id:'sv6',    name:'Maskerade im Zwielicht',    code:'TWM', owned:4,  total:167 },
+      { id:'sv5',    name:'Temporale Kräfte',          code:'TEF', owned:0,  total:162 },
+      { id:'sv4pt5', name:'Schicksalsgabe',            code:'PAF', owned:0,  total:91  },
+      { id:'sv4',    name:'Paradoxrift',               code:'PAR', owned:7,  total:182 },
+      { id:'sv3pt5', name:'151',                       code:'MEW', owned:12, total:165 },
+      { id:'sv3',    name:'Obsidianflammen',           code:'OBF', owned:8,  total:197 },
+      { id:'sv2',    name:'Entwicklungen in Paldea',   code:'PAL', owned:31, total:93  },
+      { id:'sv1',    name:'Karmesin & Purpur',         code:'SVI', owned:74, total:250 },
+    ]
+  },
+  {
+    name: 'Schwert & Schild', short: 'SWSH', color: '#6366f1',
+    sets: [
+      { id:'swsh12pt5', name:'Crown Zenith',        code:'CRZ', owned:0,  total:159 },
+      { id:'swsh12',    name:'Silver Tempest',      code:'SIT', owned:0,  total:195 },
+      { id:'swsh11',    name:'Lost Origin',         code:'LOR', owned:3,  total:196 },
+      { id:'swsh10',    name:'Astral Radiance',     code:'ASR', owned:0,  total:189 },
+      { id:'swsh9',     name:'Brillante Sterne',    code:'BRS', owned:0,  total:172 },
+      { id:'swsh8',     name:'Fusion Strike',       code:'FST', owned:2,  total:264 },
+      { id:'swsh1',     name:'Schwert & Schild',    code:'SSH', owned:5,  total:202 },
+    ]
+  },
+  {
+    name: 'Sonne & Mond', short: 'SM', color: '#f59e0b',
+    sets: [
+      { id:'sm12',  name:'Cosmic Eclipse',     code:'CEC', owned:0,  total:236 },
+      { id:'sm11',  name:'Unified Minds',      code:'UNM', owned:0,  total:236 },
+      { id:'sm10',  name:'Unbroken Bonds',     code:'UNB', owned:0,  total:214 },
+      { id:'sm1',   name:'Sonne & Mond',       code:'SUM', owned:2,  total:149 },
+    ]
+  },
+  {
+    name: 'Klassik', short: 'CLASSIC', color: '#48bb78',
+    sets: [
+      { id:'base1', name:'Basisset',   code:'BS',  owned:42, total:102 },
+      { id:'base2', name:'Dschungel',  code:'JU',  owned:0,  total:64  },
+      { id:'neo1',  name:'Neo Genesis',code:'N1',  owned:5,  total:111 },
+    ]
+  },
+];
+
+function pct(owned, total) { return total ? Math.round(owned/total*100) : 0; }
+function logo(id) { return `https://images.pokemontcg.io/${id}/logo.png`; }
+function barColor(p, color) { return p === 100 ? '#48bb78' : color; }
+
+/* ── Build A ── */
+const listA = document.getElementById('list-a');
+SERIES.forEach(series => {
+  const label = document.createElement('div');
+  label.className = 'series-label-fw';
+  label.textContent = series.name;
+  listA.appendChild(label);
+
+  series.sets.forEach(set => {
+    const p = pct(set.owned, set.total);
+    listA.insertAdjacentHTML('beforeend', `
+      <a class="fw-row" href="/sets/${set.id}">
+        <div class="fw-logo">
+          <img src="${logo(set.id)}" onerror="this.style.display='none'" alt="">
+        </div>
+        <div class="fw-info">
+          <div class="fw-name">${set.name}</div>
+          <div class="fw-sub">${set.code} · ${set.total} Karten</div>
+        </div>
+        <div class="fw-right">
+          <div class="fw-count">${set.owned}/${set.total}</div>
+          <div class="fw-bar"><div class="fw-bar-fill" style="width:${p}%;background:${barColor(p,series.color)}"></div></div>
+        </div>
+        <div class="fw-chevron">›</div>
+      </a>`);
+  });
+});
+
+/* ── Build B ── */
+const listB = document.getElementById('list-b');
+SERIES.forEach(series => {
+  const total = series.sets.reduce((s,x)=>s+x.total,0);
+  const owned = series.sets.reduce((s,x)=>s+x.owned,0);
+  const card = document.createElement('div');
+  card.className = 'series-card';
+  card.innerHTML = `
+    <div class="series-card-header">
+      <span class="series-card-title">${series.name}</span>
+      <span class="series-badge">${owned}/${total}</span>
+    </div>`;
+  series.sets.forEach(set => {
+    const p = pct(set.owned, set.total);
+    card.insertAdjacentHTML('beforeend', `
+      <a class="card-row" href="/sets/${set.id}">
+        <div class="card-logo">
+          <img src="${logo(set.id)}" onerror="this.style.display='none'" alt="">
+        </div>
+        <div class="card-info">
+          <div class="card-name">${set.name}</div>
+          <div class="card-prog">
+            <div class="card-prog-bar"><div class="card-prog-fill" style="width:${p}%;background:${barColor(p,series.color)}"></div></div>
+            <span class="card-prog-txt">${set.owned}/${set.total}</span>
+          </div>
+        </div>
+        <span class="card-code">${set.code}</span>
+      </a>`);
+  });
+  listB.appendChild(card);
+});
+
+/* ── Build C ── */
+const listC = document.getElementById('list-c');
+SERIES.forEach(series => {
+  const group = document.createElement('div');
+  group.className = 'sticky-group';
+  group.innerHTML = `
+    <div class="sticky-header">
+      <span class="sticky-title">${series.name}</span>
+      <span class="sticky-count">${series.sets.length} Sets</span>
+    </div>`;
+  series.sets.forEach(set => {
+    const p = pct(set.owned, set.total);
+    const fill = barColor(p, series.color);
+    group.insertAdjacentHTML('beforeend', `
+      <a class="sh-row" href="/sets/${set.id}">
+        <div class="sh-logo">
+          <img src="${logo(set.id)}" onerror="this.style.display='none'" alt="">
+        </div>
+        <div class="sh-info">
+          <div class="sh-name">${set.name}</div>
+          <div class="sh-meta">
+            <span class="sh-code">${set.code}</span>
+            <span class="sh-count">${set.total} Karten</span>
+          </div>
+        </div>
+        <div class="sh-right">
+          <span class="sh-pct">${p}%</span>
+          <div class="sh-bar"><div class="sh-bar-fill" style="width:${p}%;background:${fill}"></div></div>
+        </div>
+      </a>`);
+  });
+  listC.appendChild(group);
+});
+
+/* ── Tab switch ── */
+function show(id, el) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('view-'+id).classList.add('active');
+  el.classList.add('active');
+  window.scrollTo(0,0);
+}
+</script>
+</body>
+</html>

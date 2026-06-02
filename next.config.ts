@@ -8,6 +8,16 @@ const nextConfig: NextConfig = {
         hostname: 'images.pokemontcg.io',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'images.scrydex.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'assets.tcgdex.net',
+        pathname: '/**',
+      },
     ],
     // Bilder werden 30 Tage gecacht (pokemontcg.io Bilder ändern sich nie)
     minimumCacheTTL: 60 * 60 * 24 * 30,

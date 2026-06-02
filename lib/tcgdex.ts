@@ -37,6 +37,42 @@ export function toTcgdexId(pokemonTcgId: string): string {
   return id;
 }
 
+/** TCGdex Set-ID → pokemontcg.io Set-ID (Umkehrung von toTcgdexId) */
+export function fromTcgdexId(tcgdexId: string): string {
+  const reverseOverrides: Record<string, string> = Object.fromEntries(
+    Object.entries(ID_OVERRIDES).map(([k, v]) => [v, k])
+  );
+  if (reverseOverrides[tcgdexId]) return reverseOverrides[tcgdexId];
+
+  let id = tcgdexId;
+  // ".X" → "ptX"  (sv3.5 → sv3pt5)
+  id = id.replace(/\.(\d)$/, 'pt$1');
+  // sv/me führende Null entfernen  (sv01 → sv1, me02 → me2)
+  id = id.replace(/^(sv|me)0(\d)(\b|$)/, '$1$2$3');
+  return id;
+}
+
+/** Sucht deutsche Karten auf TCGdex und gibt pokemontcg.io-kompatible IDs zurück */
+export async function searchTcgdexDe(q: string): Promise<string[]> {
+  try {
+    const res = await fetch(
+      `${TCGDEX_BASE}/cards?name=${encodeURIComponent(q)}`,
+      { signal: AbortSignal.timeout(4000) }
+    );
+    if (!res.ok) return [];
+    const cards: Array<{ id: string }> = await res.json();
+    return cards.map(c => {
+      const dash = c.id.lastIndexOf('-');
+      if (dash < 0) return c.id;
+      const tcgdexSetId = c.id.slice(0, dash);
+      const localId     = c.id.slice(dash + 1).replace(/^0+/, '') || '0';
+      return `${fromTcgdexId(tcgdexSetId)}-${localId}`;
+    });
+  } catch {
+    return [];
+  }
+}
+
 export interface TcgdexSetData {
   name: string;
   logo?: string; // Deutsches Logo-URL (mit .png Extension)

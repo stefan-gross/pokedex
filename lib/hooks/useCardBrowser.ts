@@ -16,12 +16,12 @@ import { getRarityGroup } from '@/lib/card-constants';
 import type { QueryDocumentSnapshot } from 'firebase/firestore';
 
 export type CardBrowserFilter = {
-  supertype?:      string;         // 'Pokémon' | 'Trainer' | 'Energy'
-  types?:          string[];       // Mehrfachauswahl, OR-Verknüpfung (englisch: 'Fire', 'Water', …)
-  evolutionStage?: string;         // 'Basic' | 'Stage 1' | 'Stage 2'
-  rarity?:         string;         // Rarity-Label aus RARITY_GROUPS
-  ownedFilter?:    'all' | 'owned' | 'missing';
-  ownedIds?:       Set<string>;
+  supertype?:       string;         // 'Pokémon' | 'Trainer' | 'Energy'
+  types?:           string[];       // Mehrfachauswahl, OR-Verknüpfung (englisch: 'Fire', 'Water', …)
+  evolutionStages?: string[];       // ['Basic'] | ['Stage 1', 'Stage 2'] etc. — leer = alle
+  rarity?:          string;         // Rarity-Label aus RARITY_GROUPS
+  ownedFilter?:     'all' | 'owned' | 'missing';
+  ownedIds?:        Set<string>;
 };
 
 const PAGE_SIZE = 50;
@@ -45,13 +45,12 @@ function applyClientFilters(cards: CatalogCard[], f: CardBrowserFilter): Catalog
   if (f.types?.length && f.supertype) {
     r = r.filter(c => c.supertype?.toLowerCase() === f.supertype!.toLowerCase());
   }
-  // EvolutionStage client-seitig wenn types aktiv
-  if (f.types?.length && f.evolutionStage) {
-    r = r.filter(c => c.subtypes?.includes(f.evolutionStage!));
-  }
   // EvolutionStage server-seitig aber supertype trotzdem client-seitig
-  if (!f.types?.length && f.evolutionStage && f.supertype) {
+  if (!f.types?.length && f.evolutionStages?.length && f.supertype) {
     r = r.filter(c => c.supertype?.toLowerCase() === f.supertype!.toLowerCase());
+  }
+  if (f.evolutionStages && f.evolutionStages.length > 0) {
+    r = r.filter(c => f.evolutionStages!.some(s => c.subtypes?.includes(s)));
   }
   if (f.rarity) {
     r = r.filter(c => (getRarityGroup(c.rarity ?? '')?.label ?? 'Sonstige') === f.rarity);
@@ -61,13 +60,14 @@ function applyClientFilters(cards: CatalogCard[], f: CardBrowserFilter): Catalog
   return r;
 }
 
-/** Server-Filter-Priorität: types[0] > evolutionStage > supertype */
+/** Server-Filter-Priorität: types[0] > evolutionStages[0] > supertype */
 function makeBrowseFilter(f: CardBrowserFilter): BrowseFilter {
   if (f.types?.length) {
-    return { type: f.types[0] }; // Erster Typ server-seitig; Rest OR-Logik client-seitig
+    return { type: f.types[0] };
   }
-  if (f.evolutionStage) {
-    return { evolutionStage: f.evolutionStage };
+  if (f.evolutionStages?.length === 1) {
+    // Einzelne Stufe server-seitig; mehrere = client-seitig OR
+    return { evolutionStage: f.evolutionStages[0] };
   }
   if (f.supertype) {
     return { supertype: f.supertype };
@@ -86,13 +86,14 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter) {
   const hasAnyFilter = !!(
     filter.types?.length ||
     filter.supertype ||
-    filter.evolutionStage ||
+    filter.evolutionStages?.length ||
     (filter.ownedFilter && filter.ownedFilter !== 'all') ||
     filter.rarity
   );
 
-  // Stabiler Dep-Key für types (Set-ähnliche Semantik)
-  const typesKey = [...(filter.types ?? [])].sort().join(',');
+  // Stabile Dep-Keys für array-ähnliche Filter
+  const typesKey          = [...(filter.types ?? [])].sort().join(',');
+  const evolutionStagesKey = [...(filter.evolutionStages ?? [])].sort().join(',');
 
   useEffect(() => {
     if (!hasAnyFilter) {
@@ -123,7 +124,7 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter) {
     run();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typesKey, filter.supertype, filter.evolutionStage, filter.rarity, filter.ownedFilter, sort]);
+  }, [typesKey, filter.supertype, evolutionStagesKey, filter.rarity, filter.ownedFilter, sort]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore || !cursorRef.current) return;

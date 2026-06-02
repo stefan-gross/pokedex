@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
+import { Lock } from 'lucide-react';
 import { cardInfoToTcgApi, type CardInfo } from '@/lib/card-info';
 import type { CardDoc } from '@/types';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
@@ -34,7 +35,6 @@ export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWis
         {/* Card image — tap → Detail */}
         <div
           className="relative rounded-xl overflow-hidden border border-border cursor-pointer"
-          style={{ background: isOwned ? undefined : '#080808' }}
           onClick={onCardClick}
         >
           <Image
@@ -43,10 +43,19 @@ export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWis
             width={245}
             height={342}
             className="w-full aspect-[2.5/3.5] object-cover"
-            style={!isOwned ? { filter: 'grayscale(75%) brightness(75%)' } : undefined}
             loading="lazy"
             sizes="(max-width: 400px) 30vw, 120px"
           />
+
+          {/* Unowned overlay + Lock */}
+          {!isOwned && (
+            <>
+              <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.50)' }} />
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <Lock size={20} className="text-white/50" />
+              </div>
+            </>
+          )}
 
           {/* Owned badge */}
           {isOwned && (

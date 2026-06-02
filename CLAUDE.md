@@ -4,6 +4,8 @@
 
 Vollständiger Implementierungsplan: `.claude/plans/plan.md`
 
+> **Wichtig für Claude:** Nach jeder Änderung (Feature, Bugfix, Refactor) den Abschnitt **„Aktueller Implementierungsstand"** in `.claude/plans/plan.md` aktualisieren — ✅ für Fertiges, 🔲 für Offenes. So kann jede neue Session nahtlos weitermachen.
+
 ## Projekt
 Pokémon-Kartensammlung PWA für Stefan Gross.
 - **URL**: https://pokedex.smartfamilyzone.de

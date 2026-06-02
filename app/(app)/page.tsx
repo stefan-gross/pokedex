@@ -2,41 +2,91 @@
 
 import Link from 'next/link';
 import { Settings, Star, Clock, Percent } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { getCards } from '@/lib/firestore/cards';
+import { getWishlists } from '@/lib/firestore/wishlists';
+import { getCountFromServer, collection, query, where } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
+import type { CardDoc } from '@/types';
 
 type SetView = 'recent' | 'complete' | 'favorites';
 
-interface SetEntry { name: string; code: string; setId: string; owned: number; total: number }
-
-const SETS: Record<SetView, SetEntry[]> = {
-  recent: [
-    { name: 'Karmesin & Purpur',        code: 'SVI',  setId: 'sv1',     owned: 74, total: 94 },
-    { name: 'Obsidianflammen',           code: 'OBF',  setId: 'sv3',     owned: 8,  total: 197 },
-    { name: 'Entwicklungen in Paldea',  code: 'PAL',  setId: 'sv2',     owned: 31, total: 93 },
-    { name: '151',                       code: 'MEW',  setId: 'sv3pt5',  owned: 12, total: 165 },
-  ],
-  complete: [
-    { name: 'Karmesin & Purpur',        code: 'SVI',  setId: 'sv1',     owned: 74, total: 94 },
-    { name: 'Entwicklungen in Paldea',  code: 'PAL',  setId: 'sv2',     owned: 31, total: 93 },
-    { name: '151',                       code: 'MEW',  setId: 'sv3pt5',  owned: 12, total: 165 },
-    { name: 'Obsidianflammen',           code: 'OBF',  setId: 'sv3',     owned: 8,  total: 197 },
-  ],
-  favorites: [
-    { name: 'Basisset',                  code: 'BS',   setId: 'base1',   owned: 42, total: 102 },
-    { name: 'Karmesin & Purpur',        code: 'SVI',  setId: 'sv1',     owned: 74, total: 94 },
-    { name: '151',                       code: 'MEW',  setId: 'sv3pt5',  owned: 12, total: 165 },
-    { name: 'Neo Genesis',               code: 'N1',   setId: 'neo1',    owned: 5,  total: 111 },
-  ],
-};
-
-const RECENT_CARDS = [
-  { name: 'Pikachu',      number: '049/198', img: 'https://images.pokemontcg.io/sv1/49.png' },
-  { name: 'Charizard ex', number: '125/197', img: 'https://images.pokemontcg.io/sv3/125.png' },
-  { name: 'Mewtwo',       number: '150/165', img: 'https://images.pokemontcg.io/mew/150.png' },
-];
+interface SetEntry {
+  setId: string;
+  name: string;
+  owned: number;
+  total: number | null;
+  latestAt: number;
+}
 
 export default function DashboardPage() {
-  const [setView, setSetView] = useState<SetView>('recent');
+  const [setView, setSetView]       = useState<SetView>('recent');
+  const [cards, setCards]           = useState<CardDoc[] | null>(null);
+  const [wishlistCount, setWishlistCount] = useState<number | null>(null);
+  const [setTotals, setSetTotals]   = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    getCards().then(setCards).catch(() => setCards([]));
+    getWishlists()
+      .then(wls => setWishlistCount(wls.reduce((s, w) => s + w.items.filter(i => !i.acquired).length, 0)))
+      .catch(() => setWishlistCount(0));
+  }, []);
+
+  // Computed stats
+  const totalOwned  = cards ? cards.reduce((s, c) => s + c.quantity, 0) : null;
+  const uniqueSets  = cards ? new Set(cards.map(c => c.setId)).size : null;
+
+  const weekAgo     = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const thisWeek    = cards
+    ? cards.filter(c => (c.addedAt?.toMillis?.() ?? 0) > weekAgo).reduce((s, c) => s + c.quantity, 0)
+    : null;
+
+  // Recently added — last 3 cards with image
+  const recentCards = cards
+    ? [...cards]
+        .filter(c => c.tcgImageUrl)
+        .sort((a, b) => (b.addedAt?.seconds ?? 0) - (a.addedAt?.seconds ?? 0))
+        .slice(0, 3)
+    : [];
+
+  // Sets grouped by setId
+  const setMap = new Map<string, SetEntry>();
+  (cards ?? []).forEach(c => {
+    const cur = setMap.get(c.setId) ?? { setId: c.setId, name: c.setName, owned: 0, total: null, latestAt: 0 };
+    cur.owned    += c.quantity;
+    cur.latestAt  = Math.max(cur.latestAt, c.addedAt?.seconds ?? 0);
+    setMap.set(c.setId, cur);
+  });
+  const allSets = [...setMap.values()];
+
+  // Lade Catalog-Totals für die angezeigten Sets
+  const displayedSets: SetEntry[] = (() => {
+    if (setView === 'recent') {
+      return [...allSets].sort((a, b) => b.latestAt - a.latestAt).slice(0, 4);
+    }
+    if (setView === 'complete') {
+      return [...allSets].sort((a, b) => {
+        const pctA = setTotals[a.setId] ? a.owned / setTotals[a.setId] : 0;
+        const pctB = setTotals[b.setId] ? b.owned / setTotals[b.setId] : 0;
+        return pctB - pctA;
+      }).slice(0, 4);
+    }
+    // favorites: top by owned count
+    return [...allSets].sort((a, b) => b.owned - a.owned).slice(0, 4);
+  })();
+
+  useEffect(() => {
+    const ids = displayedSets.map(s => s.setId).filter(id => !(id in setTotals));
+    if (ids.length === 0) return;
+    ids.forEach(setId => {
+      getCountFromServer(query(collection(db, 'tcg_catalog'), where('setId', '==', setId)))
+        .then(snap => setSetTotals(prev => ({ ...prev, [setId]: snap.data().count })))
+        .catch(() => {});
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayedSets.map(s => s.setId).join(','), setView]);
+
+  const loading = cards === null;
 
   return (
     <div className="px-4 pt-6 pb-4 space-y-5">
@@ -54,70 +104,97 @@ export default function DashboardPage() {
 
       {/* Stat Tiles */}
       <div className="space-y-3">
-        {/* Sammlung — eine breite Box */}
         <div className="rounded-xl border border-border bg-card px-4 py-3 flex items-center justify-between min-h-[68px]">
           <div className="flex flex-col gap-0.5">
             <span className="text-xs text-muted-foreground font-medium">Sammlung</span>
-            <span className="text-[10px] text-muted-foreground/60">+12 diese Woche</span>
+            {thisWeek != null && thisWeek > 0 && (
+              <span className="text-[10px] text-muted-foreground/60">+{thisWeek} diese Woche</span>
+            )}
           </div>
           <div className="flex items-baseline gap-4">
             <div className="text-right">
-              <div className="text-[26px] font-extrabold leading-none" style={{ color: 'var(--pokedex-red)' }}>847</div>
+              <div className="text-[26px] font-extrabold leading-none" style={{ color: 'var(--pokedex-red)' }}>
+                {loading ? '—' : totalOwned?.toLocaleString('de')}
+              </div>
               <div className="text-[10px] text-muted-foreground/60 mt-0.5">Karten</div>
-            </div>
-            <div className="w-px h-8 bg-border" />
-            <div className="text-right">
-              <div className="text-[26px] font-extrabold leading-none">€ 1.240</div>
-              <div className="text-[10px] text-muted-foreground/60 mt-0.5">Wert</div>
             </div>
           </div>
         </div>
 
-        {/* Sets + Wunschliste */}
         <div className="grid grid-cols-2 gap-3">
-          <StatTile label="Sets" sub="3 vollständig" value="12" />
-          <StatTile label="Wunschliste" sub="2 günstig" value="34" />
+          <StatTile
+            label="Sets"
+            sub={uniqueSets != null ? `${uniqueSets} mit Karten` : '…'}
+            value={loading ? '—' : String(uniqueSets ?? 0)}
+          />
+          <StatTile
+            label="Wunschliste"
+            sub="Noch nicht vorhanden"
+            value={wishlistCount == null ? '—' : String(wishlistCount)}
+          />
         </div>
       </div>
 
       {/* Set-Vollständigkeit */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Sets</h2>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1">
-              <ViewBtn active={setView === 'favorites'} onClick={() => setSetView('favorites')} label="Favoriten">
-                <Star size={13} />
-              </ViewBtn>
-              <ViewBtn active={setView === 'recent'} onClick={() => setSetView('recent')} label="Zuletzt aktiv">
-                <Clock size={13} />
-              </ViewBtn>
-              <ViewBtn active={setView === 'complete'} onClick={() => setSetView('complete')} label="Vollständigste">
-                <Percent size={13} />
-              </ViewBtn>
+      {(cards?.length ?? 0) > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Sets</h2>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <ViewBtn active={setView === 'favorites'} onClick={() => setSetView('favorites')} label="Meiste Karten">
+                  <Star size={13} />
+                </ViewBtn>
+                <ViewBtn active={setView === 'recent'} onClick={() => setSetView('recent')} label="Zuletzt aktiv">
+                  <Clock size={13} />
+                </ViewBtn>
+                <ViewBtn active={setView === 'complete'} onClick={() => setSetView('complete')} label="Vollständigste">
+                  <Percent size={13} />
+                </ViewBtn>
+              </div>
+              <Link href="/sets" className="text-xs" style={{ color: 'var(--pokedex-red)' }}>Alle</Link>
             </div>
-            <Link href="/sets" className="text-xs" style={{ color: 'var(--pokedex-red)' }}>Alle</Link>
           </div>
-        </div>
-        <div className="space-y-2">
-          {SETS[setView].map(s => (
-            <SetProgress key={s.setId} {...s} />
-          ))}
-        </div>
-      </section>
+          <div className="space-y-2">
+            {displayedSets.map(s => (
+              <SetProgress
+                key={s.setId}
+                setId={s.setId}
+                name={s.name}
+                owned={s.owned}
+                total={setTotals[s.setId] ?? null}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Zuletzt hinzugefügt */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Zuletzt hinzugefügt</h2>
-          <Link href="/collection" className="text-xs" style={{ color: 'var(--pokedex-red)' }}>Alle</Link>
+      {recentCards.length > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Zuletzt hinzugefügt</h2>
+            <Link href="/collection" className="text-xs" style={{ color: 'var(--pokedex-red)' }}>Alle</Link>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {recentCards.map(card => (
+              <RecentCard key={card.id} name={card.name} number={card.number} img={card.tcgImageUrl!} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Leerer Zustand */}
+      {!loading && (cards?.length ?? 0) === 0 && (
+        <div className="flex flex-col items-center justify-center pt-16 gap-3 text-center">
+          <div className="text-4xl">📦</div>
+          <p className="text-sm font-medium">Noch keine Karten</p>
+          <p className="text-xs text-muted-foreground max-w-[220px]">Scanne deine erste Karte oder suche sie in der Kartendatenbank.</p>
+          <Link href="/scanner" className="mt-2 px-4 py-2 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--pokedex-red)' }}>
+            Karte scannen
+          </Link>
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          {RECENT_CARDS.map(card => (
-            <RecentCard key={card.name} {...card} />
-          ))}
-        </div>
-      </section>
+      )}
 
     </div>
   );
@@ -153,11 +230,10 @@ function ViewBtn({ active, onClick, label, children }: {
   );
 }
 
-function SetProgress({ name, code, setId, owned, total }: SetEntry) {
-  const pct = Math.round((owned / total) * 100);
+function SetProgress({ setId, name, owned, total }: { setId: string; name: string; owned: number; total: number | null }) {
+  const pct = total ? Math.round((owned / total) * 100) : null;
   return (
     <Link href={`/sets/${setId}?from=dashboard`} className="bg-card border border-border rounded-xl px-3 py-2.5 flex items-center gap-3 active:opacity-70 transition-opacity">
-      {/* Logo */}
       <div className="w-14 shrink-0 flex items-center justify-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -167,21 +243,20 @@ function SetProgress({ name, code, setId, owned, total }: SetEntry) {
           onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
         />
       </div>
-
-      {/* Right: name + bar */}
       <div className="flex-1 min-w-0 space-y-1.5">
-        {/* Row 1: Name + Code + Count */}
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-medium truncate">{name}</span>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border" style={{ color: 'var(--foreground)', borderColor: 'var(--foreground)' }}>{code}</span>
-            <span className="text-xs text-muted-foreground tabular-nums">{owned}/{total}</span>
+          <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+            {owned}{total ? `/${total}` : ' Karten'}
+          </span>
+        </div>
+        {pct != null ? (
+          <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: 'var(--pokedex-red)' }} />
           </div>
-        </div>
-        {/* Row 2: Progress bar */}
-        <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: 'var(--pokedex-red)' }} />
-        </div>
+        ) : (
+          <div className="h-1.5 rounded-full bg-secondary" />
+        )}
       </div>
     </Link>
   );
@@ -194,7 +269,7 @@ function RecentCard({ name, number, img }: { name: string; number: string; img: 
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={img} alt={name} className="w-full h-full object-cover" />
       </div>
-      <span className="text-[10px] text-muted-foreground text-center">{number}</span>
+      <span className="text-[10px] text-muted-foreground text-center truncate w-full text-center">{number}</span>
     </Link>
   );
 }
