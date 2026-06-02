@@ -250,6 +250,96 @@ export async function enrichEvolutionFamilies(batchSize = 500): Promise<EnrichRe
   };
 }
 
+// ── Deutsche Namen-Anreicherung via TCGdex ────────────────────────────────
+// Holt deutsche Kartennamen set-weise von TCGdex und schreibt nameDe + nameDeLower.
+
+import { toTcgdexId } from './tcgdex';
+
+interface TcgdexCard { localId: string; name: string; }
+interface TcgdexSet  { cards?: TcgdexCard[]; }
+
+const tcgdexSetCache = new Map<string, Map<string, string>>(); // tcgdexSetId → localId → nameDe
+
+async function fetchDeNamesForSet(tcgdexSetId: string): Promise<Map<string, string>> {
+  if (tcgdexSetCache.has(tcgdexSetId)) return tcgdexSetCache.get(tcgdexSetId)!;
+  try {
+    const res = await fetch(`https://api.tcgdex.net/v2/de/sets/${tcgdexSetId}`);
+    if (!res.ok) { tcgdexSetCache.set(tcgdexSetId, new Map()); return new Map(); }
+    const data: TcgdexSet = await res.json();
+    const map = new Map<string, string>();
+    (data.cards ?? []).forEach(c => {
+      // localId kann führende Nullen haben (z.B. "001") → normalisieren
+      const normalized = String(parseInt(c.localId) || 0) || c.localId;
+      map.set(c.localId, c.name);
+      map.set(normalized, c.name);
+    });
+    tcgdexSetCache.set(tcgdexSetId, map);
+    return map;
+  } catch {
+    tcgdexSetCache.set(tcgdexSetId, new Map());
+    return new Map();
+  }
+}
+
+export interface EnrichDeNamesResult {
+  status: 'complete' | 'in-progress' | 'up-to-date';
+  message: string;
+  enriched: number;
+  remaining: number;
+}
+
+export async function enrichGermanNames(batchSize = 500): Promise<EnrichDeNamesResult> {
+  const db = getAdminDb();
+
+  // Alle Karten ohne nameDe (limit batchSize+1 zum Prüfen ob noch mehr da sind)
+  const snap = await db.collection(COL).limit(batchSize + 1).get();
+  const toEnrich = snap.docs.filter(d => !d.data().nameDe).slice(0, batchSize);
+
+  if (toEnrich.length === 0) {
+    return { status: 'up-to-date', message: 'Alle deutschen Namen sind bereits vorhanden', enriched: 0, remaining: 0 };
+  }
+
+  // Distinct setIds dieser Batch
+  const setIds = [...new Set(toEnrich.map(d => (d.data() as CatalogCard).setId))];
+
+  // Deutsche Namen set-weise holen (max 8 parallel)
+  const CONCURRENCY = 8;
+  for (let i = 0; i < setIds.length; i += CONCURRENCY) {
+    await Promise.all(setIds.slice(i, i + CONCURRENCY).map(id => fetchDeNamesForSet(toTcgdexId(id))));
+  }
+
+  // Batch-Update
+  let enriched = 0;
+  for (let i = 0; i < toEnrich.length; i += 500) {
+    const batch = db.batch();
+    toEnrich.slice(i, i + 500).forEach(doc => {
+      const card = doc.data() as CatalogCard;
+      const tcgdexId = toTcgdexId(card.setId);
+      const nameMap = tcgdexSetCache.get(tcgdexId);
+      if (!nameMap) return;
+      // Kartennummer normalisieren (z.B. "049/198" → "49", "001" → "1")
+      const rawNum  = card.number.split('/')[0];
+      const normNum = String(parseInt(rawNum) || 0) || rawNum;
+      const nameDe  = nameMap.get(rawNum) ?? nameMap.get(normNum);
+      if (nameDe) {
+        batch.update(doc.ref, { nameDe, nameDeLower: nameDe.toLowerCase() });
+        enriched++;
+      }
+    });
+    await batch.commit();
+  }
+
+  const remaining = snap.docs.filter(d => !d.data().nameDe).length - enriched;
+  return {
+    status: remaining <= 0 ? 'complete' : 'in-progress',
+    message: remaining <= 0
+      ? `✅ Deutsche Namen vollständig (${enriched} Karten angereichert)`
+      : `📥 ${enriched} Karten angereichert — weitere vorhanden`,
+    enriched,
+    remaining: Math.max(0, remaining),
+  };
+}
+
 export async function getSyncStatus() {
   const meta = await getMeta();
   const currentTotal = await fetchCurrentTotal();

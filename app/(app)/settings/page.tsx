@@ -28,8 +28,10 @@ export default function SettingsPage() {
   const [syncLoading, setSyncLoading] = useState(true);
   const [syncing, setSyncing]         = useState(false);
   const [syncResult, setSyncResult]   = useState<string | null>(null);
-  const [enriching, setEnriching]     = useState(false);
-  const [enrichResult, setEnrichResult] = useState<string | null>(null);
+  const [enriching, setEnriching]           = useState(false);
+  const [enrichResult, setEnrichResult]     = useState<string | null>(null);
+  const [enrichingDe, setEnrichingDe]       = useState(false);
+  const [enrichResultDe, setEnrichResultDe] = useState<string | null>(null);
 
   useEffect(() => { setMounted(true); loadSyncStatus(); }, []);
 
@@ -66,6 +68,30 @@ export default function SettingsPage() {
       setEnrichResult(`Fehler: ${e}`);
     } finally {
       setEnriching(false);
+    }
+  }
+
+  async function enrichGermanNames() {
+    setEnrichingDe(true);
+    setEnrichResultDe(null);
+    try {
+      let total = 0;
+      while (true) {
+        const res  = await fetch('/api/admin/enrich-german-names', { method: 'POST' });
+        const data = await res.json();
+        total += data.enriched ?? 0;
+        setEnrichResultDe(`📥 ${total} Karten angereichert…`);
+        if (data.status !== 'in-progress') {
+          setEnrichResultDe(data.status === 'complete'
+            ? `✅ ${total} Karten mit deutschen Namen angereichert`
+            : data.message);
+          break;
+        }
+      }
+    } catch (e) {
+      setEnrichResultDe(`Fehler: ${e}`);
+    } finally {
+      setEnrichingDe(false);
     }
   }
 
@@ -304,6 +330,24 @@ export default function SettingsPage() {
                     <p className="text-sm font-medium text-blue-500">Evolutionsdaten anreichern</p>
                     <p className="text-xs text-muted-foreground">
                       {enrichResult ?? 'Evolutionslinien in alle Karten schreiben · einmalig nötig'}
+                    </p>
+                  </div>
+                </button>
+
+                {/* Deutsche Namen anreichern */}
+                <button
+                  onClick={enrichGermanNames}
+                  disabled={enrichingDe || syncing}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left border-t border-border transition-colors active:bg-secondary disabled:opacity-40"
+                >
+                  {enrichingDe
+                    ? <RefreshCw size={18} className="text-green-500 shrink-0 animate-spin" />
+                    : <span className="text-base shrink-0">🇩🇪</span>
+                  }
+                  <div>
+                    <p className="text-sm font-medium text-green-600 dark:text-green-400">Deutsche Namen anreichern</p>
+                    <p className="text-xs text-muted-foreground">
+                      {enrichResultDe ?? 'nameDe + nameDeLower aus TCGdex befüllen · einmalig nötig'}
                     </p>
                   </div>
                 </button>

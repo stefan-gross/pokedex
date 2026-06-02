@@ -9,8 +9,10 @@ import type { CardVariant } from '@/types';
 
 export interface CatalogCard {
   id: string;
-  name: string;
-  nameLower: string;          // für case-insensitive Prefix-Suche
+  name: string;               // englischer Name (pokemontcg.io)
+  nameLower: string;          // name.toLowerCase() — für case-insensitive Prefix-Suche
+  nameDe?: string;            // deutscher Name (TCGdex) — optional, wird via Enrichment befüllt
+  nameDeLower?: string;       // nameDe.toLowerCase()
   number: string;
   setId: string;
   setName: string;
@@ -43,17 +45,33 @@ export type FilterCounts = {
 
 const COL = 'tcg_catalog';
 
-// Prefix-Suche nach Name (case-insensitive) — liest nur Treffer, nicht die gesamte Collection
+// Prefix-Suche nach Name — sucht parallel auf englischem (nameLower) und deutschem (nameDeLower) Feld
 export async function searchCatalog(q: string, setId = '', maxResults = 80): Promise<CatalogCard[]> {
   const lower = q.toLowerCase();
-  const end   = lower + ''; // Firestore Prefix-Range: alle Strings die mit lower beginnen
+  const end   = lower + ''; // Unicode-Sentinel für Prefix-Range
 
-  const constraints = setId
-    ? [where('setId', '==', setId), where('nameLower', '>=', lower), where('nameLower', '<=', end), limit(maxResults)]
-    : [where('nameLower', '>=', lower), where('nameLower', '<=', end), limit(maxResults)];
+  const makeConstraints = (field: 'nameLower' | 'nameDeLower') =>
+    setId
+      ? [where('setId', '==', setId), where(field, '>=', lower), where(field, '<=', end), limit(maxResults)]
+      : [where(field, '>=', lower), where(field, '<=', end), limit(maxResults)];
 
-  const snap = await getDocs(query(collection(db, COL), ...constraints));
-  return snap.docs.map(d => d.data() as CatalogCard);
+  const [enSnap, deSnap] = await Promise.all([
+    getDocs(query(collection(db, COL), ...makeConstraints('nameLower'))),
+    getDocs(query(collection(db, COL), ...makeConstraints('nameDeLower'))),
+  ]);
+
+  // Zusammenführen + Duplikate entfernen
+  const seen = new Set<string>();
+  const results: CatalogCard[] = [];
+  for (const snap of [enSnap, deSnap]) {
+    for (const doc of snap.docs) {
+      if (!seen.has(doc.id)) {
+        seen.add(doc.id);
+        results.push(doc.data() as CatalogCard);
+      }
+    }
+  }
+  return results;
 }
 
 // Lookup mehrerer Karten per ID (für Deutsch-Suche via TCGdex)
