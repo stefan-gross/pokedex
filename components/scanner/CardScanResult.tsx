@@ -1,35 +1,29 @@
 'use client';
 
-import { useState } from 'react';
-import { Search, ChevronRight, RotateCcw } from 'lucide-react';
-import type { TcgApiCard } from '@/lib/pokemon-tcg';
+import { RotateCcw, Search, Plus } from 'lucide-react';
+import type { CardInfo } from '@/lib/card-info';
+import type { CardLanguage } from '@/types';
 import { AddToCollectionModal } from './AddToCollectionModal';
-
-interface ScanResult {
-  name?: string;
-  setName?: string;
-  number?: string;
-  confidence?: 'high' | 'medium' | 'low';
-  isHolo?: boolean;
-  isReverse?: boolean;
-  error?: string;
-}
+import { cardInfoToTcgApi } from '@/lib/card-info';
+import { useState } from 'react';
 
 interface Props {
-  result: ScanResult;
-  candidates: TcgApiCard[];
+  card: CardInfo | null;
+  language: CardLanguage;
+  confidence: string;
+  error?: string;
   onRetry: () => void;
-  onManualSearch: (query: string) => void;
+  onManualSearch: () => void;
 }
 
-export function CardScanResult({ result, candidates, onRetry, onManualSearch }: Props) {
-  const [selected, setSelected] = useState<TcgApiCard | null>(null);
+export function CardScanResult({ card, language, confidence, error, onRetry, onManualSearch }: Props) {
+  const [showModal, setShowModal] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  if (result.error) {
+  if (error || !card) {
     return (
-      <div className="px-4 py-6 text-center space-y-4">
-        <p className="text-muted-foreground">Keine Karte erkannt.</p>
+      <div className="px-4 py-8 text-center space-y-4">
+        <p className="text-muted-foreground text-sm">{error ?? 'Keine Karte erkannt.'}</p>
         <button
           onClick={onRetry}
           className="flex items-center gap-2 mx-auto px-4 py-2 rounded-xl bg-secondary text-sm"
@@ -37,7 +31,7 @@ export function CardScanResult({ result, candidates, onRetry, onManualSearch }: 
           <RotateCcw size={14} /> Nochmal versuchen
         </button>
         <button
-          onClick={() => onManualSearch('')}
+          onClick={onManualSearch}
           className="flex items-center gap-2 mx-auto px-4 py-2 rounded-xl text-sm"
           style={{ color: 'var(--pokedex-red)' }}
         >
@@ -49,10 +43,8 @@ export function CardScanResult({ result, candidates, onRetry, onManualSearch }: 
 
   if (saved) {
     return (
-      <div className="px-4 py-8 text-center space-y-4">
-        <div className="w-14 h-14 rounded-full bg-green-500/20 flex items-center justify-center mx-auto">
-          <span className="text-2xl">✓</span>
-        </div>
+      <div className="px-4 py-10 text-center space-y-4">
+        <div className="w-14 h-14 rounded-full bg-green-500/20 flex items-center justify-center mx-auto text-2xl">✓</div>
         <p className="font-semibold">Karte hinzugefügt!</p>
         <button
           onClick={onRetry}
@@ -66,65 +58,56 @@ export function CardScanResult({ result, candidates, onRetry, onManualSearch }: 
 
   return (
     <>
-      <div className="px-4 pt-3 pb-2">
-        {/* Gemini result header */}
-        <div className="flex items-center justify-between mb-1">
-          <p className="text-xs text-muted-foreground">Erkannte Karte</p>
-          <span
-            className="text-[10px] px-2 py-0.5 rounded-full"
-            style={{
-              background: result.confidence === 'high' ? 'rgba(72,187,120,.15)' : 'rgba(237,137,54,.15)',
-              color: result.confidence === 'high' ? '#48bb78' : '#ed8936',
-            }}
-          >
-            {result.confidence === 'high' ? 'Sicher' : result.confidence === 'medium' ? 'Unsicher' : 'Niedrig'}
-          </span>
+      <div className="px-4 pt-4 pb-6 space-y-4">
+        {/* Karten-Preview */}
+        <div className="flex gap-4 items-start">
+          <div className="w-20 h-[112px] rounded-xl overflow-hidden bg-secondary border border-border shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={card.imgSmall} alt={card.name} className="w-full h-full object-cover" />
+          </div>
+          <div className="flex-1 pt-1">
+            <div className="flex items-center gap-2 mb-1">
+              <span
+                className="text-[10px] px-2 py-0.5 rounded-full"
+                style={{
+                  background: confidence === 'high' ? 'rgba(72,187,120,.15)' : 'rgba(237,137,54,.15)',
+                  color: confidence === 'high' ? '#48bb78' : '#ed8936',
+                }}
+              >
+                {confidence === 'high' ? 'Sicher' : confidence === 'medium' ? 'Unsicher' : 'Niedrig'}
+              </span>
+            </div>
+            <p className="font-semibold leading-tight">{card.name}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{card.setName}</p>
+            <p className="text-xs text-muted-foreground">#{card.number}{card.rarity ? ` · ${card.rarity}` : ''}</p>
+          </div>
         </div>
-        <p className="font-semibold">{result.name}</p>
-        {result.setName && <p className="text-xs text-muted-foreground">{result.setName}{result.number ? ` · ${result.number}` : ''}</p>}
+
+        {/* Zur Sammlung hinzufügen */}
+        <button
+          onClick={() => setShowModal(true)}
+          className="w-full h-11 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2"
+          style={{ background: 'var(--pokedex-red)' }}
+        >
+          <Plus size={16} /> Zur Sammlung hinzufügen
+        </button>
+
+        {/* Andere Karte suchen */}
+        <button
+          onClick={onManualSearch}
+          className="w-full text-xs py-2 flex items-center justify-center gap-1"
+          style={{ color: 'var(--muted-foreground)' }}
+        >
+          <Search size={12} /> Andere Karte suchen
+        </button>
       </div>
 
-      {/* Candidates from pokemontcg.io */}
-      {candidates.length > 0 && (
-        <div className="px-4 pb-3">
-          <p className="text-xs text-muted-foreground mb-2">Übereinstimmungen</p>
-          <div className="space-y-2">
-            {candidates.slice(0, 5).map(card => (
-              <button
-                key={card.id}
-                onClick={() => setSelected(card)}
-                className="w-full flex items-center gap-3 p-2 rounded-xl bg-secondary border border-border text-left"
-              >
-                <div className="w-9 h-[50px] rounded-md overflow-hidden bg-card shrink-0 border border-border">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={card.images.small} alt={card.name} className="w-full h-full object-cover" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium leading-tight truncate">{card.name}</div>
-                  <div className="text-xs text-muted-foreground truncate">{card.set.name} · {card.number}</div>
-                  {card.rarity && <div className="text-xs text-muted-foreground">{card.rarity}</div>}
-                </div>
-                <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-              </button>
-            ))}
-          </div>
-
-          <button
-            onClick={() => onManualSearch(result.name ?? '')}
-            className="mt-2 w-full text-xs py-2 flex items-center justify-center gap-1"
-            style={{ color: 'var(--pokedex-red)' }}
-          >
-            <Search size={12} /> Andere Karte suchen
-          </button>
-        </div>
-      )}
-
-      {selected && (
+      {showModal && (
         <AddToCollectionModal
-          card={selected}
-          preVariant={result.isHolo ? 'holo' : result.isReverse ? 'reverse' : undefined}
-          onClose={() => setSelected(null)}
-          onSaved={() => { setSelected(null); setSaved(true); }}
+          card={cardInfoToTcgApi(card)}
+          preLanguage={language}
+          onClose={() => setShowModal(false)}
+          onSaved={() => { setShowModal(false); setSaved(true); }}
         />
       )}
     </>

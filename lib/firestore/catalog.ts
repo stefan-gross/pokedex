@@ -84,6 +84,14 @@ export async function getCardsByEvolutionFamily(dexNum: number, maxResults = 200
   return snap.docs.map(d => d.data() as CatalogCard);
 }
 
+// Einzelne Karte per Set + Nummer (für Scanner-Lookup)
+export async function getCardBySetAndNumber(setId: string, number: string): Promise<CatalogCard | null> {
+  const snap = await getDocs(
+    query(collection(db, COL), where('setId', '==', setId), where('number', '==', number), limit(1))
+  );
+  return snap.docs[0]?.data() as CatalogCard ?? null;
+}
+
 // Batch-Upsert (Firestore max 500 pro Batch)
 export async function upsertCatalogBatch(cards: CatalogCard[]): Promise<void> {
   const chunks = [];

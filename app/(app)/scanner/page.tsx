@@ -4,55 +4,37 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardScanResult } from '@/components/scanner/CardScanResult';
-import type { TcgApiCard } from '@/lib/pokemon-tcg';
+import type { CardInfo } from '@/lib/card-info';
+import type { CardLanguage } from '@/types';
 
 type Phase = 'camera' | 'result';
 
-interface ScanResult {
-  name?: string;
-  setName?: string;
-  number?: string;
-  confidence?: 'high' | 'medium' | 'low';
-  isHolo?: boolean;
-  isReverse?: boolean;
+interface ScanResponse {
+  card?: CardInfo;
+  language?: CardLanguage;
+  confidence?: string;
   error?: string;
 }
 
 export default function ScannerPage() {
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>('camera');
+  const [phase,    setPhase]    = useState<Phase>('camera');
   const [scanning, setScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
-  const [candidates, setCandidates] = useState<TcgApiCard[]>([]);
+  const [response, setResponse] = useState<ScanResponse | null>(null);
 
   const handleCapture = async (imageBase64: string, mimeType: string) => {
     setScanning(true);
     try {
-      // 1. Gemini Vision: identify card
-      const scanRes = await fetch('/api/scan', {
+      const res = await fetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64, mimeType }),
       });
-      const result: ScanResult = await scanRes.json();
-      setScanResult(result);
-
-      // 2. pokemontcg.io: find matching cards
-      if (result.name && !result.error) {
-        const query = [
-          `name:"${result.name}"`,
-          result.setName ? `set.name:"${result.setName}"` : '',
-        ].filter(Boolean).join(' ');
-
-        const tcgRes = await fetch(`/api/tcg?q=${encodeURIComponent(query)}&pageSize=10`);
-        const tcgData = await tcgRes.json();
-        setCandidates(tcgData.data ?? []);
-      }
-
+      const data: ScanResponse = await res.json();
+      setResponse(data);
       setPhase('result');
-    } catch (err) {
-      console.error('Scan error:', err);
-      setScanResult({ error: 'Fehler beim Scannen' });
+    } catch {
+      setResponse({ error: 'Verbindungsfehler beim Scannen' });
       setPhase('result');
     } finally {
       setScanning(false);
@@ -60,13 +42,8 @@ export default function ScannerPage() {
   };
 
   const handleRetry = () => {
-    setScanResult(null);
-    setCandidates([]);
+    setResponse(null);
     setPhase('camera');
-  };
-
-  const handleManualSearch = (query: string) => {
-    router.push(`/collection?q=${encodeURIComponent(query)}`);
   };
 
   return (
@@ -83,20 +60,19 @@ export default function ScannerPage() {
       </div>
 
       {phase === 'camera' ? (
-        <div className="flex-1 flex flex-col px-4 pb-6 gap-4">
+        <div className="flex-1 flex flex-col px-4 pb-6">
           <CameraCapture onCapture={handleCapture} scanning={scanning} />
-          <p className="text-center text-xs text-white/50">
-            Halte die Karte in den Rahmen und tippe den Auslöser
-          </p>
         </div>
       ) : (
         <div className="flex-1 bg-card rounded-t-2xl mt-2 overflow-y-auto">
-          {scanResult && (
+          {response && (
             <CardScanResult
-              result={scanResult}
-              candidates={candidates}
+              card={response.card ?? null}
+              language={response.language ?? 'de'}
+              confidence={response.confidence ?? 'low'}
+              error={response.error}
               onRetry={handleRetry}
-              onManualSearch={handleManualSearch}
+              onManualSearch={() => router.push('/collection')}
             />
           )}
         </div>

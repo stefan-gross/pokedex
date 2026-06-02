@@ -12,6 +12,7 @@ import type { BinderDoc } from '@/types';
 interface Props {
   card: TcgApiCard;
   preVariant?: 'holo' | 'reverse';
+  preLanguage?: CardLanguage;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -20,10 +21,10 @@ const VARIANTS: { value: CardVariant; label: string }[] = (
   Object.entries(VARIANT_LABELS) as [CardVariant, string][]
 ).map(([value, label]) => ({ value, label }));
 
-export function AddToCollectionModal({ card, preVariant, onClose, onSaved }: Props) {
+export function AddToCollectionModal({ card, preVariant, preLanguage, onClose, onSaved }: Props) {
   const [variant, setVariant] = useState<CardVariant>(preVariant ?? 'standard');
   const [condition, setCondition] = useState<CardCondition>('NM');
-  const [language, setLanguage] = useState<CardLanguage>('de');
+  const [language, setLanguage] = useState<CardLanguage>(preLanguage ?? 'de');
   const [quantity, setQuantity] = useState(1);
   const [selectedBinders, setSelectedBinders] = useState<string[]>([]);
   const [binders, setBinders] = useState<BinderDoc[]>([]);
