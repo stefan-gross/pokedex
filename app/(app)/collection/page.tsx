@@ -363,7 +363,7 @@ function CollectionContent() {
   }, [isBrowseMode, filterCounts, results]);
 
   // Disabled-Logik für Entwicklungsstufen-Pills
-  const evolutionCountInContext = useMemo(() => {
+  const evolutionCountInContext = useMemo((): Record<string, number> | null => {
     const cards = isBrowseMode ? browseCards : results;
     if (cards.length === 0) return null;
     return {
