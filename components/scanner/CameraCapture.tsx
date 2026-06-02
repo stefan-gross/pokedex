@@ -13,14 +13,19 @@ const FRAME_W = 190;
 const FRAME_H = 266;
 
 // Stabilitätsschwelle: mittlerer quadratischer Pixelfehler (0–255²)
-// Niedrig = kleine Bewegung; empirisch ~12–20 für ruhig gehaltene Karte
-const MSE_THRESHOLD = 15;
+// Höher = toleranter gegenüber Handbewegungen
+// 15 = sehr streng, 40 = normal, 80 = locker
+const MSE_THRESHOLD = 40;
 
 // Zeit in ms, die die Karte stabil sein muss, bevor automatisch ausgelöst wird
-const STABLE_DURATION_MS = 1200;
+const STABLE_DURATION_MS = 800;
 
 // Überprüfungsintervall
 const CHECK_INTERVAL_MS = 150;
+
+// Rechteck-Perimeter für den SVG-Fortschrittsring (2*(W+H) + Rundungen)
+// Rect 190×266 mit rx=12: gerade Seiten + 4 Viertelkreise mit r=12
+const RECT_PERIMETER = 2 * (FRAME_W - 2 * 12 + FRAME_H - 2 * 12) + 2 * Math.PI * 12;
 
 export function CameraCapture({ onCapture, scanning }: Props) {
   const videoRef    = useRef<HTMLVideoElement>(null);
@@ -144,10 +149,8 @@ export function CameraCapture({ onCapture, scanning }: Props) {
     } catch { /* nicht unterstützt */ }
   };
 
-  // Ring-Animation: SVG stroke-dashoffset
-  const RADIUS     = 100;
-  const CIRCUMF    = 2 * Math.PI * RADIUS;
-  const strokeDash = CIRCUMF - progress * CIRCUMF;
+  // Ring-Animation: SVG stroke-dashoffset entlang Rechteck-Perimeter
+  const strokeDash = RECT_PERIMETER - progress * RECT_PERIMETER;
 
   return (
     <div className="relative w-full flex flex-col items-center">
@@ -215,7 +218,7 @@ export function CameraCapture({ onCapture, scanning }: Props) {
                     fill="none"
                     stroke="#48bb78"
                     strokeWidth={3}
-                    strokeDasharray={CIRCUMF}
+                    strokeDasharray={RECT_PERIMETER}
                     strokeDashoffset={strokeDash}
                     style={{ transition: `stroke-dashoffset ${CHECK_INTERVAL_MS}ms linear` }}
                   />
