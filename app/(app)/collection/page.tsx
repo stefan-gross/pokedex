@@ -210,30 +210,31 @@ function CollectionContent() {
     setSearchLoading(true);
     try {
       if (catalogCount > 0) {
-        const hits = await searchCatalog(q, filterSet, 80);
-        if (hits.length > 0) {
-          const cards = hits.map(catalogCardToInfo);
+        // Englisch (Firestore) + Deutsch (TCGdex) immer parallel — dann zusammenführen
+        const [enHits, tcgdexIds] = await Promise.all([
+          searchCatalog(q, filterSet, 80),
+          searchTcgdexDe(q),
+        ]);
+        const deHits = tcgdexIds.length > 0
+          ? await getCatalogCardsByIds(tcgdexIds.slice(0, 80))
+          : [];
+
+        // Zusammenführen + Duplikate entfernen (gleiche id)
+        const seen = new Set<string>();
+        const merged = [...enHits, ...deHits].filter(c => {
+          if (seen.has(c.id)) return false;
+          seen.add(c.id);
+          return true;
+        });
+
+        if (merged.length > 0) {
+          const cards = merged.map(catalogCardToInfo);
           const setMap = new Map<string, string>();
           cards.forEach(c => setMap.set(c.setId, c.setName));
           setSets(Array.from(setMap.entries()).map(([id, name]) => ({ id, name })));
           setResults(cards);
           setSource('catalog');
           return;
-        }
-
-        // Kein Treffer auf Englisch → deutsch via TCGdex versuchen
-        const tcgdexIds = await searchTcgdexDe(q);
-        if (tcgdexIds.length > 0) {
-          const deHits = await getCatalogCardsByIds(tcgdexIds.slice(0, 80));
-          if (deHits.length > 0) {
-            const cards = deHits.map(catalogCardToInfo);
-            const setMap = new Map<string, string>();
-            cards.forEach(c => setMap.set(c.setId, c.setName));
-            setSets(Array.from(setMap.entries()).map(([id, name]) => ({ id, name })));
-            setResults(cards);
-            setSource('catalog');
-            return;
-          }
         }
       }
       const qStr = `name:${q}*${filterSet ? ` set.id:${filterSet}` : ''}`;
