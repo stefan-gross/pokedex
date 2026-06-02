@@ -65,32 +65,52 @@ export default function SettingsPage() {
     // Alle 2 Sek. Status aus Firestore lesen → Live-Fortschritt im UI
     const poller = setInterval(() => loadSyncStatus(), 2000);
 
-    try {
-      // auto-Modus: Server verarbeitet 750 Karten pro Aufruf.
-      // Client loopt, bis done === true oder ein Fehler auftritt.
-      while (true) {
-        const res  = await fetch(`/api/admin/trigger-sync?mode=${mode}`, { method: 'POST' });
-        const text = await res.text();
+    let retries = 0;
+    const MAX_RETRIES = 5;
 
-        if (!res.ok) {
-          setSyncResult(`Server-Fehler (${res.status}): ${text.slice(0, 200)}`);
-          break;
+    try {
+      while (true) {
+        let res: Response;
+        let text: string;
+        try {
+          res  = await fetch(`/api/admin/trigger-sync?mode=${mode}`, { method: 'POST' });
+          text = await res.text();
+        } catch (networkErr) {
+          // Netzwerkfehler (z.B. Vercel Timeout) → kurz warten, nochmal versuchen
+          retries++;
+          if (retries > MAX_RETRIES) {
+            setSyncResult(`Netzwerkfehler nach ${MAX_RETRIES} Versuchen. Bitte "Fortsetzen" klicken.`);
+            break;
+          }
+          setSyncResult(`Verbindungsfehler – Versuch ${retries}/${MAX_RETRIES}…`);
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
         }
 
+        if (!res.ok) {
+          // Vercel Timeout (504) oder anderer Server-Fehler → retry
+          retries++;
+          if (retries > MAX_RETRIES) {
+            setSyncResult(`Server-Fehler (${res.status}) nach ${MAX_RETRIES} Versuchen. Bitte "Fortsetzen" klicken.`);
+            break;
+          }
+          setSyncResult(`Server-Fehler ${res.status} – Versuch ${retries}/${MAX_RETRIES}…`);
+          await new Promise(r => setTimeout(r, 3000));
+          continue;
+        }
+
+        retries = 0; // Erfolgreicher Request → Zähler zurücksetzen
         let data: { done?: boolean; status?: string; message?: string; error?: string } = {};
         try { data = JSON.parse(text); } catch { /* ignore */ }
 
-        // Bei update-Modus oder wenn fertig: einmal reicht
         if (mode === 'update' || data.done || data.status === 'complete' || data.status === 'up-to-date') {
           setSyncResult(data.message ?? '✅ Fertig');
           break;
         }
-        // Fehler im Response-Body
         if (data.status === 'error' || data.error) {
           setSyncResult(data.error ?? data.message ?? 'Unbekannter Fehler');
           break;
         }
-        // Nächsten Chunk starten (in-progress) — kurze Pause damit Firestore schreiben kann
         await new Promise(r => setTimeout(r, 300));
       }
       await loadSyncStatus();
