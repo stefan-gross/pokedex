@@ -169,6 +169,24 @@ export interface BrowsePage {
   hasMore: boolean;
 }
 
+/** Exakte Gesamtzahl für einen BrowseFilter — kein Dokument wird übertragen */
+export async function getBrowseCount(filter: BrowseFilter = {}): Promise<number> {
+  const constraints: QueryConstraint[] = [];
+  if (filter.type) {
+    constraints.push(where('types', 'array-contains', filter.type));
+  } else if (filter.evolutionStage) {
+    constraints.push(where('subtypes', 'array-contains', filter.evolutionStage));
+  } else if (filter.supertype) {
+    constraints.push(where('supertype', '==', filter.supertype));
+  }
+  try {
+    const snap = await getCountFromServer(query(collection(db, COL), ...constraints));
+    return snap.data().count;
+  } catch {
+    return -1; // Fehler → caller zeigt "-" statt Zahl
+  }
+}
+
 export async function browseCatalog(
   filter: BrowseFilter = {},
   cursor: QueryDocumentSnapshot | null = null,

@@ -7,7 +7,7 @@ import { CardGrid } from '@/components/card/CardGrid';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { getCards } from '@/lib/firestore/cards';
-import { searchCatalog, getCatalogCount, getCatalogFilterCounts, type FilterCounts } from '@/lib/firestore/catalog';
+import { searchCatalog, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts } from '@/lib/firestore/catalog';
 import { catalogCardToInfo, tcgApiCardToInfo, type CardInfo } from '@/lib/card-info';
 import { getRarityGroup } from '@/lib/card-constants';
 import { useCardBrowser, TCG_TYPES, type TcgType, type CardBrowserFilter } from '@/lib/hooks/useCardBrowser';
@@ -86,6 +86,7 @@ function CollectionContent() {
 
   // ── UI-State ──────────────────────────────────────────────────
   const [filterCounts,     setFilterCounts]     = useState<FilterCounts | null>(null);
+  const [browseTotal,      setBrowseTotal]      = useState<number | null>(null);
   const [filtersCollapsed, setFiltersCollapsed] = useState(false);
   const lastScrollY    = useRef(0);
   const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -114,6 +115,22 @@ function CollectionContent() {
     return () => { if (countTimerRef.current) clearTimeout(countTimerRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTypesKey, activeSupertype]);
+
+  // ── Exakte Gesamtzahl für aktuellen Browse-Filter ─────────────
+  const hasActiveFilterForCount = !!(activeTypes.size || activeSupertype !== 'all' || activeEvolution || ownedFilter !== 'all' || activeRarity);
+  useEffect(() => {
+    if (!hasActiveFilterForCount) { setBrowseTotal(null); return; }
+    // Gleiche Priorität wie useCardBrowser: types[0] > evolutionStage > supertype
+    const browseFilter = activeTypes.size > 0
+      ? { type: [...activeTypes][0] }
+      : activeEvolution
+        ? { evolutionStage: activeEvolution }
+        : activeSupertype !== 'all'
+          ? { supertype: activeSupertype }
+          : {};
+    getBrowseCount(browseFilter).then(n => setBrowseTotal(n >= 0 ? n : null)).catch(() => setBrowseTotal(null));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTypesKey, activeSupertype, activeEvolution, hasActiveFilterForCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Scroll-Collapse ───────────────────────────────────────────
   useEffect(() => {
@@ -249,10 +266,10 @@ function CollectionContent() {
     });
   };
 
-  // Ergebniszahl
+  // Ergebniszahl — im Browse-Modus exakte Zahl aus Firestore, sonst geladene Anzahl
   const resultCount = isBrowseMode
-    ? `${browseCards.length}${hasMore ? '+' : ''}`
-    : `${displayed.length}`;
+    ? browseTotal != null ? fmt(browseTotal) : browseCards.length > 0 ? `${browseCards.length}${hasMore ? '+' : ''}` : null
+    : displayed.length > 0 ? fmt(displayed.length) : null;
   const showResultCount = hasAnyFilter || !!inputValue;
 
   // Disabled-Logik für Type-Pills
@@ -435,7 +452,7 @@ function CollectionContent() {
         )}
 
         {/* Ergebnisanzahl */}
-        {showResultCount && (
+        {showResultCount && resultCount != null && (
           <p className="text-xs text-muted-foreground text-right">
             {resultCount} Karten
           </p>
