@@ -3,10 +3,8 @@
 /**
  * useCardBrowser — server-seitig gefilterter, paginierter Browse-Hook.
  *
- * Server-seitig (Firestore where): type > evolutionStage > supertype (Priorität)
- * Client-seitig: alle übrigen Dimensionen (supertype wenn type aktiv,
- *                evolutionStage wenn type aktiv, rarity, owned)
- * Sortierung: client-seitig innerhalb jeder Page (vermeidet Composite-Indexes)
+ * Server-seitig: types[0] > evolutionStage > supertype (Priorität, Composite-Indexes vermieden)
+ * Client-seitig: OR-Logik für types, restliche Dimensionen (supertype wenn types aktiv, rarity, owned)
  * Pagination: Cursor-basiert (startAfter), PAGE_SIZE Karten pro Request
  * Kein Laden bis mindestens ein Filter aktiv ist
  */
@@ -18,10 +16,10 @@ import { getRarityGroup } from '@/lib/card-constants';
 import type { QueryDocumentSnapshot } from 'firebase/firestore';
 
 export type CardBrowserFilter = {
-  supertype?:      string;              // 'Pokémon' | 'Trainer' | 'Energy'
-  type?:           string;              // 'Fire' | 'Darkness' | … (englisch)
-  evolutionStage?: string;             // 'Basic' | 'Stage 1' | 'Stage 2'
-  rarity?:         string;             // Rarity-Label aus RARITY_GROUPS
+  supertype?:      string;         // 'Pokémon' | 'Trainer' | 'Energy'
+  types?:          string[];       // Mehrfachauswahl, OR-Verknüpfung (englisch: 'Fire', 'Water', …)
+  evolutionStage?: string;         // 'Basic' | 'Stage 1' | 'Stage 2'
+  rarity?:         string;         // Rarity-Label aus RARITY_GROUPS
   ownedFilter?:    'all' | 'owned' | 'missing';
   ownedIds?:       Set<string>;
 };
@@ -36,26 +34,45 @@ function sortCatalogCards(cards: CatalogCard[], sort: BrowseSortKey): CatalogCar
   });
 }
 
-function applyClientFilters(cards: CatalogCard[], filter: CardBrowserFilter): CatalogCard[] {
+function applyClientFilters(cards: CatalogCard[], f: CardBrowserFilter): CatalogCard[] {
   let r = cards;
-  // Supertype client-seitig wenn type server-seitig (kein Composite-Index)
-  if (filter.type && filter.supertype) {
-    r = r.filter(c => c.supertype?.toLowerCase() === filter.supertype!.toLowerCase());
+
+  // Typ-Filter: OR-Verknüpfung — Karte muss mindestens einen der gewählten Typen haben
+  if (f.types && f.types.length > 0) {
+    r = r.filter(c => c.types?.some(t => f.types!.includes(t)));
   }
-  // EvolutionStage client-seitig wenn type server-seitig
-  if (filter.type && filter.evolutionStage) {
-    r = r.filter(c => c.subtypes?.includes(filter.evolutionStage!));
+  // Supertype client-seitig wenn types server-seitig (kein Composite-Index)
+  if (f.types?.length && f.supertype) {
+    r = r.filter(c => c.supertype?.toLowerCase() === f.supertype!.toLowerCase());
   }
-  // EvolutionStage server-seitig wenn kein type → supertype trotzdem client-seitig
-  if (!filter.type && filter.evolutionStage && filter.supertype) {
-    r = r.filter(c => c.supertype?.toLowerCase() === filter.supertype!.toLowerCase());
+  // EvolutionStage client-seitig wenn types aktiv
+  if (f.types?.length && f.evolutionStage) {
+    r = r.filter(c => c.subtypes?.includes(f.evolutionStage!));
   }
-  if (filter.rarity) {
-    r = r.filter(c => (getRarityGroup(c.rarity)?.label ?? 'Sonstige') === filter.rarity);
+  // EvolutionStage server-seitig aber supertype trotzdem client-seitig
+  if (!f.types?.length && f.evolutionStage && f.supertype) {
+    r = r.filter(c => c.supertype?.toLowerCase() === f.supertype!.toLowerCase());
   }
-  if (filter.ownedFilter === 'owned')   r = r.filter(c => filter.ownedIds?.has(c.id));
-  if (filter.ownedFilter === 'missing') r = r.filter(c => !filter.ownedIds?.has(c.id));
+  if (f.rarity) {
+    r = r.filter(c => (getRarityGroup(c.rarity ?? '')?.label ?? 'Sonstige') === f.rarity);
+  }
+  if (f.ownedFilter === 'owned')   r = r.filter(c => f.ownedIds?.has(c.id));
+  if (f.ownedFilter === 'missing') r = r.filter(c => !f.ownedIds?.has(c.id));
   return r;
+}
+
+/** Server-Filter-Priorität: types[0] > evolutionStage > supertype */
+function makeBrowseFilter(f: CardBrowserFilter): BrowseFilter {
+  if (f.types?.length) {
+    return { type: f.types[0] }; // Erster Typ server-seitig; Rest OR-Logik client-seitig
+  }
+  if (f.evolutionStage) {
+    return { evolutionStage: f.evolutionStage };
+  }
+  if (f.supertype) {
+    return { supertype: f.supertype };
+  }
+  return {};
 }
 
 export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter) {
@@ -67,18 +84,15 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter) {
   const cursorRef = useRef<QueryDocumentSnapshot | null>(null);
 
   const hasAnyFilter = !!(
-    filter.type ||
+    filter.types?.length ||
     filter.supertype ||
     filter.evolutionStage ||
     (filter.ownedFilter && filter.ownedFilter !== 'all') ||
     filter.rarity
   );
 
-  const makeBrowseFilter = (f: CardBrowserFilter): BrowseFilter => ({
-    type:           f.type,
-    evolutionStage: f.type ? undefined : f.evolutionStage, // type hat Vorrang server-seitig
-    supertype:      (f.type || f.evolutionStage) ? undefined : f.supertype,
-  });
+  // Stabiler Dep-Key für types (Set-ähnliche Semantik)
+  const typesKey = [...(filter.types ?? [])].sort().join(',');
 
   useEffect(() => {
     if (!hasAnyFilter) {
@@ -109,7 +123,7 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter) {
     run();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter.type, filter.supertype, filter.evolutionStage, filter.rarity, filter.ownedFilter, sort]);
+  }, [typesKey, filter.supertype, filter.evolutionStage, filter.rarity, filter.ownedFilter, sort]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore || !cursorRef.current) return;

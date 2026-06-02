@@ -4,6 +4,7 @@ import {
   type QueryDocumentSnapshot, type QueryConstraint,
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
+import { RARITY_GROUPS } from '../card-constants';
 import type { CardVariant } from '@/types';
 
 export interface CatalogCard {
@@ -34,8 +35,9 @@ export interface SyncMeta {
 }
 
 export type FilterCounts = {
-  types:      Record<string, number>;
-  supertypes: Record<string, number>;
+  types:      Record<string, number>; // pro TcgType
+  supertypes: Record<string, number>; // 'Pokémon' | 'Trainer' | 'Energy'
+  rarities:   Record<string, number>; // pro RARITY_GROUP label (global, kein Filter-Kontext)
 };
 
 const COL = 'tcg_catalog';
@@ -118,7 +120,7 @@ export async function getCatalogFilterCounts(activeFilter: BrowseFilter = {}): P
     }
   };
 
-  const [typeCounts, supertypeCounts] = await Promise.all([
+  const [typeCounts, supertypeCounts, rarityCounts] = await Promise.all([
     // Typ-Counts: optional nach aktivem Supertype gefiltert
     Promise.all(TYPES.map(async t => {
       const c: QueryConstraint[] = [where('types', 'array-contains', t)];
@@ -131,11 +133,17 @@ export async function getCatalogFilterCounts(activeFilter: BrowseFilter = {}): P
       if (activeFilter.type) c.push(where('types', 'array-contains', activeFilter.type));
       return [s, await safeCount(c)] as [string, number];
     })),
+    // Rarity-Counts: global (kein Filter-Kontext, vermeidet Composite-Indexes)
+    Promise.all(RARITY_GROUPS.map(async g => {
+      if (!g.keys.length) return [g.label, 0] as [string, number];
+      return [g.label, await safeCount([where('rarity', 'in', g.keys)])] as [string, number];
+    })),
   ]);
 
   return {
     types:      Object.fromEntries(typeCounts),
     supertypes: Object.fromEntries(supertypeCounts),
+    rarities:   Object.fromEntries(rarityCounts),
   };
 }
 

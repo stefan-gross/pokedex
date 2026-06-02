@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { getRarityGroup, type RarityGroup } from '@/lib/card-constants';
+import { getRarityGroup, RARITY_GROUPS, type RarityGroup } from '@/lib/card-constants';
 import type { CardInfo } from '@/lib/card-info';
 
 export interface RarityBreakdownItem {
@@ -33,33 +33,52 @@ export function buildRarityBreakdown(
 }
 
 interface Props {
-  cards: CardInfo[];
-  ownedIds: Set<string>;
+  cards:          CardInfo[];
+  ownedIds:       Set<string>;
   activeRarities: Set<string>;
-  onToggle: (label: string) => void;
+  onToggle:       (label: string) => void;
+  /** Vorberechnete Firestore-Counts pro Rarity-Label (für Anzeige ohne geladene Karten) */
+  rarityCounts?:  Record<string, number>;
 }
 
-export function RarityFilterBar({ cards, ownedIds, activeRarities, onToggle }: Props) {
-  const breakdown = useMemo(
-    () => buildRarityBreakdown(cards, ownedIds),
-    [cards, ownedIds],
-  );
+export function RarityFilterBar({ cards, ownedIds, activeRarities, onToggle, rarityCounts }: Props) {
+  // Wenn Karten geladen: Breakdown aus Karten (inkl. ownedCount)
+  // Wenn keine Karten aber rarityCounts: Chips aus RARITY_GROUPS mit globalen Counts
+  const breakdown = useMemo((): RarityBreakdownItem[] => {
+    if (cards.length > 0) {
+      return buildRarityBreakdown(cards, ownedIds);
+    }
+    if (rarityCounts) {
+      return RARITY_GROUPS
+        .filter(g => (rarityCounts[g.label] ?? 0) > 0)
+        .map(g => ({
+          group: g,
+          count: rarityCounts[g.label] ?? 0,
+          ownedCount: 0,
+        }));
+    }
+    return [];
+  }, [cards, ownedIds, rarityCounts]);
 
   if (breakdown.length === 0) return null;
+
+  const hasCards = cards.length > 0;
 
   return (
     <div className="flex flex-wrap gap-x-2 gap-y-1.5">
       {breakdown.map(({ group, count, ownedCount }) => {
-        const active    = activeRarities.has(group.label);
-        const isCssVar  = group.color.startsWith('var(');
-        const activeBg  = isCssVar ? 'var(--muted)' : `${group.color}22`;
+        const active       = activeRarities.has(group.label);
+        const disabled     = count === 0;
+        const isCssVar     = group.color.startsWith('var(');
+        const activeBg     = isCssVar ? 'var(--muted)' : `${group.color}22`;
         const activeBorder = isCssVar ? 'var(--foreground)' : group.color;
 
         return (
           <button
             key={group.label}
-            onClick={() => onToggle(group.label)}
-            className="flex items-center gap-1 rounded-full transition-all px-2 py-0.5 border"
+            onClick={() => !disabled && onToggle(group.label)}
+            disabled={disabled}
+            className="flex items-center gap-1 rounded-full transition-all px-2 py-0.5 border disabled:opacity-30 disabled:cursor-not-allowed"
             style={active
               ? { background: activeBg, borderColor: activeBorder }
               : { borderColor: 'transparent' }
@@ -78,12 +97,12 @@ export function RarityFilterBar({ cards, ownedIds, activeRarities, onToggle }: P
                 {group.symbol}
               </span>
             ) : (
-              <span className="text-xs font-bold" style={{ color: group.color }}>
+              <span className="text-xs font-bold" style={{ color: disabled ? 'var(--muted-foreground)' : group.color }}>
                 {group.symbol}
               </span>
             )}
             <span className="text-xs" style={{ color: active ? activeBorder : 'var(--muted-foreground)' }}>
-              {ownedCount}/{count}
+              {hasCards ? `${ownedCount}/${count}` : count.toLocaleString('de')}
             </span>
           </button>
         );

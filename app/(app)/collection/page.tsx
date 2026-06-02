@@ -16,9 +16,9 @@ import type { TcgApiCard } from '@/lib/pokemon-tcg';
 import type { CardDoc } from '@/types';
 import type { BrowseSortKey } from '@/lib/firestore/catalog';
 
-type OwnedFilter  = 'all' | 'owned' | 'missing';
+type OwnedFilter   = 'all' | 'owned' | 'missing';
 type SearchSortKey = 'number' | 'name';
-type Supertype    = 'Pokémon' | 'Trainer' | 'Energy';
+type Supertype     = 'Pokémon' | 'Trainer' | 'Energy';
 
 const OWNED_OPTIONS: { value: OwnedFilter; label: string }[] = [
   { value: 'all',     label: 'Alle'      },
@@ -41,8 +41,9 @@ const EVOLUTION_OPTIONS: { value: string | null; label: string }[] = [
 
 function fmt(n: number) { return n.toLocaleString('de'); }
 
-/* ── Kleine Chip-Komponente für den kompakten Filter-Strip ──── */
-function FilterChip({ label, onRemove, color }: { label: string; onRemove: () => void; color?: string }) {
+function FilterChip({ label, onRemove, color, icon }: {
+  label: string; onRemove: () => void; color?: string; icon?: React.ReactNode;
+}) {
   return (
     <button
       onClick={onRemove}
@@ -52,7 +53,7 @@ function FilterChip({ label, onRemove, color }: { label: string; onRemove: () =>
         : { borderColor: 'var(--border)', background: 'var(--secondary)', color: 'var(--foreground)' }
       }
     >
-      {label} <X size={10} />
+      {icon}{label} <X size={10} />
     </button>
   );
 }
@@ -62,8 +63,8 @@ function CollectionContent() {
   const router       = useRouter();
   const initialQ     = searchParams.get('q') ?? '';
 
-  // ── Geteilter Filter-State (Browse + Suche) ───────────────────
-  const [activeType,      setActiveType]      = useState<TcgType | null>(null);
+  // ── Geteilter Filter-State ─────────────────────────────────────
+  const [activeTypes,     setActiveTypes]     = useState<Set<TcgType>>(new Set());
   const [activeSupertype, setActiveSupertype] = useState<Supertype | 'all'>('all');
   const [ownedFilter,     setOwnedFilter]     = useState<OwnedFilter>('all');
   const [activeRarity,    setActiveRarity]    = useState<string | null>(null);
@@ -73,23 +74,23 @@ function CollectionContent() {
   const [browseSort, setBrowseSort] = useState<BrowseSortKey>('name');
 
   // ── Suche ─────────────────────────────────────────────────────
-  const [inputValue,   setInputValue]   = useState(initialQ);
-  const [results,      setResults]      = useState<CardInfo[]>([]);
-  const [ownedCards,   setOwnedCards]   = useState<CardDoc[]>([]);
-  const [searchLoading,setSearchLoading]= useState(false);
-  const [searchSort,   setSearchSort]   = useState<SearchSortKey>('number');
-  const [filterSet,    setFilterSet]    = useState('');
-  const [sets,         setSets]         = useState<{ id: string; name: string }[]>([]);
-  const [catalogCount, setCatalogCount] = useState(0);
-  const [source,       setSource]       = useState<'catalog' | 'api' | null>(null);
+  const [inputValue,    setInputValue]    = useState(initialQ);
+  const [results,       setResults]       = useState<CardInfo[]>([]);
+  const [ownedCards,    setOwnedCards]    = useState<CardDoc[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchSort,    setSearchSort]    = useState<SearchSortKey>('number');
+  const [filterSet,     setFilterSet]     = useState('');
+  const [sets,          setSets]          = useState<{ id: string; name: string }[]>([]);
+  const [catalogCount,  setCatalogCount]  = useState(0);
+  const [source,        setSource]        = useState<'catalog' | 'api' | null>(null);
 
   // ── UI-State ──────────────────────────────────────────────────
   const [filterCounts,     setFilterCounts]     = useState<FilterCounts | null>(null);
   const [filtersCollapsed, setFiltersCollapsed] = useState(false);
-  const lastScrollY = useRef(0);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const countTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sentinelRef = useRef<HTMLDivElement>(null);
+  const lastScrollY    = useRef(0);
+  const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sentinelRef    = useRef<HTMLDivElement>(null);
 
   // ── Init ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -98,17 +99,21 @@ function CollectionContent() {
     getCatalogFilterCounts().then(setFilterCounts).catch(() => {});
   }, []);
 
-  // ── Dynamische Counts (debounced, bei Filter-Änderung) ────────
+  // ── Dynamische Counts (debounced) ─────────────────────────────
+  const activeTypesKey = useMemo(() => [...activeTypes].sort().join(','), [activeTypes]);
+
   useEffect(() => {
     if (countTimerRef.current) clearTimeout(countTimerRef.current);
     countTimerRef.current = setTimeout(() => {
+      const singleType = activeTypes.size === 1 ? [...activeTypes][0] : undefined;
       getCatalogFilterCounts({
-        type:      activeType ?? undefined,
+        type:      singleType,
         supertype: activeSupertype !== 'all' ? activeSupertype : undefined,
       }).then(setFilterCounts).catch(() => {});
     }, 300);
     return () => { if (countTimerRef.current) clearTimeout(countTimerRef.current); };
-  }, [activeType, activeSupertype]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTypesKey, activeSupertype]);
 
   // ── Scroll-Collapse ───────────────────────────────────────────
   useEffect(() => {
@@ -139,12 +144,12 @@ function CollectionContent() {
 
   const browserFilter = useMemo<CardBrowserFilter>(() => ({
     supertype:      activeSupertype !== 'all' ? activeSupertype : undefined,
-    type:           activeType      ?? undefined,
+    types:          activeTypes.size > 0 ? [...activeTypes] : undefined,
     evolutionStage: activeEvolution ?? undefined,
     rarity:         activeRarity    ?? undefined,
     ownedFilter,
     ownedIds,
-  }), [activeSupertype, activeType, activeEvolution, activeRarity, ownedFilter, ownedIds]);
+  }), [activeSupertype, activeTypesKey, activeEvolution, activeRarity, ownedFilter, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const {
     cards: browseCards, loading: browseLoading,
@@ -154,14 +159,12 @@ function CollectionContent() {
   // ── Infinite Scroll ───────────────────────────────────────────
   useEffect(() => {
     const el = sentinelRef.current;
-    if (!el || !isBrowseMode) return;
+    if (!el || inputValue) return;
     const observer = new IntersectionObserver(([entry]) => {
       if (entry.isIntersecting && hasMore && !loadingMore && !browseLoading) loadMore();
     }, { rootMargin: '300px' });
     observer.observe(el);
     return () => observer.disconnect();
-  // isBrowseMode depends on inputValue, but we keep it stable via deps below
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasMore, loadingMore, browseLoading, loadMore, inputValue]);
 
   // ── Suche ─────────────────────────────────────────────────────
@@ -215,8 +218,7 @@ function CollectionContent() {
     if (ownedFilter === 'owned')     r = r.filter(c => ownedIds.has(c.id));
     if (ownedFilter === 'missing')   r = r.filter(c => !ownedIds.has(c.id));
     if (activeSupertype !== 'all')   r = r.filter(c => c.supertype?.toLowerCase() === activeSupertype.toLowerCase());
-    const _type = activeType;
-    if (_type)                       r = r.filter(c => c.types?.includes(_type));
+    if (activeTypes.size > 0)        r = r.filter(c => c.types?.some(t => activeTypes.has(t as TcgType)));
     if (activeRarity) {
       r = r.filter(c => (getRarityGroup(c.rarity ?? '')?.label ?? 'Sonstige') === activeRarity);
     }
@@ -226,9 +228,10 @@ function CollectionContent() {
         : (parseInt(a.number) || 0) - (parseInt(b.number) || 0),
     );
     return r;
-  }, [results, ownedFilter, activeSupertype, activeType, activeRarity, ownedIds, searchSort]);
+  }, [results, ownedFilter, activeSupertype, activeTypesKey, activeRarity, ownedIds, searchSort]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isBrowseMode = !inputValue;
+  const isBrowseMode  = !inputValue;
+  const hasActiveFilter = !!(activeTypes.size || activeSupertype !== 'all' || ownedFilter !== 'all' || activeRarity || activeEvolution);
 
   const clearSearch = () => {
     setInputValue('');
@@ -238,9 +241,33 @@ function CollectionContent() {
     router.replace('/collection', { scroll: false });
   };
 
-  // Aktive Filter als Chips
-  const hasActiveFilter = !!(activeType || activeSupertype !== 'all' || ownedFilter !== 'all' || activeRarity || activeEvolution);
+  const toggleType = (t: TcgType) => {
+    setActiveTypes(prev => {
+      const next = new Set(prev);
+      if (next.has(t)) next.delete(t); else next.add(t);
+      return next;
+    });
+  };
 
+  // Ergebniszahl
+  const resultCount = isBrowseMode
+    ? `${browseCards.length}${hasMore ? '+' : ''}`
+    : `${displayed.length}`;
+  const showResultCount = hasAnyFilter || !!inputValue;
+
+  // Disabled-Logik für Type-Pills
+  const typeCountInContext = useMemo(() => {
+    // Browse: aus filterCounts (Firestore-Counts im aktuellen Supertype-Kontext)
+    // Suche: aus search results
+    const source = isBrowseMode ? filterCounts?.types : null;
+    if (source) return source;
+    if (!isBrowseMode) {
+      return Object.fromEntries(TCG_TYPES.map(t => [t, results.filter(c => c.types?.includes(t)).length]));
+    }
+    return null;
+  }, [isBrowseMode, filterCounts, results]);
+
+  // Supertype-Optionen mit Counts
   const supertypeOptions = useMemo(() => [
     { value: 'all',     label: filterCounts ? `Alle ${fmt(Object.values(filterCounts.supertypes).reduce((a, b) => a + b, 0))}` : 'Alle' },
     { value: 'Pokémon', label: filterCounts?.supertypes['Pokémon'] ? `Pokémon ${fmt(filterCounts.supertypes['Pokémon'])}` : 'Pokémon' },
@@ -249,9 +276,11 @@ function CollectionContent() {
   ], [filterCounts]);
 
   const showTypePills = activeSupertype === 'all' || activeSupertype === 'Pokémon';
-  const showEvolution = showTypePills;
+  const showEvolution = showTypePills && isBrowseMode;
 
-  // ── Render ────────────────────────────────────────────────────
+  // Karten für RarityFilterBar (browseModus = geladene Karten; Suche = Suchergebnisse)
+  const rarityCards  = isBrowseMode ? browseCards : results;
+
   return (
     <div className="flex flex-col min-h-screen">
 
@@ -276,21 +305,23 @@ function CollectionContent() {
           )}
         </div>
 
-        {/* ── Filter-Block (Browse + Suche) ──────────────────── */}
+        {/* ── Filter-Block ───────────────────────────────────── */}
         {filtersCollapsed ? (
-          /* Kompakter Strip mit aktiven Filter-Chips */
+          /* Kompakter Strip mit aktiven Chips */
           hasActiveFilter ? (
             <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
               {activeSupertype !== 'all' && (
                 <FilterChip label={activeSupertype} onRemove={() => setActiveSupertype('all')} />
               )}
-              {activeType && (
+              {[...activeTypes].map(t => (
                 <FilterChip
-                  label={ENERGY_META[activeType].de}
-                  onRemove={() => setActiveType(null)}
-                  color={ENERGY_META[activeType].bg}
+                  key={t}
+                  label={ENERGY_META[t].de}
+                  onRemove={() => toggleType(t)}
+                  color={ENERGY_META[t].bg}
+                  icon={<EnergyIcon type={t} size={14} />}
                 />
-              )}
+              ))}
               {activeEvolution && (
                 <FilterChip
                   label={EVOLUTION_OPTIONS.find(o => o.value === activeEvolution)?.label ?? activeEvolution}
@@ -311,7 +342,7 @@ function CollectionContent() {
         ) : (
           /* Vollständige Filter-Zeilen */
           <>
-            {/* Zeile 1: Vorhanden/Fehlen + Sort (Browse) / Set+Sort (Suche) */}
+            {/* Zeile 1: Vorhanden/Fehlen + Sort/Set */}
             <div className="flex items-center gap-2">
               <ButtonGroup options={OWNED_OPTIONS} value={ownedFilter} onChange={v => setOwnedFilter(v as OwnedFilter)} />
               {isBrowseMode && (
@@ -348,25 +379,27 @@ function CollectionContent() {
             <ButtonGroup
               options={supertypeOptions}
               value={activeSupertype}
-              onChange={v => { setActiveSupertype(v as Supertype | 'all'); setActiveType(null); setActiveEvolution(null); }}
+              onChange={v => { setActiveSupertype(v as Supertype | 'all'); setActiveTypes(new Set()); setActiveEvolution(null); }}
             />
 
-            {/* Zeile 3: Typ-Pills mit Counts (nur bei Pokémon/Alle) */}
+            {/* Zeile 3: Typ-Pills (Mehrfachauswahl, OR) */}
             {showTypePills && (
               <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
                 {TCG_TYPES.map(t => {
-                  const active = activeType === t;
-                  const meta   = ENERGY_META[t];
-                  const count  = filterCounts?.types[t];
+                  const active    = activeTypes.has(t);
+                  const meta      = ENERGY_META[t];
+                  const count     = typeCountInContext?.[t];
+                  const isDisabled = count === 0;
                   return (
                     <button
                       key={t}
-                      onClick={() => { setActiveType(active ? null : t); setActiveEvolution(null); }}
-                      className="flex items-center gap-1.5 text-xs pl-1 pr-2.5 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0"
+                      onClick={() => !isDisabled && toggleType(t)}
+                      disabled={isDisabled}
+                      className="flex items-center gap-1.5 text-xs pl-1 pr-2.5 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
                       style={{
                         borderColor: active ? meta.bg : 'transparent',
                         background:  active ? `${meta.bg}22` : 'var(--secondary)',
-                        color:       active ? meta.bg : 'var(--muted-foreground)',
+                        color:       isDisabled ? 'var(--muted-foreground)' : active ? meta.bg : 'var(--muted-foreground)',
                         fontWeight:  active ? 600 : 400,
                       }}
                     >
@@ -381,8 +414,8 @@ function CollectionContent() {
               </div>
             )}
 
-            {/* Zeile 4: Entwicklungsstufe (Basis/Phase 1/Phase 2) */}
-            {showEvolution && isBrowseMode && (
+            {/* Zeile 4: Entwicklungsstufe (nur Browse + Pokémon/Alle) */}
+            {showEvolution && (
               <ButtonGroup
                 options={EVOLUTION_OPTIONS.map(o => ({ value: o.value ?? 'all', label: o.label }))}
                 value={activeEvolution ?? 'all'}
@@ -390,24 +423,22 @@ function CollectionContent() {
               />
             )}
 
-            {/* Zeile 5: Rarity-Chips (wenn Karten geladen) */}
-            {isBrowseMode && browseCards.length > 0 && (
-              <RarityFilterBar
-                cards={browseCards}
-                ownedIds={ownedIds}
-                activeRarities={activeRarity ? new Set([activeRarity]) : new Set()}
-                onToggle={label => setActiveRarity(prev => prev === label ? null : label)}
-              />
-            )}
-            {!isBrowseMode && displayed.length > 0 && (
-              <RarityFilterBar
-                cards={results}
-                ownedIds={ownedIds}
-                activeRarities={activeRarity ? new Set([activeRarity]) : new Set()}
-                onToggle={label => setActiveRarity(prev => prev === label ? null : label)}
-              />
-            )}
+            {/* Zeile 5: Rarity — immer sichtbar (auch ohne geladene Karten via rarityCounts) */}
+            <RarityFilterBar
+              cards={rarityCards}
+              ownedIds={ownedIds}
+              activeRarities={activeRarity ? new Set([activeRarity]) : new Set()}
+              onToggle={label => setActiveRarity(prev => prev === label ? null : label)}
+              rarityCounts={filterCounts?.rarities}
+            />
           </>
+        )}
+
+        {/* Ergebnisanzahl */}
+        {showResultCount && (
+          <p className="text-xs text-muted-foreground text-right">
+            {resultCount} Karten
+          </p>
         )}
       </div>
 
@@ -440,8 +471,6 @@ function CollectionContent() {
                     </p>
                   )}
                   <CardGrid cards={browseCards} ownedMap={ownedMap} />
-
-                  {/* Infinite-scroll Sentinel */}
                   <div ref={sentinelRef} className="h-1" />
                   {loadingMore && (
                     <div className="flex justify-center py-4">
