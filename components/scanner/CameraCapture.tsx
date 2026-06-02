@@ -8,46 +8,42 @@ interface Props {
   scanning: boolean;
 }
 
-// Guide-Frame-Größe (muss mit dem gerenderten Rahmen übereinstimmen)
 const FRAME_W = 190;
 const FRAME_H = 266;
 
-// Stabilitätsschwelle: mittlerer quadratischer Pixelfehler (0–255²)
-// Höher = toleranter gegenüber Handbewegungen
-// 15 = sehr streng, 40 = normal, 80 = locker
-const MSE_THRESHOLD = 40;
+// Countdown bis zum Auto-Snap (ms)
+const AUTO_SNAP_DELAY = 2000;
+// Check-Intervall
+const CHECK_MS = 100;
+// MSE-Schwelle für "starke Bewegung" → Timer-Reset (hoch, da Kamera-Noise ignoriert werden soll)
+const MOTION_RESET_THRESHOLD = 400;
 
-// Zeit in ms, die die Karte stabil sein muss, bevor automatisch ausgelöst wird
-const STABLE_DURATION_MS = 800;
-
-// Überprüfungsintervall
-const CHECK_INTERVAL_MS = 150;
-
-// Rechteck-Perimeter für den SVG-Fortschrittsring (2*(W+H) + Rundungen)
-// Rect 190×266 mit rx=12: gerade Seiten + 4 Viertelkreise mit r=12
+// Perimeter des gerundeten Rechtecks für SVG-Fortschrittsring
 const RECT_PERIMETER = 2 * (FRAME_W - 2 * 12 + FRAME_H - 2 * 12) + 2 * Math.PI * 12;
 
 export function CameraCapture({ onCapture, scanning }: Props) {
-  const videoRef      = useRef<HTMLVideoElement>(null);
-  const canvasRef     = useRef<HTMLCanvasElement>(null);       // für den finalen Snapshot
-  const sampleRef     = useRef<HTMLCanvasElement>(null);       // aktuelles Sample
-  const prevRef       = useRef<HTMLCanvasElement>(null);       // vorheriges Sample
-  const streamRef     = useRef<MediaStream | null>(null);
-  const timerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
-  const stableSince   = useRef<number | null>(null);
-  // Ref auf onCapture → doCapture bekommt stabile Referenz, kein Effect-Restart
-  const onCaptureRef  = useRef(onCapture);
+  const videoRef     = useRef<HTMLVideoElement>(null);
+  const canvasRef    = useRef<HTMLCanvasElement>(null);
+  const sampleRef    = useRef<HTMLCanvasElement>(null);
+  const prevRef      = useRef<HTMLCanvasElement>(null);
+  const streamRef    = useRef<MediaStream | null>(null);
+  const timerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = useRef<number>(0);       // ms seit letztem Motion-Reset
+  const onCaptureRef = useRef(onCapture);
+
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
 
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [torch,      setTorch]      = useState(false);
   const [error,      setError]      = useState<string | null>(null);
-  const [progress,   setProgress]   = useState(0); // 0..1 für Ring-Animation
+  const [progress,   setProgress]   = useState(0); // 0..1
 
   // ── Kamera starten ──────────────────────────────────────────────────────
   const startCamera = useCallback(async () => {
     streamRef.current?.getTracks().forEach(t => t.stop());
     setError(null);
+    countdownRef.current = 0;
+    setProgress(0);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -67,80 +63,87 @@ export function CameraCapture({ onCapture, scanning }: Props) {
     };
   }, [startCamera]);
 
-  // ── Foto auslösen — stabile Referenz via onCaptureRef ───────────────────
+  // ── Foto auslösen ────────────────────────────────────────────────────────
   const doCapture = useCallback(() => {
     const video  = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas) return;
+    if (!video || !canvas || video.readyState < 2) return;
     canvas.width  = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d')!.drawImage(video, 0, 0);
     const base64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
     onCaptureRef.current(base64, 'image/jpeg');
-    stableSince.current = null;
+    countdownRef.current = 0;
     setProgress(0);
-  }, []); // keine Abhängigkeiten → Interval wird nie unnötig neugestartet
+  }, []);
 
-  // ── Stabilitäts-Loop ─────────────────────────────────────────────────────
+  // ── Countdown-Loop ───────────────────────────────────────────────────────
   useEffect(() => {
     if (scanning) {
       if (timerRef.current) clearInterval(timerRef.current);
+      countdownRef.current = 0;
       setProgress(0);
-      stableSince.current = null;
       return;
     }
 
-    timerRef.current = setInterval(() => {
-      const video   = videoRef.current;
-      const sample  = sampleRef.current;
-      const prev    = prevRef.current;
-      if (!video || !sample || !prev || video.readyState < 2) return;
+    // Kurze Pause nach Kamera-Start (Video muss bereit sein)
+    const startDelay = setTimeout(() => {
+      timerRef.current = setInterval(() => {
+        const video  = videoRef.current;
+        const sample = sampleRef.current;
+        const prev   = prevRef.current;
+        if (!video || !sample || !prev || video.readyState < 2) return;
 
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-      if (!vw || !vh) return;
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        if (!vw || !vh) return;
 
-      // Rahmen-Bereich aus dem Video extrahieren (zentriert)
-      const sx = Math.max(0, (vw - FRAME_W) / 2);
-      const sy = Math.max(0, (vh - FRAME_H) / 2);
+        // Bewegungsmessung: kleinen Bereich in der Mitte samplen
+        const cropW = Math.min(FRAME_W, vw);
+        const cropH = Math.min(FRAME_H, vh);
+        const sx = Math.max(0, (vw - cropW) / 2);
+        const sy = Math.max(0, (vh - cropH) / 2);
 
-      const sCtx = sample.getContext('2d')!;
-      sCtx.drawImage(video, sx, sy, FRAME_W, FRAME_H, 0, 0, FRAME_W, FRAME_H);
+        const sCtx = sample.getContext('2d')!;
+        sCtx.drawImage(video, sx, sy, cropW, cropH, 0, 0, cropW, cropH);
 
-      const pCtx = prev.getContext('2d')!;
-      const pData = pCtx.getImageData(0, 0, FRAME_W, FRAME_H).data;
-      const sData = sCtx.getImageData(0, 0, FRAME_W, FRAME_H).data;
+        const pCtx = prev.getContext('2d')!;
+        const pData = pCtx.getImageData(0, 0, cropW, cropH).data;
+        const sData = sCtx.getImageData(0, 0, cropW, cropH).data;
 
-      // MSE über jeden 4. Pixel (R-Kanal reicht)
-      let mse = 0;
-      let count = 0;
-      for (let i = 0; i < sData.length; i += 16) {
-        const diff = sData[i] - pData[i];
-        mse += diff * diff;
-        count++;
-      }
-      mse = count > 0 ? mse / count : 999;
-
-      const isStable = mse < MSE_THRESHOLD;
-
-      if (isStable) {
-        if (stableSince.current === null) stableSince.current = Date.now();
-        const elapsed = Date.now() - stableSince.current;
-        setProgress(Math.min(elapsed / STABLE_DURATION_MS, 1));
-        if (elapsed >= STABLE_DURATION_MS) {
-          doCapture();
+        // MSE (jeder 8. Pixel, R-Kanal) — nur starke Bewegung zählt
+        let mse = 0, count = 0;
+        for (let i = 0; i < sData.length; i += 32) {
+          const d = sData[i] - pData[i];
+          mse += d * d;
+          count++;
         }
-      } else {
-        stableSince.current = null;
-        setProgress(0);
-      }
+        mse = count > 0 ? mse / count : 0;
 
-      // aktuelles Sample wird zum vorherigen
-      pCtx.drawImage(sample, 0, 0);
-    }, CHECK_INTERVAL_MS);
+        // prev = current sample
+        pCtx.drawImage(sample, 0, 0);
 
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [scanning, doCapture]); // doCapture ist jetzt stabil → Effect läuft nur bei scanning-Wechsel
+        if (mse > MOTION_RESET_THRESHOLD) {
+          // Starke Bewegung → Timer zurücksetzen
+          countdownRef.current = 0;
+          setProgress(0);
+        } else {
+          // Ruhig (oder Kamera-Noise) → hochzählen
+          countdownRef.current += CHECK_MS;
+          const p = Math.min(countdownRef.current / AUTO_SNAP_DELAY, 1);
+          setProgress(p);
+          if (countdownRef.current >= AUTO_SNAP_DELAY) {
+            doCapture();
+          }
+        }
+      }, CHECK_MS);
+    }, 800); // 800ms warten bis Video stabil läuft
+
+    return () => {
+      clearTimeout(startDelay);
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [scanning, doCapture]);
 
   // ── Torch ────────────────────────────────────────────────────────────────
   const toggleTorch = async () => {
@@ -152,12 +155,10 @@ export function CameraCapture({ onCapture, scanning }: Props) {
     } catch { /* nicht unterstützt */ }
   };
 
-  // Ring-Animation: SVG stroke-dashoffset entlang Rechteck-Perimeter
   const strokeDash = RECT_PERIMETER - progress * RECT_PERIMETER;
 
   return (
     <div className="relative w-full flex flex-col items-center">
-      {/* Versteckte Canvas-Elemente */}
       <canvas ref={canvasRef} className="hidden" />
       <canvas ref={sampleRef} width={FRAME_W} height={FRAME_H} className="hidden" />
       <canvas ref={prevRef}   width={FRAME_W} height={FRAME_H} className="hidden" />
@@ -167,7 +168,11 @@ export function CameraCapture({ onCapture, scanning }: Props) {
           <p className="text-sm text-muted-foreground">{error}</p>
         </div>
       ) : (
-        <div className="relative w-full aspect-[3/4] bg-black rounded-2xl overflow-hidden">
+        /* Viewfinder — Tippen löst sofort aus */
+        <div
+          className="relative w-full aspect-[3/4] bg-black rounded-2xl overflow-hidden"
+          onClick={!scanning ? doCapture : undefined}
+        >
           <video
             ref={videoRef}
             autoPlay
@@ -176,29 +181,27 @@ export function CameraCapture({ onCapture, scanning }: Props) {
             className="absolute inset-0 w-full h-full object-cover"
           />
 
-          {/* Card guide frame mit Ring-Animation */}
+          {/* Card guide frame */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="relative" style={{ width: FRAME_W, height: FRAME_H }}>
-              {/* Grüner Rahmen */}
               <div
                 className="absolute inset-0"
                 style={{
                   border: '2.5px solid',
-                  borderColor: progress > 0 ? '#48bb78' : 'rgba(255,255,255,0.4)',
+                  borderColor: progress > 0.05 ? '#48bb78' : 'rgba(255,255,255,0.4)',
                   borderRadius: 12,
-                  transition: 'border-color 0.2s',
+                  transition: 'border-color 0.3s',
                 }}
               />
-              {/* Ecken-Marks */}
               {['top-0 left-0', 'top-0 right-0', 'bottom-0 left-0', 'bottom-0 right-0'].map((pos, i) => (
                 <div
                   key={i}
                   className={`absolute w-4 h-4 ${pos}`}
                   style={{
-                    borderColor: progress > 0 ? '#48bb78' : 'rgba(255,255,255,0.6)',
+                    borderColor: progress > 0.05 ? '#48bb78' : 'rgba(255,255,255,0.6)',
                     borderStyle: 'solid',
                     borderWidth: 0,
-                    transition: 'border-color 0.2s',
+                    transition: 'border-color 0.3s',
                     ...(i === 0 && { borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 12 }),
                     ...(i === 1 && { borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 12 }),
                     ...(i === 2 && { borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 12 }),
@@ -207,8 +210,8 @@ export function CameraCapture({ onCapture, scanning }: Props) {
                 />
               ))}
 
-              {/* Fortschrittsring (SVG, überlagert den Rahmen) */}
-              {progress > 0 && (
+              {/* Fortschrittsring */}
+              {progress > 0.05 && (
                 <svg
                   className="absolute inset-0 w-full h-full"
                   viewBox={`0 0 ${FRAME_W} ${FRAME_H}`}
@@ -223,14 +226,14 @@ export function CameraCapture({ onCapture, scanning }: Props) {
                     strokeWidth={3}
                     strokeDasharray={RECT_PERIMETER}
                     strokeDashoffset={strokeDash}
-                    style={{ transition: `stroke-dashoffset ${CHECK_INTERVAL_MS}ms linear` }}
+                    style={{ transition: `stroke-dashoffset ${CHECK_MS}ms linear` }}
                   />
                 </svg>
               )}
             </div>
           </div>
 
-          {/* Scanning-Overlay */}
+          {/* Scanning overlay */}
           {scanning && (
             <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
               <div className="text-center">
@@ -240,12 +243,9 @@ export function CameraCapture({ onCapture, scanning }: Props) {
             </div>
           )}
 
-          {/* Top-Controls */}
-          <div className="absolute top-3 right-3 flex flex-col gap-2">
-            <button
-              onClick={toggleTorch}
-              className="w-9 h-9 rounded-full bg-black/50 flex items-center justify-center"
-            >
+          {/* Top controls */}
+          <div className="absolute top-3 right-3 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
+            <button onClick={toggleTorch} className="w-9 h-9 rounded-full bg-black/50 flex items-center justify-center">
               {torch ? <Zap size={16} color="#facc15" /> : <ZapOff size={16} color="#fff" />}
             </button>
             <button
@@ -258,13 +258,12 @@ export function CameraCapture({ onCapture, scanning }: Props) {
         </div>
       )}
 
-      {/* Statuszeile unter dem Viewfinder */}
       <p className="mt-3 text-xs text-white/50 text-center">
         {scanning
           ? 'Analysiere…'
-          : progress > 0
-            ? `Karte erkannt — halte ruhig…`
-            : 'Halte die Karte in den Rahmen'}
+          : progress > 0.05
+            ? 'Halte ruhig — oder tippen zum sofortigen Auslösen'
+            : 'Karte in den Rahmen halten — oder tippen'}
       </p>
     </div>
   );
