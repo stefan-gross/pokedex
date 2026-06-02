@@ -28,13 +28,16 @@ const CHECK_INTERVAL_MS = 150;
 const RECT_PERIMETER = 2 * (FRAME_W - 2 * 12 + FRAME_H - 2 * 12) + 2 * Math.PI * 12;
 
 export function CameraCapture({ onCapture, scanning }: Props) {
-  const videoRef    = useRef<HTMLVideoElement>(null);
-  const canvasRef   = useRef<HTMLCanvasElement>(null);       // für den finalen Snapshot
-  const sampleRef   = useRef<HTMLCanvasElement>(null);       // aktuelles Sample
-  const prevRef     = useRef<HTMLCanvasElement>(null);       // vorheriges Sample
-  const streamRef   = useRef<MediaStream | null>(null);
-  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
-  const stableSince = useRef<number | null>(null);
+  const videoRef      = useRef<HTMLVideoElement>(null);
+  const canvasRef     = useRef<HTMLCanvasElement>(null);       // für den finalen Snapshot
+  const sampleRef     = useRef<HTMLCanvasElement>(null);       // aktuelles Sample
+  const prevRef       = useRef<HTMLCanvasElement>(null);       // vorheriges Sample
+  const streamRef     = useRef<MediaStream | null>(null);
+  const timerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stableSince   = useRef<number | null>(null);
+  // Ref auf onCapture → doCapture bekommt stabile Referenz, kein Effect-Restart
+  const onCaptureRef  = useRef(onCapture);
+  useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
 
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [torch,      setTorch]      = useState(false);
@@ -64,7 +67,7 @@ export function CameraCapture({ onCapture, scanning }: Props) {
     };
   }, [startCamera]);
 
-  // ── Foto auslösen ────────────────────────────────────────────────────────
+  // ── Foto auslösen — stabile Referenz via onCaptureRef ───────────────────
   const doCapture = useCallback(() => {
     const video  = videoRef.current;
     const canvas = canvasRef.current;
@@ -73,10 +76,10 @@ export function CameraCapture({ onCapture, scanning }: Props) {
     canvas.height = video.videoHeight;
     canvas.getContext('2d')!.drawImage(video, 0, 0);
     const base64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
-    onCapture(base64, 'image/jpeg');
+    onCaptureRef.current(base64, 'image/jpeg');
     stableSince.current = null;
     setProgress(0);
-  }, [onCapture]);
+  }, []); // keine Abhängigkeiten → Interval wird nie unnötig neugestartet
 
   // ── Stabilitäts-Loop ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -137,7 +140,7 @@ export function CameraCapture({ onCapture, scanning }: Props) {
     }, CHECK_INTERVAL_MS);
 
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [scanning, doCapture]);
+  }, [scanning, doCapture]); // doCapture ist jetzt stabil → Effect läuft nur bei scanning-Wechsel
 
   // ── Torch ────────────────────────────────────────────────────────────────
   const toggleTorch = async () => {
