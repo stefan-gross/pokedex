@@ -334,10 +334,16 @@ Nach Implementierung testen:
 | Filter-Collapse | Scroll-Collapse mit 200ms Lockout nach State-Change (verhindert Reflow-Flicker), aktive Filter als Chips | `app/(app)/collection/page.tsx` |
 | next.config.ts | `images.scrydex.com` + `assets.tcgdex.net` als erlaubte Bild-Hosts eingetragen | `next.config.ts` |
 
-| Scanner | Auto-Scan via Countdown (2s, reset bei starker Bewegung MSE>400), Tippen auf Viewfinder als Fallback; Gemini 2.0 Flash gibt setId+number+language; Firestore-Client-Lookup; `preLanguage` im Modal | `components/scanner/CameraCapture.tsx`, `app/api/scan/route.ts`, `components/scanner/CardScanResult.tsx` |
-| Mehrsprachige Suche | `nameDe`+`nameDeLower` in CatalogCard; `searchCatalog` sucht DE-first dann EN-Fallback; Enrichment-Funktion cursor-basiert (500/Batch); Admin-Route + Settings-Button | `lib/firestore/catalog.ts`, `lib/sync-catalog.ts`, `app/api/admin/enrich-german-names/` |
-| Suche — Stabilität | `catalogCountRef` statt `catalogCount` in doSearch-Deps → kein stiller Re-Search; TCGdex-Fallback bis Enrichment vollständig | `app/(app)/collection/page.tsx` |
-| Suche — Evo-Line-Fix | `baseResultsRef` speichert Suchergebnisse vor Evo-Erweiterung; Deaktivieren stellt Basis wieder her | `app/(app)/collection/page.tsx` |
+| Scanner | Parallel-Scan: Kamera läuft durch, Gemini im Hintergrund, Ergebnis als Overlay-Sheet; Cooldown 2s nach Snap; Pending-Badge; Gemini 2.5-flash mit 1.5-flash Fallback bei 503; setId-Mapping SV01–SV09.5+SWSH+SM+XY+BW+Klassiker; Varianten-Erkennung (standard/holo/reverse/alt-art/promo) via Gemini | `components/scanner/CameraCapture.tsx`, `app/api/scan/route.ts`, `components/scanner/CardScanResult.tsx`, `app/(app)/scanner/page.tsx` |
+| Scanner — Rahmenfarben | Weiß=nichts, Gelb=Karte erkannt (Varianz), Grün=still→Sofort-Snap (1 Frame) | `components/scanner/CameraCapture.tsx` |
+| Scanner — Review-System | `needsReview: true` bei Scanner-Karten; BottomNav-Badge (gelb); Collection-Filter „🔍 Prüfen"; CardDetailSheet roter Rahmen + „Geprüft"-Button; `markReviewed()` | `types/index.ts`, `lib/firestore/cards.ts`, `components/BottomNav.tsx`, `components/card/CardDetailSheet.tsx` |
+| Suche — Sortierung | Suchmodus: Nummer/Name/Pokédex-Nr./KP + ↕-Richtungstoggle; Browse-Modus: A-Z/KP/Pokédex-Nr. + ↕-Toggle | `app/(app)/collection/page.tsx`, `lib/hooks/useCardBrowser.ts` |
+| Suche — Pokédex-Nr. | Eingabe „25" oder „#25" → direkt `getCardsByDexNumber()`; Sort wechselt auto auf Pokédex-Nr. | `app/(app)/collection/page.tsx` |
+| Karten-Daten DE | `catalogCardToInfo` nutzt `nameDe ?? name` (app-weit); Scanner zeigt TCGdex-Bild für DE-Karten | `lib/card-info.ts`, `components/scanner/CardScanResult.tsx` |
+| CardInfo | `hp` Feld ergänzt (war in Firestore, fehlte im Typ) | `lib/card-info.ts` |
+| Mehrsprachige Suche | `nameDe`+`nameDeLower` in CatalogCard; `searchCatalog` sucht DE-first dann EN-Fallback; Enrichment cursor-basiert; Admin-Route + Settings-Button | `lib/firestore/catalog.ts`, `lib/sync-catalog.ts`, `app/api/admin/enrich-german-names/` |
+| Suche — Stabilität | `catalogCountRef` statt `catalogCount` in doSearch-Deps; TCGdex-Fallback bis Enrichment vollständig | `app/(app)/collection/page.tsx` |
+| Suche — Evo-Line-Fix | `baseResultsRef` speichert Suchergebnisse vor Evo-Erweiterung | `app/(app)/collection/page.tsx` |
 | Suche — Leerzustände | 0 Treffer: Emoji + Meldung; Treffer aber Filter blendet alle aus: eigene Meldung | `app/(app)/collection/page.tsx` |
 
 ### 🔲 Noch offen
