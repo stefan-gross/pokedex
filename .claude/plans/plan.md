@@ -299,7 +299,7 @@ Nach Implementierung testen:
 
 ---
 
-## Aktueller Implementierungsstand (Stand: 2026-06-02)
+## Aktueller Implementierungsstand (Stand: 2026-06-03)
 
 > **Hinweis für Wiederaufnahme:** Alle Seiten liegen unter `app/(app)/` (Route Group). Root-Layout ist minimal. Login unter `app/login/page.tsx` ohne App-Chrome.
 
@@ -309,7 +309,7 @@ Nach Implementierung testen:
 |---------|-----|-----------------|
 | Phase 0 | Mockup | `public/mockup.html` |
 | Phase 1 | Next.js 16 + Tailwind v4 + shadcn/ui + Firebase + Layout | `app/layout.tsx`, `app/(app)/layout.tsx`, `components/BottomNav.tsx` |
-| Phase 2 | Scanner (Kamera + Gemini Vision + Add-Modal) | `app/(app)/scanner/page.tsx`, `components/scanner/*` |
+| Phase 2 | Scanner: Auto-Snap (Countdown 2s + Bewegungs-Reset), Gemini 2.0 Flash (setId+number+language), Firestore-First Lookup, Sprache vorbelegt im Modal | `app/(app)/scanner/page.tsx`, `components/scanner/*` |
 | Phase 3 | Suche: Such-Modus + Browse-Modus (paginiert), alle Filter | `app/(app)/collection/page.tsx` |
 | Phase 4 (teilw.) | Mappen: Übersicht + Detailseite + Create/Edit Modal | `app/(app)/binders/*`, `components/binder/*` |
 | Phase 6 (teilw.) | Preissystem: TCGPlayer via pokemontcg.io, Provider-Interface | `lib/prices/`, `app/api/prices/route.ts`, `components/card/CardPrices.tsx` |
@@ -334,16 +334,22 @@ Nach Implementierung testen:
 | Filter-Collapse | Scroll-Collapse mit 200ms Lockout nach State-Change (verhindert Reflow-Flicker), aktive Filter als Chips | `app/(app)/collection/page.tsx` |
 | next.config.ts | `images.scrydex.com` + `assets.tcgdex.net` als erlaubte Bild-Hosts eingetragen | `next.config.ts` |
 
+| Scanner | Auto-Scan via Countdown (2s, reset bei starker Bewegung MSE>400), Tippen auf Viewfinder als Fallback; Gemini 2.0 Flash gibt setId+number+language; Firestore-Client-Lookup; `preLanguage` im Modal | `components/scanner/CameraCapture.tsx`, `app/api/scan/route.ts`, `components/scanner/CardScanResult.tsx` |
+| Mehrsprachige Suche | `nameDe`+`nameDeLower` in CatalogCard; `searchCatalog` sucht DE-first dann EN-Fallback; Enrichment-Funktion cursor-basiert (500/Batch); Admin-Route + Settings-Button | `lib/firestore/catalog.ts`, `lib/sync-catalog.ts`, `app/api/admin/enrich-german-names/` |
+| Suche — Stabilität | `catalogCountRef` statt `catalogCount` in doSearch-Deps → kein stiller Re-Search; TCGdex-Fallback bis Enrichment vollständig | `app/(app)/collection/page.tsx` |
+| Suche — Evo-Line-Fix | `baseResultsRef` speichert Suchergebnisse vor Evo-Erweiterung; Deaktivieren stellt Basis wieder her | `app/(app)/collection/page.tsx` |
+| Suche — Leerzustände | 0 Treffer: Emoji + Meldung; Treffer aber Filter blendet alle aus: eigene Meldung | `app/(app)/collection/page.tsx` |
+
 ### 🔲 Noch offen
 
-- **Evolutionsdaten-Enrichment ausführen** — Settings → „Evolutionsdaten anreichern" einmal klicken; danach kein PokéAPI-Call mehr zur Laufzeit
 - **Karten-Detailansicht** — Wunschlisten-Aktion, Preisanzeige im Sheet
 - **Phase 4 (Rest)** — Karten per Drag & Drop in Mappen verschieben, Mappe als PDF
 - **Phase 5** — Wunschlisten: CRUD, Karten zuordnen, PDF-Export (`app/(app)/wishlist/` existiert noch nicht)
 - **Phase 6 (Rest)** — Preishistorie in Firestore, Gesamtwert im Dashboard
 - **Phase 7** — PDF-Export für Sammlung/Wunschliste (`@react-pdf/renderer`)
 - **Pokédex/Wiki** — PokéAPI Integration (noch nicht begonnen, geplant: `app/(app)/pokedex/`)
-- **Suche — Mehrsprachiger Catalog** — `nameDe`, `nameFr` in `tcg_catalog` via TCGdex-Sync (geplant, nicht gebaut); aktuell nur TCGdex-Fallback bei 0 EN-Treffern
+- **Deutsche Namen-Enrichment abschließen** — Settings → „Deutsche Namen anreichern" wiederholt klicken bis alle ~20k Karten nameDe haben; dann TCGdex-Fallback überflüssig
+- **Evolutionsdaten-Enrichment ausführen** — Settings → „Evolutionsdaten anreichern" einmal klicken
 - **Set-Favoriten** — in Firestore speichern (Dashboard-Favoriten-Tab zeigt aktuell meiste Karten)
 - **Energie-Icons** — SVG-Symbole noch nicht 1:1 mit offiziellen Icons (gut erkennbar, aber verbesserungsfähig)
 
