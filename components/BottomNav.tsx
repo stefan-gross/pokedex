@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, Search, BookOpen, Heart, Camera } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { getReviewCount } from '@/lib/firestore/cards';
 
 const navItems = [
   { href: '/', icon: Home, label: 'Home' },
@@ -14,6 +16,17 @@ const navItems = [
 
 export function BottomNav() {
   const pathname = usePathname();
+  const [reviewCount, setReviewCount] = useState(0);
+
+  const fetchCount = useCallback(() => {
+    getReviewCount().then(setReviewCount).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchCount();
+    window.addEventListener('review-count-changed', fetchCount);
+    return () => window.removeEventListener('review-count-changed', fetchCount);
+  }, [fetchCount]);
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
@@ -37,6 +50,14 @@ export function BottomNav() {
               >
                 <Camera size={24} color="#fff" />
               </Link>
+              {reviewCount > 0 && (
+                <span
+                  className="absolute -top-7 -right-1 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-white text-[10px] font-bold px-1"
+                  style={{ background: '#f59e0b', pointerEvents: 'none' }}
+                >
+                  {reviewCount > 99 ? '99+' : reviewCount}
+                </span>
+              )}
             </div>
           );
         }

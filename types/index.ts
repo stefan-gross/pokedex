@@ -23,6 +23,7 @@ export interface CardDoc {
   quantity: number;
   tcgImageUrl?: string;
   notes?: string;
+  needsReview?: boolean;   // true = per Scanner hinzugefügt, noch nicht manuell geprüft
   addedAt: Timestamp;
   updatedAt: Timestamp;
 }

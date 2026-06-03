@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { X, Plus, Heart } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { X, Plus, Heart, CheckCircle2 } from 'lucide-react';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { detectVariants, VARIANT_LABELS, getRarityGroup } from '@/lib/card-constants';
 import { toTcgdexId } from '@/lib/tcgdex';
 import { cardInfoToTcgApi, type CardInfo } from '@/lib/card-info';
+import { markReviewed } from '@/lib/firestore/cards';
 import type { CardDoc, BinderDoc } from '@/types';
 
 const LANGUAGE_FLAGS: Record<string, string> = {
@@ -218,7 +219,29 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                 {ownedCopies.map(copy => {
                   const copyBinders = bindersForCopy(copy);
                   return (
-                    <div key={copy.id} className="rounded-xl border border-border bg-background px-3 py-2.5 space-y-1.5">
+                    <div
+                      key={copy.id}
+                      className="rounded-xl border bg-background px-3 py-2.5 space-y-1.5"
+                      style={{ borderColor: copy.needsReview ? 'var(--pokedex-red)' : 'var(--border)' }}
+                    >
+                      {copy.needsReview && (
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-medium" style={{ color: 'var(--pokedex-red)' }}>
+                            Noch nicht geprüft
+                          </span>
+                          <button
+                            onClick={async () => {
+                              await markReviewed(copy.id);
+                              window.dispatchEvent(new Event('review-count-changed'));
+                              onSaved?.();
+                            }}
+                            className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full"
+                            style={{ background: 'rgba(72,187,120,.15)', color: '#48bb78' }}
+                          >
+                            <CheckCircle2 size={10} /> Geprüft
+                          </button>
+                        </div>
+                      )}
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-medium">{VARIANT_LABELS[copy.variant]}</span>
                         <span className="text-xs">{LANGUAGE_FLAGS[copy.language] ?? copy.language}</span>

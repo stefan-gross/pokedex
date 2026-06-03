@@ -38,3 +38,12 @@ export async function updateCard(id: string, data: Partial<CardDoc>): Promise<vo
 export async function deleteCard(id: string): Promise<void> {
   await deleteDoc(doc(db, COL, id));
 }
+
+export async function getReviewCount(): Promise<number> {
+  const snap = await getDocs(query(collection(db, COL), where('needsReview', '==', true)));
+  return snap.size;
+}
+
+export async function markReviewed(id: string): Promise<void> {
+  await updateDoc(doc(db, COL, id), { needsReview: false, updatedAt: Timestamp.now() });
+}

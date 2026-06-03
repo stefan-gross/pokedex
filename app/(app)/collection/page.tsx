@@ -18,7 +18,7 @@ import type { TcgApiCard } from '@/lib/pokemon-tcg';
 import type { CardDoc } from '@/types';
 import type { BrowseSortKey } from '@/lib/firestore/catalog';
 
-type OwnedFilter   = 'all' | 'owned' | 'missing';
+type OwnedFilter   = 'all' | 'owned' | 'missing' | 'review';
 type SearchSortKey = 'number' | 'name' | 'pokedex' | 'hp';
 type Supertype     = 'Pokémon' | 'Trainer' | 'Energy';
 
@@ -26,6 +26,7 @@ const OWNED_OPTIONS: { value: OwnedFilter; label: string }[] = [
   { value: 'all',     label: 'Alle'      },
   { value: 'owned',   label: 'Vorhanden' },
   { value: 'missing', label: 'Fehlen'    },
+  { value: 'review',  label: '🔍 Prüfen' },
 ];
 
 const BROWSE_SORT_OPTIONS: { value: BrowseSortKey; label: string }[] = [
@@ -183,12 +184,18 @@ function CollectionContent() {
 
   const ownedIds = useMemo(() => new Set(ownedMap.keys()), [ownedMap]);
 
+  // tcgIds der Karten die noch geprüft werden müssen (für "Zu prüfen"-Filter)
+  const reviewTcgIds = useMemo(
+    () => new Set(ownedCards.filter(c => c.needsReview && c.tcgId).map(c => c.tcgId!)),
+    [ownedCards],
+  );
+
   const browserFilter = useMemo<CardBrowserFilter>(() => ({
     supertype:       activeSupertype !== 'all' ? activeSupertype : undefined,
     types:           activeTypes.size > 0 ? [...activeTypes] : undefined,
     evolutionStages: activeEvolutions.size > 0 ? [...activeEvolutions] : undefined,
     rarity:          activeRarity ?? undefined,
-    ownedFilter,
+    ownedFilter: ownedFilter === 'review' ? 'all' : ownedFilter,
     ownedIds,
   }), [activeSupertype, activeTypesKey, activeEvolutionsKey, activeRarity, ownedFilter, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -323,8 +330,9 @@ function CollectionContent() {
   // Sucherg. durch geteilte Filter gefiltert
   const displayed = useMemo(() => {
     let r = [...results];
-    if (ownedFilter === 'owned')       r = r.filter(c => ownedIds.has(c.id));
+    if (ownedFilter === 'owned')        r = r.filter(c => ownedIds.has(c.id));
     if (ownedFilter === 'missing')     r = r.filter(c => !ownedIds.has(c.id));
+    if (ownedFilter === 'review')      r = r.filter(c => reviewTcgIds.has(c.id));
     if (activeSupertype !== 'all')     r = r.filter(c => c.supertype?.toLowerCase() === activeSupertype.toLowerCase());
     if (activeTypes.size > 0)          r = r.filter(c => c.types?.some(t => activeTypes.has(t as TcgType)));
     if (activeEvolutions.size > 0)     r = r.filter(c => c.subtypes?.some(s => activeEvolutions.has(s)));
@@ -342,10 +350,23 @@ function CollectionContent() {
             : d * ((parseInt(a.number) || 0) - (parseInt(b.number) || 0)),
     );
     return r;
-  }, [results, ownedFilter, activeSupertype, activeTypesKey, activeEvolutionsKey, activeRarity, ownedIds, searchSort, searchSortDir]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [results, ownedFilter, activeSupertype, activeTypesKey, activeEvolutionsKey, activeRarity, ownedIds, reviewTcgIds, searchSort, searchSortDir]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isBrowseMode    = !inputValue;
+  // Review-Mode: kein Suchbegriff + "Zu prüfen" Filter → eigene Karten laden
+  const isReviewMode = !inputValue && ownedFilter === 'review';
+  const isBrowseMode = !inputValue && ownedFilter !== 'review';
   const hasActiveFilter = !!(activeTypes.size || activeSupertype !== 'all' || ownedFilter !== 'all' || activeRarity || activeEvolutions.size);
+
+  // Review-Mode: Catalog-Karten für alle ungeprüften Einträge laden
+  useEffect(() => {
+    if (!isReviewMode) return;
+    if (reviewTcgIds.size === 0) { setResults([]); setSource('catalog'); return; }
+    getCatalogCardsByIds([...reviewTcgIds]).then(cards => {
+      baseResultsRef.current = cards.map(catalogCardToInfo);
+      setResults(baseResultsRef.current);
+      setSource('catalog');
+    }).catch(() => {});
+  }, [isReviewMode, reviewTcgIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const clearSearch = () => {
     setInputValue('');

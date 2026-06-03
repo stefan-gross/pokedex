@@ -146,6 +146,7 @@ export function CardScanResult({ card, candidates, language, confidence, preVari
           card={cardInfoToTcgApi(activeCard)}
           preVariant={preVariant}
           preLanguage={language}
+          fromScanner
           onClose={() => setShowModal(false)}
           onSaved={() => { setShowModal(false); setSaved(true); }}
         />

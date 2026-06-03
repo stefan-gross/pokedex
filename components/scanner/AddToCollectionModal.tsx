@@ -13,6 +13,7 @@ interface Props {
   card: TcgApiCard;
   preVariant?: CardVariant;
   preLanguage?: CardLanguage;
+  fromScanner?: boolean;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -21,7 +22,7 @@ const VARIANTS: { value: CardVariant; label: string }[] = (
   Object.entries(VARIANT_LABELS) as [CardVariant, string][]
 ).map(([value, label]) => ({ value, label }));
 
-export function AddToCollectionModal({ card, preVariant, preLanguage, onClose, onSaved }: Props) {
+export function AddToCollectionModal({ card, preVariant, preLanguage, fromScanner = false, onClose, onSaved }: Props) {
   const [variant, setVariant] = useState<CardVariant>(preVariant ?? 'standard');
   const [condition, setCondition] = useState<CardCondition>('NM');
   const [language, setLanguage] = useState<CardLanguage>(preLanguage ?? 'de');
@@ -60,7 +61,9 @@ export function AddToCollectionModal({ card, preVariant, preLanguage, onClose, o
         isFirstEd: variant === '1st-ed',
         quantity,
         tcgImageUrl: card.images.large,
+        ...(fromScanner ? { needsReview: true } : {}),
       });
+      if (fromScanner) window.dispatchEvent(new Event('review-count-changed'));
       await Promise.all(selectedBinders.map(b => addCardToBinder(b, cardId)));
       onSaved();
     } catch (err) {
