@@ -1,6 +1,7 @@
 import { getAdminDb } from './firebase/admin';
 import type { CatalogCard, SyncMeta } from './firestore/catalog';
 import { detectVariants } from './card-constants';
+import { toTcgdexId } from './tcgdex';
 
 const TCG_BASE = 'https://api.pokemontcg.io/v2';
 const PAGE_SIZE = 250;
@@ -253,8 +254,6 @@ export async function enrichEvolutionFamilies(batchSize = 500): Promise<EnrichRe
 // ── Deutsche Namen-Anreicherung via TCGdex ────────────────────────────────
 // Holt deutsche Kartennamen set-weise von TCGdex und schreibt nameDe + nameDeLower.
 
-import { toTcgdexId } from './tcgdex';
-
 interface TcgdexCard { localId: string; name: string; }
 interface TcgdexSet  { cards?: TcgdexCard[]; }
 
@@ -291,13 +290,17 @@ export interface EnrichDeNamesResult {
 export async function enrichGermanNames(batchSize = 500): Promise<EnrichDeNamesResult> {
   const db = getAdminDb();
 
-  // Alle Karten ohne nameDe (limit batchSize+1 zum Prüfen ob noch mehr da sind)
-  const snap = await db.collection(COL).limit(batchSize + 1).get();
-  const toEnrich = snap.docs.filter(d => !d.data().nameDe).slice(0, batchSize);
+  // Nur Karten ohne nameDe — where('nameDe', '==', null) matcht fehlende + null-Felder
+  const snap = await db.collection(COL)
+    .where('nameDe', '==', null)
+    .limit(batchSize)
+    .get();
 
-  if (toEnrich.length === 0) {
+  if (snap.empty) {
     return { status: 'up-to-date', message: 'Alle deutschen Namen sind bereits vorhanden', enriched: 0, remaining: 0 };
   }
+
+  const toEnrich = snap.docs;
 
   // Distinct setIds dieser Batch
   const setIds = [...new Set(toEnrich.map(d => (d.data() as CatalogCard).setId))];
@@ -329,14 +332,15 @@ export async function enrichGermanNames(batchSize = 500): Promise<EnrichDeNamesR
     await batch.commit();
   }
 
-  const remaining = snap.docs.filter(d => !d.data().nameDe).length - enriched;
+  // Wenn wir batchSize Docs bekommen haben, gibt es wahrscheinlich noch mehr
+  const hasMore = toEnrich.length === batchSize;
   return {
-    status: remaining <= 0 ? 'complete' : 'in-progress',
-    message: remaining <= 0
-      ? `✅ Deutsche Namen vollständig (${enriched} Karten angereichert)`
-      : `📥 ${enriched} Karten angereichert — weitere vorhanden`,
+    status: hasMore ? 'in-progress' : 'complete',
+    message: hasMore
+      ? `📥 ${enriched} Karten angereichert — weitere vorhanden`
+      : `✅ Deutsche Namen vollständig (${enriched} Karten angereichert)`,
     enriched,
-    remaining: Math.max(0, remaining),
+    remaining: hasMore ? -1 : 0, // -1 = unbekannt aber vorhanden
   };
 }
 
