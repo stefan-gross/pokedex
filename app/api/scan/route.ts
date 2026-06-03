@@ -3,16 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
-export async function POST(req: NextRequest) {
-  try {
-    const { imageBase64, mimeType = 'image/jpeg' } = await req.json();
-    if (!imageBase64) return NextResponse.json({ error: 'No image provided' }, { status: 400 });
-
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-
-    const result = await model.generateContent([
-      { inlineData: { data: imageBase64, mimeType } },
-      `You are a Pokémon TCG expert. Identify the card in this image.
+const PROMPT = `You are a Pokémon TCG expert. Identify the card in this image.
 
 CARD LAYOUT — where to look:
 - BOTTOM-RIGHT corner: card number printed as "NNN/TTT" — return ONLY the NNN part (e.g. "049", NOT "049/198"). Promo cards: "SVPXXX" → return "SVPXXX".
@@ -76,25 +67,50 @@ Classic sets (only symbol, no printed code — identify visually):
   Spiral/diamond crystal → neo2 (Neo Discovery)
   Dark spiral → neo3 (Neo Revelation)
   Large spiral/destiny → neo4 (Neo Destiny)
-  Legend triangle/sun → ex series (exand, ex1–ex16)`,
-    ]);
+  Legend triangle/sun → ex series (exand, ex1–ex16)`;
 
-    const text = result.response.text().trim();
+// Fallback-Kette: 2.5-flash zuerst, bei 503 auf 1.5-flash
+const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-1.5-flash'];
 
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      const match = text.match(/\{[\s\S]*\}/);
-      parsed = match ? JSON.parse(match[0]) : { error: 'Could not parse response' };
+export async function POST(req: NextRequest) {
+  try {
+    const { imageBase64, mimeType = 'image/jpeg' } = await req.json();
+    if (!imageBase64) return NextResponse.json({ error: 'No image provided' }, { status: 400 });
+
+    let lastError: string = 'Scan failed';
+    for (const modelName of MODEL_FALLBACKS) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent([
+          { inlineData: { data: imageBase64, mimeType } },
+          PROMPT,
+        ]);
+
+        const text = result.response.text().trim();
+        let parsed: Record<string, unknown>;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          const match = text.match(/\{[\s\S]*\}/);
+          parsed = match ? JSON.parse(match[0]) : { error: 'Could not parse response' };
+        }
+
+        // Nummer-Normalisierung: "049/198" → "049"
+        if (typeof parsed.number === 'string' && parsed.number.includes('/')) {
+          parsed.number = parsed.number.split('/')[0];
+        }
+
+        return NextResponse.json(parsed);
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        const is503 = lastError.includes('503') || lastError.includes('high demand') || lastError.includes('overloaded');
+        if (!is503) break; // Nur bei Überlast weiterprobieren, nicht bei Auth-Fehlern etc.
+        console.warn(`${modelName} unavailable (503), trying fallback...`);
+      }
     }
 
-    // Nummer-Normalisierung: "049/198" → "049", führende Nullen bleiben erhalten
-    if (typeof parsed.number === 'string' && parsed.number.includes('/')) {
-      parsed.number = parsed.number.split('/')[0];
-    }
-
-    return NextResponse.json(parsed);
+    console.error('All Gemini models failed:', lastError);
+    return NextResponse.json({ error: `Scan failed: ${lastError}` }, { status: 500 });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('Scan error:', msg);
