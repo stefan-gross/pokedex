@@ -1,4 +1,5 @@
 import { getAdminDb } from './firebase/admin';
+import { FieldPath } from 'firebase-admin/firestore';
 import type { CatalogCard, SyncMeta } from './firestore/catalog';
 import { detectVariants } from './card-constants';
 import { toTcgdexId } from './tcgdex';
@@ -290,17 +291,31 @@ export interface EnrichDeNamesResult {
 export async function enrichGermanNames(batchSize = 500): Promise<EnrichDeNamesResult> {
   const db = getAdminDb();
 
-  // Nur Karten ohne nameDe — where('nameDe', '==', null) matcht fehlende + null-Felder
-  const snap = await db.collection(COL)
-    .where('nameDe', '==', null)
-    .limit(batchSize)
-    .get();
+  // Cursor-basierte Pagination: merkt sich den letzten verarbeiteten Doc-ID
+  // (Firestore unterscheidet fehlende Felder von null → where('nameDe','==',null) funktioniert nicht)
+  const cursorRef = db.doc('tcg_catalog_meta/de_enrichment_cursor');
+  const cursorSnap = await cursorRef.get();
+  const lastDocId: string = cursorSnap.exists ? (cursorSnap.data()?.lastDocId ?? '') : '';
 
-  if (snap.empty) {
-    return { status: 'up-to-date', message: 'Alle deutschen Namen sind bereits vorhanden', enriched: 0, remaining: 0 };
+  let q = db.collection(COL)
+    .orderBy(FieldPath.documentId())
+    .limit(batchSize + 1);
+
+  if (lastDocId) {
+    const lastDoc = await db.doc(`${COL}/${lastDocId}`).get();
+    if (lastDoc.exists) q = q.startAfter(lastDoc) as typeof q;
   }
 
-  const toEnrich = snap.docs;
+  const snap = await q.get();
+
+  if (snap.empty) {
+    // Ende der Collection — Cursor zurücksetzen
+    await cursorRef.delete();
+    return { status: 'complete', message: 'Alle deutschen Namen sind bereits vorhanden', enriched: 0, remaining: 0 };
+  }
+
+  const hasMore = snap.docs.length > batchSize;
+  const toEnrich = snap.docs.slice(0, batchSize).filter(d => !d.data().nameDe);
 
   // Distinct setIds dieser Batch
   const setIds = [...new Set(toEnrich.map(d => (d.data() as CatalogCard).setId))];
@@ -332,15 +347,21 @@ export async function enrichGermanNames(batchSize = 500): Promise<EnrichDeNamesR
     await batch.commit();
   }
 
-  // Wenn wir batchSize Docs bekommen haben, gibt es wahrscheinlich noch mehr
-  const hasMore = toEnrich.length === batchSize;
+  // Cursor für nächsten Aufruf speichern (oder löschen wenn fertig)
+  const lastDoc = snap.docs[batchSize - 1] ?? snap.docs[snap.docs.length - 1];
+  if (hasMore) {
+    await cursorRef.set({ lastDocId: lastDoc.id });
+  } else {
+    await cursorRef.delete();
+  }
+
   return {
     status: hasMore ? 'in-progress' : 'complete',
     message: hasMore
       ? `📥 ${enriched} Karten angereichert — weitere vorhanden`
       : `✅ Deutsche Namen vollständig (${enriched} Karten angereichert)`,
     enriched,
-    remaining: hasMore ? -1 : 0, // -1 = unbekannt aber vorhanden
+    remaining: hasMore ? -1 : 0,
   };
 }
 
