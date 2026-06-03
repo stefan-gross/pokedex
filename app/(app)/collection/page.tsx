@@ -7,7 +7,8 @@ import { CardGrid } from '@/components/card/CardGrid';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { getCards } from '@/lib/firestore/cards';
-import { searchCatalog, getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts } from '@/lib/firestore/catalog';
+import { searchCatalog, getCatalogCardsByIds, getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts } from '@/lib/firestore/catalog';
+import { searchTcgdexDe } from '@/lib/tcgdex';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import { catalogCardToInfo, tcgApiCardToInfo, type CardInfo } from '@/lib/card-info';
 import { getRarityGroup } from '@/lib/card-constants';
@@ -84,6 +85,7 @@ function CollectionContent() {
   const [filterSet,     setFilterSet]     = useState('');
   const [sets,          setSets]          = useState<{ id: string; name: string }[]>([]);
   const [catalogCount,  setCatalogCount]  = useState(0);
+  const catalogCountRef = useRef(0);
   const [source,        setSource]        = useState<'catalog' | 'api' | null>(null);
 
   // ── UI-State ──────────────────────────────────────────────────
@@ -99,7 +101,7 @@ function CollectionContent() {
   // ── Init ──────────────────────────────────────────────────────
   useEffect(() => {
     getCards().then(setOwnedCards).catch(() => {});
-    getCatalogCount().then(setCatalogCount).catch(() => {});
+    getCatalogCount().then(n => { setCatalogCount(n); catalogCountRef.current = n; }).catch(() => {});
     getCatalogFilterCounts().then(setFilterCounts).catch(() => {});
   }, []);
 
@@ -207,20 +209,31 @@ function CollectionContent() {
   const doSearch = useCallback(async (q: string) => {
     if (!q.trim()) { setResults([]); setSets([]); setSource(null); return; }
     setSearchLoading(true);
+
+    const setAndReturn = (cards: CardInfo[]) => {
+      const setMap = new Map<string, string>();
+      cards.forEach(c => setMap.set(c.setId, c.setName));
+      setSets(Array.from(setMap.entries()).map(([id, name]) => ({ id, name })));
+      setResults(cards);
+      setSource('catalog');
+    };
+
     try {
-      if (catalogCount > 0) {
-        // searchCatalog: erst Deutsch (nameDeLower), Fallback Englisch (nameLower)
+      // catalogCountRef statt catalogCount — keine Re-Render durch nachladen
+      if (catalogCountRef.current > 0) {
+        // 1. Firestore: erst Deutsch (nameDeLower), dann Englisch (nameLower)
         const hits = await searchCatalog(q, filterSet, 80);
-        if (hits.length > 0) {
-          const cards = hits.map(catalogCardToInfo);
-          const setMap = new Map<string, string>();
-          cards.forEach(c => setMap.set(c.setId, c.setName));
-          setSets(Array.from(setMap.entries()).map(([id, name]) => ({ id, name })));
-          setResults(cards);
-          setSource('catalog');
-          return;
+        if (hits.length > 0) { setAndReturn(hits.map(catalogCardToInfo)); return; }
+
+        // 2. TCGdex-Fallback (solange nameDe-Enrichment noch nicht vollständig)
+        const tcgdexIds = await searchTcgdexDe(q);
+        if (tcgdexIds.length > 0) {
+          const deHits = await getCatalogCardsByIds(tcgdexIds.slice(0, 80));
+          if (deHits.length > 0) { setAndReturn(deHits.map(catalogCardToInfo)); return; }
         }
       }
+
+      // 3. pokemontcg.io API (letzter Fallback)
       const qStr = `name:${q}*${filterSet ? ` set.id:${filterSet}` : ''}`;
       const res  = await fetch(`/api/tcg?q=${encodeURIComponent(qStr)}&pageSize=80`);
       const data = await res.json();
@@ -235,7 +248,7 @@ function CollectionContent() {
     } finally {
       setSearchLoading(false);
     }
-  }, [filterSet, catalogCount]);
+  }, [filterSet]); // catalogCount raus → doSearch bleibt stabil, kein Re-Search beim Laden
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
