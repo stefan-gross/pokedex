@@ -2,7 +2,7 @@
 
 import { RotateCcw, Search, Plus } from 'lucide-react';
 import type { CardInfo } from '@/lib/card-info';
-import type { CardLanguage } from '@/types';
+import type { CardLanguage, CardVariant } from '@/types';
 import { AddToCollectionModal } from './AddToCollectionModal';
 import { cardInfoToTcgApi } from '@/lib/card-info';
 import { toTcgdexId } from '@/lib/tcgdex';
@@ -21,12 +21,13 @@ interface Props {
   candidates?: CardInfo[] | null;
   language: CardLanguage;
   confidence: string;
+  preVariant?: CardVariant;
   error?: string;
   onRetry: () => void;
   onManualSearch: () => void;
 }
 
-export function CardScanResult({ card, candidates, language, confidence, error, onRetry, onManualSearch }: Props) {
+export function CardScanResult({ card, candidates, language, confidence, preVariant, error, onRetry, onManualSearch }: Props) {
   const [showModal, setShowModal] = useState(false);
   const [saved, setSaved] = useState(false);
   const [selectedCard, setSelectedCard] = useState<CardInfo | null>(card);
@@ -143,6 +144,7 @@ export function CardScanResult({ card, candidates, language, confidence, error, 
       {showModal && activeCard && (
         <AddToCollectionModal
           card={cardInfoToTcgApi(activeCard)}
+          preVariant={preVariant}
           preLanguage={language}
           onClose={() => setShowModal(false)}
           onSaved={() => { setShowModal(false); setSaved(true); }}

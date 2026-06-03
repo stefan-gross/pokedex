@@ -16,10 +16,17 @@ Return ONLY this JSON — no markdown, no explanation:
   "number": "card number only — digits and letters, NO slash, NO total (e.g. 049 not 049/198)",
   "language": "de | en | ja | fr | es | it | pt | ko | zh-hant",
   "confidence": "high | medium | low",
-  "nationalDexNumber": null
+  "nationalDexNumber": null,
+  "variant": "standard | holo | reverse | alt-art | promo"
 }
 
-If the card shows a Pokémon (not Trainer/Energy), also set "nationalDexNumber" to the Pokédex number if visible on the card, otherwise null.
+For "nationalDexNumber": set to the Pokédex number if the card shows a Pokémon, otherwise null.
+For "variant" — look carefully at the card surface:
+  "alt-art": the Pokémon illustration extends to the full card edge with no visible white border
+  "holo": the Pokémon illustration area has a visible holographic/rainbow shimmer
+  "reverse": the card border and background are foil/shimmering, but the illustration is not
+  "promo": there is a promo or special stamp visible on the card
+  "standard": none of the above — normal non-foil card
 
 If no Pokémon card is visible, return: { "error": "No card detected" }
 

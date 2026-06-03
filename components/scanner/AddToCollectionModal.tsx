@@ -11,7 +11,7 @@ import type { BinderDoc } from '@/types';
 
 interface Props {
   card: TcgApiCard;
-  preVariant?: 'holo' | 'reverse';
+  preVariant?: CardVariant;
   preLanguage?: CardLanguage;
   onClose: () => void;
   onSaved: () => void;
