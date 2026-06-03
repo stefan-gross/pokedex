@@ -32,7 +32,7 @@ export interface CardInfo {
 export function catalogCardToInfo(c: CatalogCard): CardInfo {
   return {
     id: c.id,
-    name: c.name,
+    name: c.nameDe ?? c.name,
     number: c.number,
     rarity: c.rarity,
     supertype: c.supertype,

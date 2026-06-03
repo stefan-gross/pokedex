@@ -12,14 +12,10 @@ const FRAME_W = 190;
 const FRAME_H = 266;
 
 const CHECK_MS = 100;
-const MOTION_RESET_THRESHOLD = 400;
-// Helligkeits-Varianz im Frame-Bereich → ab diesem Wert gilt "Objekt erkannt"
+const MOTION_RESET_THRESHOLD = 800;  // toleranter: kleinere Wackler ignorieren
 const CARD_DETECT_VARIANCE = 600;
-// Frames die still + Karte erkannt sein müssen bevor Snap (verhindert einzelnen Ruhige-Frame-Fehlauslöser)
-const SNAP_STABLE_FRAMES = 3;
+const SNAP_STABLE_FRAMES = 1;        // sofort beim ersten ruhigen Frame mit Karte
 
-// Perimeter des gerundeten Rechtecks für SVG-Fortschrittsring
-const RECT_PERIMETER = 2 * (FRAME_W - 2 * 12 + FRAME_H - 2 * 12) + 2 * Math.PI * 12;
 
 export function CameraCapture({ onCapture, scanning }: Props) {
   const videoRef     = useRef<HTMLVideoElement>(null);
@@ -181,15 +177,13 @@ export function CameraCapture({ onCapture, scanning }: Props) {
     } catch { /* nicht unterstützt */ }
   };
 
-  const strokeDash = RECT_PERIMETER - progress * RECT_PERIMETER;
-
-  // Rahmenfarbe: weiß → gelb (Karte erkannt) → grün (Countdown läuft)
+  // Rahmenfarbe: weiß → gelb (Karte erkannt) → grün (still + snap)
   const frameColor = scanning
     ? 'rgba(255,255,255,0.4)'
-    : progress > 0.05
-      ? '#48bb78'           // grün: Countdown
+    : cardDetected && progress > 0
+      ? '#48bb78'
       : cardDetected
-        ? '#ecc94b'         // gelb: Karte erkannt, warte auf Stillstand
+        ? '#ecc94b'
         : 'rgba(255,255,255,0.4)';
 
   return (
@@ -245,26 +239,6 @@ export function CameraCapture({ onCapture, scanning }: Props) {
                 />
               ))}
 
-              {/* Fortschrittsring */}
-              {progress > 0.05 && (
-                <svg
-                  className="absolute inset-0 w-full h-full"
-                  viewBox={`0 0 ${FRAME_W} ${FRAME_H}`}
-                  style={{ transform: 'rotate(-90deg)' }}
-                >
-                  <rect
-                    x={1} y={1}
-                    width={FRAME_W - 2} height={FRAME_H - 2}
-                    rx={12} ry={12}
-                    fill="none"
-                    stroke={frameColor}
-                    strokeWidth={3}
-                    strokeDasharray={RECT_PERIMETER}
-                    strokeDashoffset={strokeDash}
-                    style={{ transition: `stroke-dashoffset ${CHECK_MS}ms linear` }}
-                  />
-                </svg>
-              )}
             </div>
           </div>
 

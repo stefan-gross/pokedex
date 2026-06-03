@@ -5,7 +5,16 @@ import type { CardInfo } from '@/lib/card-info';
 import type { CardLanguage } from '@/types';
 import { AddToCollectionModal } from './AddToCollectionModal';
 import { cardInfoToTcgApi } from '@/lib/card-info';
+import { toTcgdexId } from '@/lib/tcgdex';
 import { useState } from 'react';
+
+function cardImg(card: CardInfo, language: CardLanguage): string {
+  if (language === 'de') {
+    const tcgId = toTcgdexId(card.setId);
+    return `https://assets.tcgdex.net/de/${tcgId}/${card.number}/high.webp`;
+  }
+  return card.imgLarge ?? card.imgSmall;
+}
 
 interface Props {
   card: CardInfo | null;
@@ -69,7 +78,7 @@ export function CardScanResult({ card, candidates, language, confidence, error, 
           <div className="flex gap-4 items-start">
             <div className="w-20 h-[112px] rounded-xl overflow-hidden bg-secondary border border-border shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={activeCard.imgSmall} alt={activeCard.name} className="w-full h-full object-cover" />
+              <img src={cardImg(activeCard, language)} alt={activeCard.name} className="w-full h-full object-cover" />
             </div>
             <div className="flex-1 pt-1">
               <div className="flex items-center gap-2 mb-1">
