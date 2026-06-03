@@ -96,7 +96,8 @@ Classic sets (only symbol, no printed code — identify visually):
 
     return NextResponse.json(parsed);
   } catch (err) {
-    console.error('Scan error:', err);
-    return NextResponse.json({ error: 'Scan failed' }, { status: 500 });
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('Scan error:', msg);
+    return NextResponse.json({ error: `Scan failed: ${msg}` }, { status: 500 });
   }
 }
