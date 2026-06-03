@@ -11,12 +11,12 @@ interface Props {
 const FRAME_W = 190;
 const FRAME_H = 266;
 
-// Countdown bis zum Auto-Snap (ms)
-const AUTO_SNAP_DELAY = 2000;
-// Check-Intervall
 const CHECK_MS = 100;
-// MSE-Schwelle für "starke Bewegung" → Timer-Reset (hoch, da Kamera-Noise ignoriert werden soll)
 const MOTION_RESET_THRESHOLD = 400;
+// Helligkeits-Varianz im Frame-Bereich → ab diesem Wert gilt "Objekt erkannt"
+const CARD_DETECT_VARIANCE = 600;
+// Frames die still + Karte erkannt sein müssen bevor Snap (verhindert einzelnen Ruhige-Frame-Fehlauslöser)
+const SNAP_STABLE_FRAMES = 3;
 
 // Perimeter des gerundeten Rechtecks für SVG-Fortschrittsring
 const RECT_PERIMETER = 2 * (FRAME_W - 2 * 12 + FRAME_H - 2 * 12) + 2 * Math.PI * 12;
@@ -28,21 +28,22 @@ export function CameraCapture({ onCapture, scanning }: Props) {
   const prevRef      = useRef<HTMLCanvasElement>(null);
   const streamRef    = useRef<MediaStream | null>(null);
   const timerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
-  const countdownRef = useRef<number>(0);       // ms seit letztem Motion-Reset
+  const stableFramesRef = useRef<number>(0);    // aufeinanderfolgende stille Frames mit erkannter Karte
   const onCaptureRef = useRef(onCapture);
 
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
 
-  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
-  const [torch,      setTorch]      = useState(false);
-  const [error,      setError]      = useState<string | null>(null);
-  const [progress,   setProgress]   = useState(0); // 0..1
+  const [facingMode,    setFacingMode]    = useState<'environment' | 'user'>('environment');
+  const [torch,         setTorch]         = useState(false);
+  const [error,         setError]         = useState<string | null>(null);
+  const [progress,      setProgress]      = useState(0); // 0..1
+  const [cardDetected,  setCardDetected]  = useState(false); // Varianz-basierte Kartenerkennung
 
   // ── Kamera starten ──────────────────────────────────────────────────────
   const startCamera = useCallback(async () => {
     streamRef.current?.getTracks().forEach(t => t.stop());
     setError(null);
-    countdownRef.current = 0;
+    stableFramesRef.current = 0;
     setProgress(0);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -63,6 +64,9 @@ export function CameraCapture({ onCapture, scanning }: Props) {
     };
   }, [startCamera]);
 
+  // Reset cardDetected wenn Kamera neu startet
+  useEffect(() => { setCardDetected(false); }, [facingMode]);
+
   // ── Foto auslösen ────────────────────────────────────────────────────────
   const doCapture = useCallback(() => {
     const video  = videoRef.current;
@@ -73,7 +77,7 @@ export function CameraCapture({ onCapture, scanning }: Props) {
     canvas.getContext('2d')!.drawImage(video, 0, 0);
     const base64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
     onCaptureRef.current(base64, 'image/jpeg');
-    countdownRef.current = 0;
+    stableFramesRef.current = 0;
     setProgress(0);
   }, []);
 
@@ -81,7 +85,7 @@ export function CameraCapture({ onCapture, scanning }: Props) {
   useEffect(() => {
     if (scanning) {
       if (timerRef.current) clearInterval(timerRef.current);
-      countdownRef.current = 0;
+      stableFramesRef.current = 0;
       setProgress(0);
       return;
     }
@@ -111,6 +115,16 @@ export function CameraCapture({ onCapture, scanning }: Props) {
         const pData = pCtx.getImageData(0, 0, cropW, cropH).data;
         const sData = sCtx.getImageData(0, 0, cropW, cropH).data;
 
+        // Helligkeits-Varianz im Frame → State-Update für Rahmenfarbe
+        {
+          let s = 0, sq = 0, vc = 0;
+          for (let i = 0; i < sData.length; i += 64) {
+            const br = (sData[i] + sData[i + 1] + sData[i + 2]) / 3;
+            s += br; sq += br * br; vc++;
+          }
+          if (vc > 0) setCardDetected((sq / vc - (s / vc) ** 2) > CARD_DETECT_VARIANCE);
+        }
+
         // MSE (jeder 8. Pixel, R-Kanal) — nur starke Bewegung zählt
         let mse = 0, count = 0;
         for (let i = 0; i < sData.length; i += 32) {
@@ -120,19 +134,31 @@ export function CameraCapture({ onCapture, scanning }: Props) {
         }
         mse = count > 0 ? mse / count : 0;
 
+        // Varianz nochmal lesen (wurde oben schon berechnet, aber cardDetected ist State → asynchron)
+        // Daher: lokale Variable für sofortige Entscheidung
+        let localCardDetected = false;
+        {
+          let s = 0, sq = 0, vc = 0;
+          for (let i = 0; i < sData.length; i += 64) {
+            const br = (sData[i] + sData[i + 1] + sData[i + 2]) / 3;
+            s += br; sq += br * br; vc++;
+          }
+          if (vc > 0) localCardDetected = (sq / vc - (s / vc) ** 2) > CARD_DETECT_VARIANCE;
+        }
+
         // prev = current sample
         pCtx.drawImage(sample, 0, 0);
 
-        if (mse > MOTION_RESET_THRESHOLD) {
-          // Starke Bewegung → Timer zurücksetzen
-          countdownRef.current = 0;
+        if (mse > MOTION_RESET_THRESHOLD || !localCardDetected) {
+          // Bewegung oder keine Karte → zurücksetzen
+          stableFramesRef.current = 0;
           setProgress(0);
         } else {
-          // Ruhig (oder Kamera-Noise) → hochzählen
-          countdownRef.current += CHECK_MS;
-          const p = Math.min(countdownRef.current / AUTO_SNAP_DELAY, 1);
+          // Karte erkannt + still → stabile Frames zählen
+          stableFramesRef.current += 1;
+          const p = Math.min(stableFramesRef.current / SNAP_STABLE_FRAMES, 1);
           setProgress(p);
-          if (countdownRef.current >= AUTO_SNAP_DELAY) {
+          if (stableFramesRef.current >= SNAP_STABLE_FRAMES) {
             doCapture();
           }
         }
@@ -156,6 +182,15 @@ export function CameraCapture({ onCapture, scanning }: Props) {
   };
 
   const strokeDash = RECT_PERIMETER - progress * RECT_PERIMETER;
+
+  // Rahmenfarbe: weiß → gelb (Karte erkannt) → grün (Countdown läuft)
+  const frameColor = scanning
+    ? 'rgba(255,255,255,0.4)'
+    : progress > 0.05
+      ? '#48bb78'           // grün: Countdown
+      : cardDetected
+        ? '#ecc94b'         // gelb: Karte erkannt, warte auf Stillstand
+        : 'rgba(255,255,255,0.4)';
 
   return (
     <div className="relative w-full flex flex-col items-center">
@@ -188,7 +223,7 @@ export function CameraCapture({ onCapture, scanning }: Props) {
                 className="absolute inset-0"
                 style={{
                   border: '2.5px solid',
-                  borderColor: progress > 0.05 ? '#48bb78' : 'rgba(255,255,255,0.4)',
+                  borderColor: frameColor,
                   borderRadius: 12,
                   transition: 'border-color 0.3s',
                 }}
@@ -198,7 +233,7 @@ export function CameraCapture({ onCapture, scanning }: Props) {
                   key={i}
                   className={`absolute w-4 h-4 ${pos}`}
                   style={{
-                    borderColor: progress > 0.05 ? '#48bb78' : 'rgba(255,255,255,0.6)',
+                    borderColor: frameColor,
                     borderStyle: 'solid',
                     borderWidth: 0,
                     transition: 'border-color 0.3s',
@@ -222,7 +257,7 @@ export function CameraCapture({ onCapture, scanning }: Props) {
                     width={FRAME_W - 2} height={FRAME_H - 2}
                     rx={12} ry={12}
                     fill="none"
-                    stroke="#48bb78"
+                    stroke={frameColor}
                     strokeWidth={3}
                     strokeDasharray={RECT_PERIMETER}
                     strokeDashoffset={strokeDash}
@@ -258,11 +293,11 @@ export function CameraCapture({ onCapture, scanning }: Props) {
         </div>
       )}
 
-      <p className="mt-3 text-xs text-white/50 text-center">
+      <p className="mt-3 text-xs text-center" style={{ color: frameColor === 'rgba(255,255,255,0.4)' ? 'rgba(255,255,255,0.5)' : frameColor }}>
         {scanning
           ? 'Analysiere…'
-          : progress > 0.05
-            ? 'Halte ruhig — oder tippen zum sofortigen Auslösen'
+          : cardDetected
+            ? progress > 0.5 ? 'Foto wird gemacht…' : 'Karte erkannt — kurz stillhalten'
             : 'Karte in den Rahmen halten — oder tippen'}
       </p>
     </div>

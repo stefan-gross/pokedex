@@ -24,6 +24,7 @@ export interface CardInfo {
   imgSmall: string;
   imgLarge: string;
   variants?: CardVariant[];
+  hp?: number;
   nationalDexNumber?: number;
   evolutionFamily?: number[];
 }
@@ -43,6 +44,7 @@ export function catalogCardToInfo(c: CatalogCard): CardInfo {
     imgSmall: c.imgSmall,
     imgLarge: c.imgLarge,
     variants: c.variants,
+    hp: c.hp,
     nationalDexNumber: c.nationalDexNumber,
     evolutionFamily: c.evolutionFamily,
   };

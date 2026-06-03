@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Search, X, Database, ChevronDown } from 'lucide-react';
+import { Search, X, Database, ChevronDown, ArrowUpDown } from 'lucide-react';
 import { CardGrid } from '@/components/card/CardGrid';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { ButtonGroup } from '@/components/ui/button-group';
@@ -19,7 +19,7 @@ import type { CardDoc } from '@/types';
 import type { BrowseSortKey } from '@/lib/firestore/catalog';
 
 type OwnedFilter   = 'all' | 'owned' | 'missing';
-type SearchSortKey = 'number' | 'name';
+type SearchSortKey = 'number' | 'name' | 'pokedex' | 'hp';
 type Supertype     = 'Pokémon' | 'Trainer' | 'Energy';
 
 const OWNED_OPTIONS: { value: OwnedFilter; label: string }[] = [
@@ -75,7 +75,8 @@ function CollectionContent() {
   const baseResultsRef = useRef<CardInfo[]>([]); // Suchergebnisse vor Evo-Line-Erweiterung
 
   // ── Browse-spezifisch ─────────────────────────────────────────
-  const [browseSort, setBrowseSort] = useState<BrowseSortKey>('name');
+  const [browseSort,    setBrowseSort]    = useState<BrowseSortKey>('name');
+  const [browseSortDir, setBrowseSortDir] = useState<'asc' | 'desc'>('asc');
 
   // ── Suche ─────────────────────────────────────────────────────
   const [inputValue,    setInputValue]    = useState(initialQ);
@@ -83,6 +84,7 @@ function CollectionContent() {
   const [ownedCards,    setOwnedCards]    = useState<CardDoc[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchSort,    setSearchSort]    = useState<SearchSortKey>('number');
+  const [searchSortDir, setSearchSortDir] = useState<'asc' | 'desc'>('asc');
   const [filterSet,     setFilterSet]     = useState('');
   const [sets,          setSets]          = useState<{ id: string; name: string }[]>([]);
   const [catalogCount,  setCatalogCount]  = useState(0);
@@ -193,7 +195,7 @@ function CollectionContent() {
   const {
     cards: browseCards, loading: browseLoading,
     loadingMore, hasMore, loadMore, hasAnyFilter,
-  } = useCardBrowser(browseSort, browserFilter);
+  } = useCardBrowser(browseSort, browserFilter, browseSortDir === 'desc');
 
   // ── Infinite Scroll ───────────────────────────────────────────
   useEffect(() => {
@@ -215,12 +217,24 @@ function CollectionContent() {
       const setMap = new Map<string, string>();
       cards.forEach(c => setMap.set(c.setId, c.setName));
       setSets(Array.from(setMap.entries()).map(([id, name]) => ({ id, name })));
-      baseResultsRef.current = cards; // Basis merken für Evo-Line-Reset
+      baseResultsRef.current = cards;
       setResults(cards);
       setSource('catalog');
     };
 
     try {
+      // Pokédex-Nummer-Erkennung: "#25" oder reine Zahl (1–1025)
+      const dexMatch = q.trim().match(/^#?(\d{1,4})$/);
+      const dexNum = dexMatch ? parseInt(dexMatch[1], 10) : null;
+      if (dexNum && dexNum >= 1 && dexNum <= 1025 && catalogCountRef.current > 0) {
+        const dexHits = await getCardsByDexNumber(dexNum, 80);
+        if (dexHits.length > 0) {
+          setAndReturn(dexHits.map(catalogCardToInfo));
+          setSearchSort('pokedex');
+          return;
+        }
+      }
+
       // catalogCountRef statt catalogCount — keine Re-Render durch nachladen
       if (catalogCountRef.current > 0) {
         // 1. Firestore: erst Deutsch (nameDeLower), dann Englisch (nameLower)
@@ -317,13 +331,18 @@ function CollectionContent() {
     if (activeRarity) {
       r = r.filter(c => (getRarityGroup(c.rarity ?? '')?.label ?? 'Sonstige') === activeRarity);
     }
+    const d = searchSortDir === 'desc' ? -1 : 1;
     r.sort((a, b) =>
       searchSort === 'name'
-        ? a.name.localeCompare(b.name)
-        : (parseInt(a.number) || 0) - (parseInt(b.number) || 0),
+        ? d * a.name.localeCompare(b.name)
+        : searchSort === 'pokedex'
+          ? d * ((a.nationalDexNumber ?? 9999) - (b.nationalDexNumber ?? 9999))
+          : searchSort === 'hp'
+            ? d * ((a.hp ?? 0) - (b.hp ?? 0))
+            : d * ((parseInt(a.number) || 0) - (parseInt(b.number) || 0)),
     );
     return r;
-  }, [results, ownedFilter, activeSupertype, activeTypesKey, activeEvolutionsKey, activeRarity, ownedIds, searchSort]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [results, ownedFilter, activeSupertype, activeTypesKey, activeEvolutionsKey, activeRarity, ownedIds, searchSort, searchSortDir]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isBrowseMode    = !inputValue;
   const hasActiveFilter = !!(activeTypes.size || activeSupertype !== 'all' || ownedFilter !== 'all' || activeRarity || activeEvolutions.size);
@@ -549,33 +568,51 @@ function CollectionContent() {
 
         {/* ── Sortierung + Ergebniszahl (immer sichtbar) ──────── */}
         <div className="flex items-center justify-between pt-0.5">
-          <div className="relative flex items-center">
-            {isBrowseMode ? (
-              <>
-                <select
-                  value={browseSort}
-                  onChange={e => setBrowseSort(e.target.value as BrowseSortKey)}
-                  className="h-7 pl-2 pr-6 rounded-lg bg-secondary border border-border text-xs appearance-none cursor-pointer"
-                >
-                  {BROWSE_SORT_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-                <ChevronDown size={11} className="absolute right-1.5 pointer-events-none text-muted-foreground" />
-              </>
-            ) : (
-              <>
-                <select
-                  value={searchSort}
-                  onChange={e => setSearchSort(e.target.value as SearchSortKey)}
-                  className="h-7 pl-2 pr-6 rounded-lg bg-secondary border border-border text-xs appearance-none cursor-pointer"
-                >
-                  <option value="number">Nummer</option>
-                  <option value="name">Name</option>
-                </select>
-                <ChevronDown size={11} className="absolute right-1.5 pointer-events-none text-muted-foreground" />
-              </>
-            )}
+          <div className="flex items-center gap-1.5">
+            <div className="relative flex items-center">
+              {isBrowseMode ? (
+                <>
+                  <select
+                    value={browseSort}
+                    onChange={e => setBrowseSort(e.target.value as BrowseSortKey)}
+                    className="h-7 pl-2 pr-6 rounded-lg bg-secondary border border-border text-xs appearance-none cursor-pointer"
+                  >
+                    {BROWSE_SORT_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={11} className="absolute right-1.5 pointer-events-none text-muted-foreground" />
+                </>
+              ) : (
+                <>
+                  <select
+                    value={searchSort}
+                    onChange={e => setSearchSort(e.target.value as SearchSortKey)}
+                    className="h-7 pl-2 pr-6 rounded-lg bg-secondary border border-border text-xs appearance-none cursor-pointer"
+                  >
+                    <option value="number">Nummer</option>
+                    <option value="name">Name</option>
+                    <option value="pokedex">Pokédex-Nr.</option>
+                    <option value="hp">KP</option>
+                  </select>
+                  <ChevronDown size={11} className="absolute right-1.5 pointer-events-none text-muted-foreground" />
+                </>
+              )}
+            </div>
+            {/* Richtungs-Toggle */}
+            <button
+              onClick={() => isBrowseMode
+                ? setBrowseSortDir(d => d === 'asc' ? 'desc' : 'asc')
+                : setSearchSortDir(d => d === 'asc' ? 'desc' : 'asc')
+              }
+              className="h-7 w-7 flex items-center justify-center rounded-lg bg-secondary border border-border transition-colors"
+              title={(isBrowseMode ? browseSortDir : searchSortDir) === 'asc' ? 'Aufsteigend' : 'Absteigend'}
+            >
+              <ArrowUpDown
+                size={12}
+                style={{ color: (isBrowseMode ? browseSortDir : searchSortDir) === 'desc' ? 'var(--pokedex-red)' : undefined }}
+              />
+            </button>
           </div>
           <div className="flex items-center gap-2 ml-auto">
             {!isBrowseMode && (

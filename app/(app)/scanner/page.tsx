@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardScanResult } from '@/components/scanner/CardScanResult';
-import { getCardBySetAndNumber } from '@/lib/firestore/catalog';
+import { getCardBySetAndNumber, getCardsByDexNumber } from '@/lib/firestore/catalog';
 import { catalogCardToInfo } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardLanguage } from '@/types';
@@ -16,11 +16,13 @@ interface GeminiResponse {
   number?: string;
   language?: string;
   confidence?: string;
+  nationalDexNumber?: number | null;
   error?: string;
 }
 
 interface ScanState {
   card: CardInfo | null;
+  candidates?: CardInfo[] | null;
   language: CardLanguage;
   confidence: string;
   error?: string;
@@ -54,16 +56,43 @@ export default function ScannerPage() {
         return;
       }
 
-      // 2. Firestore-Lookup (Client SDK — kein Admin nötig)
-      const catalogCard = await getCardBySetAndNumber(gemini.setId, gemini.number);
+      // Nummer normalisieren: "049/198" → "049" (Sicherheitsnetz falls Gemini trotzdem Slash zurückgibt)
+      const rawNumber = gemini.number.includes('/')
+        ? gemini.number.split('/')[0]
+        : gemini.number;
+
+      // 2. Firestore-Lookup: setId + number
+      let catalogCard = await getCardBySetAndNumber(gemini.setId, rawNumber);
+
+      // 3. Fallback: Nummer ohne führende Nullen / mit führenden Nullen probieren
+      if (!catalogCard) {
+        const altNumber = /^\d+$/.test(rawNumber)
+          ? String(parseInt(rawNumber, 10))      // "049" → "49"
+          : rawNumber.padStart(3, '0');           // "49" → "049"
+        if (altNumber !== rawNumber) {
+          catalogCard = await getCardBySetAndNumber(gemini.setId, altNumber);
+        }
+      }
+
+      // 4. Fallback: Pokédex-Nummer (zeigt alle Karten des Pokémons)
+      let dexCandidates: CardInfo[] | null = null;
+      if (!catalogCard && gemini.nationalDexNumber) {
+        const dexCards = await getCardsByDexNumber(gemini.nationalDexNumber, 20);
+        if (dexCards.length > 0) {
+          dexCandidates = dexCards.map(catalogCardToInfo);
+        }
+      }
 
       setResult({
-        card: catalogCard ? catalogCardToInfo(catalogCard) : null,
+        card: catalogCard ? catalogCardToInfo(catalogCard) : (dexCandidates?.[0] ?? null),
+        candidates: dexCandidates,
         language: (gemini.language ?? 'de') as CardLanguage,
         confidence: gemini.confidence ?? 'low',
         error: catalogCard
           ? undefined
-          : `Karte ${gemini.setId} #${gemini.number} nicht im Katalog`,
+          : dexCandidates
+            ? `Exakte Karte nicht gefunden — ${dexCandidates.length} Karten dieses Pokémons`
+            : `Karte ${gemini.setId} #${rawNumber} nicht im Katalog`,
       });
       setPhase('result');
     } catch (err) {
@@ -101,6 +130,7 @@ export default function ScannerPage() {
           {result && (
             <CardScanResult
               card={result.card}
+              candidates={result.candidates}
               language={result.language}
               confidence={result.confidence}
               error={result.error}

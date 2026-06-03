@@ -9,6 +9,7 @@ import { useState } from 'react';
 
 interface Props {
   card: CardInfo | null;
+  candidates?: CardInfo[] | null;
   language: CardLanguage;
   confidence: string;
   error?: string;
@@ -16,11 +17,15 @@ interface Props {
   onManualSearch: () => void;
 }
 
-export function CardScanResult({ card, language, confidence, error, onRetry, onManualSearch }: Props) {
+export function CardScanResult({ card, candidates, language, confidence, error, onRetry, onManualSearch }: Props) {
   const [showModal, setShowModal] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [selectedCard, setSelectedCard] = useState<CardInfo | null>(card);
 
-  if (error || !card) {
+  // Wenn per Pokédex-Fallback mehrere Kandidaten kamen, ersten vorausgewählt halten
+  const activeCard = selectedCard ?? card;
+
+  if ((error || !card) && !candidates?.length) {
     return (
       <div className="px-4 py-8 text-center space-y-4">
         <p className="text-muted-foreground text-sm">{error ?? 'Keine Karte erkannt.'}</p>
@@ -60,37 +65,61 @@ export function CardScanResult({ card, language, confidence, error, onRetry, onM
     <>
       <div className="px-4 pt-4 pb-6 space-y-4">
         {/* Karten-Preview */}
-        <div className="flex gap-4 items-start">
-          <div className="w-20 h-[112px] rounded-xl overflow-hidden bg-secondary border border-border shrink-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={card.imgSmall} alt={card.name} className="w-full h-full object-cover" />
-          </div>
-          <div className="flex-1 pt-1">
-            <div className="flex items-center gap-2 mb-1">
-              <span
-                className="text-[10px] px-2 py-0.5 rounded-full"
-                style={{
-                  background: confidence === 'high' ? 'rgba(72,187,120,.15)' : 'rgba(237,137,54,.15)',
-                  color: confidence === 'high' ? '#48bb78' : '#ed8936',
-                }}
-              >
-                {confidence === 'high' ? 'Sicher' : confidence === 'medium' ? 'Unsicher' : 'Niedrig'}
-              </span>
+        {activeCard && (
+          <div className="flex gap-4 items-start">
+            <div className="w-20 h-[112px] rounded-xl overflow-hidden bg-secondary border border-border shrink-0">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={activeCard.imgSmall} alt={activeCard.name} className="w-full h-full object-cover" />
             </div>
-            <p className="font-semibold leading-tight">{card.name}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{card.setName}</p>
-            <p className="text-xs text-muted-foreground">#{card.number}{card.rarity ? ` · ${card.rarity}` : ''}</p>
+            <div className="flex-1 pt-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span
+                  className="text-[10px] px-2 py-0.5 rounded-full"
+                  style={{
+                    background: candidates ? 'rgba(237,137,54,.15)' : confidence === 'high' ? 'rgba(72,187,120,.15)' : 'rgba(237,137,54,.15)',
+                    color: candidates ? '#ed8936' : confidence === 'high' ? '#48bb78' : '#ed8936',
+                  }}
+                >
+                  {candidates ? 'Ähnliche Karte' : confidence === 'high' ? 'Sicher' : confidence === 'medium' ? 'Unsicher' : 'Niedrig'}
+                </span>
+              </div>
+              <p className="font-semibold leading-tight">{activeCard.name}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{activeCard.setName}</p>
+              <p className="text-xs text-muted-foreground">#{activeCard.number}{activeCard.rarity ? ` · ${activeCard.rarity}` : ''}</p>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Kandidaten-Auswahl wenn nur Pokédex-Fallback */}
+        {candidates && candidates.length > 1 && (
+          <div>
+            <p className="text-xs text-muted-foreground mb-2">Welche Karte meinst du?</p>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {candidates.slice(0, 8).map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => setSelectedCard(c)}
+                  className="shrink-0 rounded-lg overflow-hidden border-2 transition-colors"
+                  style={{ borderColor: (selectedCard ?? card)?.id === c.id ? 'var(--pokedex-red)' : 'transparent' }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={c.imgSmall} alt={c.name} className="w-14 h-[78px] object-cover" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Zur Sammlung hinzufügen */}
-        <button
-          onClick={() => setShowModal(true)}
-          className="w-full h-11 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2"
-          style={{ background: 'var(--pokedex-red)' }}
-        >
-          <Plus size={16} /> Zur Sammlung hinzufügen
-        </button>
+        {activeCard && (
+          <button
+            onClick={() => setShowModal(true)}
+            className="w-full h-11 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2"
+            style={{ background: 'var(--pokedex-red)' }}
+          >
+            <Plus size={16} /> Zur Sammlung hinzufügen
+          </button>
+        )}
 
         {/* Andere Karte suchen */}
         <button
@@ -102,9 +131,9 @@ export function CardScanResult({ card, language, confidence, error, onRetry, onM
         </button>
       </div>
 
-      {showModal && (
+      {showModal && activeCard && (
         <AddToCollectionModal
-          card={cardInfoToTcgApi(card)}
+          card={cardInfoToTcgApi(activeCard)}
           preLanguage={language}
           onClose={() => setShowModal(false)}
           onSaved={() => { setShowModal(false); setSaved(true); }}
