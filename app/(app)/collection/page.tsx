@@ -72,6 +72,7 @@ function CollectionContent() {
   const [activeRarity,     setActiveRarity]     = useState<string | null>(null);
   const [activeEvolutions, setActiveEvolutions] = useState<Set<string>>(new Set());
   const [evoLineActive,    setEvoLineActive]    = useState(false);
+  const baseResultsRef = useRef<CardInfo[]>([]); // Suchergebnisse vor Evo-Line-Erweiterung
 
   // ── Browse-spezifisch ─────────────────────────────────────────
   const [browseSort, setBrowseSort] = useState<BrowseSortKey>('name');
@@ -214,6 +215,7 @@ function CollectionContent() {
       const setMap = new Map<string, string>();
       cards.forEach(c => setMap.set(c.setId, c.setName));
       setSets(Array.from(setMap.entries()).map(([id, name]) => ({ id, name })));
+      baseResultsRef.current = cards; // Basis merken für Evo-Line-Reset
       setResults(cards);
       setSource('catalog');
     };
@@ -241,6 +243,7 @@ function CollectionContent() {
       const setMap = new Map<string, string>();
       cards.forEach(c => setMap.set(c.setId, c.setName));
       setSets(Array.from(setMap.entries()).map(([id, name]) => ({ id, name })));
+      baseResultsRef.current = cards;
       setResults(cards);
       setSource('api');
     } catch {
@@ -264,7 +267,12 @@ function CollectionContent() {
 
   // ── Evo-Linie: Ergebnisse um gesamte Evolutionsfamilie erweitern ──
   useEffect(() => {
-    if (!evoLineActive || results.length === 0) return;
+    if (!evoLineActive) {
+      // Deaktiviert → auf ursprüngliche Suchergebnisse zurücksetzen
+      if (baseResultsRef.current.length > 0) setResults(baseResultsRef.current);
+      return;
+    }
+    if (results.length === 0) return;
 
     const firstCard  = results.find(c => c.nationalDexNumber);
     const baseDexNum = firstCard?.nationalDexNumber;
