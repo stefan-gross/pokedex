@@ -1,14 +1,16 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { ArrowLeft, Pause, Play, Trash2, Loader2, AlertCircle } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardScanResult } from '@/components/scanner/CardScanResult';
 import { getCardBySetAndNumber, getCardsByDexNumber } from '@/lib/firestore/catalog';
+import { getCardsByTcgId } from '@/lib/firestore/cards';
 import { catalogCardToInfo } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
-import type { CardLanguage } from '@/types';
-import type { CardVariant } from '@/types';
+import type { CardLanguage, CardVariant } from '@/types';
+import { toTcgdexId } from '@/lib/tcgdex';
 
 interface GeminiResponse {
   setId?: string;
@@ -26,6 +28,7 @@ interface ScanState {
   language: CardLanguage;
   confidence: string;
   variant?: CardVariant;
+  ownedCount?: number;
   error?: string;
 }
 
@@ -35,16 +38,36 @@ interface ScanJob {
   result: ScanState | null;
 }
 
+function thumbUrl(job: ScanJob): string | null {
+  const card = job.result?.card;
+  if (!card) return null;
+  const lang = job.result?.language ?? 'en';
+  if (lang === 'de') {
+    return `https://assets.tcgdex.net/de/${toTcgdexId(card.setId)}/${card.number}/high.webp`;
+  }
+  return card.imgSmall ?? null;
+}
+
 export default function ScannerPage() {
   const router = useRouter();
   const [jobs, setJobs] = useState<ScanJob[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [isPaused, setIsPaused] = useState(false);
 
-  // Erstes fertiges Job anzeigen
-  const activeJob = jobs.find(j => j.status === 'done' || j.status === 'error') ?? null;
   const pendingCount = jobs.filter(j => j.status === 'processing').length;
+  const selectedJob  = jobs.find(j => j.id === selectedJobId) ?? null;
 
-  const dismissJob = useCallback((id: string) => {
+  // Erstes fertiges Job auto-selektieren
+  useEffect(() => {
+    if (!selectedJobId) {
+      const first = jobs.find(j => j.status === 'done' || j.status === 'error');
+      if (first) setSelectedJobId(first.id);
+    }
+  }, [jobs, selectedJobId]);
+
+  const removeJob = useCallback((id: string) => {
     setJobs(prev => prev.filter(j => j.id !== id));
+    setSelectedJobId(prev => (prev === id ? null : prev));
   }, []);
 
   const handleCapture = useCallback(async (imageBase64: string, mimeType: string) => {
@@ -62,43 +85,39 @@ export default function ScannerPage() {
       if (gemini.error || !gemini.setId || !gemini.number) {
         setJobs(prev => prev.map(j => j.id === id ? {
           ...j, status: 'error',
-          result: { card: null, language: 'de', confidence: 'low', error: gemini.error ?? 'Karte konnte nicht erkannt werden' },
+          result: { card: null, language: 'de', confidence: 'low', error: gemini.error ?? 'Karte nicht erkannt' },
         } : j));
         return;
       }
 
       const rawNumber = gemini.number.includes('/') ? gemini.number.split('/')[0] : gemini.number;
 
-      // Firestore-Lookup: setId + number
       let catalogCard = await getCardBySetAndNumber(gemini.setId, rawNumber);
-
-      // Fallback: führende Nullen variieren
       if (!catalogCard) {
-        const alt = /^\d+$/.test(rawNumber)
-          ? String(parseInt(rawNumber, 10))
-          : rawNumber.padStart(3, '0');
+        const alt = /^\d+$/.test(rawNumber) ? String(parseInt(rawNumber, 10)) : rawNumber.padStart(3, '0');
         if (alt !== rawNumber) catalogCard = await getCardBySetAndNumber(gemini.setId, alt);
       }
 
-      // Fallback: Pokédex-Nummer
       let dexCandidates: CardInfo[] | null = null;
       if (!catalogCard && gemini.nationalDexNumber) {
         const dexCards = await getCardsByDexNumber(gemini.nationalDexNumber, 20);
         if (dexCards.length > 0) dexCandidates = dexCards.map(catalogCardToInfo);
       }
 
-      // Gemini-Variante normalisieren
+      // Duplikat-Prüfung
+      const ownedCopies = catalogCard ? await getCardsByTcgId(catalogCard.id) : [];
+
       const variantMap: Record<string, CardVariant> = {
         holo: 'holo', reverse: 'reverse', 'alt-art': 'alt-art', promo: 'promo', standard: 'standard',
       };
-      const variant: CardVariant = variantMap[gemini.variant ?? ''] ?? 'standard';
 
       const result: ScanState = {
         card: catalogCard ? catalogCardToInfo(catalogCard) : (dexCandidates?.[0] ?? null),
         candidates: dexCandidates,
         language: (gemini.language ?? 'de') as CardLanguage,
         confidence: gemini.confidence ?? 'low',
-        variant,
+        variant: variantMap[gemini.variant ?? ''] ?? 'standard',
+        ownedCount: ownedCopies.length,
         error: catalogCard
           ? undefined
           : dexCandidates
@@ -118,38 +137,102 @@ export default function ScannerPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-black">
+      {/* Header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-3 bg-black">
-        <h1 className="text-base font-semibold text-white">Karte scannen</h1>
         <button
           onClick={() => router.back()}
-          className="text-sm px-3 py-1.5 rounded-lg bg-white/10 text-white"
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10"
         >
-          Fertig
+          <ArrowLeft size={18} color="#fff" />
+        </button>
+        <h1 className="text-base font-semibold text-white">Karte scannen</h1>
+        <button
+          onClick={() => setIsPaused(p => !p)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors"
+          style={{
+            background: isPaused ? 'rgba(72,187,120,.2)' : 'rgba(255,255,255,.1)',
+            color: isPaused ? '#48bb78' : '#fff',
+          }}
+        >
+          {isPaused
+            ? <><Play size={14} /> Weiter</>
+            : <><Pause size={14} /> Pause</>}
         </button>
       </div>
 
-      {/* Kamera immer sichtbar */}
-      <div className="flex-1 flex flex-col px-4 pb-6">
-        <CameraCapture onCapture={handleCapture} pendingCount={pendingCount} />
+      {/* Kamera */}
+      <div className="flex-1 flex flex-col px-4 pb-2 min-h-0">
+        <CameraCapture onCapture={handleCapture} pendingCount={pendingCount} paused={isPaused} />
       </div>
 
-      {/* Ergebnis als Overlay-Sheet */}
-      {activeJob?.result && (
+      {/* Scan-Slider */}
+      {jobs.length > 0 && (
+        <div className="px-4 pb-4 pt-1">
+          <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+            {jobs.map(job => {
+              const img = thumbUrl(job);
+              const isSelected = job.id === selectedJobId;
+              return (
+                <div
+                  key={job.id}
+                  className="relative shrink-0 rounded-xl overflow-hidden cursor-pointer"
+                  style={{
+                    width: 54, height: 76,
+                    border: `2px solid ${isSelected ? 'var(--pokedex-red)' : 'rgba(255,255,255,0.2)'}`,
+                    background: '#1a1a1a',
+                  }}
+                  onClick={() => job.status !== 'processing' && setSelectedJobId(job.id)}
+                >
+                  {job.status === 'processing' ? (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Loader2 size={18} color="rgba(255,255,255,0.5)" className="animate-spin" />
+                    </div>
+                  ) : job.status === 'error' || !img ? (
+                    <div className="w-full h-full flex items-center justify-center bg-red-500/20">
+                      <AlertCircle size={18} color="#f87171" />
+                    </div>
+                  ) : (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={img} alt="" className="w-full h-full object-cover" />
+                  )}
+
+                  {/* Bereits-vorhanden-Badge */}
+                  {job.result?.ownedCount ? (
+                    <span className="absolute top-0.5 left-0.5 text-[9px] font-bold px-1 rounded"
+                      style={{ background: 'rgba(72,187,120,.85)', color: '#fff' }}>
+                      ×{job.result.ownedCount}
+                    </span>
+                  ) : null}
+
+                  {/* Trash-Button */}
+                  <button
+                    onClick={e => { e.stopPropagation(); removeJob(job.id); }}
+                    className="absolute bottom-0.5 right-0.5 w-5 h-5 rounded-full flex items-center justify-center"
+                    style={{ background: 'rgba(0,0,0,0.7)' }}
+                  >
+                    <Trash2 size={10} color="#fff" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Ergebnis-Sheet */}
+      {selectedJob?.result && (
         <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-40 bg-black/50"
-            onClick={() => dismissJob(activeJob.id)}
-          />
+          <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setSelectedJobId(null)} />
           <div className="fixed inset-x-0 bottom-0 z-50 bg-card rounded-t-2xl shadow-2xl max-h-[80vh] overflow-y-auto">
             <CardScanResult
-              card={activeJob.result.card}
-              candidates={activeJob.result.candidates}
-              language={activeJob.result.language}
-              confidence={activeJob.result.confidence}
-              preVariant={activeJob.result.variant}
-              error={activeJob.result.error}
-              onRetry={() => dismissJob(activeJob.id)}
+              card={selectedJob.result.card}
+              candidates={selectedJob.result.candidates}
+              language={selectedJob.result.language}
+              confidence={selectedJob.result.confidence}
+              preVariant={selectedJob.result.variant}
+              ownedCount={selectedJob.result.ownedCount}
+              error={selectedJob.result.error}
+              onRetry={() => setSelectedJobId(null)}
               onManualSearch={() => router.push('/collection')}
             />
           </div>

@@ -22,12 +22,13 @@ interface Props {
   language: CardLanguage;
   confidence: string;
   preVariant?: CardVariant;
+  ownedCount?: number;
   error?: string;
   onRetry: () => void;
   onManualSearch: () => void;
 }
 
-export function CardScanResult({ card, candidates, language, confidence, preVariant, error, onRetry, onManualSearch }: Props) {
+export function CardScanResult({ card, candidates, language, confidence, preVariant, ownedCount = 0, error, onRetry, onManualSearch }: Props) {
   const [showModal, setShowModal] = useState(false);
   const [saved, setSaved] = useState(false);
   const [selectedCard, setSelectedCard] = useState<CardInfo | null>(card);
@@ -82,7 +83,7 @@ export function CardScanResult({ card, candidates, language, confidence, preVari
               <img src={cardImg(activeCard, language)} alt={activeCard.name} className="w-full h-full object-cover" />
             </div>
             <div className="flex-1 pt-1">
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                 <span
                   className="text-[10px] px-2 py-0.5 rounded-full"
                   style={{
@@ -92,6 +93,12 @@ export function CardScanResult({ card, candidates, language, confidence, preVari
                 >
                   {candidates ? 'Ähnliche Karte' : confidence === 'high' ? 'Sicher' : confidence === 'medium' ? 'Unsicher' : 'Niedrig'}
                 </span>
+                {ownedCount > 0 && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full"
+                    style={{ background: 'rgba(72,187,120,.15)', color: '#48bb78' }}>
+                    Bereits ×{ownedCount} vorhanden
+                  </span>
+                )}
               </div>
               <p className="font-semibold leading-tight">{activeCard.name}</p>
               <p className="text-xs text-muted-foreground mt-0.5">{activeCard.setName}</p>

@@ -39,6 +39,11 @@ export async function deleteCard(id: string): Promise<void> {
   await deleteDoc(doc(db, COL, id));
 }
 
+export async function getCardsByTcgId(tcgId: string): Promise<CardDoc[]> {
+  const snap = await getDocs(query(collection(db, COL), where('tcgId', '==', tcgId)));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as CardDoc));
+}
+
 export async function getReviewCount(): Promise<number> {
   const snap = await getDocs(query(collection(db, COL), where('needsReview', '==', true)));
   return snap.size;
