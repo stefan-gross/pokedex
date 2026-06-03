@@ -649,9 +649,20 @@ function CollectionContent() {
               </div>
             )}
             {!searchLoading && results.length === 0 && inputValue && (
-              <p className="text-center text-muted-foreground text-sm pt-12">
-                Keine Karten für „{inputValue}"
-              </p>
+              <div className="flex flex-col items-center gap-2 pt-16 text-center">
+                <span className="text-4xl">🔍</span>
+                <p className="font-medium text-sm">Keine Karten gefunden</p>
+                <p className="text-xs text-muted-foreground">Kein Ergebnis für „{inputValue}"</p>
+              </div>
+            )}
+            {!searchLoading && results.length > 0 && displayed.length === 0 && inputValue && (
+              <div className="flex flex-col items-center gap-2 pt-16 text-center">
+                <span className="text-4xl">🎛️</span>
+                <p className="font-medium text-sm">Filter zu streng</p>
+                <p className="text-xs text-muted-foreground">
+                  {results.length} Karten gefunden, aber alle durch aktive Filter ausgeblendet.
+                </p>
+              </div>
             )}
             {!searchLoading && displayed.length > 0 && (
               <>
