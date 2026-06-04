@@ -349,6 +349,9 @@ Nach Implementierung testen:
 | Suche — Evo-Line-Fix | `baseResultsRef` speichert Suchergebnisse vor Evo-Erweiterung | `app/(app)/collection/page.tsx` |
 | Suche — Leerzustände | 0 Treffer: Emoji + Meldung; Treffer aber Filter blendet alle aus: eigene Meldung | `app/(app)/collection/page.tsx` |
 
+| Kartendetail | Komplett-Redesign CardDetailSheet: Karten-Header (Stage+Name+KP+Typ-Icon), Hero (Bild links/Set-Info rechts: Logo+Code / Name+Serie / Nummer+Rarity-Pill), Akkordion (Details/Evo/Karten&Preise), Zoom-Overlay, Löschen mit Confirm, Add per Variante | `components/card/CardDetailSheet.tsx`, `lib/pokeapi.ts` |
+| PokéAPI | `fetchPokemonSpeciesDE()` liefert Genus, Beschreibungstext DE, Größe, Gewicht, Region | `lib/pokeapi.ts` |
+
 ### 🔲 Noch offen
 
 - **Karten-Detailansicht** — Wunschlisten-Aktion, Preisanzeige im Sheet

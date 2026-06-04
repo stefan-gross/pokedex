@@ -1,61 +1,46 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { X, Plus, Heart, CheckCircle2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { X, Plus, Heart, CheckCircle2, ChevronDown, Trash2, Info, Repeat2, LayoutGrid } from 'lucide-react';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { detectVariants, VARIANT_LABELS, getRarityGroup } from '@/lib/card-constants';
 import { toTcgdexId } from '@/lib/tcgdex';
-import { cardInfoToTcgApi, type CardInfo } from '@/lib/card-info';
-import { markReviewed } from '@/lib/firestore/cards';
-import type { CardDoc, BinderDoc } from '@/types';
+import { cardInfoToTcgApi, catalogCardToInfo, type CardInfo } from '@/lib/card-info';
+import { markReviewed, deleteCard } from '@/lib/firestore/cards';
+import { removeCardFromBinder } from '@/lib/firestore/binders';
+import { getCardsByEvolutionFamily } from '@/lib/firestore/catalog';
+import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
+import { fetchPokemonSpeciesDE, type SpeciesDE } from '@/lib/pokeapi';
+import type { CardDoc, BinderDoc, CardVariant } from '@/types';
+
+/* ── Helpers ─────────────────────────────────────────────────── */
 
 const LANGUAGE_FLAGS: Record<string, string> = {
   de: '🇩🇪', en: '🇬🇧', jp: '🇯🇵', fr: '🇫🇷',
 };
 
-/* ── TCGdex Karten-Bild URL (Sprachversion) ──────────────────── */
-function tcgdexImageUrl(setId: string, cardNumber: string, lang = 'de'): string {
-  const tcgId = toTcgdexId(setId);
-  const num   = parseInt(cardNumber.split('/')[0]) || cardNumber.split('/')[0];
-  return `https://assets.tcgdex.net/${lang}/${tcgId}/${num}/high.webp`;
+const VALID_ENERGY = new Set([
+  'Fire','Water','Grass','Lightning','Psychic',
+  'Fighting','Darkness','Metal','Dragon','Fairy','Colorless',
+]);
+function toEnergy(t: string): EnergyType | null {
+  return VALID_ENERGY.has(t) ? (t as EnergyType) : null;
 }
 
-/* ── Deutschen Pokémon-Namen von PokéAPI laden ───────────────── */
-function extractSpeciesName(cardName: string): string {
-  return cardName
-    .replace(/\s+(ex|EX|V|VMAX|VSTAR|GX|TAG TEAM|LEGEND|BREAK|Prime|Radiant|◇|★|Tera|Iron|Ancient|Future)(\s|$).*/i, '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '-')         // "Tapu Koko" → "tapu-koko"
-    .replace(/[^a-z0-9-]/g, ''); // Sonderzeichen entfernen
+const STAGE_LABELS = ['Basic','Stage 1','Stage 2','MEGA','VMAX','VSTAR','V','GX','EX','V-UNION'];
+function getStage(subtypes: string[]): string | null {
+  return subtypes.find(s => STAGE_LABELS.includes(s)) ?? null;
 }
 
-async function fetchGermanName(cardName: string, supertype?: string): Promise<string | null> {
-  if (supertype && supertype.toLowerCase() !== 'pokémon' && supertype.toLowerCase() !== 'pokemon') {
-    return null; // Trainer/Energy → kein PokéAPI-Lookup
-  }
-  try {
-    const species = extractSpeciesName(cardName);
-    if (!species) return null;
-    const res = await fetch(`https://pokeapi.co/api/v2/pokemon-species/${species}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.names?.find((n: { language: { name: string }; name: string }) =>
-      n.language.name === 'de'
-    )?.name ?? null;
-  } catch {
-    return null;
-  }
+function tcgdexImg(setId: string, num: string): string {
+  const id = toTcgdexId(setId);
+  const n  = parseInt(num.split('/')[0]) || num.split('/')[0];
+  return `https://assets.tcgdex.net/de/${id}/${n}/high.webp`;
 }
 
+/* ── Props / Types ───────────────────────────────────────────── */
 
-/* ── Props ───────────────────────────────────────────────────── */
-interface SetMeta {
-  nameDe: string;
-  logoUrl: string;
-  total: number;
-}
-
+interface SetMeta { nameDe: string; logoUrl: string; total: number; }
 export type { SetMeta };
 
 interface Props {
@@ -67,52 +52,104 @@ interface Props {
   onSaved?: () => void;
 }
 
+type Section = 'details' | 'evo' | 'cards';
+
+/* ── Accordion Header ────────────────────────────────────────── */
+function AccHeader({
+  icon, title, open, onToggle, border = true,
+}: {
+  icon: React.ReactNode; title: string; open: boolean;
+  onToggle: () => void; border?: boolean;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className="w-full flex items-center justify-between px-4 min-h-[52px] text-left transition-colors"
+      style={{ borderTop: border ? '1px solid var(--border)' : 'none' }}
+    >
+      <div className="flex items-center gap-2.5 font-semibold text-[15px]">
+        <span className="text-muted-foreground">{icon}</span>
+        {title}
+      </div>
+      <ChevronDown
+        size={18}
+        className="text-muted-foreground transition-transform duration-200 shrink-0"
+        style={{ transform: open ? 'rotate(180deg)' : 'none' }}
+      />
+    </button>
+  );
+}
+
 /* ── Component ───────────────────────────────────────────────── */
 export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, onSaved }: Props) {
-  const [visible, setVisible]         = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [germanName, setGermanName]   = useState<string | null>(null);
-  const [imgSrc, setImgSrc]           = useState<string>('');
-  const [imgFailed, setImgFailed]     = useState(false);
+  const [visible,    setVisible]    = useState(false);
+  const [zoomed,     setZoomed]     = useState(false);
+  const [openSec,    setOpenSec]    = useState<Set<Section>>(new Set(['cards']));
+  const [imgSrc,     setImgSrc]     = useState('');
+  const [imgFailed,  setImgFailed]  = useState(false);
+  const [addVariant, setAddVariant] = useState<CardVariant | null>(null);
+  const [species,    setSpecies]    = useState<SpeciesDE | null>(null);
+  const [evoCards,   setEvoCards]   = useState<CardInfo[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmId,  setConfirmId]  = useState<string | null>(null);
 
-  /* Slide-in + Reset bei neuer Karte */
+  /* Reset + load on card change */
   useEffect(() => {
-    if (card) {
-      setGermanName(null);
-      setImgFailed(false);
-      setImgSrc(tcgdexImageUrl(card.setId, card.number, 'de'));
-      requestAnimationFrame(() => setVisible(true));
+    if (!card) { setVisible(false); return; }
+    setSpecies(null); setEvoCards([]); setImgFailed(false);
+    setImgSrc(tcgdexImg(card.setId, card.number));
+    requestAnimationFrame(() => setVisible(true));
 
-      // Deutschen Pokémon-Namen laden
-      fetchGermanName(card.name, card.supertype).then(name => {
-        if (name) setGermanName(name);
-      });
-    } else {
-      setVisible(false);
+    const isPokemon = !card.supertype ||
+      card.supertype.toLowerCase().includes('pokémon') ||
+      card.supertype.toLowerCase() === 'pokemon';
+
+    if (isPokemon) {
+      fetchPokemonSpeciesDE(card.name, card.supertype).then(s => { if (s) setSpecies(s); });
+      if (card.nationalDexNumber) {
+        getCardsByEvolutionFamily(card.nationalDexNumber, 6)
+          .then(cards => setEvoCards(cards.map(catalogCardToInfo)));
+      }
     }
-  }, [card]);
+  }, [card?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!card) return null;
 
-  const rarityInfo = card.rarity ? getRarityGroup(card.rarity) : null;
-  const variants   = (card.variants?.length ? card.variants : (card.rarity ? detectVariants(card.rarity) : ['standard' as const])) as import('@/types').CardVariant[];
-  const tcgApiCard = cardInfoToTcgApi(card);
-  const displayName = germanName ?? card.name;
+  /* Derived values */
+  const rarityInfo  = card.rarity ? getRarityGroup(card.rarity) : null;
+  const variants    = (card.variants?.length
+    ? card.variants
+    : card.rarity ? detectVariants(card.rarity) : ['standard']
+  ) as CardVariant[];
+  const tcgApiCard  = cardInfoToTcgApi(card);
+  const stage       = getStage(card.subtypes ?? []);
+  const energyTypes = (card.types ?? []).map(toEnergy).filter(Boolean) as EnergyType[];
+  const setCode     = toTcgdexId(card.setId).toUpperCase();
+  const numBase     = card.number.split('/')[0].padStart(3, '0');
+  const numTotal    = setMeta?.total ? String(setMeta.total).padStart(3, '0') : null;
+  const numFmt      = numTotal ? `${numBase}/${numTotal}` : numBase;
+  const logoUrl     = setMeta?.logoUrl ?? `https://images.pokemontcg.io/${card.setId}/logo.png`;
+  const setNameDe   = setMeta?.nameDe ?? card.setName;
 
-  /* Kartennummer formatieren: "1" → "001/258" */
-  const numFormatted = (() => {
-    const base = card.number.split('/')[0];
-    const padded = base.padStart(3, '0');
-    return setMeta?.total ? `${padded}/${setMeta.total}` : padded;
-  })();
-
-  function bindersForCopy(copy: CardDoc): BinderDoc[] {
-    return binders.filter(b => b.cardIds.includes(copy.id));
+  function bindersOf(copy: CardDoc) { return binders.filter(b => b.cardIds.includes(copy.id)); }
+  function toggle(s: Section) {
+    setOpenSec(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n; });
   }
+  function handleClose() { setVisible(false); setTimeout(onClose, 250); }
 
-  function handleClose() {
-    setVisible(false);
-    setTimeout(onClose, 250);
+  async function handleDelete(copy: CardDoc) {
+    if (confirmId !== copy.id) {
+      setConfirmId(copy.id);
+      setTimeout(() => setConfirmId(c => c === copy.id ? null : c), 3000);
+      return;
+    }
+    setConfirmId(null);
+    setDeletingId(copy.id);
+    try {
+      await Promise.all(bindersOf(copy).map(b => removeCardFromBinder(b.id, copy.id)));
+      await deleteCard(copy.id);
+      onSaved?.();
+    } finally { setDeletingId(null); }
   }
 
   return (
@@ -126,185 +163,390 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
 
       {/* Sheet */}
       <div
-        className="relative w-full rounded-t-2xl bg-card border-t border-border transition-transform duration-[250ms] ease-out max-h-[90dvh] flex flex-col"
+        className="relative w-full rounded-t-2xl bg-card border-t border-border max-h-[93dvh] flex flex-col transition-transform duration-[250ms] ease-out"
         style={{ transform: visible ? 'translateY(0)' : 'translateY(100%)' }}
       >
-        {/* Handle + Schließen */}
+        {/* Handle */}
         <div className="flex items-center justify-center pt-3 pb-1 shrink-0">
           <div className="w-10 h-1 rounded-full bg-border" />
         </div>
-        <button onClick={handleClose} className="absolute right-4 top-3 text-muted-foreground p-1">
+        <button onClick={handleClose} className="absolute right-4 top-3 p-1 text-muted-foreground">
           <X size={18} />
         </button>
 
-        {/* Scrollbarer Inhalt */}
-        <div className="overflow-y-auto px-4 pb-28">
+        {/* ── Karten-Header (wie echte Pokémon-Karte) ───────── */}
+        <div className="flex items-center justify-between px-4 pb-2.5 gap-3 shrink-0">
+          {/* Links: Evolutionsstufe */}
+          {stage ? (
+            <span
+              className="text-[13px] font-bold px-3 py-1 rounded-full border shrink-0"
+              style={{ background: 'rgba(66,153,225,.12)', color: 'var(--blue, #4299e1)', borderColor: 'rgba(66,153,225,.3)' }}
+            >
+              {stage}
+            </span>
+          ) : <span />}
 
-          {/* ── Karte + Meta ─────────────────────────────────── */}
-          <div className="flex gap-4 py-4">
-            {/* Karten-Bild (deutsch via TCGdex, Fallback pokemontcg.io) */}
-            <div className="shrink-0">
+          {/* Mitte: Pokémon-Name */}
+          <h2 className="flex-1 text-center text-[19px] font-extrabold leading-tight tracking-tight truncate">
+            {card.name}
+          </h2>
+
+          {/* Rechts: KP + Typ-Icons */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {card.hp && (
+              <span className="text-[13px] font-bold text-muted-foreground">KP {card.hp}</span>
+            )}
+            {energyTypes.map(t => (
+              <EnergyIcon key={t} type={t} size={26} />
+            ))}
+          </div>
+        </div>
+
+        {/* ── Scrollbarer Inhalt ────────────────────────────── */}
+        <div className="overflow-y-auto pb-24 flex-1">
+
+          {/* ── Hero: Kartenbild links · Set-Info rechts ───── */}
+          <div className="flex gap-3.5 px-4 pt-1 pb-4">
+            {/* Kartenbild mit Zoom */}
+            <div
+              className="shrink-0 rounded-xl overflow-hidden cursor-zoom-in border shadow-lg"
+              style={{
+                width: 140, borderColor: rarityInfo?.color ?? 'var(--border)',
+                boxShadow: '0 8px 28px rgba(0,0,0,.55)',
+              }}
+              onClick={() => setZoomed(true)}
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={imgFailed ? card.imgLarge : imgSrc}
-                alt={displayName}
-                className="w-28 rounded-xl border-2 shadow-lg"
-                style={{ borderColor: rarityInfo?.color ?? 'var(--border)' }}
-                onError={() => {
-                  if (!imgFailed) setImgFailed(true);
-                }}
+                alt={card.name}
+                className="w-full block"
+                style={{ aspectRatio: '2.5/3.5', objectFit: 'cover' }}
+                onError={() => { if (!imgFailed) setImgFailed(true); }}
               />
             </div>
 
-            {/* Meta */}
-            <div className="flex-1 min-w-0 pt-1 space-y-2">
-              {/* Pokémon-Name (deutsch) */}
-              <h2 className="text-base font-bold leading-tight">{displayName}</h2>
-
-              {/* Set: Logo + Name */}
-              <div className="flex items-center gap-1.5">
+            {/* Set-Infos: Logo+Code oben · Name+Serie · Nummer+Rarity unten */}
+            <div className="flex-1 min-w-0 flex flex-col justify-between self-stretch">
+              {/* Oben: Logo + Kürzel */}
+              <div className="flex items-center justify-between gap-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={setMeta?.logoUrl ?? `https://images.pokemontcg.io/${card.setId}/logo.png`}
-                  alt={setMeta?.nameDe ?? card.setName}
-                  className="h-4 max-w-[48px] object-contain"
+                  src={logoUrl}
+                  alt={setNameDe}
+                  className="object-contain object-left"
+                  style={{ height: 28, maxWidth: 86 }}
                   onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                 />
-                <span className="text-xs text-muted-foreground truncate">
-                  {setMeta?.nameDe ?? card.setName}
+                <span
+                  className="text-xs font-bold px-2 py-0.5 rounded-lg border text-muted-foreground shrink-0"
+                  style={{ background: 'var(--secondary)', borderColor: 'var(--border)' }}
+                >
+                  {setCode}
                 </span>
               </div>
 
-              {/* Nummer */}
-              <p className="text-xs text-muted-foreground font-mono">{numFormatted}</p>
+              {/* Mitte: Set-Name + Serie */}
+              <div className="flex flex-col gap-0.5">
+                <div className="text-[13px] font-bold leading-snug">{setNameDe}</div>
+                {card.series && (
+                  <div className="text-[11px] text-muted-foreground">{card.series}</div>
+                )}
+              </div>
 
-              {/* Rarity als Icon */}
-              {rarityInfo && (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-base" style={{ color: rarityInfo.color }}>
-                    {rarityInfo.symbol}
-                  </span>
-                  <span className="text-xs text-muted-foreground">{rarityInfo.label}</span>
-                </div>
-              )}
-
-              {/* Varianten-Chips */}
-              {variants.length > 1 && (
-                <div className="flex flex-wrap gap-1">
-                  {variants.map(v => (
-                    <span
-                      key={v}
-                      className="px-2 py-0.5 rounded-full text-[10px] font-medium border border-border text-muted-foreground bg-secondary"
-                    >
-                      {VARIANT_LABELS[v]}
-                    </span>
-                  ))}
-                </div>
-              )}
+              {/* Unten: Nummer + Rarity-Pill */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[14px] font-bold tabular-nums">{numFmt}</span>
+                {rarityInfo && (
+                  <div
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[12px] font-bold shrink-0"
+                    style={{ background: 'var(--secondary)', borderColor: 'var(--border)' }}
+                  >
+                    <span style={{ color: rarityInfo.color }}>{rarityInfo.symbol}</span>
+                    {rarityInfo.label}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          <div className="h-px bg-border" />
+          {/* ── Akkordion ─────────────────────────────────── */}
+          <div className="mx-4 rounded-2xl border border-border overflow-hidden mb-4">
 
-          {/* ── In deiner Sammlung ───────────────────────────── */}
-          <div className="py-4 space-y-2">
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              In deiner Sammlung
-            </h3>
+            {/* 1 · Details */}
+            <AccHeader
+              icon={<Info size={16} />}
+              title="Details"
+              open={openSec.has('details')}
+              onToggle={() => toggle('details')}
+              border={false}
+            />
+            {openSec.has('details') && (
+              <div className="px-4 pb-4 border-t border-border">
+                {species ? (
+                  <>
+                    {species.genus && (
+                      <p className="text-[13px] text-muted-foreground mb-3 pt-3">{species.genus}</p>
+                    )}
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      {species.height > 0 && (
+                        <div className="bg-secondary rounded-xl px-3 py-2.5">
+                          <div className="text-[15px] font-bold">{(species.height / 10).toFixed(1)} m</div>
+                          <div className="text-[11px] text-muted-foreground mt-0.5">Größe</div>
+                        </div>
+                      )}
+                      {species.weight > 0 && (
+                        <div className="bg-secondary rounded-xl px-3 py-2.5">
+                          <div className="text-[15px] font-bold">{(species.weight / 10).toFixed(1)} kg</div>
+                          <div className="text-[11px] text-muted-foreground mt-0.5">Gewicht</div>
+                        </div>
+                      )}
+                      {species.region && (
+                        <div className="bg-secondary rounded-xl px-3 py-2.5">
+                          <div className="text-[15px] font-bold">{species.region}</div>
+                          <div className="text-[11px] text-muted-foreground mt-0.5">Region</div>
+                        </div>
+                      )}
+                      {card.nationalDexNumber && (
+                        <div className="bg-secondary rounded-xl px-3 py-2.5">
+                          <div className="text-[15px] font-bold">#{String(card.nationalDexNumber).padStart(3, '0')}</div>
+                          <div className="text-[11px] text-muted-foreground mt-0.5">Pokédex</div>
+                        </div>
+                      )}
+                    </div>
+                    {species.flavorText && (
+                      <p className="text-[13px] text-muted-foreground leading-relaxed italic">
+                        „{species.flavorText}"
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[13px] text-muted-foreground pt-3">Lade Details…</p>
+                )}
+              </div>
+            )}
 
-            {ownedCopies.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Noch nicht in deiner Sammlung</p>
-            ) : (
-              <div className="space-y-2">
-                {ownedCopies.map(copy => {
-                  const copyBinders = bindersForCopy(copy);
+            {/* 2 · Evolutionslinie */}
+            <AccHeader
+              icon={<Repeat2 size={16} />}
+              title="Evolutionslinie"
+              open={openSec.has('evo')}
+              onToggle={() => toggle('evo')}
+            />
+            {openSec.has('evo') && (
+              <div className="px-4 pb-4 border-t border-border">
+                {evoCards.length > 1 ? (
+                  <div className="flex items-center gap-0 overflow-x-auto pt-3 pb-1" style={{ scrollbarWidth: 'none' }}>
+                    {evoCards.map((ec, i) => (
+                      <div key={ec.id} className="flex items-center shrink-0">
+                        {i > 0 && (
+                          <span className="text-muted-foreground text-lg px-2 pb-4">›</span>
+                        )}
+                        <div className="flex flex-col items-center gap-1.5">
+                          <div
+                            className="rounded-lg overflow-hidden border-2 w-[62px]"
+                            style={{ borderColor: ec.id === card.id ? 'var(--pokedex-red)' : 'var(--border)' }}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={ec.imgSmall}
+                              alt={ec.name}
+                              className="w-full block"
+                              style={{ aspectRatio: '2.5/3.5', objectFit: 'cover' }}
+                            />
+                          </div>
+                          <span
+                            className="text-[10px] text-center max-w-[64px] truncate"
+                            style={{ color: ec.id === card.id ? 'var(--pokedex-red)' : 'var(--muted-foreground)', fontWeight: ec.id === card.id ? 700 : 400 }}
+                          >
+                            {ec.name}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[13px] text-muted-foreground pt-3">
+                    {evoCards.length === 0 ? 'Lade Evolutionslinie…' : 'Keine Evolutionslinie'}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* 3 · Karten & Preise */}
+            <AccHeader
+              icon={<LayoutGrid size={16} />}
+              title="Karten & Preise"
+              open={openSec.has('cards')}
+              onToggle={() => toggle('cards')}
+            />
+            {openSec.has('cards') && (
+              <div className="border-t border-border">
+                {variants.map((variant, vi) => {
+                  const copies = ownedCopies.filter(c => c.variant === variant);
+                  const isOwned = copies.length > 0;
                   return (
                     <div
-                      key={copy.id}
-                      className="rounded-xl border bg-background px-3 py-2.5 space-y-1.5"
-                      style={{ borderColor: copy.needsReview ? 'var(--pokedex-red)' : 'var(--border)' }}
+                      key={variant}
+                      className="px-4 py-3"
+                      style={{
+                        borderTop: vi > 0 ? '1px solid var(--border)' : 'none',
+                        background: isOwned ? 'rgba(72,187,120,.04)' : 'transparent',
+                      }}
                     >
-                      {copy.needsReview && (
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-medium" style={{ color: 'var(--pokedex-red)' }}>
-                            Noch nicht geprüft
-                          </span>
-                          <button
-                            onClick={async () => {
-                              await markReviewed(copy.id);
-                              window.dispatchEvent(new Event('review-count-changed'));
-                              onSaved?.();
-                            }}
-                            className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full"
-                            style={{ background: 'rgba(72,187,120,.15)', color: '#48bb78' }}
-                          >
-                            <CheckCircle2 size={10} /> Geprüft
-                          </button>
+                      {/* Variant-Zeile: Name + Owned-Badge + + Button */}
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[15px] font-bold">{VARIANT_LABELS[variant]}</span>
+                          {isOwned && (
+                            <span
+                              className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                              style={{ background: 'rgba(72,187,120,.15)', color: 'var(--green, #48bb78)' }}
+                            >
+                              ✓ {copies.reduce((s, c) => s + c.quantity, 0)}×
+                            </span>
+                          )}
                         </div>
-                      )}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-medium">{VARIANT_LABELS[copy.variant]}</span>
-                        <span className="text-xs">{LANGUAGE_FLAGS[copy.language] ?? copy.language}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded border border-border text-muted-foreground">
-                          {copy.condition}
-                        </span>
-                        {copy.isFoil && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded border border-yellow-500/50 text-yellow-400">Foil</span>
-                        )}
-                        {copy.isFirstEd && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded border border-border text-muted-foreground">1st Ed.</span>
-                        )}
-                        <span className="ml-auto text-xs font-semibold">×{copy.quantity}</span>
+                        <button
+                          onClick={() => setAddVariant(variant)}
+                          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                          style={{
+                            background: isOwned ? 'var(--secondary)' : 'var(--pokedex-red)',
+                            border: isOwned ? '1.5px solid var(--border)' : 'none',
+                          }}
+                          aria-label="Hinzufügen"
+                        >
+                          <Plus size={18} color={isOwned ? 'var(--muted-foreground)' : '#fff'} strokeWidth={2.5} />
+                        </button>
                       </div>
 
-                      {copyBinders.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {copyBinders.map(b => (
-                            <div key={b.id} className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                              <span>{b.icon ?? '📁'}</span>
-                              <span>{b.name}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {/* Preis-Placeholder (wird mit Cardmarket befüllt wenn verfügbar) */}
+                      <div className="text-[12px] text-muted-foreground mb-2">
+                        — Cardmarket-Preis folgt
+                      </div>
 
-                      {copy.notes && (
-                        <p className="text-[10px] text-muted-foreground italic">{copy.notes}</p>
+                      {/* Eigene Kopien */}
+                      {copies.length > 0 && (
+                        <div className="flex flex-col gap-2 mt-2">
+                          {copies.map(copy => {
+                            const copyBinders = bindersOf(copy);
+                            const isConfirm = confirmId === copy.id;
+                            const isDeleting = deletingId === copy.id;
+                            return (
+                              <div
+                                key={copy.id}
+                                className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+                                style={{ background: 'var(--secondary)', minHeight: 44 }}
+                              >
+                                {/* Chips */}
+                                <div className="flex gap-1.5 flex-wrap flex-1 min-w-0">
+                                  {copy.needsReview && (
+                                    <button
+                                      onClick={async () => {
+                                        await markReviewed(copy.id);
+                                        window.dispatchEvent(new Event('review-count-changed'));
+                                        onSaved?.();
+                                      }}
+                                      className="text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1"
+                                      style={{ background: 'rgba(229,62,62,.15)', color: 'var(--pokedex-red)' }}
+                                    >
+                                      <CheckCircle2 size={10} /> Prüfen
+                                    </button>
+                                  )}
+                                  <span
+                                    className="text-[12px] font-semibold px-2 py-0.5 rounded-full"
+                                    style={{ background: 'rgba(255,255,255,.07)', color: 'var(--muted-foreground)' }}
+                                  >
+                                    {copy.condition}
+                                  </span>
+                                  <span className="text-[14px]">{LANGUAGE_FLAGS[copy.language] ?? copy.language}</span>
+                                  {copyBinders.map(b => (
+                                    <span key={b.id} className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+                                      {b.icon ?? '📁'} {b.name}
+                                    </span>
+                                  ))}
+                                </div>
+
+                                {/* Anzahl */}
+                                <span
+                                  className="text-[14px] font-extrabold shrink-0"
+                                  style={{ color: 'var(--green, #48bb78)' }}
+                                >
+                                  ×{copy.quantity}
+                                </span>
+
+                                {/* Löschen */}
+                                <button
+                                  onClick={() => handleDelete(copy)}
+                                  disabled={isDeleting}
+                                  className="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-colors"
+                                  style={{
+                                    background: isConfirm ? 'rgba(229,62,62,.2)' : 'rgba(229,62,62,.08)',
+                                    color: 'var(--pokedex-red)',
+                                  }}
+                                >
+                                  {isDeleting
+                                    ? <span className="text-[10px]">…</span>
+                                    : isConfirm
+                                      ? <span className="text-[10px] font-bold">OK?</span>
+                                      : <Trash2 size={14} />
+                                  }
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                   );
                 })}
+
+                {/* Wunschliste */}
+                <div className="px-4 pt-2 pb-3 border-t border-border">
+                  <button
+                    className="w-full h-11 rounded-xl border border-border flex items-center justify-center gap-2 text-[13px] font-semibold text-muted-foreground"
+                  >
+                    <Heart size={15} />
+                    Auf Wunschliste setzen
+                  </button>
+                </div>
               </div>
             )}
-          </div>
 
-          <div className="h-px bg-border" />
-
-          {/* ── Aktionen ─────────────────────────────────────── */}
-          <div className="pt-4 flex gap-2">
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium text-white"
-              style={{ background: 'var(--pokedex-red)' }}
-            >
-              <Plus size={16} />
-              Zur Sammlung
-            </button>
-            <button
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border border-border text-muted-foreground"
-            >
-              <Heart size={16} />
-              Merkliste
-            </button>
           </div>
         </div>
       </div>
 
-      {showAddModal && (
+      {/* ── Zoom-Overlay ──────────────────────────────────────── */}
+      {zoomed && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/95 flex items-center justify-center"
+          onClick={() => setZoomed(false)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imgFailed ? card.imgLarge : imgSrc}
+            alt={card.name}
+            className="rounded-2xl"
+            style={{ maxWidth: '90vw', maxHeight: '85dvh', objectFit: 'contain' }}
+          />
+          <button
+            onClick={() => setZoomed(false)}
+            className="absolute top-5 right-5 w-11 h-11 rounded-full flex items-center justify-center"
+            style={{ background: 'rgba(255,255,255,.15)' }}
+          >
+            <X size={20} color="#fff" />
+          </button>
+        </div>
+      )}
+
+      {/* ── AddToCollectionModal ──────────────────────────────── */}
+      {addVariant !== null && (
         <AddToCollectionModal
           card={tcgApiCard}
-          onClose={() => setShowAddModal(false)}
-          onSaved={() => { setShowAddModal(false); onSaved?.(); }}
+          preVariant={addVariant}
+          onClose={() => setAddVariant(null)}
+          onSaved={() => { setAddVariant(null); onSaved?.(); }}
         />
       )}
     </div>
