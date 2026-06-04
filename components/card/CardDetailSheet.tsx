@@ -11,6 +11,7 @@ import { removeCardFromBinder } from '@/lib/firestore/binders';
 import { getCardsByEvolutionFamily } from '@/lib/firestore/catalog';
 import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
 import { fetchPokemonSpeciesDE, type SpeciesDE } from '@/lib/pokeapi';
+import { fetchTcgdexDataMap, resolveSetDe } from '@/lib/tcgdex';
 import type { CardDoc, BinderDoc, CardVariant } from '@/types';
 
 /* ── Helpers ─────────────────────────────────────────────────── */
@@ -32,10 +33,12 @@ function getStage(subtypes: string[]): string | null {
   return subtypes.find(s => STAGE_LABELS.includes(s)) ?? null;
 }
 
-function tcgdexImg(setId: string, num: string): string {
-  const id = toTcgdexId(setId);
-  const n  = parseInt(num.split('/')[0]) || num.split('/')[0];
-  return `https://assets.tcgdex.net/de/${id}/${n}/high.webp`;
+/** Leitet DE-Kartenbild aus Logo-URL ab: .../sv/sv04.5/logo.png → .../sv/sv04.5/027/high.webp */
+function imgFromLogoUrl(logoUrl: string, cardNumber: string): string | null {
+  const base = logoUrl.replace(/\/logo\.png$/, '').replace(/\/logo$/, '');
+  if (!base.includes('assets.tcgdex.net')) return null;
+  const num = cardNumber.split('/')[0].padStart(3, '0');
+  return `${base}/${num}/high.webp`;
 }
 
 /* ── Props / Types ───────────────────────────────────────────── */
@@ -82,23 +85,43 @@ function AccHeader({
 
 /* ── Component ───────────────────────────────────────────────── */
 export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, onSaved }: Props) {
-  const [visible,    setVisible]    = useState(false);
-  const [zoomed,     setZoomed]     = useState(false);
-  const [openSec,    setOpenSec]    = useState<Set<Section>>(new Set(['cards']));
-  const [imgSrc,     setImgSrc]     = useState('');
-  const [imgFailed,  setImgFailed]  = useState(false);
-  const [addVariant, setAddVariant] = useState<CardVariant | null>(null);
-  const [species,    setSpecies]    = useState<SpeciesDE | null>(null);
-  const [evoCards,   setEvoCards]   = useState<CardInfo[]>([]);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [confirmId,  setConfirmId]  = useState<string | null>(null);
+  const [visible,      setVisible]      = useState(false);
+  const [zoomed,       setZoomed]       = useState(false);
+  const [openSec,      setOpenSec]      = useState<Set<Section>>(new Set(['cards']));
+  const [imgSrc,       setImgSrc]       = useState('');
+  const [imgFailed,    setImgFailed]    = useState(false);
+  const [addVariant,   setAddVariant]   = useState<CardVariant | null>(null);
+  const [species,      setSpecies]      = useState<SpeciesDE | null>(null);
+  const [evoCards,     setEvoCards]     = useState<CardInfo[]>([]);
+  const [deletingId,   setDeletingId]   = useState<string | null>(null);
+  const [confirmId,    setConfirmId]    = useState<string | null>(null);
+  const [resolvedMeta, setResolvedMeta] = useState<SetMeta | undefined>(setMeta);
 
   /* Reset + load on card change */
   useEffect(() => {
     if (!card) { setVisible(false); return; }
     setSpecies(null); setEvoCards([]); setImgFailed(false);
-    setImgSrc(tcgdexImg(card.setId, card.number));
+    setImgSrc(card.imgSmall ?? ''); // EN-Bild sofort zeigen, DE folgt
     requestAnimationFrame(() => setVisible(true));
+
+    // Set-Metadaten laden (DE-Name, Logo, Bild-URL)
+    const loadMeta = async () => {
+      let meta = setMeta;
+      if (!meta) {
+        const dataMap = await fetchTcgdexDataMap();
+        const { nameDe, logoDe } = resolveSetDe(card.setId, dataMap, card.setName);
+        meta = {
+          nameDe,
+          logoUrl: logoDe ?? `https://images.pokemontcg.io/${card.setId}/logo.png`,
+          total:   0,
+        };
+      }
+      setResolvedMeta(meta);
+      // DE-Kartenbild aus Logo-URL ableiten
+      const deImg = imgFromLogoUrl(meta.logoUrl, card.number);
+      if (deImg) setImgSrc(deImg);
+    };
+    loadMeta();
 
     const isPokemon = !card.supertype ||
       card.supertype.toLowerCase().includes('pokémon') ||
@@ -126,10 +149,10 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
   const energyTypes = (card.types ?? []).map(toEnergy).filter(Boolean) as EnergyType[];
   const setCode     = toTcgdexId(card.setId).toUpperCase();
   const numBase     = card.number.split('/')[0].padStart(3, '0');
-  const numTotal    = setMeta?.total ? String(setMeta.total).padStart(3, '0') : null;
+  const numTotal    = resolvedMeta?.total ? String(resolvedMeta.total).padStart(3, '0') : null;
   const numFmt      = numTotal ? `${numBase}/${numTotal}` : numBase;
-  const logoUrl     = setMeta?.logoUrl ?? `https://images.pokemontcg.io/${card.setId}/logo.png`;
-  const setNameDe   = setMeta?.nameDe ?? card.setName;
+  const logoUrl     = resolvedMeta?.logoUrl ?? `https://images.pokemontcg.io/${card.setId}/logo.png`;
+  const setNameDe   = resolvedMeta?.nameDe ?? card.setName;
 
   function bindersOf(copy: CardDoc) { return binders.filter(b => b.cardIds.includes(copy.id)); }
   function toggle(s: Section) {
