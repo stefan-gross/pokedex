@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { X, Plus, Heart, CheckCircle2, ChevronDown, Trash2, Info, Repeat2, LayoutGrid } from 'lucide-react';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
-import { detectVariants, VARIANT_LABELS, getRarityGroup } from '@/lib/card-constants';
+import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE } from '@/lib/card-constants';
 import { toTcgdexId } from '@/lib/tcgdex';
 import { cardInfoToTcgApi, catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { markReviewed, deleteCard } from '@/lib/firestore/cards';
@@ -269,7 +269,9 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                   </span>
                 </div>
                 {card.series && (
-                  <div className="text-[11px] text-muted-foreground">{card.series}</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {SERIES_NAMES_DE[card.series] ?? card.series}
+                  </div>
                 )}
               </div>
 

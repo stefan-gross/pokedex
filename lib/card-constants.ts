@@ -183,6 +183,26 @@ export const RARITY_GROUPS: RarityGroup[] = [
   },
 ];
 
+/** Englische pokemontcg.io Seriennamen → Deutsche Namen (TCGdex) */
+export const SERIES_NAMES_DE: Record<string, string> = {
+  'Scarlet & Violet':       'Karmesin & Purpur',
+  'Sword & Shield':         'Schwert & Schild',
+  'Sun & Moon':             'Sonne & Mond',
+  'XY':                     'XY',
+  'Black & White':          'Schwarz & Weiß',
+  'Diamond & Pearl':        'Diamant & Perl',
+  'Platinum':               'Platin',
+  'HeartGold & SoulSilver': 'HeartGold SoulSilver',
+  'HeartGold SoulSilver':   'HeartGold SoulSilver',
+  'Call of Legends':        'Ruf der Legenden',
+  'EX':                     'EX',
+  'Neo':                    'Neo',
+  'Base':                   'Grund',
+  'Mega Evolution':         'Mega-Entwicklung',
+  'Pokémon GO':             'Pokémon GO',
+  'TCG Pocket':             'Pokémon‑Sammelkartenspiel‑Pocket',
+};
+
 /** Findet die Rarity-Gruppe anhand des API-Strings (case-insensitive) */
 export function getRarityGroup(rarity: string): RarityGroup | undefined {
   const lower = rarity.toLowerCase();
