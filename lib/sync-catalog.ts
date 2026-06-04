@@ -30,7 +30,7 @@ async function fetchPage(page: number): Promise<CatalogCard[]> {
   const data = await res.json();
   return (data.data ?? []).map((c: {
     id: string; name: string; number: string;
-    set: { id: string; name: string; series: string };
+    set: { id: string; name: string; series: string; ptcgoCode?: string };
     rarity?: string; supertype?: string; types?: string[]; subtypes?: string[];
     hp?: string;
     nationalPokedexNumbers?: number[];
@@ -43,6 +43,7 @@ async function fetchPage(page: number): Promise<CatalogCard[]> {
     setId: c.set.id,
     setName: c.set.name,
     series: c.set.series,
+    ...(c.set.ptcgoCode ? { setCode: c.set.ptcgoCode } : {}),
     rarity: c.rarity ?? '',
     supertype: c.supertype ?? '',
     types: c.types ?? [],

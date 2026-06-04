@@ -19,6 +19,7 @@ export interface CardInfo {
   setId: string;
   setName: string;
   series?: string;
+  setCode?: string;   // ptcgoCode z.B. "PAF"
   total?: number;
   printedTotal?: number;
   imgSmall: string;
@@ -41,6 +42,7 @@ export function catalogCardToInfo(c: CatalogCard): CardInfo {
     setId: c.setId,
     setName: c.setName,
     series: c.series,
+    setCode: c.setCode,
     imgSmall: c.imgSmall,
     imgLarge: c.imgLarge,
     variants: c.variants,

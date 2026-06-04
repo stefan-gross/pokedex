@@ -43,7 +43,7 @@ function imgFromLogoUrl(logoUrl: string, cardNumber: string): string | null {
 
 /* ── Props / Types ───────────────────────────────────────────── */
 
-interface SetMeta { nameDe: string; logoUrl: string; total: number; code?: string; }
+interface SetMeta { nameDe: string; logoUrl: string; total: number; }
 export type { SetMeta };
 
 interface Props {
@@ -110,21 +110,10 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
       if (!meta) {
         const dataMap = await fetchTcgdexDataMap();
         const { nameDe, logoDe, total } = resolveSetDe(card.setId, dataMap, card.setName);
-        // ptcgoCode (z.B. "PAF") von pokemontcg.io laden
-      let ptcgoCode: string | undefined;
-      try {
-        const setRes = await fetch(`https://api.pokemontcg.io/v2/sets/${card.setId}`, { signal: AbortSignal.timeout(4000) });
-        if (setRes.ok) {
-          const setJson = await setRes.json();
-          ptcgoCode = setJson.data?.ptcgoCode ?? undefined;
-        }
-      } catch { /* Fallback auf TCGdex-ID */ }
-
-      meta = {
+        meta = {
           nameDe,
           logoUrl: logoDe ?? `https://images.pokemontcg.io/${card.setId}/logo.png`,
           total:   total ?? 0,
-          code:    ptcgoCode,
         };
       }
       setResolvedMeta(meta);
@@ -158,7 +147,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
   const tcgApiCard  = cardInfoToTcgApi(card);
   const stage       = getStage(card.subtypes ?? []);
   const energyTypes = (card.types ?? []).map(toEnergy).filter(Boolean) as EnergyType[];
-  const setCode     = resolvedMeta?.code ?? toTcgdexId(card.setId).toUpperCase();
+  const setCode     = card.setCode ?? toTcgdexId(card.setId).toUpperCase();
   const numBase     = card.number.split('/')[0].padStart(3, '0');
   const numTotal    = resolvedMeta?.total ? String(resolvedMeta.total).padStart(3, '0') : null;
   const numFmt      = numTotal ? `${numBase}/${numTotal}` : numBase;

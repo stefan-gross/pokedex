@@ -17,6 +17,7 @@ export interface CatalogCard {
   setId: string;
   setName: string;
   series: string;
+  setCode?: string;            // ptcgoCode z.B. "PAF", "SVI" — von pokemontcg.io
   rarity: string;
   supertype: string;
   types: string[];
