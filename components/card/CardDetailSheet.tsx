@@ -109,11 +109,11 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
       let meta = setMeta;
       if (!meta) {
         const dataMap = await fetchTcgdexDataMap();
-        const { nameDe, logoDe } = resolveSetDe(card.setId, dataMap, card.setName);
+        const { nameDe, logoDe, total } = resolveSetDe(card.setId, dataMap, card.setName);
         meta = {
           nameDe,
           logoUrl: logoDe ?? `https://images.pokemontcg.io/${card.setId}/logo.png`,
-          total:   0,
+          total:   total ?? 0,
         };
       }
       setResolvedMeta(meta);
@@ -230,13 +230,10 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
 
           {/* ── Hero: Kartenbild links · Set-Info rechts ───── */}
           <div className="flex gap-3.5 px-4 pt-1 pb-4">
-            {/* Kartenbild mit Zoom */}
+            {/* Kartenbild mit Zoom — kein Schatten */}
             <div
-              className="shrink-0 rounded-xl overflow-hidden cursor-zoom-in border shadow-lg"
-              style={{
-                width: 140, borderColor: rarityInfo?.color ?? 'var(--border)',
-                boxShadow: '0 8px 28px rgba(0,0,0,.55)',
-              }}
+              className="shrink-0 rounded-xl overflow-hidden cursor-zoom-in border"
+              style={{ width: 140, borderColor: rarityInfo?.color ?? 'var(--border)' }}
               onClick={() => setZoomed(true)}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -249,29 +246,28 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
               />
             </div>
 
-            {/* Set-Infos: Logo+Code oben · Name+Serie · Nummer+Rarity unten */}
+            {/* Set-Infos */}
             <div className="flex-1 min-w-0 flex flex-col justify-between self-stretch">
-              {/* Oben: Logo + Kürzel */}
-              <div className="flex items-center justify-between gap-2">
+
+              {/* Oben: Logo → Name+Kürzel → Serie (vertikal) */}
+              <div className="flex flex-col gap-1">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={logoUrl}
                   alt={setNameDe}
                   className="object-contain object-left"
-                  style={{ height: 28, maxWidth: 86 }}
+                  style={{ height: 28, maxWidth: 90 }}
                   onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                 />
-                <span
-                  className="text-xs font-bold px-2 py-0.5 rounded-lg border text-muted-foreground shrink-0"
-                  style={{ background: 'var(--secondary)', borderColor: 'var(--border)' }}
-                >
-                  {setCode}
-                </span>
-              </div>
-
-              {/* Mitte: Set-Name + Serie */}
-              <div className="flex flex-col gap-0.5">
-                <div className="text-[13px] font-bold leading-snug">{setNameDe}</div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[13px] font-bold leading-snug">{setNameDe}</span>
+                  <span
+                    className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border shrink-0"
+                    style={{ color: 'var(--foreground)', borderColor: 'var(--foreground)' }}
+                  >
+                    {setCode}
+                  </span>
+                </div>
                 {card.series && (
                   <div className="text-[11px] text-muted-foreground">{card.series}</div>
                 )}

@@ -75,13 +75,15 @@ export async function searchTcgdexDe(q: string): Promise<string[]> {
 
 export interface TcgdexSetData {
   name: string;
-  logo?: string; // Deutsches Logo-URL (mit .png Extension)
+  logo?: string;   // Deutsches Logo-URL (mit .png Extension)
+  total?: number;  // Offizielle Kartenanzahl des Sets
 }
 
 interface TcgdexApiSet {
   id: string;
   name: string;
   logo?: string;
+  cardCount?: { total: number; official: number };
 }
 
 /**
@@ -99,9 +101,9 @@ export async function fetchTcgdexDataMap(): Promise<Map<string, TcgdexSetData>> 
     return new Map(sets.map(s => [
       s.id,
       {
-        name: s.name,
-        // Logo-URL bekommt .png Extension damit der Browser es als Bild lädt
-        logo: s.logo ? `${s.logo}.png` : undefined,
+        name:  s.name,
+        logo:  s.logo ? `${s.logo}.png` : undefined,
+        total: s.cardCount?.official,
       },
     ]));
   } catch {
@@ -116,11 +118,12 @@ export function resolveSetDe(
   pokemonTcgId: string,
   dataMap: Map<string, TcgdexSetData>,
   fallbackName: string,
-): { nameDe: string; logoDe?: string } {
+): { nameDe: string; logoDe?: string; total?: number } {
   const tcgdexId = toTcgdexId(pokemonTcgId);
   const data = dataMap.get(tcgdexId);
   return {
     nameDe: data?.name ?? fallbackName,
     logoDe: data?.logo,
+    total:  data?.total,
   };
 }
