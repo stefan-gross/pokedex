@@ -351,6 +351,7 @@ Nach Implementierung testen:
 
 | Kartendetail | Komplett-Redesign CardDetailSheet: Karten-Header (Stage+Name+KP+Typ-Icon), Hero (Bild links/Set-Info rechts: Logo+Code / Name+Serie / Nummer+Rarity-Pill), Akkordion (Details/Evo/Karten&Preise), Zoom-Overlay, Löschen mit Confirm, Add per Variante | `components/card/CardDetailSheet.tsx`, `lib/pokeapi.ts` |
 | PokéAPI | `fetchPokemonSpeciesDE()` liefert Genus, Beschreibungstext DE, Größe, Gewicht, Region | `lib/pokeapi.ts` |
+| Kartendetail — Fix | Sheet lädt Set-Metadaten (DE-Name, Logo) selbst via `fetchTcgdexDataMap()` wenn `setMeta` nicht übergeben; Kartenbild-URL aus Logo-URL abgeleitet (`/sv/sv04.5/027/high.webp`); EN-Bild sofort, DE-Bild nach Laden | `components/card/CardDetailSheet.tsx` |
 
 ### 🔲 Noch offen
 
