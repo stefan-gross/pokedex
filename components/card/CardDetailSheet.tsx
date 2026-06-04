@@ -43,7 +43,7 @@ function imgFromLogoUrl(logoUrl: string, cardNumber: string): string | null {
 
 /* ── Props / Types ───────────────────────────────────────────── */
 
-interface SetMeta { nameDe: string; logoUrl: string; total: number; }
+interface SetMeta { nameDe: string; logoUrl: string; total: number; code?: string; }
 export type { SetMeta };
 
 interface Props {
@@ -110,10 +110,21 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
       if (!meta) {
         const dataMap = await fetchTcgdexDataMap();
         const { nameDe, logoDe, total } = resolveSetDe(card.setId, dataMap, card.setName);
-        meta = {
+        // ptcgoCode (z.B. "PAF") von pokemontcg.io laden
+      let ptcgoCode: string | undefined;
+      try {
+        const setRes = await fetch(`https://api.pokemontcg.io/v2/sets/${card.setId}`, { signal: AbortSignal.timeout(4000) });
+        if (setRes.ok) {
+          const setJson = await setRes.json();
+          ptcgoCode = setJson.data?.ptcgoCode ?? undefined;
+        }
+      } catch { /* Fallback auf TCGdex-ID */ }
+
+      meta = {
           nameDe,
           logoUrl: logoDe ?? `https://images.pokemontcg.io/${card.setId}/logo.png`,
           total:   total ?? 0,
+          code:    ptcgoCode,
         };
       }
       setResolvedMeta(meta);
@@ -147,7 +158,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
   const tcgApiCard  = cardInfoToTcgApi(card);
   const stage       = getStage(card.subtypes ?? []);
   const energyTypes = (card.types ?? []).map(toEnergy).filter(Boolean) as EnergyType[];
-  const setCode     = toTcgdexId(card.setId).toUpperCase();
+  const setCode     = resolvedMeta?.code ?? toTcgdexId(card.setId).toUpperCase();
   const numBase     = card.number.split('/')[0].padStart(3, '0');
   const numTotal    = resolvedMeta?.total ? String(resolvedMeta.total).padStart(3, '0') : null;
   const numFmt      = numTotal ? `${numBase}/${numTotal}` : numBase;
@@ -193,12 +204,9 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
         <div className="flex items-center justify-center pt-3 pb-1 shrink-0">
           <div className="w-10 h-1 rounded-full bg-border" />
         </div>
-        <button onClick={handleClose} className="absolute right-4 top-3 p-1 text-muted-foreground">
-          <X size={18} />
-        </button>
 
         {/* ── Karten-Header (wie echte Pokémon-Karte) ───────── */}
-        <div className="flex items-center justify-between px-4 pb-2.5 gap-3 shrink-0">
+        <div className="flex items-center justify-between px-4 pb-2.5 gap-2 shrink-0">
           {/* Links: Evolutionsstufe */}
           {stage ? (
             <span
@@ -214,14 +222,17 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
             {card.name}
           </h2>
 
-          {/* Rechts: KP + Typ-Icons */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          {/* Rechts: KP + Typ-Icons + Schließen */}
+          <div className="flex items-center gap-2 shrink-0">
             {card.hp && (
-              <span className="text-[13px] font-bold text-muted-foreground">KP {card.hp}</span>
+              <span className="text-[16px] font-bold text-muted-foreground">KP {card.hp}</span>
             )}
             {energyTypes.map(t => (
               <EnergyIcon key={t} type={t} size={26} />
             ))}
+            <button onClick={handleClose} className="p-1 text-muted-foreground ml-1">
+              <X size={18} />
+            </button>
           </div>
         </div>
 
@@ -259,8 +270,8 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                   style={{ height: 28, maxWidth: 90 }}
                   onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                 />
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[13px] font-bold leading-snug">{setNameDe}</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[13px] font-bold leading-snug truncate">{setNameDe}</span>
                   <span
                     className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border shrink-0"
                     style={{ color: 'var(--foreground)', borderColor: 'var(--foreground)' }}
