@@ -16,61 +16,89 @@ const CARD_ASPECT = FRAME_H / FRAME_W; // ≈ 1.4
 const CHECK_MS = 100;
 const MOTION_RESET_THRESHOLD = 800;
 const CARD_DETECT_VARIANCE   = 600;
-const SNAP_STABLE_FRAMES     = 1;
+const SNAP_STABLE_FRAMES     = 3;
 const SNAP_COOLDOWN_MS       = 2000;
 
-// Kanten-Erkennung: Analyse-Canvas bei fester Größe (effizient)
+// Analyse-Canvas bei fester Größe (effizient)
 const EDGE_W = 300;
 const EDGE_H = Math.round(EDGE_W * CARD_ASPECT); // 420
 // Anteil des Video-Bildes der gesampelt wird (Karte + Rand)
 const DETECT_FRACTION = 0.45;
-// Wo die Karte im Analyse-Canvas erwartet wird (Rand = außerhalb der Karte)
-const CARD_MARGIN_PCT = 0.12;
-// Minimale Kantenstärke die als klare Karte gilt
-const EDGE_THRESHOLD = 18;
+// Minimale Kantenstärke für eine gültige Kartengrenze
+const EDGE_MIN_STRENGTH = 8;
 
 /**
- * Prüft ob an den 4 erwarteten Kartenrändern starke, gerade Kanten sichtbar sind.
- * Gibt zurück wie viele der 4 Seiten eine klare Kante haben (0–4).
+ * Echte Kontur-Erkennung: Sucht in 4 Scan-Bändern jeweils die stärkste Kante,
+ * prüft dann das Seitenverhältnis des gefundenen Rechtecks (~1.4 = Pokémon-Karte).
+ * Gibt edgesFound (0–4) und cardDetected (nur true bei korrekter Form) zurück.
  */
-function countCardEdges(data: Uint8ClampedArray, W: number, H: number): number {
-  const m = Math.round(W * CARD_MARGIN_PCT); // z.B. 36 px
-  const scan = 3; // Gradient-Abstand in px
+function detectCardContour(
+  data: Uint8ClampedArray, W: number, H: number
+): { edgesFound: number; cardDetected: boolean } {
 
-  // Gradient über eine horizontale Linie (Übergang oben/unten)
-  const hGrad = (y: number): number => {
-    let sum = 0, n = 0;
-    for (let x = m; x < W - m; x += 4) {
-      const i1 = ((y - scan) * W + x) * 4;
-      const i2 = ((y + scan) * W + x) * 4;
-      if (i1 >= 0 && i2 + 3 < data.length) {
-        sum += Math.abs(data[i1] - data[i2]);
-        n++;
-      }
-    }
-    return n > 0 ? sum / n : 0;
+  // Graustufenwert per Integer-Arithmetik (kein Float-Array nötig)
+  const grayAt = (y: number, x: number) => {
+    const p = (y * W + x) * 4;
+    return (data[p] * 77 + data[p + 1] * 150 + data[p + 2] * 29) >> 8;
   };
 
-  // Gradient über eine vertikale Linie (Übergang links/rechts)
-  const vGrad = (x: number): number => {
-    let sum = 0, n = 0;
-    for (let y = m; y < H - m; y += 4) {
-      const i1 = (y * W + (x - scan)) * 4;
-      const i2 = (y * W + (x + scan)) * 4;
-      if (i1 >= 0 && i2 + 3 < data.length) {
-        sum += Math.abs(data[i1] - data[i2]);
+  // Scan-Margins für quer laufende Achse (10–90 % des Bildes)
+  const xA = Math.round(W * 0.1), xB = Math.round(W * 0.9);
+  const yA = Math.round(H * 0.1), yB = Math.round(H * 0.9);
+
+  // Stärkste horizontale Kante (Übergang oben↔unten) in einem Band suchen
+  const findHEdge = (yFrom: number, yTo: number): [number, number] => {
+    let bestY = -1, best = 0;
+    for (let y = Math.max(1, yFrom); y < Math.min(H - 1, yTo); y++) {
+      let sum = 0, n = 0;
+      for (let x = xA; x < xB; x += 4) {
+        sum += Math.abs(grayAt(y + 1, x) - grayAt(y - 1, x));
         n++;
       }
+      const avg = n > 0 ? sum / n : 0;
+      if (avg > best) { best = avg; bestY = y; }
     }
-    return n > 0 ? sum / n : 0;
+    return [bestY, best];
   };
 
-  const top    = hGrad(m);
-  const bottom = hGrad(H - m);
-  const left   = vGrad(m);
-  const right  = vGrad(W - m);
+  // Stärkste vertikale Kante (Übergang links↔rechts) in einem Band suchen
+  const findVEdge = (xFrom: number, xTo: number): [number, number] => {
+    let bestX = -1, best = 0;
+    for (let x = Math.max(1, xFrom); x < Math.min(W - 1, xTo); x++) {
+      let sum = 0, n = 0;
+      for (let y = yA; y < yB; y += 4) {
+        sum += Math.abs(grayAt(y, x + 1) - grayAt(y, x - 1));
+        n++;
+      }
+      const avg = n > 0 ? sum / n : 0;
+      if (avg > best) { best = avg; bestX = x; }
+    }
+    return [bestX, best];
+  };
 
-  return [top, bottom, left, right].filter(g => g > EDGE_THRESHOLD).length;
+  // Obere Hälfte → obere Kante, untere Hälfte → untere Kante (mit 10 % Abstand zur Mitte)
+  const [topY,    topStr]    = findHEdge(1,                  Math.round(H * 0.45));
+  const [bottomY, bottomStr] = findHEdge(Math.round(H * 0.55), H - 1);
+  const [leftX,   leftStr]   = findVEdge(1,                  Math.round(W * 0.45));
+  const [rightX,  rightStr]  = findVEdge(Math.round(W * 0.55), W - 1);
+
+  const strengths  = [topStr, bottomStr, leftStr, rightStr];
+  const edgesFound = strengths.filter(s => s > EDGE_MIN_STRENGTH).length;
+
+  if (edgesFound < 4) return { edgesFound, cardDetected: false };
+
+  const cardW = rightX - leftX;
+  const cardH = bottomY - topY;
+  if (cardW <= 0 || cardH <= 0) return { edgesFound: 3, cardDetected: false };
+
+  // Pokémon-Karte: 2.5 × 3.5 cm → Ratio ≈ 1.40 (Toleranz 1.1–1.7)
+  const aspect = cardH / cardW;
+  if (aspect < 1.1 || aspect > 1.7) return { edgesFound: 3, cardDetected: false };
+
+  // Karte muss ausreichend groß im Bild sein (mind. 10 % der Fläche)
+  if ((cardW * cardH) / (W * H) < 0.10) return { edgesFound: 3, cardDetected: false };
+
+  return { edgesFound: 4, cardDetected: true };
 }
 
 export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: Props) {
@@ -188,8 +216,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         const variance = vc > 0 ? sq / vc - (s / vc) ** 2 : 0;
         const hasObject = variance > CARD_DETECT_VARIANCE;
 
-        // ── 2. Kanten-Check (größerer Ausschnitt: Karte + Hintergrund) ──
+        // ── 2. Kontur-Check (größerer Ausschnitt: Karte + Hintergrund) ──
         let edges = 0;
+        let localCardDetected = false;
         if (hasObject) {
           const dw = Math.min(Math.round(Math.min(vw, vh) * DETECT_FRACTION), vw);
           const dh = Math.min(Math.round(dw * CARD_ASPECT), vh);
@@ -199,12 +228,11 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
           const eCtx = edge.getContext('2d')!;
           eCtx.drawImage(video, desx, desy, dw, dh, 0, 0, EDGE_W, EDGE_H);
           const eData = eCtx.getImageData(0, 0, EDGE_W, EDGE_H).data;
-          edges = countCardEdges(eData, EDGE_W, EDGE_H);
+          const contour = detectCardContour(eData, EDGE_W, EDGE_H);
+          edges = contour.edgesFound;
+          localCardDetected = contour.cardDetected;
         }
         setEdgesFound(edges);
-
-        // Karte erkannt = Objekt vorhanden + mind. 3 der 4 Kanten klar
-        const localCardDetected = hasObject && edges >= 3;
         setCardDetected(localCardDetected);
 
         // MSE — Bewegungsmessung
@@ -247,15 +275,15 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     } catch { /* nicht unterstützt */ }
   };
 
-  // Rahmenfarbe: weiß → orange (Objekt, aber kein Rechteck) → gelb (≥2 Kanten) → grün (≥3 Kanten = Karte)
+  // Rahmenfarbe: weiß → orange (Kanten erkannt, falsche Form) → gelb (Karte mit korrekter Form) → grün (Snap)
   const frameColor = paused || inCooldown
     ? 'rgba(255,255,255,0.2)'
     : progress > 0
       ? '#48bb78'                           // grün: Snap
-      : edgesFound >= 3
-        ? '#ecc94b'                         // gelb: Pokémon-Karte erkannt
-        : edgesFound >= 1
-          ? '#f6ad55'                       // orange: Rechteck-Objekt aber unvollständig
+      : cardDetected
+        ? '#ecc94b'                         // gelb: Pokémon-Karte mit korrekter Form
+        : edgesFound >= 2
+          ? '#f6ad55'                       // orange: Kanten erkannt, aber falsche Form
           : 'rgba(255,255,255,0.4)';        // weiß: nichts
 
   const hintText = paused
@@ -264,9 +292,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       ? 'Nächste Karte bereithalten…'
       : progress > 0
         ? 'Foto wird gemacht…'
-        : edgesFound >= 3
+        : cardDetected
           ? 'Karte erkannt — kurz stillhalten'
-          : edgesFound >= 1
+          : edgesFound >= 2
             ? 'Karte vollständig in den Rahmen halten'
             : 'Pokémon-Karte in den Rahmen halten';
 

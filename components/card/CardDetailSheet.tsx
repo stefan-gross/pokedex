@@ -116,7 +116,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end">
+    <div className="fixed inset-0 z-[60] flex items-end">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 transition-opacity duration-[250ms]"
