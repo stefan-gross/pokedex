@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Search, X, Database, ChevronDown, ArrowUpDown } from 'lucide-react';
+import { Search, X, Database, ChevronDown, ArrowUpDown, SlidersHorizontal, GitMerge } from 'lucide-react';
 import { CardGrid } from '@/components/card/CardGrid';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { ButtonGroup } from '@/components/ui/button-group';
@@ -26,7 +26,7 @@ const OWNED_OPTIONS: { value: OwnedFilter; label: string }[] = [
   { value: 'all',     label: 'Alle'      },
   { value: 'owned',   label: 'Vorhanden' },
   { value: 'missing', label: 'Fehlen'    },
-  { value: 'review',  label: '🔍 Prüfen' },
+  { value: 'review',  label: 'Prüfen'    },
 ];
 
 const BROWSE_SORT_OPTIONS: { value: BrowseSortKey; label: string }[] = [
@@ -651,7 +651,7 @@ function CollectionContent() {
                   fontWeight:  evoLineActive ? 600 : 400,
                 }}
               >
-                ↕ Evo-Linie
+                <GitMerge size={12} /> Evo-Linie
               </button>
             )}
             {showResultCount && resultCount != null && (
@@ -669,7 +669,7 @@ function CollectionContent() {
           <>
             {!hasAnyFilter && (
               <div className="flex flex-col items-center justify-center pt-16 gap-3 text-center">
-                <div className="text-4xl">🔍</div>
+                <Search size={40} className="text-muted-foreground" />
                 <p className="text-sm font-medium text-foreground">Filter wählen</p>
                 <p className="text-xs text-muted-foreground max-w-[220px]">
                   Wähle einen Typ, eine Kategorie oder „Vorhanden / Fehlen" um Karten zu laden.
@@ -712,14 +712,14 @@ function CollectionContent() {
             )}
             {!searchLoading && results.length === 0 && inputValue && (
               <div className="flex flex-col items-center gap-2 pt-16 text-center">
-                <span className="text-4xl">🔍</span>
+                <Search size={40} className="text-muted-foreground" />
                 <p className="font-medium text-sm">Keine Karten gefunden</p>
                 <p className="text-xs text-muted-foreground">Kein Ergebnis für „{inputValue}"</p>
               </div>
             )}
             {!searchLoading && results.length > 0 && displayed.length === 0 && inputValue && (
               <div className="flex flex-col items-center gap-2 pt-16 text-center">
-                <span className="text-4xl">🎛️</span>
+                <SlidersHorizontal size={40} className="text-muted-foreground" />
                 <p className="font-medium text-sm">Filter zu streng</p>
                 <p className="text-xs text-muted-foreground">
                   {results.length} Karten gefunden, aber alle durch aktive Filter ausgeblendet.

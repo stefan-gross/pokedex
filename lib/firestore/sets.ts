@@ -27,3 +27,13 @@ export async function getAllSets(): Promise<TcgSet[]> {
   const snap = await getDocs(query(collection(db, COL), orderBy('releaseDate', 'desc')));
   return snap.docs.map(d => d.data() as TcgSet);
 }
+
+export function filterSets(sets: TcgSet[], q: string): TcgSet[] {
+  const lower = q.toLowerCase().trim();
+  if (!lower) return sets;
+  return sets.filter(s =>
+    s.name.toLowerCase().includes(lower) ||
+    s.nameDe?.toLowerCase().includes(lower) ||
+    s.ptcgoCode?.toLowerCase().startsWith(lower),
+  );
+}

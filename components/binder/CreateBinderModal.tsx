@@ -1,11 +1,17 @@
 'use client';
 
-import { useState } from 'react';
-import { X } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { X, Search } from 'lucide-react';
 import { addBinder, updateBinder } from '@/lib/firestore/binders';
+import { BINDER_ICON_KEYS, BinderIcon } from '@/lib/binder-icons';
+import { EnergyIcon } from '@/components/ui/EnergyIcon';
+import { TCG_TYPES } from '@/lib/hooks/useCardBrowser';
+import { getAllSets, filterSets, type TcgSet } from '@/lib/firestore/sets';
+import { SERIES_NAMES_DE } from '@/lib/card-constants';
 import type { BinderDoc } from '@/types';
 
-const ICONS = ['📁', '📦', '⚡', '🔥', '💧', '🌿', '🌸', '🌙', '⭐', '🎴', '🏆', '💎', '🐉', '🗃️'];
+type PickerTab = 'icons' | 'types' | 'set';
+
 const COLORS = ['#e53e3e', '#ed8936', '#ecc94b', '#48bb78', '#38b2ac', '#4299e1', '#667eea', '#ed64a6'];
 const SIZES: { value: 9 | 12 | 16 | 18; label: string }[] = [
   { value: 9,  label: '9er (3×3)'  },
@@ -23,12 +29,28 @@ interface Props {
 export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
   const [collectionType, setCollectionType] = useState<'binder' | 'box'>(existing?.collectionType ?? 'binder');
   const [name,   setName]   = useState(existing?.name ?? '');
-  const [icon,   setIcon]   = useState(existing?.icon ?? '📁');
+  const [icon,   setIcon]   = useState(existing?.icon ?? 'folder');
   const [color,  setColor]  = useState(existing?.color ?? '#e53e3e');
   const [size,   setSize]   = useState<9 | 12 | 16 | 18>(existing?.size ?? 9);
-  const [saving, setSaving] = useState(false);
+  const [saving,     setSaving]     = useState(false);
+  const [pickerTab,  setPickerTab]  = useState<PickerTab>('icons');
+  const [setQuery,   setSetQuery]   = useState('');
+  const [allSets,    setAllSets]    = useState<TcgSet[]>([]);
+  const setsLoadedRef = useRef(false);
 
   const isBinder = collectionType === 'binder';
+
+  useEffect(() => {
+    if (pickerTab === 'set' && !setsLoadedRef.current) {
+      setsLoadedRef.current = true;
+      getAllSets().then(setAllSets).catch(() => {});
+    }
+  }, [pickerTab]);
+
+  const filteredSets = useMemo(
+    () => filterSets(allSets, setQuery).slice(0, 15),
+    [allSets, setQuery],
+  );
 
   const save = async () => {
     if (!name.trim()) return;
@@ -55,8 +77,9 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-end">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative w-full rounded-t-2xl bg-card border-t border-border p-4">
-        <div className="w-10 h-1 rounded-full bg-border mx-auto mb-4" />
+      <div className="relative w-full rounded-t-2xl bg-card border-t border-border flex flex-col max-h-[85dvh] mb-16">
+        <div className="w-10 h-1 rounded-full bg-border mx-auto mt-3 mb-1 shrink-0" />
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 pt-2">
 
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold">{existing ? 'Sammlung bearbeiten' : 'Neue Sammlung'}</h2>
@@ -70,13 +93,13 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
           <div className="mb-4">
             <label className="text-xs text-muted-foreground mb-1.5 block">Typ</label>
             <div className="grid grid-cols-2 gap-2">
-              {([['binder', '📁', 'Binder', 'Ordner mit Seitenraster'], ['box', '📦', 'Box', 'Offene Box ohne Limit']] as const).map(
-                ([val, emoji, label, sub]) => (
+              {([['binder', 'folder', 'Binder', 'Ordner mit Seitenraster'], ['box', 'box', 'Box', 'Offene Box ohne Limit']] as const).map(
+                ([val, iconKey, label, sub]) => (
                   <button
                     key={val}
                     onClick={() => {
                       setCollectionType(val);
-                      setIcon(val === 'box' ? '📦' : '📁');
+                      setIcon(val === 'box' ? 'box' : 'folder');
                     }}
                     className="flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-xl border-2 transition-colors text-left"
                     style={{
@@ -84,7 +107,7 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
                       background: collectionType === val ? `${color}15` : 'var(--secondary)',
                     }}
                   >
-                    <span className="text-xl leading-none">{emoji}</span>
+                    <BinderIcon name={iconKey} size={22} className="mt-0.5" style={{ color: collectionType === val ? color : undefined }} />
                     <span className="text-sm font-semibold mt-1">{label}</span>
                     <span className="text-[10px] text-muted-foreground">{sub}</span>
                   </button>
@@ -108,19 +131,123 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
 
         {/* Icon picker */}
         <div className="mb-3">
-          <label className="text-xs text-muted-foreground mb-1 block">Icon</label>
-          <div className="flex flex-wrap gap-2">
-            {ICONS.map(i => (
+          <label className="text-xs text-muted-foreground mb-1.5 block">Icon</label>
+
+          {/* Tabs */}
+          <div className="flex gap-1 mb-2">
+            {(['icons', 'types', 'set'] as PickerTab[]).map(tab => (
               <button
-                key={i}
-                onClick={() => setIcon(i)}
-                className="w-9 h-9 rounded-xl text-lg flex items-center justify-center border-2 transition-colors"
-                style={{ borderColor: icon === i ? color : 'transparent', background: icon === i ? `${color}20` : 'var(--secondary)' }}
+                key={tab}
+                onClick={() => setPickerTab(tab)}
+                className="flex-1 text-xs py-1.5 rounded-lg transition-colors"
+                style={{
+                  background: pickerTab === tab ? `${color}20` : 'var(--secondary)',
+                  color:      pickerTab === tab ? color : 'var(--muted-foreground)',
+                  fontWeight: pickerTab === tab ? 600 : 400,
+                }}
               >
-                {i}
+                {tab === 'icons' ? 'Basis' : tab === 'types' ? 'Typen' : 'Sets'}
               </button>
             ))}
           </div>
+
+          {/* Basis */}
+          {pickerTab === 'icons' && (
+            <div className="flex flex-wrap gap-2">
+              {BINDER_ICON_KEYS.map(key => (
+                <button
+                  key={key}
+                  onClick={() => setIcon(key)}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center border-2 transition-colors"
+                  style={{ borderColor: icon === key ? color : 'transparent', background: icon === key ? `${color}20` : 'var(--secondary)' }}
+                >
+                  <BinderIcon name={key} size={18} style={{ color: icon === key ? color : 'var(--muted-foreground)' }} />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Typen */}
+          {pickerTab === 'types' && (
+            <div className="flex flex-wrap gap-2">
+              {TCG_TYPES.map(t => (
+                <button
+                  key={t}
+                  onClick={() => setIcon(`type:${t}`)}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center border-2 transition-colors"
+                  style={{ borderColor: icon === `type:${t}` ? color : 'transparent', background: icon === `type:${t}` ? `${color}20` : 'var(--secondary)' }}
+                >
+                  <EnergyIcon type={t} size={24} />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Sets */}
+          {pickerTab === 'set' && (
+            <div>
+              <div className="relative mb-2">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <input
+                  type="search"
+                  value={setQuery}
+                  onChange={e => setSetQuery(e.target.value)}
+                  placeholder="Name oder Kürzel (z.B. PAL)"
+                  className="w-full h-8 pl-7 pr-3 rounded-lg bg-secondary border border-border text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+              {allSets.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-3">Lade Sets…</p>
+              ) : filteredSets.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-3">Kein Set gefunden</p>
+              ) : (
+                <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
+                  {filteredSets.map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => setIcon(`set:${s.id}`)}
+                      className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg border-2 text-left transition-colors"
+                      style={{
+                        borderColor: icon === `set:${s.id}` ? color : 'transparent',
+                        background:  icon === `set:${s.id}` ? `${color}20` : 'var(--secondary)',
+                      }}
+                    >
+                      {/* Logo */}
+                      <div className="w-14 shrink-0 flex items-center justify-center">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={s.logoUrl ?? `https://images.pokemontcg.io/${s.id}/logo.png`}
+                          alt={s.id}
+                          className="max-h-7 max-w-[56px] object-contain"
+                          onError={e => {
+                            const img = e.currentTarget as HTMLImageElement;
+                            const en = `https://images.pokemontcg.io/${s.id}/logo.png`;
+                            if (img.src !== en) img.src = en;
+                          }}
+                        />
+                      </div>
+                      {/* Name + Serie */}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-semibold truncate">{s.nameDe ?? s.name}</div>
+                        <div className="text-[10px] text-muted-foreground truncate">
+                          {SERIES_NAMES_DE[s.series] ?? s.series}
+                        </div>
+                      </div>
+                      {/* Kürzel-Badge */}
+                      {s.ptcgoCode && (
+                        <span
+                          className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border shrink-0"
+                          style={{ color: 'var(--foreground)', borderColor: 'var(--foreground)' }}
+                        >
+                          {s.ptcgoCode}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Color picker */}
@@ -164,16 +291,19 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
           </div>
         )}
 
-        {!isBinder && <div className="mb-5" />}
+        </div>{/* end scroll container */}
 
-        <button
-          onClick={save}
-          disabled={!name.trim() || saving}
-          className="w-full h-11 rounded-xl font-semibold text-sm text-white disabled:opacity-40"
-          style={{ background: color }}
-        >
-          {saving ? 'Speichern…' : existing ? 'Änderungen speichern' : 'Sammlung erstellen'}
-        </button>
+        {/* Sticky footer */}
+        <div className="px-4 pb-safe pt-2 border-t border-border shrink-0">
+          <button
+            onClick={save}
+            disabled={!name.trim() || saving}
+            className="w-full h-11 rounded-xl font-semibold text-sm text-white disabled:opacity-40"
+            style={{ background: color }}
+          >
+            {saving ? 'Speichern…' : existing ? 'Änderungen speichern' : 'Sammlung erstellen'}
+          </button>
+        </div>
       </div>
     </div>
   );

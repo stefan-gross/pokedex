@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus } from 'lucide-react';
+import { Plus, Folder, Heart } from 'lucide-react';
 import { getBinders, deleteBinder } from '@/lib/firestore/binders';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
+import { BinderIcon } from '@/lib/binder-icons';
 import type { BinderDoc } from '@/types';
 
 export default function BindersPage() {
@@ -49,7 +50,7 @@ export default function BindersPage() {
 
         {!loading && binders.length === 0 && (
           <div className="text-center pt-16 space-y-3">
-            <div className="text-5xl">📁</div>
+            <div className="flex justify-center"><Folder size={48} className="text-muted-foreground" /></div>
             <p className="font-semibold">Noch keine Sammlungen</p>
             <p className="text-sm text-muted-foreground">Erstelle deinen ersten Binder oder eine Box, um Karten zu organisieren</p>
             <button
@@ -95,7 +96,7 @@ function BinderTile({ binder, onDeleted: _ }: { binder: BinderDoc; onDeleted: ()
 
       <div className="flex-1 p-3 flex flex-col justify-between">
         <div className="flex items-start gap-2">
-          <span className="text-2xl leading-none">{binder.icon ?? (isBox ? '📦' : '📁')}</span>
+          <BinderIcon name={binder.icon ?? (isBox ? 'box' : 'folder')} size={24} style={{ color: bgColor }} className="shrink-0" />
           <div className="min-w-0">
             <div className="font-semibold text-sm leading-tight truncate">{binder.name}</div>
             <div className="text-xs text-muted-foreground mt-0.5">{subtitle}</div>
@@ -106,8 +107,8 @@ function BinderTile({ binder, onDeleted: _ }: { binder: BinderDoc; onDeleted: ()
           <span className="text-xs text-muted-foreground">
             {cardCount} Karten
             {(binder.wishlistCardIds?.length ?? 0) > 0 && (
-              <span className="ml-1" style={{ color: '#ed64a6' }}>
-                +{binder.wishlistCardIds.length} ♥
+              <span className="ml-1 inline-flex items-center gap-0.5" style={{ color: '#ed64a6' }}>
+                +{binder.wishlistCardIds.length} <Heart size={10} fill="currentColor" />
               </span>
             )}
           </span>
