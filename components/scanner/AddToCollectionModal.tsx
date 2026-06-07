@@ -154,7 +154,7 @@ export function AddToCollectionModal({ card, preVariant, preLanguage, fromScanne
         {/* Binder assignment */}
         {binders.length > 0 && (
           <div className="mb-4">
-            <div className="text-xs text-muted-foreground mb-1.5">Mappe zuordnen</div>
+            <div className="text-xs text-muted-foreground mb-1.5">Sammlung zuordnen</div>
             <div className="flex flex-wrap gap-2">
               {binders.map(b => (
                 <button

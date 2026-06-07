@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { X, Plus, Heart, CheckCircle2, ChevronDown, Trash2, Info, Repeat2, LayoutGrid } from 'lucide-react';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
-import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE } from '@/lib/card-constants';
+import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe } from '@/lib/card-constants';
 import { cardInfoToTcgApi, catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { markReviewed, deleteCard } from '@/lib/firestore/cards';
 import { removeCardFromBinder } from '@/lib/firestore/binders';
@@ -11,6 +11,7 @@ import { getCardsByEvolutionFamily, getCardsByDexNumber } from '@/lib/firestore/
 import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
 import { fetchPokemonSpeciesDE, getEvolutionFamilyDexNumbers, type SpeciesDE } from '@/lib/pokeapi';
 import { getSetById } from '@/lib/firestore/sets';
+import { CardImage } from '@/components/card/CardImage';
 import type { CardDoc, BinderDoc, CardVariant } from '@/types';
 
 /* ── Helpers ─────────────────────────────────────────────────── */
@@ -27,9 +28,10 @@ function toEnergy(t: string): EnergyType | null {
   return VALID_ENERGY.has(t) ? (t as EnergyType) : null;
 }
 
-const STAGE_LABELS = ['Basic','Stage 1','Stage 2','MEGA','VMAX','VSTAR','V','GX','EX','V-UNION'];
+const STAGE_KEYS = ['Basic','Stage 1','Stage 2','MEGA','BREAK','Level-Up','Restored','GX','EX','V','VMAX','VSTAR','V-UNION','Radiant','Tera','ACE SPEC'];
 function getStage(subtypes: string[]): string | null {
-  return subtypes.find(s => STAGE_LABELS.includes(s)) ?? null;
+  const found = subtypes.find(s => STAGE_KEYS.includes(s));
+  return found ? getSubtypeDe(found) : null;
 }
 
 /** Leitet DE-Kartenbild aus Logo-URL ab: .../sv/sv04.5/logo.png → .../sv/sv04.5/027/high.webp */
@@ -87,8 +89,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
   const [visible,      setVisible]      = useState(false);
   const [zoomed,       setZoomed]       = useState(false);
   const [openSec,      setOpenSec]      = useState<Set<Section>>(new Set(['cards']));
-  const [imgSrc,       setImgSrc]       = useState('');
-  const [imgFailed,    setImgFailed]    = useState(false);
+  const [imgSrcDe,     setImgSrcDe]     = useState<string | undefined>(undefined);
   const [addVariant,   setAddVariant]   = useState<CardVariant | null>(null);
   const [species,      setSpecies]      = useState<SpeciesDE | null>(null);
   const [speciesLoaded,setSpeciesLoaded]= useState(false);
@@ -102,8 +103,9 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
   useEffect(() => {
     if (!card) { setVisible(false); return; }
     setSpecies(null); setSpeciesLoaded(false);
-    setEvoCards([]); setEvoLoaded(false); setImgFailed(false);
-    setImgSrc(card.imgSmall ?? ''); // EN-Bild sofort zeigen, DE folgt
+    setEvoCards([]); setEvoLoaded(false);
+    // DE-Bild direkt aus Firestore, falls vorhanden (|| fängt auch leere Strings ab)
+    setImgSrcDe(card.imgLargeDe || undefined);
     requestAnimationFrame(() => setVisible(true));
 
     // Set-Metadaten laden (DE-Name, Logo) — aus tcg_sets Firestore, kein externer API-Call
@@ -118,9 +120,11 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
         };
       }
       setResolvedMeta(meta);
-      // DE-Kartenbild aus Logo-URL ableiten
-      const deImg = imgFromLogoUrl(meta.logoUrl, card.number);
-      if (deImg) setImgSrc(deImg);
+      // Fallback: DE-Bild aus Logo-URL ableiten wenn imgLargeDe nicht in Firestore
+      if (!card.imgLargeDe) {
+        const deImg = imgFromLogoUrl(meta.logoUrl, card.number);
+        if (deImg) setImgSrcDe(deImg);
+      }
     };
     loadMeta();
 
@@ -129,8 +133,21 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
       card.supertype.toLowerCase() === 'pokemon';
 
     if (isPokemon) {
-      fetchPokemonSpeciesDE(card.name, card.supertype)
-        .then(s => { setSpecies(s); setSpeciesLoaded(true); });
+      // Firestore-First: Artdaten direkt aus CardInfo (nach Enrichment)
+      if (card.genusDe !== undefined) {
+        setSpecies({
+          genus:      card.genusDe,
+          flavorText: card.flavorTextDe ?? '',
+          height:     card.heightDm ?? 0,
+          weight:     card.weightHg ?? 0,
+          region:     card.region ?? '',
+        });
+        setSpeciesLoaded(true);
+      } else {
+        // Fallback: live von PokéAPI (vor Enrichment oder bei Karten ohne DE-Namen)
+        fetchPokemonSpeciesDE(card.name, card.supertype)
+          .then(s => { setSpecies(s); setSpeciesLoaded(true); });
+      }
 
       if (card.nationalDexNumber) {
         getCardsByEvolutionFamily(card.nationalDexNumber, 100)
@@ -264,13 +281,14 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
               style={{ width: 140, borderColor: rarityInfo?.color ?? 'var(--border)' }}
               onClick={() => setZoomed(true)}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={imgFailed ? card.imgLarge : imgSrc}
+              <CardImage
+                srcDe={imgSrcDe}
+                src={card.imgLarge ?? card.imgSmall}
                 alt={card.name}
+                width={140}
+                height={196}
                 className="w-full block"
                 style={{ aspectRatio: '2.5/3.5', objectFit: 'cover' }}
-                onError={() => { if (!imgFailed) setImgFailed(true); }}
               />
             </div>
 
@@ -590,10 +608,15 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={imgFailed ? card.imgLarge : imgSrc}
+            src={imgSrcDe || card.imgLarge || card.imgSmall}
             alt={card.name}
             className="rounded-2xl"
             style={{ maxWidth: '90vw', maxHeight: '85dvh', objectFit: 'contain' }}
+            onError={e => {
+              const target = e.currentTarget;
+              const en = card.imgLarge || card.imgSmall;
+              if (target.src !== en) target.src = en;
+            }}
           />
           <button
             onClick={() => setZoomed(false)}

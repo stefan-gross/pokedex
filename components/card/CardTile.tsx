@@ -1,11 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
 import { Lock } from 'lucide-react';
 import { cardInfoToTcgApi, type CardInfo } from '@/lib/card-info';
 import type { CardDoc } from '@/types';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
+import { CardImage } from '@/components/card/CardImage';
 
 interface Props {
   card: CardInfo;
@@ -13,6 +13,7 @@ interface Props {
   onCardClick?: () => void;
   onWishlist?: () => void;
   isWishlisted?: boolean;
+  sublabel?: string;
 }
 
 const MULTI_VARIANT_RARITIES = ['holo', 'reverse', 'illustration', 'special'];
@@ -22,7 +23,7 @@ function hasMultipleVariants(rarity?: string) {
   return MULTI_VARIANT_RARITIES.some(v => r.includes(v));
 }
 
-export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWishlisted }: Props) {
+export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWishlisted, sublabel }: Props) {
   const [showModal, setShowModal] = useState(false);
 
   const totalOwned = ownedCards.reduce((s, c) => s + c.quantity, 0);
@@ -37,13 +38,13 @@ export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWis
           className="relative rounded-xl overflow-hidden border border-border cursor-pointer"
           onClick={onCardClick}
         >
-          <Image
+          <CardImage
+            srcDe={card.imgSmallDe}
             src={card.imgSmall}
             alt={card.name}
             width={245}
             height={342}
             className="w-full aspect-[2.5/3.5] object-cover"
-            loading="lazy"
             sizes="(max-width: 400px) 30vw, 120px"
           />
 
@@ -108,10 +109,12 @@ export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWis
           </div>
         </div>
 
-        {/* Card number */}
-        <div className="text-[10px] text-muted-foreground text-center mt-1 truncate px-0.5">
-          {card.number}{(card.printedTotal ?? card.total) ? `/${card.printedTotal ?? card.total}` : ''}
-        </div>
+        {/* Sortierungsrelevantes Label */}
+        {sublabel && (
+          <div className="text-[11px] text-muted-foreground text-center mt-1.5 truncate px-0.5 leading-tight">
+            {sublabel}
+          </div>
+        )}
       </div>
 
       {showModal && (

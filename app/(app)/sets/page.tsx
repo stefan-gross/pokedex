@@ -5,19 +5,20 @@ import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { getCards } from '@/lib/firestore/cards';
 import { SERIES_NAMES_DE } from '@/lib/set-names-de';
+import { SetListItem } from '@/components/set/SetListItem';
 import type { CardDoc } from '@/types';
 
 interface TcgSet {
   id: string;
   name: string;
   nameDe?: string;
-  logoDe?: string;
+  logoUrl?: string;    // DE-Logo (TCGdex) wenn verfügbar, sonst EN-Fallback
+  logoUrlEn?: string;
   series: string;
   printedTotal: number;
   total: number;
   ptcgoCode?: string;
   releaseDate: string;
-  images: { symbol: string; logo: string };
 }
 
 interface SeriesGroup {
@@ -94,62 +95,20 @@ export default function SetsPage() {
                 </div>
 
                 {/* Sets */}
-                {group.sets.map((set, i) => {
-                  const ownedCount = ownedBySet.get(set.id) ?? 0;
-                  const pct = set.total ? Math.round((ownedCount / set.total) * 100) : 0;
-                  const isLast = i === group.sets.length - 1;
-
-                  return (
-                    <Link
-                      key={set.id}
-                      href={`/sets/${set.id}?from=sets`}
-                      className={`flex items-center gap-3 px-4 py-3 active:bg-secondary transition-colors${isLast ? '' : ' border-b border-border'}`}
-                    >
-                      {/* Logo: deutsch (TCGdex) → englisch (pokemontcg.io) → verstecken */}
-                      <div className="w-14 shrink-0 flex items-center justify-center">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={set.logoDe ?? `https://images.pokemontcg.io/${set.id}/logo.png`}
-                          alt={set.nameDe ?? set.name}
-                          className="max-h-8 max-w-[56px] object-contain"
-                          onError={e => {
-                            const img = e.currentTarget as HTMLImageElement;
-                            if (set.logoDe && img.src === set.logoDe) {
-                              img.src = `https://images.pokemontcg.io/${set.id}/logo.png`;
-                            } else {
-                              img.style.display = 'none';
-                            }
-                          }}
-                        />
-                      </div>
-
-                      {/* Info */}
-                      <div className="flex-1 min-w-0 space-y-1.5">
-                        {/* Row 1: Name + Code + Count */}
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-medium truncate">{set.nameDe ?? set.name}</span>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {set.ptcgoCode && (
-                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border" style={{ color: 'var(--foreground)', borderColor: 'var(--foreground)' }}>
-                                {set.ptcgoCode}
-                              </span>
-                            )}
-                            <span className="text-xs text-muted-foreground tabular-nums">
-                              {ownedCount}/{set.total}
-                            </span>
-                          </div>
-                        </div>
-                        {/* Row 2: Progress bar */}
-                        <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-                          <div
-                            className="h-full rounded-full"
-                            style={{ width: `${pct}%`, background: 'var(--pokedex-red)' }}
-                          />
-                        </div>
-                      </div>
-                    </Link>
-                  );
-                })}
+                {group.sets.map((set, i) => (
+                  <SetListItem
+                    key={set.id}
+                    setId={set.id}
+                    name={set.name}
+                    nameDe={set.nameDe}
+                    logoDe={set.logoUrl}
+                    owned={ownedBySet.get(set.id) ?? 0}
+                    total={set.total}
+                    ptcgoCode={set.ptcgoCode}
+                    href={`/sets/${set.id}?from=sets`}
+                    separator={i < group.sets.length - 1}
+                  />
+                ))}
               </div>
             );
           })}

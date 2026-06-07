@@ -5,8 +5,10 @@ import { Settings, Star, Clock, Percent } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getCards } from '@/lib/firestore/cards';
 import { getWishlists } from '@/lib/firestore/wishlists';
+import { getSetById } from '@/lib/firestore/sets';
 import { getCountFromServer, collection, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
+import { SetListItem } from '@/components/set/SetListItem';
 import type { CardDoc } from '@/types';
 
 type SetView = 'recent' | 'complete' | 'favorites';
@@ -14,6 +16,8 @@ type SetView = 'recent' | 'complete' | 'favorites';
 interface SetEntry {
   setId: string;
   name: string;
+  nameDe?: string;
+  logoDe?: string;
   owned: number;
   total: number | null;
   latestAt: number;
@@ -24,6 +28,7 @@ export default function DashboardPage() {
   const [cards, setCards]           = useState<CardDoc[] | null>(null);
   const [wishlistCount, setWishlistCount] = useState<number | null>(null);
   const [setTotals, setSetTotals]   = useState<Record<string, number>>({});
+  const [setMeta,   setSetMeta]     = useState<Record<string, { nameDe?: string; logoDe?: string; ptcgoCode?: string }>>({});
 
   useEffect(() => {
     getCards().then(setCards).catch(() => setCards([]));
@@ -76,12 +81,20 @@ export default function DashboardPage() {
   })();
 
   useEffect(() => {
-    const ids = displayedSets.map(s => s.setId).filter(id => !(id in setTotals));
-    if (ids.length === 0) return;
+    const ids = displayedSets.map(s => s.setId);
     ids.forEach(setId => {
-      getCountFromServer(query(collection(db, 'tcg_catalog'), where('setId', '==', setId)))
-        .then(snap => setSetTotals(prev => ({ ...prev, [setId]: snap.data().count })))
-        .catch(() => {});
+      // Catalog-Totals laden
+      if (!(setId in setTotals)) {
+        getCountFromServer(query(collection(db, 'tcg_catalog'), where('setId', '==', setId)))
+          .then(snap => setSetTotals(prev => ({ ...prev, [setId]: snap.data().count })))
+          .catch(() => {});
+      }
+      // Deutsche Set-Metadaten laden (Name + Logo)
+      if (!(setId in setMeta)) {
+        getSetById(setId)
+          .then(set => setSetMeta(prev => ({ ...prev, [setId]: { nameDe: set?.nameDe, logoDe: set?.logoUrl, ptcgoCode: set?.ptcgoCode } })))
+          .catch(() => {});
+      }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayedSets.map(s => s.setId).join(','), setView]);
@@ -135,8 +148,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Set-Vollständigkeit */}
-      {(cards?.length ?? 0) > 0 && (
+      {/* Set-Vollständigkeit — immer sichtbar */}
+      {!loading && (
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Sets</h2>
@@ -155,17 +168,40 @@ export default function DashboardPage() {
               <Link href="/sets" className="text-xs" style={{ color: 'var(--pokedex-red)' }}>Alle</Link>
             </div>
           </div>
-          <div className="space-y-2">
-            {displayedSets.map(s => (
-              <SetProgress
-                key={s.setId}
-                setId={s.setId}
-                name={s.name}
-                owned={s.owned}
-                total={setTotals[s.setId] ?? null}
-              />
-            ))}
-          </div>
+
+          {displayedSets.length > 0 ? (
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              {displayedSets.map((s, i) => (
+                <SetListItem
+                  key={s.setId}
+                  setId={s.setId}
+                  name={s.name}
+                  nameDe={setMeta[s.setId]?.nameDe}
+                  logoDe={setMeta[s.setId]?.logoDe}
+                  owned={s.owned}
+                  total={setTotals[s.setId] ?? null}
+                  ptcgoCode={setMeta[s.setId]?.ptcgoCode}
+                  href={`/sets/${s.setId}?from=dashboard`}
+                  separator={i < displayedSets.length - 1}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="bg-card border border-border rounded-xl px-4 py-6 flex flex-col items-center gap-3 text-center">
+              <p className="text-sm text-muted-foreground">
+                {setView === 'favorites'
+                  ? 'Noch keine Favoriten — scanne Karten um Sets zu befüllen.'
+                  : 'Noch keine Karten in deiner Sammlung.'}
+              </p>
+              <Link
+                href="/sets"
+                className="text-sm font-medium px-4 py-2 rounded-xl"
+                style={{ background: 'var(--pokedex-red)', color: '#fff' }}
+              >
+                Alle Zyklen & Sets ansehen
+              </Link>
+            </div>
+          )}
         </section>
       )}
 
@@ -230,37 +266,6 @@ function ViewBtn({ active, onClick, label, children }: {
   );
 }
 
-function SetProgress({ setId, name, owned, total }: { setId: string; name: string; owned: number; total: number | null }) {
-  const pct = total ? Math.round((owned / total) * 100) : null;
-  return (
-    <Link href={`/sets/${setId}?from=dashboard`} className="bg-card border border-border rounded-xl px-3 py-2.5 flex items-center gap-3 active:opacity-70 transition-opacity">
-      <div className="w-14 shrink-0 flex items-center justify-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={`https://images.pokemontcg.io/${setId}/logo.png`}
-          alt={name}
-          className="max-h-8 max-w-[56px] object-contain"
-          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-        />
-      </div>
-      <div className="flex-1 min-w-0 space-y-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-medium truncate">{name}</span>
-          <span className="text-xs text-muted-foreground tabular-nums shrink-0">
-            {owned}{total ? `/${total}` : ' Karten'}
-          </span>
-        </div>
-        {pct != null ? (
-          <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: 'var(--pokedex-red)' }} />
-          </div>
-        ) : (
-          <div className="h-1.5 rounded-full bg-secondary" />
-        )}
-      </div>
-    </Link>
-  );
-}
 
 function RecentCard({ name, number, img }: { name: string; number: string; img: string }) {
   return (

@@ -27,6 +27,14 @@ export interface CatalogCard {
   evolutionFamily?: number[];  // Alle Pokédex-Nummern der Evolutionslinie, z.B. [4,5,6] für Glumanda-Linie
   imgSmall: string;
   imgLarge: string;
+  imgSmallDe?: string;         // DE-Kartenbild klein von TCGdex (einmalig via enrichDeImages gespeichert)
+  imgLargeDe?: string;         // DE-Kartenbild groß von TCGdex
+  // Pokémon-Artdaten (nur Pokémon-Karten, via PokéAPI-Enrichment)
+  genusDe?: string;            // z.B. "Maus-Pokémon"
+  flavorTextDe?: string;       // Beschreibungstext auf Deutsch
+  heightDm?: number;           // Größe in Dezimeter (4 = 0,4 m)
+  weightHg?: number;           // Gewicht in Hektogramm (60 = 6,0 kg)
+  region?: string;             // z.B. "Kanto", "Johto"
   variants?: CardVariant[];    // mögliche Varianten, abgeleitet aus rarity
 }
 

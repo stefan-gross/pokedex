@@ -108,12 +108,12 @@ function SetDetailContent() {
         setBinders(bindersData);
 
         const set = (setsData.data ?? []).find((s: {
-          id: string; name: string; nameDe?: string; logoDe?: string;
+          id: string; name: string; nameDe?: string; logoUrl?: string;
           releaseDate?: string; ptcgoCode?: string;
         }) => s.id === setId);
         if (set) {
           setNameDe(set.nameDe ?? set.name);
-          if (set.logoDe)      setLogoDe(set.logoDe);
+          if (set.logoUrl)     setLogoDe(set.logoUrl);
           if (set.releaseDate) setReleaseYear(set.releaseDate.slice(0, 4));
           if (set.ptcgoCode)   setPtcgoCode(set.ptcgoCode);
         }
@@ -295,6 +295,7 @@ function SetDetailContent() {
               ownedMap={ownedMap}
               binders={binders}
               setMeta={{ nameDe: (nameDe || cards[0]?.setName) ?? '', logoUrl, total: totalCount }}
+              sortKey={sort}
             />
           </div>
         </>

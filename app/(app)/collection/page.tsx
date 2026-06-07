@@ -37,9 +37,9 @@ const BROWSE_SORT_OPTIONS: { value: BrowseSortKey; label: string }[] = [
 
 const EVOLUTION_OPTIONS: { value: string | null; label: string }[] = [
   { value: null,      label: 'Alle Stufen' },
-  { value: 'Basic',   label: 'Basis'       },
-  { value: 'Stage 1', label: 'Phase 1'     },
-  { value: 'Stage 2', label: 'Phase 2'     },
+  { value: 'Basic',   label: 'Basis'   },
+  { value: 'Stage 1', label: 'Phase 1' },
+  { value: 'Stage 2', label: 'Phase 2' },
 ];
 
 function fmt(n: number) { return n.toLocaleString('de'); }
@@ -689,7 +689,7 @@ function CollectionContent() {
                       Keine Karten für diesen Filter.
                     </p>
                   )}
-                  <CardGrid cards={browseCards} ownedMap={ownedMap} />
+                  <CardGrid cards={browseCards} ownedMap={ownedMap} sortKey={browseSort} />
                   <div ref={sentinelRef} className="h-1" />
                   {loadingMore && (
                     <div className="flex justify-center py-4">
@@ -736,7 +736,7 @@ function CollectionContent() {
                     </p>
                   )}
                 </div>
-                <CardGrid cards={displayed} ownedMap={ownedMap} />
+                <CardGrid cards={displayed} ownedMap={ownedMap} sortKey={searchSort} />
               </>
             )}
           </>

@@ -5,10 +5,10 @@ import { X } from 'lucide-react';
 import { addBinder, updateBinder } from '@/lib/firestore/binders';
 import type { BinderDoc } from '@/types';
 
-const ICONS = ['📁', '⚡', '🔥', '💧', '🌿', '🌸', '🌙', '⭐', '🎴', '🏆', '💎', '🐉'];
+const ICONS = ['📁', '📦', '⚡', '🔥', '💧', '🌿', '🌸', '🌙', '⭐', '🎴', '🏆', '💎', '🐉', '🗃️'];
 const COLORS = ['#e53e3e', '#ed8936', '#ecc94b', '#48bb78', '#38b2ac', '#4299e1', '#667eea', '#ed64a6'];
 const SIZES: { value: 9 | 12 | 16 | 18; label: string }[] = [
-  { value: 9, label: '9er (3×3)' },
+  { value: 9,  label: '9er (3×3)'  },
   { value: 12, label: '12er (3×4)' },
   { value: 16, label: '16er (4×4)' },
   { value: 18, label: '18er (3×6)' },
@@ -21,20 +21,30 @@ interface Props {
 }
 
 export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
-  const [name, setName] = useState(existing?.name ?? '');
-  const [icon, setIcon] = useState(existing?.icon ?? '📁');
-  const [color, setColor] = useState(existing?.color ?? '#e53e3e');
-  const [size, setSize] = useState<9 | 12 | 16 | 18>(existing?.size ?? 9);
+  const [collectionType, setCollectionType] = useState<'binder' | 'box'>(existing?.collectionType ?? 'binder');
+  const [name,   setName]   = useState(existing?.name ?? '');
+  const [icon,   setIcon]   = useState(existing?.icon ?? '📁');
+  const [color,  setColor]  = useState(existing?.color ?? '#e53e3e');
+  const [size,   setSize]   = useState<9 | 12 | 16 | 18>(existing?.size ?? 9);
   const [saving, setSaving] = useState(false);
+
+  const isBinder = collectionType === 'binder';
 
   const save = async () => {
     if (!name.trim()) return;
     setSaving(true);
     try {
+      const data = {
+        name: name.trim(),
+        icon,
+        color,
+        collectionType,
+        ...(isBinder ? { size } : {}),
+      };
       if (existing) {
-        await updateBinder(existing.id, { name: name.trim(), icon, color, size });
+        await updateBinder(existing.id, data);
       } else {
-        await addBinder({ name: name.trim(), icon, color, size, sortOrder: Date.now() });
+        await addBinder({ ...data, size: isBinder ? size : 9, sortOrder: Date.now() });
       }
       onSaved();
     } finally {
@@ -49,11 +59,40 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
         <div className="w-10 h-1 rounded-full bg-border mx-auto mb-4" />
 
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold">{existing ? 'Mappe bearbeiten' : 'Neue Mappe'}</h2>
+          <h2 className="font-semibold">{existing ? 'Sammlung bearbeiten' : 'Neue Sammlung'}</h2>
           <button onClick={onClose} className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center">
             <X size={14} />
           </button>
         </div>
+
+        {/* Typ-Auswahl — nur beim Erstellen */}
+        {!existing && (
+          <div className="mb-4">
+            <label className="text-xs text-muted-foreground mb-1.5 block">Typ</label>
+            <div className="grid grid-cols-2 gap-2">
+              {([['binder', '📁', 'Binder', 'Ordner mit Seitenraster'], ['box', '📦', 'Box', 'Offene Box ohne Limit']] as const).map(
+                ([val, emoji, label, sub]) => (
+                  <button
+                    key={val}
+                    onClick={() => {
+                      setCollectionType(val);
+                      setIcon(val === 'box' ? '📦' : '📁');
+                    }}
+                    className="flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-xl border-2 transition-colors text-left"
+                    style={{
+                      borderColor: collectionType === val ? color : 'var(--border)',
+                      background: collectionType === val ? `${color}15` : 'var(--secondary)',
+                    }}
+                  >
+                    <span className="text-xl leading-none">{emoji}</span>
+                    <span className="text-sm font-semibold mt-1">{label}</span>
+                    <span className="text-[10px] text-muted-foreground">{sub}</span>
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Name */}
         <div className="mb-3">
@@ -62,7 +101,7 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
-            placeholder="z.B. Elektro-Stars"
+            placeholder={isBinder ? 'z.B. Elektro-Stars' : 'z.B. Hoenn-Box'}
             className="w-full h-10 px-3 rounded-xl border border-border bg-secondary text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
@@ -102,26 +141,30 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
           </div>
         </div>
 
-        {/* Size */}
-        <div className="mb-5">
-          <label className="text-xs text-muted-foreground mb-1 block">Größe</label>
-          <div className="flex gap-2 flex-wrap">
-            {SIZES.map(s => (
-              <button
-                key={s.value}
-                onClick={() => setSize(s.value)}
-                className="px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors"
-                style={{
-                  borderColor: size === s.value ? color : 'var(--border)',
-                  background: size === s.value ? `${color}20` : 'var(--secondary)',
-                  color: size === s.value ? color : undefined,
-                }}
-              >
-                {s.label}
-              </button>
-            ))}
+        {/* Größe — nur für Binder */}
+        {isBinder && (
+          <div className="mb-5">
+            <label className="text-xs text-muted-foreground mb-1 block">Größe</label>
+            <div className="flex gap-2 flex-wrap">
+              {SIZES.map(s => (
+                <button
+                  key={s.value}
+                  onClick={() => setSize(s.value)}
+                  className="px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors"
+                  style={{
+                    borderColor: size === s.value ? color : 'var(--border)',
+                    background: size === s.value ? `${color}20` : 'var(--secondary)',
+                    color: size === s.value ? color : undefined,
+                  }}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
+
+        {!isBinder && <div className="mb-5" />}
 
         <button
           onClick={save}
@@ -129,7 +172,7 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
           className="w-full h-11 rounded-xl font-semibold text-sm text-white disabled:opacity-40"
           style={{ background: color }}
         >
-          {saving ? 'Speichern…' : existing ? 'Änderungen speichern' : 'Mappe erstellen'}
+          {saving ? 'Speichern…' : existing ? 'Änderungen speichern' : 'Sammlung erstellen'}
         </button>
       </div>
     </div>

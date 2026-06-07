@@ -10,7 +10,7 @@ const navItems = [
   { href: '/', icon: Home, label: 'Home' },
   { href: '/collection', icon: Search, label: 'Suchen' },
   null, // FAB placeholder
-  { href: '/binders', icon: BookOpen, label: 'Mappen' },
+  { href: '/binders', icon: BookOpen, label: 'Sammlungen' },
   { href: '/wishlist', icon: Heart, label: 'Wunschliste' },
 ];
 

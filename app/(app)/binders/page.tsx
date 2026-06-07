@@ -28,8 +28,8 @@ export default function BindersPage() {
       {/* Header */}
       <div className="px-4 pt-4 pb-4 flex items-center justify-between border-b border-border">
         <div>
-          <h1 className="text-2xl font-bold">Mappen</h1>
-          <p className="text-sm text-muted-foreground">{binders.length} {binders.length === 1 ? 'Mappe' : 'Mappen'}</p>
+          <h1 className="text-2xl font-bold">Sammlungen</h1>
+          <p className="text-sm text-muted-foreground">{binders.length} {binders.length === 1 ? 'Sammlung' : 'Sammlungen'}</p>
         </div>
         <button
           onClick={() => setShowCreate(true)}
@@ -50,14 +50,14 @@ export default function BindersPage() {
         {!loading && binders.length === 0 && (
           <div className="text-center pt-16 space-y-3">
             <div className="text-5xl">📁</div>
-            <p className="font-semibold">Noch keine Mappen</p>
-            <p className="text-sm text-muted-foreground">Erstelle deine erste Mappe, um Karten zu organisieren</p>
+            <p className="font-semibold">Noch keine Sammlungen</p>
+            <p className="text-sm text-muted-foreground">Erstelle deinen ersten Binder oder eine Box, um Karten zu organisieren</p>
             <button
               onClick={() => setShowCreate(true)}
               className="mt-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
               style={{ background: 'var(--pokedex-red)' }}
             >
-              Erste Mappe erstellen
+              Erste Sammlung erstellen
             </button>
           </div>
         )}
@@ -79,9 +79,11 @@ export default function BindersPage() {
   );
 }
 
-function BinderTile({ binder, onDeleted }: { binder: BinderDoc; onDeleted: () => void }) {
-  const total = binder.cardIds.length + (binder.wishlistCardIds?.length ?? 0);
-  const bgColor = binder.color ?? 'var(--pokedex-red)';
+function BinderTile({ binder, onDeleted: _ }: { binder: BinderDoc; onDeleted: () => void }) {
+  const cardCount = binder.cardIds.length;
+  const bgColor   = binder.color ?? 'var(--pokedex-red)';
+  const isBox     = binder.collectionType === 'box';
+  const subtitle  = isBox ? 'Box' : `${binder.size ?? 9}er Binder`;
 
   return (
     <Link
@@ -93,28 +95,30 @@ function BinderTile({ binder, onDeleted }: { binder: BinderDoc; onDeleted: () =>
 
       <div className="flex-1 p-3 flex flex-col justify-between">
         <div className="flex items-start gap-2">
-          <span className="text-2xl leading-none">{binder.icon ?? '📁'}</span>
+          <span className="text-2xl leading-none">{binder.icon ?? (isBox ? '📦' : '📁')}</span>
           <div className="min-w-0">
             <div className="font-semibold text-sm leading-tight truncate">{binder.name}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">{binder.size}er Mappe</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{subtitle}</div>
           </div>
         </div>
 
         <div className="flex items-center justify-between mt-3">
           <span className="text-xs text-muted-foreground">
-            {binder.cardIds.length} Karten
+            {cardCount} Karten
             {(binder.wishlistCardIds?.length ?? 0) > 0 && (
               <span className="ml-1" style={{ color: '#ed64a6' }}>
                 +{binder.wishlistCardIds.length} ♥
               </span>
             )}
           </span>
-          <div
-            className="text-xs font-bold px-2 py-0.5 rounded-full"
-            style={{ background: `${bgColor}20`, color: bgColor }}
-          >
-            {total}/{binder.size}
-          </div>
+          {!isBox && binder.size && (
+            <div
+              className="text-xs font-bold px-2 py-0.5 rounded-full"
+              style={{ background: `${bgColor}20`, color: bgColor }}
+            >
+              {cardCount}/{binder.size}
+            </div>
+          )}
         </div>
       </div>
     </Link>

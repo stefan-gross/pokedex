@@ -97,7 +97,7 @@ export default function SettingsPage() {
         await fetch('/api/admin/trigger-sync?mode=reset', { method: 'POST' });
         await loadSyncStatus();
       }
-      step('📥 (1/5) Catalog wird synchronisiert…');
+      step('📥 (1/6) Catalog wird synchronisiert…');
       const poller = setInterval(loadSyncStatus, 2000);
       let retries = 0;
       while (true) {
@@ -121,37 +121,59 @@ export default function SettingsPage() {
       await loadSyncStatus();
 
       // 2. Evolutionsdaten
-      step('🧬 (2/5) Evolutionsdaten werden angereichert…');
+      step('🧬 (2/6) Evolutionsdaten werden angereichert…');
       let evoTotal = 0;
       while (true) {
         const res  = await fetch('/api/admin/enrich-evolution', { method: 'POST' });
         const data = await res.json();
         evoTotal += data.enriched ?? 0;
-        step(`🧬 (2/5) Evolutionsdaten: ${evoTotal} Karten…`);
+        step(`🧬 (2/6) Evolutionsdaten: ${evoTotal} Karten…`);
         if (data.status !== 'in-progress') break;
       }
 
       // 3. Deutsche Namen
-      step('🇩🇪 (3/5) Deutsche Namen werden angereichert…');
+      step('🇩🇪 (3/6) Deutsche Namen werden angereichert…');
       let deTotal = 0;
       while (true) {
         const res  = await fetch('/api/admin/enrich-german-names', { method: 'POST' });
         const data = await res.json();
         deTotal += data.enriched ?? 0;
-        step(`🇩🇪 (3/5) Deutsche Namen: ${deTotal} Karten…`);
+        step(`🇩🇪 (3/6) Deutsche Namen: ${deTotal} Karten…`);
         if (data.status !== 'in-progress') break;
       }
 
       // 4. Sets
-      step('🗂️ (4/5) Sets werden synchronisiert…');
+      step('🗂️ (4/6) Sets werden synchronisiert…');
       await fetch('/api/admin/sync-sets', { method: 'POST' });
 
       // 5. Set-Kürzel
-      step('🏷️ (5/5) Set-Kürzel werden geschrieben…');
+      step('🏷️ (5/6) Set-Kürzel werden geschrieben…');
       const bfRes  = await fetch('/api/admin/backfill-set-codes', { method: 'POST' });
       const bfData = await bfRes.json();
 
-      step(`✅ Fertig — ${deTotal} DE-Namen · ${evoTotal} Evo-Daten · ${bfData.updated ?? 0} Set-Kürzel`);
+      // 6. Deutsche Karten-Bilder
+      step('🖼️ (6/6) Deutsche Karten-Bilder werden angereichert…');
+      let imgTotal = 0;
+      while (true) {
+        const res  = await fetch('/api/admin/enrich-de-images', { method: 'POST' });
+        const data = await res.json();
+        imgTotal += data.enriched ?? 0;
+        step(`🖼️ (6/6) DE-Bilder: ${imgTotal} Karten…`);
+        if (data.status !== 'in-progress') break;
+      }
+
+      // 7. Pokémon-Artdaten
+      step('🧬 (7/7) Pokémon-Artdaten werden angereichert…');
+      let speciesTotal = 0;
+      while (true) {
+        const res  = await fetch('/api/admin/enrich-species', { method: 'POST' });
+        const data = await res.json();
+        speciesTotal += data.enriched ?? 0;
+        step(`🧬 (7/7) Artdaten: ${speciesTotal} Karten…`);
+        if (data.status !== 'in-progress') break;
+      }
+
+      step(`✅ Fertig — ${deTotal} DE-Namen · ${evoTotal} Evo-Daten · ${bfData.updated ?? 0} Set-Kürzel · ${imgTotal} DE-Bilder · ${speciesTotal} Artdaten`);
     } catch (e) {
       step(`Fehler: ${e}`);
     } finally {
@@ -310,7 +332,7 @@ export default function SettingsPage() {
                       {runningAll ? 'Läuft…' : 'Alles auf einmal ausführen'}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Evo · DE-Namen · Sets · Kürzel — alle Schritte nacheinander
+                      Evo · DE-Namen · Sets · Kürzel · DE-Bilder · Artdaten — alle 7 Schritte
                     </p>
                   </div>
                 </button>
@@ -324,7 +346,7 @@ export default function SettingsPage() {
                   <RotateCcw size={18} className="text-orange-500 shrink-0" />
                   <div>
                     <p className="text-sm font-medium text-orange-500">Catalog komplett neu aufbauen</p>
-                    <p className="text-xs text-muted-foreground">Reset + alle 5 Schritte · z.B. nach Datenbank-Update</p>
+                    <p className="text-xs text-muted-foreground">Reset + alle 7 Schritte · z.B. nach Datenbank-Update</p>
                   </div>
                 </button>
               </>

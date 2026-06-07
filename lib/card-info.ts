@@ -24,7 +24,14 @@ export interface CardInfo {
   printedTotal?: number;
   imgSmall: string;
   imgLarge: string;
+  imgSmallDe?: string;
+  imgLargeDe?: string;
   variants?: CardVariant[];
+  genusDe?: string;
+  flavorTextDe?: string;
+  heightDm?: number;
+  weightHg?: number;
+  region?: string;
   hp?: number;
   nationalDexNumber?: number;
   evolutionFamily?: number[];
@@ -45,7 +52,14 @@ export function catalogCardToInfo(c: CatalogCard): CardInfo {
     setCode: c.setCode,
     imgSmall: c.imgSmall,
     imgLarge: c.imgLarge,
+    imgSmallDe: c.imgSmallDe,
+    imgLargeDe: c.imgLargeDe,
     variants: c.variants,
+    genusDe: c.genusDe,
+    flavorTextDe: c.flavorTextDe,
+    heightDm: c.heightDm,
+    weightHg: c.weightHg,
+    region: c.region,
     hp: c.hp,
     nationalDexNumber: c.nationalDexNumber,
     evolutionFamily: c.evolutionFamily,

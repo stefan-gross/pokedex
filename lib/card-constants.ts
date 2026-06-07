@@ -15,6 +15,47 @@ export const CONDITIONS: { value: CardCondition; label: string; short: string }[
   { value: 'Poor', label: 'Poor',               short: 'Poor' },
 ];
 
+/**
+ * Offizielle deutsche Bezeichnungen für Pokémon-TCG Subtypes.
+ * Quelle: deutsche Kartendrucke. Rarity-Labels bleiben englisch (per Designentscheidung).
+ */
+export const SUBTYPE_LABELS_DE: Record<string, string> = {
+  // Pokémon-Stufen
+  'Basic':    'Basis',
+  'Stage 1':  'Phase 1',
+  'Stage 2':  'Phase 2',
+  'MEGA':     'Mega',
+  'BREAK':    'BREAK',
+  'Level-Up': 'Level-up',
+  'Restored': 'Wiederhergestellt',
+  // Moderne Mechaniken (Markennamen — unverändert)
+  'GX':       'GX',
+  'EX':       'ex',
+  'V':        'V',
+  'VMAX':     'VMAX',
+  'VSTAR':    'VSTAR',
+  'V-UNION':  'V-Union',
+  'Radiant':  'Strahlend',
+  'Tera':     'Tera',
+  'ACE SPEC': 'ACE SPEC',
+  // Trainer-Subtypes
+  'Item':              'Item',
+  'Supporter':         'Unterstützer',
+  'Stadium':           'Stadion',
+  'Tool':              'Tool',
+  'Pokémon Tool':      'Pokémon-Tool',
+  'Technical Machine': 'Technische Maschine',
+  'Ace Spec':          'Ass-Spezifikation',
+  // Energie-Subtypes
+  'Basic Energy':   'Basis-Energie',
+  'Special Energy': 'Spezial-Energie',
+};
+
+/** Gibt den deutschen Subtype-Namen zurück, Fallback: Original-String */
+export function getSubtypeDe(subtype: string): string {
+  return SUBTYPE_LABELS_DE[subtype] ?? subtype;
+}
+
 export const VARIANT_LABELS: Record<CardVariant, string> = {
   'standard': 'Standard',
   'holo':     'Holo',

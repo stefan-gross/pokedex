@@ -55,6 +55,11 @@ Pokémon-Kartensammlung PWA für Stefan Gross.
 - `FIREBASE_ADMIN_PRIVATE_KEY`
 - `CRON_SECRET=sfz-cron-2026-pokedex`
 
+## UI-Regeln
+- Icons werden ausschließlich als SVG-Dateien eingebunden — kein Icon-Font, keine Emoji
+- Stil: einfarbig (monochrome), flach (outline oder solid, kein Duotone/multicolor)
+- Farbe wird per Tailwind-Klasse (`text-*`, `fill-current`) oder CSS-Variable gesteuert, nicht inline im SVG hardcodiert
+
 ## Bekannte Eigenheiten
 - Node.js: System hat v15 — immer v22 nutzen: `/Users/sgr/.nvm/versions/node/v22.3.0/bin/node`
 - Turbopack funktioniert nicht (Node v15 im Subprocess) → `--webpack` Flag nötig

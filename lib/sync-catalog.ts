@@ -476,6 +476,219 @@ export async function backfillSetCodes(): Promise<BackfillSetCodesResult> {
   return { status: 'complete', message: `✅ ${totalUpdated} Karten mit Set-Kürzel aktualisiert`, updated: totalUpdated };
 }
 
+// ── DE-Bilder-Anreicherung ─────────────────────────────────────────────────
+// Berechnet DE-Karten-Bild-URLs aus tcg_sets.logoUrl (kein externer API-Call)
+// und schreibt imgSmallDe + imgLargeDe in tcg_catalog.
+
+export interface EnrichDeImagesResult {
+  status: 'complete' | 'in-progress' | 'up-to-date';
+  message: string;
+  enriched: number;
+  remaining: number;
+}
+
+export async function enrichDeImages(batchSize = 500): Promise<EnrichDeImagesResult> {
+  const db = getAdminDb();
+
+  // Alle Set-Logo-URLs aus tcg_sets lesen (ein Firestore-Call)
+  const setsSnap = await db.collection('tcg_sets').get();
+  const setLogoMap = new Map<string, string>(); // setId → logoUrl
+  setsSnap.docs.forEach(d => {
+    const data = d.data();
+    if (data.logoUrl && String(data.logoUrl).includes('assets.tcgdex.net')) {
+      setLogoMap.set(d.id, data.logoUrl as string);
+    }
+  });
+
+  if (setLogoMap.size === 0) {
+    return { status: 'up-to-date', message: 'Keine TCGdex-Set-Logos gefunden — erst "Sets sync" ausführen', enriched: 0, remaining: 0 };
+  }
+
+  // Cursor-basierte Pagination
+  const cursorRef = db.doc('tcg_catalog_meta/de_images_cursor');
+  const cursorSnap = await cursorRef.get();
+  const lastDocId: string = cursorSnap.exists ? (cursorSnap.data()?.lastDocId ?? '') : '';
+
+  let q = db.collection(COL)
+    .orderBy(FieldPath.documentId())
+    .limit(batchSize + 1);
+
+  if (lastDocId) {
+    const lastDoc = await db.doc(`${COL}/${lastDocId}`).get();
+    if (lastDoc.exists) q = q.startAfter(lastDoc) as typeof q;
+  }
+
+  const snap = await q.get();
+
+  if (snap.empty) {
+    await cursorRef.delete();
+    return { status: 'complete', message: '✅ Alle DE-Bilder sind bereits angereichert', enriched: 0, remaining: 0 };
+  }
+
+  const hasMore = snap.docs.length > batchSize;
+  const toEnrich = snap.docs.slice(0, batchSize).filter(d => !d.data().imgSmallDe);
+
+  let enriched = 0;
+  for (let i = 0; i < toEnrich.length; i += 500) {
+    const batch = db.batch();
+    toEnrich.slice(i, i + 500).forEach(doc => {
+      const card = doc.data() as CatalogCard;
+      const logoUrl = setLogoMap.get(card.setId);
+      if (!logoUrl) return;
+      // Aus Logo-URL die Karten-Bild-URL ableiten:
+      // z.B. .../de/sv/sv01/logo.png → .../de/sv/sv01/001/high.webp
+      const base = logoUrl.replace(/\/logo\.png$/, '').replace(/\/logo$/, '');
+      const num = card.number.split('/')[0].padStart(3, '0');
+      batch.update(doc.ref, {
+        imgSmallDe: `${base}/${num}/low.webp`,
+        imgLargeDe: `${base}/${num}/high.webp`,
+      });
+      enriched++;
+    });
+    await batch.commit();
+  }
+
+  const lastDoc = snap.docs[batchSize - 1] ?? snap.docs[snap.docs.length - 1];
+  if (hasMore) {
+    await cursorRef.set({ lastDocId: lastDoc.id });
+  } else {
+    await cursorRef.delete();
+  }
+
+  return {
+    status: hasMore ? 'in-progress' : 'complete',
+    message: hasMore
+      ? `📥 ${enriched} DE-Bilder angereichert — weitere vorhanden`
+      : `✅ DE-Bilder vollständig (${enriched} Karten angereichert)`,
+    enriched,
+    remaining: hasMore ? -1 : 0,
+  };
+}
+
+// ── Pokémon-Artdaten-Anreicherung via PokéAPI ──────────────────────────────
+// Holt genus, flavorText, height, weight, region pro nationalDexNumber und
+// schreibt sie in alle zugehörigen Catalog-Karten (einmalig).
+
+interface SpeciesData {
+  genusDe: string;
+  flavorTextDe: string;
+  heightDm: number;
+  weightHg: number;
+  region: string;
+}
+
+const GENERATION_REGIONS: Record<string, string> = {
+  '1': 'Kanto', '2': 'Johto',  '3': 'Hoenn',  '4': 'Sinnoh',
+  '5': 'Einall', '6': 'Kalos', '7': 'Alola',  '8': 'Galar', '9': 'Paldea',
+};
+
+const speciesRunCache = new Map<number, SpeciesData | null>();
+
+async function fetchSpeciesForDex(dexNum: number): Promise<SpeciesData | null> {
+  if (speciesRunCache.has(dexNum)) return speciesRunCache.get(dexNum)!;
+  try {
+    const [sRes, pRes] = await Promise.all([
+      fetch(`https://pokeapi.co/api/v2/pokemon-species/${dexNum}`, { signal: AbortSignal.timeout(6000) }),
+      fetch(`https://pokeapi.co/api/v2/pokemon/${dexNum}`,         { signal: AbortSignal.timeout(6000) }),
+    ]);
+    if (!sRes.ok) { speciesRunCache.set(dexNum, null); return null; }
+    const sd = await sRes.json();
+
+    const genusDe = sd.genera
+      ?.find((g: { language: { name: string }; genus: string }) => g.language.name === 'de')
+      ?.genus ?? '';
+    const flavorTextDe = [...(sd.flavor_text_entries ?? [])]
+      .filter((e: { language: { name: string }; flavor_text: string }) => e.language.name === 'de')
+      .pop()
+      ?.flavor_text?.replace(/[\f\n]/g, ' ') ?? '';
+    const generationId = sd.generation?.url?.split('/').filter(Boolean).pop() ?? '';
+    const region = GENERATION_REGIONS[generationId] ?? '';
+
+    let heightDm = 0, weightHg = 0;
+    if (pRes.ok) {
+      const pd = await pRes.json();
+      heightDm = pd.height ?? 0;
+      weightHg = pd.weight ?? 0;
+    }
+
+    const result: SpeciesData = { genusDe, flavorTextDe, heightDm, weightHg, region };
+    speciesRunCache.set(dexNum, result);
+    return result;
+  } catch {
+    speciesRunCache.set(dexNum, null);
+    return null;
+  }
+}
+
+export interface EnrichSpeciesResult {
+  status: 'complete' | 'in-progress' | 'up-to-date';
+  message: string;
+  enriched: number;
+  remaining: number;
+}
+
+export async function enrichSpeciesData(batchSize = 500): Promise<EnrichSpeciesResult> {
+  const db = getAdminDb();
+
+  const cursorRef = db.doc('tcg_catalog_meta/species_cursor');
+  const cursorSnap = await cursorRef.get();
+  const lastDocId: string = cursorSnap.exists ? (cursorSnap.data()?.lastDocId ?? '') : '';
+
+  let q = db.collection(COL)
+    .orderBy(FieldPath.documentId())
+    .limit(batchSize + 1);
+
+  if (lastDocId) {
+    const lastDoc = await db.doc(`${COL}/${lastDocId}`).get();
+    if (lastDoc.exists) q = q.startAfter(lastDoc) as typeof q;
+  }
+
+  const snap = await q.get();
+
+  if (snap.empty) {
+    await cursorRef.delete();
+    return { status: 'complete', message: '✅ Alle Pokémon-Artdaten sind angereichert', enriched: 0, remaining: 0 };
+  }
+
+  const hasMore = snap.docs.length > batchSize;
+  const toEnrich = snap.docs
+    .slice(0, batchSize)
+    .filter(d => { const data = d.data(); return data.nationalDexNumber && !data.genusDe; });
+
+  if (toEnrich.length > 0) {
+    const uniqueDexNums = [...new Set(toEnrich.map(d => d.data().nationalDexNumber as number))];
+    const CONCURRENCY = 8;
+    for (let i = 0; i < uniqueDexNums.length; i += CONCURRENCY) {
+      await Promise.all(uniqueDexNums.slice(i, i + CONCURRENCY).map(fetchSpeciesForDex));
+    }
+
+    for (let i = 0; i < toEnrich.length; i += 500) {
+      const batch = db.batch();
+      toEnrich.slice(i, i + 500).forEach(doc => {
+        const species = speciesRunCache.get(doc.data().nationalDexNumber as number);
+        if (species) batch.update(doc.ref, species as unknown as Record<string, unknown>);
+      });
+      await batch.commit();
+    }
+  }
+
+  const lastDoc = snap.docs[batchSize - 1] ?? snap.docs[snap.docs.length - 1];
+  if (hasMore) {
+    await cursorRef.set({ lastDocId: lastDoc.id });
+  } else {
+    await cursorRef.delete();
+  }
+
+  return {
+    status: hasMore ? 'in-progress' : 'complete',
+    message: hasMore
+      ? `📥 ${toEnrich.length} Artdaten angereichert — weitere vorhanden`
+      : `✅ Pokémon-Artdaten vollständig (${toEnrich.length} Karten angereichert)`,
+    enriched: toEnrich.length,
+    remaining: hasMore ? -1 : 0,
+  };
+}
+
 export async function getSyncStatus() {
   const meta = await getMeta();
   const currentTotal = await fetchCurrentTotal();
