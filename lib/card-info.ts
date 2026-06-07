@@ -68,6 +68,7 @@ export function tcgApiCardToInfo(c: TcgApiCard): CardInfo {
     printedTotal: c.set.printedTotal,
     imgSmall: c.images.small,
     imgLarge: c.images.large,
+    setCode: c.set.ptcgoCode,
   };
 }
 

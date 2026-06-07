@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, Sun, Moon, Smartphone, RefreshCw,
-  Database, CheckCircle, Clock, AlertCircle, RotateCcw, GitBranch,
+  Database, CheckCircle, Clock, AlertCircle, RotateCcw,
 } from 'lucide-react';
 import Link from 'next/link';
 import type { SyncMeta } from '@/lib/firestore/catalog';
@@ -23,15 +23,12 @@ export default function SettingsPage() {
   const [mounted, setMounted] = useState(false);
   const router = useRouter();
 
-  /* ── Sync state ─────────────────────────────────── */
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncLoading, setSyncLoading] = useState(true);
   const [syncing, setSyncing]         = useState(false);
   const [syncResult, setSyncResult]   = useState<string | null>(null);
-  const [enriching, setEnriching]           = useState(false);
-  const [enrichResult, setEnrichResult]     = useState<string | null>(null);
-  const [enrichingDe, setEnrichingDe]       = useState(false);
-  const [enrichResultDe, setEnrichResultDe] = useState<string | null>(null);
+  const [runningAll,  setRunningAll]  = useState(false);
+  const [allProgress, setAllProgress] = useState<string | null>(null);
 
   useEffect(() => { setMounted(true); loadSyncStatus(); }, []);
 
@@ -47,130 +44,120 @@ export default function SettingsPage() {
     }
   }
 
-  async function enrichEvolution() {
-    setEnriching(true);
-    setEnrichResult(null);
-    try {
-      let total = 0;
-      while (true) {
-        const res = await fetch('/api/admin/enrich-evolution', { method: 'POST' });
-        const data = await res.json();
-        total += data.enriched ?? 0;
-        setEnrichResult(`📥 ${total} Karten angereichert…`);
-        if (data.status !== 'in-progress') {
-          setEnrichResult(data.status === 'complete'
-            ? `✅ ${total} Karten mit Evolutionsdaten angereichert`
-            : data.message);
-          break;
-        }
-      }
-    } catch (e) {
-      setEnrichResult(`Fehler: ${e}`);
-    } finally {
-      setEnriching(false);
-    }
-  }
-
-  async function enrichGermanNames() {
-    setEnrichingDe(true);
-    setEnrichResultDe(null);
-    try {
-      let total = 0;
-      while (true) {
-        const res  = await fetch('/api/admin/enrich-german-names', { method: 'POST' });
-        const data = await res.json();
-        total += data.enriched ?? 0;
-        setEnrichResultDe(`📥 ${total} Karten angereichert…`);
-        if (data.status !== 'in-progress') {
-          setEnrichResultDe(data.status === 'complete'
-            ? `✅ ${total} Karten mit deutschen Namen angereichert`
-            : data.message);
-          break;
-        }
-      }
-    } catch (e) {
-      setEnrichResultDe(`Fehler: ${e}`);
-    } finally {
-      setEnrichingDe(false);
-    }
-  }
-
-  async function resetAndResync() {
-    if (!confirm('Catalog zurücksetzen und alle Karten neu laden?\nDas überschreibt alle vorhandenen Catalog-Daten und kann einige Minuten dauern.')) return;
-    setSyncing(true);
-    setSyncResult(null);
-    try {
-      // Schritt 1: Meta zurücksetzen
-      await fetch('/api/admin/trigger-sync?mode=reset', { method: 'POST' });
-      await loadSyncStatus();
-      // Schritt 2: normaler Auto-Sync (läuft durch bis fertig)
-      await runSync('auto');
-    } finally {
-      setSyncing(false);
-    }
-  }
-
   async function runSync(mode: 'auto' | 'update') {
     setSyncing(true);
     setSyncResult(null);
-
-    // Alle 2 Sek. Status aus Firestore lesen → Live-Fortschritt im UI
     const poller = setInterval(() => loadSyncStatus(), 2000);
-
     let retries = 0;
-    const MAX_RETRIES = 5;
-
     try {
       while (true) {
-        let res: Response;
-        let text: string;
+        let res: Response, text: string;
         try {
           res  = await fetch(`/api/admin/trigger-sync?mode=${mode}`, { method: 'POST' });
           text = await res.text();
-        } catch (networkErr) {
-          // Netzwerkfehler (z.B. Vercel Timeout) → kurz warten, nochmal versuchen
-          retries++;
-          if (retries > MAX_RETRIES) {
-            setSyncResult(`Netzwerkfehler nach ${MAX_RETRIES} Versuchen. Bitte "Fortsetzen" klicken.`);
-            break;
-          }
-          setSyncResult(`Verbindungsfehler – Versuch ${retries}/${MAX_RETRIES}…`);
+        } catch {
+          if (++retries > 5) { setSyncResult(`Netzwerkfehler. Bitte erneut versuchen.`); break; }
           await new Promise(r => setTimeout(r, 2000));
           continue;
         }
-
         if (!res.ok) {
-          // Vercel Timeout (504) oder anderer Server-Fehler → retry
-          retries++;
-          if (retries > MAX_RETRIES) {
-            setSyncResult(`Server-Fehler (${res.status}) nach ${MAX_RETRIES} Versuchen. Bitte "Fortsetzen" klicken.`);
-            break;
-          }
-          setSyncResult(`Server-Fehler ${res.status} – Versuch ${retries}/${MAX_RETRIES}…`);
+          if (++retries > 5) { setSyncResult(`Server-Fehler (${res.status}). Bitte erneut versuchen.`); break; }
           await new Promise(r => setTimeout(r, 3000));
           continue;
         }
-
-        retries = 0; // Erfolgreicher Request → Zähler zurücksetzen
+        retries = 0;
         let data: { done?: boolean; status?: string; message?: string; error?: string } = {};
         try { data = JSON.parse(text); } catch { /* ignore */ }
-
         if (mode === 'update' || data.done || data.status === 'complete' || data.status === 'up-to-date') {
           setSyncResult(data.message ?? '✅ Fertig');
           break;
         }
-        if (data.status === 'error' || data.error) {
-          setSyncResult(data.error ?? data.message ?? 'Unbekannter Fehler');
-          break;
-        }
+        if (data.status === 'error' || data.error) { setSyncResult(data.error ?? data.message ?? 'Fehler'); break; }
         await new Promise(r => setTimeout(r, 300));
       }
       await loadSyncStatus();
-    } catch (err) {
-      setSyncResult('Netzwerk-Fehler: ' + String(err));
     } finally {
       clearInterval(poller);
       setSyncing(false);
+    }
+  }
+
+  async function runAllSteps(withReset: boolean) {
+    if (withReset) {
+      if (!confirm('Catalog zurücksetzen und alle Schritte komplett neu ausführen?\nDas kann mehrere Minuten dauern.')) return;
+    }
+    setRunningAll(true);
+    setSyncing(true);
+    const step = (msg: string) => setAllProgress(msg);
+    step(withReset ? '↺ Catalog wird zurückgesetzt…' : '▶ Starte…');
+
+    try {
+      // 1. Catalog-Sync
+      if (withReset) {
+        await fetch('/api/admin/trigger-sync?mode=reset', { method: 'POST' });
+        await loadSyncStatus();
+      }
+      step('📥 (1/5) Catalog wird synchronisiert…');
+      const poller = setInterval(loadSyncStatus, 2000);
+      let retries = 0;
+      while (true) {
+        let res: Response, text: string;
+        try {
+          res  = await fetch('/api/admin/trigger-sync?mode=auto', { method: 'POST' });
+          text = await res.text();
+        } catch {
+          if (++retries > 5) break;
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+        retries = 0;
+        let d: { done?: boolean; status?: string } = {};
+        try { d = JSON.parse(text); } catch { /* ignore */ }
+        if (d.done || d.status === 'complete' || d.status === 'up-to-date') break;
+        if (d.status === 'error') break;
+        await new Promise(r => setTimeout(r, 300));
+      }
+      clearInterval(poller);
+      await loadSyncStatus();
+
+      // 2. Evolutionsdaten
+      step('🧬 (2/5) Evolutionsdaten werden angereichert…');
+      let evoTotal = 0;
+      while (true) {
+        const res  = await fetch('/api/admin/enrich-evolution', { method: 'POST' });
+        const data = await res.json();
+        evoTotal += data.enriched ?? 0;
+        step(`🧬 (2/5) Evolutionsdaten: ${evoTotal} Karten…`);
+        if (data.status !== 'in-progress') break;
+      }
+
+      // 3. Deutsche Namen
+      step('🇩🇪 (3/5) Deutsche Namen werden angereichert…');
+      let deTotal = 0;
+      while (true) {
+        const res  = await fetch('/api/admin/enrich-german-names', { method: 'POST' });
+        const data = await res.json();
+        deTotal += data.enriched ?? 0;
+        step(`🇩🇪 (3/5) Deutsche Namen: ${deTotal} Karten…`);
+        if (data.status !== 'in-progress') break;
+      }
+
+      // 4. Sets
+      step('🗂️ (4/5) Sets werden synchronisiert…');
+      await fetch('/api/admin/sync-sets', { method: 'POST' });
+
+      // 5. Set-Kürzel
+      step('🏷️ (5/5) Set-Kürzel werden geschrieben…');
+      const bfRes  = await fetch('/api/admin/backfill-set-codes', { method: 'POST' });
+      const bfData = await bfRes.json();
+
+      step(`✅ Fertig — ${deTotal} DE-Namen · ${evoTotal} Evo-Daten · ${bfData.updated ?? 0} Set-Kürzel`);
+    } catch (e) {
+      step(`Fehler: ${e}`);
+    } finally {
+      setRunningAll(false);
+      setSyncing(false);
+      await loadSyncStatus();
     }
   }
 
@@ -183,6 +170,7 @@ export default function SettingsPage() {
   const pct        = syncStatus ? Math.round(((syncStatus.syncedTotal ?? 0) / (syncStatus.currentTotal || 1)) * 100) : 0;
   const isComplete = pct >= 100;
   const hasNew     = (syncStatus?.newCards ?? 0) > 0;
+  const busy       = runningAll || syncing;
 
   return (
     <div className="min-h-screen">
@@ -235,7 +223,7 @@ export default function SettingsPage() {
               </div>
             ) : (
               <>
-                {/* Status-Zeile */}
+                {/* Status */}
                 <div className="px-4 py-3 border-b border-border flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Database size={16} className="text-muted-foreground shrink-0" />
@@ -251,7 +239,7 @@ export default function SettingsPage() {
                   }
                 </div>
 
-                {/* Fortschritt */}
+                {/* Fortschrittsbalken */}
                 <div className="px-4 py-3 space-y-2 border-b border-border">
                   <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
                     <div className="h-full rounded-full transition-all"
@@ -274,20 +262,30 @@ export default function SettingsPage() {
                   )}
                 </div>
 
-                {/* Ergebnis letzter Sync */}
-                {syncResult && (
+                {/* Fortschritt kombinierter Lauf */}
+                {allProgress && (
+                  <div
+                    className="px-4 py-2.5 border-b border-border text-xs font-medium"
+                    style={{ color: allProgress.startsWith('✅') ? '#48bb78' : allProgress.startsWith('Fehler') ? 'var(--pokedex-red)' : 'var(--foreground)' }}
+                  >
+                    {allProgress}
+                  </div>
+                )}
+
+                {/* Ergebnis letzter Einzel-Sync */}
+                {syncResult && !runningAll && (
                   <div className="px-4 py-2.5 border-b border-border text-xs text-muted-foreground">
                     {syncResult}
                   </div>
                 )}
 
-                {/* Aktions-Buttons */}
+                {/* Auf neue Karten prüfen */}
                 <button
                   onClick={() => runSync('update')}
-                  disabled={syncing || (isComplete && !hasNew)}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-secondary disabled:opacity-40"
+                  disabled={busy || (isComplete && !hasNew)}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left border-b border-border transition-colors active:bg-secondary disabled:opacity-40"
                 >
-                  <RefreshCw size={18} className={`text-muted-foreground shrink-0 ${syncing ? 'animate-spin' : ''}`} />
+                  <RefreshCw size={18} className={`text-muted-foreground shrink-0 ${syncing && !runningAll ? 'animate-spin' : ''}`} />
                   <div>
                     <p className="text-sm font-medium">
                       {hasNew ? `${syncStatus!.newCards.toLocaleString('de-DE')} neue Karten holen` : 'Auf neue Karten prüfen'}
@@ -296,72 +294,37 @@ export default function SettingsPage() {
                   </div>
                 </button>
 
-                {!isComplete && (
-                  <button
-                    onClick={() => runSync('auto')}
-                    disabled={syncing}
-                    className="w-full flex items-center gap-3 px-4 py-3.5 text-left border-t border-border transition-colors active:bg-secondary disabled:opacity-40"
-                  >
-                    <Database size={18} className={`text-muted-foreground shrink-0 ${syncing ? 'animate-pulse' : ''}`} />
-                    <div>
-                      <p className="text-sm font-medium">
-                        {syncing
-                          ? `Synchronisiert… ${(syncStatus?.syncedTotal ?? 0).toLocaleString('de-DE')} / ${(syncStatus?.currentTotal ?? 0).toLocaleString('de-DE')} Karten`
-                          : 'Initialen Sync fortsetzen'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {syncing ? `${pct}% abgeschlossen` : 'Nächste Karten in Firestore laden'}
-                      </p>
-                    </div>
-                  </button>
-                )}
-
-                {/* Evolutionsdaten anreichern */}
+                {/* Alles auf einmal */}
                 <button
-                  onClick={enrichEvolution}
-                  disabled={enriching || syncing}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left border-t border-border transition-colors active:bg-secondary disabled:opacity-40"
+                  onClick={() => runAllSteps(false)}
+                  disabled={busy}
+                  className="w-full flex items-center gap-3 px-4 py-4 text-left border-b border-border transition-colors active:bg-secondary disabled:opacity-40"
+                  style={{ background: runningAll ? 'color-mix(in srgb, var(--pokedex-red) 6%, transparent)' : undefined }}
                 >
-                  {enriching
-                    ? <RefreshCw size={18} className="text-blue-500 shrink-0 animate-spin" />
-                    : <GitBranch size={18} className="text-blue-500 shrink-0" />
+                  {runningAll
+                    ? <RefreshCw size={20} className="shrink-0 animate-spin" style={{ color: 'var(--pokedex-red)' }} />
+                    : <span className="text-xl shrink-0">⚡</span>
                   }
                   <div>
-                    <p className="text-sm font-medium text-blue-500">Evolutionsdaten anreichern</p>
+                    <p className="text-[15px] font-bold" style={{ color: 'var(--pokedex-red)' }}>
+                      {runningAll ? 'Läuft…' : 'Alles auf einmal ausführen'}
+                    </p>
                     <p className="text-xs text-muted-foreground">
-                      {enrichResult ?? 'Evolutionslinien in alle Karten schreiben · einmalig nötig'}
+                      Evo · DE-Namen · Sets · Kürzel — alle Schritte nacheinander
                     </p>
                   </div>
                 </button>
 
-                {/* Deutsche Namen anreichern */}
+                {/* Catalog neu aufbauen */}
                 <button
-                  onClick={enrichGermanNames}
-                  disabled={enrichingDe || syncing}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left border-t border-border transition-colors active:bg-secondary disabled:opacity-40"
-                >
-                  {enrichingDe
-                    ? <RefreshCw size={18} className="text-green-500 shrink-0 animate-spin" />
-                    : <span className="text-base shrink-0">🇩🇪</span>
-                  }
-                  <div>
-                    <p className="text-sm font-medium text-green-600 dark:text-green-400">Deutsche Namen anreichern</p>
-                    <p className="text-xs text-muted-foreground">
-                      {enrichResultDe ?? 'nameDe + nameDeLower aus TCGdex befüllen · einmalig nötig'}
-                    </p>
-                  </div>
-                </button>
-
-                {/* Catalog komplett neu aufbauen (z.B. nach Schema-Änderung) */}
-                <button
-                  onClick={resetAndResync}
-                  disabled={syncing}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left border-t border-border transition-colors active:bg-secondary disabled:opacity-40"
+                  onClick={() => runAllSteps(true)}
+                  disabled={busy}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-secondary disabled:opacity-40"
                 >
                   <RotateCcw size={18} className="text-orange-500 shrink-0" />
                   <div>
                     <p className="text-sm font-medium text-orange-500">Catalog komplett neu aufbauen</p>
-                    <p className="text-xs text-muted-foreground">Alle Karten neu laden · z.B. nach Datenbank-Update</p>
+                    <p className="text-xs text-muted-foreground">Reset + alle 5 Schritte · z.B. nach Datenbank-Update</p>
                   </div>
                 </button>
               </>

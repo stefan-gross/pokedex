@@ -254,9 +254,13 @@ function CollectionContent() {
           const deHits = await getCatalogCardsByIds(tcgdexIds.slice(0, 80));
           if (deHits.length > 0) { setAndReturn(deHits.map(catalogCardToInfo)); return; }
         }
+
+        // Catalog vorhanden + Firestore + TCGdex fanden nichts → API hilft auch nicht
+        // (pokemontcg.io kennt nur englische Namen; deutsche Suchen würden immer scheitern)
+        return;
       }
 
-      // 3. pokemontcg.io API (letzter Fallback)
+      // 3. pokemontcg.io API — nur wenn kein lokaler Catalog vorhanden (Erststart)
       const qStr = `name:${q}*${filterSet ? ` set.id:${filterSet}` : ''}`;
       const res  = await fetch(`/api/tcg?q=${encodeURIComponent(qStr)}&pageSize=80`);
       const data = await res.json();

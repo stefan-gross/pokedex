@@ -6,7 +6,7 @@ export interface TcgApiCard {
   supertype?: string;
   subtypes?: string[];
   types?: string[];
-  set: { id: string; name: string; series: string; total: number; printedTotal: number };
+  set: { id: string; name: string; series: string; total: number; printedTotal: number; ptcgoCode?: string };
   images: { small: string; large: string };
 }
 

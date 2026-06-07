@@ -366,6 +366,116 @@ export async function enrichGermanNames(batchSize = 500): Promise<EnrichDeNamesR
   };
 }
 
+// ── Sets-Sync ──────────────────────────────────────────────────────────────
+// Holt alle Sets von pokemontcg.io + DE-Namen von TCGdex → schreibt in tcg_sets.
+
+export interface SyncSetsResult {
+  status: 'complete' | 'error';
+  message: string;
+  synced: number;
+}
+
+export async function syncSets(): Promise<SyncSetsResult> {
+  const db = getAdminDb();
+
+  // 1. Alle Sets von pokemontcg.io (ein einziger Call, ~150 Sets)
+  const res = await fetch(`${TCG_BASE}/sets?pageSize=250`, { headers: apiHeaders() });
+  if (!res.ok) return { status: 'error', message: `TCG API Fehler: ${res.status}`, synced: 0 };
+  const data = await res.json();
+  const sets: Array<{
+    id: string; name: string; series: string;
+    total: number; printedTotal: number;
+    ptcgoCode?: string; releaseDate?: string;
+    images: { symbol: string; logo: string };
+  }> = data.data ?? [];
+
+  // 2. Alle deutschen Set-Namen von TCGdex (ein einziger Call)
+  let tcgdexMap = new Map<string, { name: string; logo?: string }>();
+  try {
+    const deRes = await fetch('https://api.tcgdex.net/v2/de/sets');
+    if (deRes.ok) {
+      const deSets: Array<{ id: string; name: string; logo?: string }> = await deRes.json();
+      tcgdexMap = new Map(deSets.map(s => [
+        s.id,
+        { name: s.name, logo: s.logo ? `${s.logo}.png` : undefined },
+      ]));
+    }
+  } catch { /* kein DE-Name → Fallback auf englisch */ }
+
+  // 3. Dokumente zusammenbauen
+  const docs = sets.map(s => {
+    const tcgdexId = toTcgdexId(s.id);
+    const de = tcgdexMap.get(tcgdexId);
+    return {
+      id: s.id,
+      name: s.name,
+      ...(de?.name ? { nameDe: de.name } : {}),
+      series: s.series,
+      total: s.total,
+      printedTotal: s.printedTotal,
+      ...(s.ptcgoCode ? { ptcgoCode: s.ptcgoCode } : {}),
+      logoUrl: de?.logo ?? s.images.logo,
+      logoUrlEn: s.images.logo,
+      symbolUrl: s.images.symbol,
+      ...(s.releaseDate ? { releaseDate: s.releaseDate } : {}),
+      tcgdexId,
+    };
+  });
+
+  // 4. In Firestore schreiben (merge: true um manuelle Felder nicht zu überschreiben)
+  for (let i = 0; i < docs.length; i += 500) {
+    const batch = db.batch();
+    docs.slice(i, i + 500).forEach(s => {
+      batch.set(db.collection('tcg_sets').doc(s.id), s, { merge: true });
+    });
+    await batch.commit();
+  }
+
+  return { status: 'complete', message: `✅ ${docs.length} Sets synchronisiert`, synced: docs.length };
+}
+
+// ── Backfill: setCode in tcg_catalog aus tcg_sets befüllen ─────────────────
+
+export interface BackfillSetCodesResult {
+  status: 'complete';
+  message: string;
+  updated: number;
+}
+
+export async function backfillSetCodes(): Promise<BackfillSetCodesResult> {
+  const db = getAdminDb();
+
+  // 1. Alle Sets mit ptcgoCode aus tcg_sets lesen
+  const setsSnap = await db.collection('tcg_sets').get();
+  const setCodeMap = new Map<string, string>(); // setId → ptcgoCode
+  setsSnap.docs.forEach(d => {
+    const data = d.data();
+    if (data.ptcgoCode) setCodeMap.set(d.id, data.ptcgoCode as string);
+  });
+
+  if (setCodeMap.size === 0) {
+    return { status: 'complete', message: 'Keine Sets mit ptcgoCode gefunden — erst "Sets sync" ausführen', updated: 0 };
+  }
+
+  let totalUpdated = 0;
+
+  // 2. Pro Set alle Catalog-Karten ohne setCode aktualisieren
+  for (const [setId, ptcgoCode] of setCodeMap) {
+    const cardsSnap = await db.collection(COL).where('setId', '==', setId).get();
+    const toUpdate = cardsSnap.docs.filter(d => !d.data().setCode);
+    if (!toUpdate.length) continue;
+
+    for (let i = 0; i < toUpdate.length; i += 500) {
+      const batch = db.batch();
+      toUpdate.slice(i, i + 500).forEach(d => batch.update(d.ref, { setCode: ptcgoCode }));
+      await batch.commit();
+    }
+    totalUpdated += toUpdate.length;
+  }
+
+  return { status: 'complete', message: `✅ ${totalUpdated} Karten mit Set-Kürzel aktualisiert`, updated: totalUpdated };
+}
+
 export async function getSyncStatus() {
   const meta = await getMeta();
   const currentTotal = await fetchCurrentTotal();

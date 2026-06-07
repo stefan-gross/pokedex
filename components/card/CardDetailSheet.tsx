@@ -4,14 +4,13 @@ import { useEffect, useState } from 'react';
 import { X, Plus, Heart, CheckCircle2, ChevronDown, Trash2, Info, Repeat2, LayoutGrid } from 'lucide-react';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE } from '@/lib/card-constants';
-import { toTcgdexId } from '@/lib/tcgdex';
 import { cardInfoToTcgApi, catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { markReviewed, deleteCard } from '@/lib/firestore/cards';
 import { removeCardFromBinder } from '@/lib/firestore/binders';
-import { getCardsByEvolutionFamily } from '@/lib/firestore/catalog';
+import { getCardsByEvolutionFamily, getCardsByDexNumber } from '@/lib/firestore/catalog';
 import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
-import { fetchPokemonSpeciesDE, type SpeciesDE } from '@/lib/pokeapi';
-import { fetchTcgdexDataMap, resolveSetDe } from '@/lib/tcgdex';
+import { fetchPokemonSpeciesDE, getEvolutionFamilyDexNumbers, type SpeciesDE } from '@/lib/pokeapi';
+import { getSetById } from '@/lib/firestore/sets';
 import type { CardDoc, BinderDoc, CardVariant } from '@/types';
 
 /* ── Helpers ─────────────────────────────────────────────────── */
@@ -92,7 +91,9 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
   const [imgFailed,    setImgFailed]    = useState(false);
   const [addVariant,   setAddVariant]   = useState<CardVariant | null>(null);
   const [species,      setSpecies]      = useState<SpeciesDE | null>(null);
+  const [speciesLoaded,setSpeciesLoaded]= useState(false);
   const [evoCards,     setEvoCards]     = useState<CardInfo[]>([]);
+  const [evoLoaded,    setEvoLoaded]    = useState(false);
   const [deletingId,   setDeletingId]   = useState<string | null>(null);
   const [confirmId,    setConfirmId]    = useState<string | null>(null);
   const [resolvedMeta, setResolvedMeta] = useState<SetMeta | undefined>(setMeta);
@@ -100,20 +101,20 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
   /* Reset + load on card change */
   useEffect(() => {
     if (!card) { setVisible(false); return; }
-    setSpecies(null); setEvoCards([]); setImgFailed(false);
+    setSpecies(null); setSpeciesLoaded(false);
+    setEvoCards([]); setEvoLoaded(false); setImgFailed(false);
     setImgSrc(card.imgSmall ?? ''); // EN-Bild sofort zeigen, DE folgt
     requestAnimationFrame(() => setVisible(true));
 
-    // Set-Metadaten laden (DE-Name, Logo, Bild-URL)
+    // Set-Metadaten laden (DE-Name, Logo) — aus tcg_sets Firestore, kein externer API-Call
     const loadMeta = async () => {
       let meta = setMeta;
       if (!meta) {
-        const dataMap = await fetchTcgdexDataMap();
-        const { nameDe, logoDe, total } = resolveSetDe(card.setId, dataMap, card.setName);
+        const setDoc = await getSetById(card.setId);
         meta = {
-          nameDe,
-          logoUrl: logoDe ?? `https://images.pokemontcg.io/${card.setId}/logo.png`,
-          total:   total ?? 0,
+          nameDe:  setDoc?.nameDe ?? setDoc?.name ?? card.setName,
+          logoUrl: setDoc?.logoUrl ?? `https://images.pokemontcg.io/${card.setId}/logo.png`,
+          total:   setDoc?.total ?? 0,
         };
       }
       setResolvedMeta(meta);
@@ -128,11 +129,41 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
       card.supertype.toLowerCase() === 'pokemon';
 
     if (isPokemon) {
-      fetchPokemonSpeciesDE(card.name, card.supertype).then(s => { if (s) setSpecies(s); });
+      fetchPokemonSpeciesDE(card.name, card.supertype)
+        .then(s => { setSpecies(s); setSpeciesLoaded(true); });
+
       if (card.nationalDexNumber) {
-        getCardsByEvolutionFamily(card.nationalDexNumber, 6)
-          .then(cards => setEvoCards(cards.map(catalogCardToInfo)));
+        getCardsByEvolutionFamily(card.nationalDexNumber, 100)
+          .then(async cards => {
+            let source = cards.map(catalogCardToInfo);
+
+            // Fallback: evolutionFamily noch nicht befüllt → PokéAPI für Familienstruktur
+            if (source.length === 0) {
+              const familyNums = await getEvolutionFamilyDexNumbers(card.nationalDexNumber!);
+              if (familyNums.length > 0) {
+                const batches = await Promise.all(familyNums.map(n => getCardsByDexNumber(n, 3)));
+                source = batches.flat().map(catalogCardToInfo);
+              }
+            }
+
+            // Eine Karte pro Pokédex-Nummer, sortiert nach Evo-Stufe
+            const seen = new Set<number>();
+            const deduped = source
+              .filter(c => {
+                if (!c.nationalDexNumber || seen.has(c.nationalDexNumber)) return false;
+                seen.add(c.nationalDexNumber);
+                return true;
+              })
+              .sort((a, b) => (a.nationalDexNumber ?? 0) - (b.nationalDexNumber ?? 0));
+            setEvoCards(deduped);
+            setEvoLoaded(true);
+          });
+      } else {
+        setEvoLoaded(true);
       }
+    } else {
+      setSpeciesLoaded(true);
+      setEvoLoaded(true);
     }
   }, [card?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -147,7 +178,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
   const tcgApiCard  = cardInfoToTcgApi(card);
   const stage       = getStage(card.subtypes ?? []);
   const energyTypes = (card.types ?? []).map(toEnergy).filter(Boolean) as EnergyType[];
-  const setCode     = card.setCode ?? toTcgdexId(card.setId).toUpperCase();
+  const setCode     = card.setCode ?? card.setId.toUpperCase();
   const numBase     = card.number.split('/')[0].padStart(3, '0');
   const numTotal    = resolvedMeta?.total ? String(resolvedMeta.total).padStart(3, '0') : null;
   const numFmt      = numTotal ? `${numBase}/${numTotal}` : numBase;
@@ -211,7 +242,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
             {card.name}
           </h2>
 
-          {/* Rechts: KP + Typ-Icons + Schließen */}
+          {/* Rechts: KP + Typ-Icons */}
           <div className="flex items-center gap-2 shrink-0">
             {card.hp && (
               <span className="text-[16px] font-bold text-muted-foreground">KP {card.hp}</span>
@@ -219,9 +250,6 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
             {energyTypes.map(t => (
               <EnergyIcon key={t} type={t} size={26} />
             ))}
-            <button onClick={handleClose} className="p-1 text-muted-foreground ml-1">
-              <X size={18} />
-            </button>
           </div>
         </div>
 
@@ -341,8 +369,21 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                       </p>
                     )}
                   </>
+                ) : speciesLoaded ? (
+                  <div className="pt-3">
+                    {card.nationalDexNumber && (
+                      <div className="bg-secondary rounded-xl px-3 py-2.5 w-fit mb-3">
+                        <div className="text-[15px] font-bold">#{String(card.nationalDexNumber).padStart(3, '0')}</div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">Pokédex</div>
+                      </div>
+                    )}
+                    <p className="text-[13px] text-muted-foreground">Keine Details verfügbar</p>
+                  </div>
                 ) : (
-                  <p className="text-[13px] text-muted-foreground pt-3">Lade Details…</p>
+                  <div className="flex items-center gap-2 pt-3">
+                    <div className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin shrink-0" />
+                    <p className="text-[13px] text-muted-foreground">Lade Details…</p>
+                  </div>
                 )}
               </div>
             )}
@@ -386,10 +427,13 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                       </div>
                     ))}
                   </div>
+                ) : evoLoaded ? (
+                  <p className="text-[13px] text-muted-foreground pt-3">Keine Evolutionslinie</p>
                 ) : (
-                  <p className="text-[13px] text-muted-foreground pt-3">
-                    {evoCards.length === 0 ? 'Lade Evolutionslinie…' : 'Keine Evolutionslinie'}
-                  </p>
+                  <div className="flex items-center gap-2 pt-3">
+                    <div className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin shrink-0" />
+                    <p className="text-[13px] text-muted-foreground">Lade Evolutionslinie…</p>
+                  </div>
                 )}
               </div>
             )}
