@@ -25,7 +25,7 @@ const EDGE_H = 448; // ~1.4 Seitenverhältnis
 // Anteil des Videobilds der analysiert wird (groß = auch außermittige Karten)
 const DETECT_FRACTION = 0.90;
 
-// ─── Rotationsrobuste Kartenerkennung ──────────────────────────────────────
+// ─── Canny + Hough-Transform Kartenerkennung ─────────────────────────────
 interface CardQuad {
   tl: { x: number; y: number };
   tr: { x: number; y: number };
@@ -33,102 +33,265 @@ interface CardQuad {
   br: { x: number; y: number };
 }
 
-/**
- * Erkennt eine Pokémon-Karte via Zeilen/Spalten-Projektionen.
- *
- * Statt "erster Kantenpixel pro Scanline" (anfällig für Hintergrundtexturen)
- * werden ALLE Gradienten pro Zeile/Spalte aufsummiert. Eine vollständige
- * Kartenkante erzeugt so einen deutlich höheren Peak als isolierte Hintergrundkanten.
- */
+// Einmalig beim Laden: sin/cos-Tabellen (werden im Hough-Hot-Loop genutzt)
+const HOUGH_N = 180;
+const COS_LUT = new Float32Array(HOUGH_N);
+const SIN_LUT = new Float32Array(HOUGH_N);
+for (let t = 0; t < HOUGH_N; t++) {
+  const r = (t * Math.PI) / 180;
+  COS_LUT[t] = Math.cos(r);
+  SIN_LUT[t] = Math.sin(r);
+}
+// Hough-Akkumulator vorab allozieren (wiederverwendet, kein GC-Druck)
+const _HMAXRHO   = Math.ceil(Math.sqrt(320 * 320 + 448 * 448)); // ≈ 552
+const _HROFF     = _HMAXRHO;
+const _HRRANGE   = 2 * _HMAXRHO + 1;                            // ≈ 1105
+const _HACC      = new Int32Array(HOUGH_N * _HRRANGE);           // ≈ 800 KB
+const _HSUP      = new Uint8Array(HOUGH_N * _HRRANGE);           // ≈ 200 KB
+
+/** Gauß-Blur 5×5 — separabler Kernel [1,4,6,4,1]/16 */
+function gaussBlur(gray: Uint8Array, W: number, H: number): Uint8Array {
+  const K = [1, 4, 6, 4, 1];
+  const tmp = new Uint8Array(W * H);
+  const out = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let s = 0, w = 0;
+      for (let d = -2; d <= 2; d++) {
+        const xi = x + d;
+        if (xi >= 0 && xi < W) { s += gray[y * W + xi] * K[d + 2]; w += K[d + 2]; }
+      }
+      tmp[y * W + x] = (s / w + 0.5) | 0;
+    }
+  }
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let s = 0, w = 0;
+      for (let d = -2; d <= 2; d++) {
+        const yi = y + d;
+        if (yi >= 0 && yi < H) { s += tmp[yi * W + x] * K[d + 2]; w += K[d + 2]; }
+      }
+      out[y * W + x] = (s / w + 0.5) | 0;
+    }
+  }
+  return out;
+}
+
+/** Sobel: L1-Magnitude + quantisierte Richtung (4 Bins) */
+function sobelGrad(px: Uint8Array, W: number, H: number): { mag: Uint16Array; dir: Uint8Array } {
+  const mag = new Uint16Array(W * H);
+  const dir = new Uint8Array(W * H);
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      const tl=px[(y-1)*W+(x-1)], tc=px[(y-1)*W+x], tr=px[(y-1)*W+(x+1)];
+      const ml=px[ y   *W+(x-1)],                    mr=px[ y   *W+(x+1)];
+      const bl=px[(y+1)*W+(x-1)], bc=px[(y+1)*W+x], br=px[(y+1)*W+(x+1)];
+      const gx = -tl - 2*ml - bl + tr + 2*mr + br;
+      const gy = -tl - 2*tc - tr + bl + 2*bc + br;
+      mag[y*W+x] = Math.min(Math.abs(gx) + Math.abs(gy), 65535);
+      const a = ((Math.atan2(gy, gx) * 180 / Math.PI) + 180) % 180;
+      dir[y*W+x] = a < 22.5 || a >= 157.5 ? 0 : a < 67.5 ? 1 : a < 112.5 ? 2 : 3;
+    }
+  }
+  return { mag, dir };
+}
+
+/** Non-Maximum-Suppression — Kanten auf 1px Breite ausdünnen */
+function nmsSup(mag: Uint16Array, dir: Uint8Array, W: number, H: number): Uint16Array {
+  const out = new Uint16Array(W * H);
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      const m = mag[y*W+x];
+      if (!m) continue;
+      let n1: number, n2: number;
+      switch (dir[y*W+x]) {
+        case 0: n1=mag[y*W+(x-1)];     n2=mag[y*W+(x+1)];     break;
+        case 1: n1=mag[(y-1)*W+(x+1)]; n2=mag[(y+1)*W+(x-1)]; break;
+        case 2: n1=mag[(y-1)*W+x];     n2=mag[(y+1)*W+x];     break;
+        default:n1=mag[(y-1)*W+(x-1)]; n2=mag[(y+1)*W+(x+1)]; break;
+      }
+      if (m >= n1 && m >= n2) out[y*W+x] = m;
+    }
+  }
+  return out;
+}
+
+/** Hysterese-Schwellwert + BFS → binäre Kantenkarte */
+function cannyHyst(nmsPx: Uint16Array, W: number, H: number): Uint8Array {
+  const N = W * H;
+  const hist = new Int32Array(1024);
+  let total = 0;
+  for (let i = 0; i < N; i++) {
+    const v = Math.min(nmsPx[i], 1023);
+    if (v > 0) { hist[v]++; total++; }
+  }
+  if (!total) return new Uint8Array(N);
+  // High = 80. Perzentil der Nicht-Null-Pixel
+  let cum = 0, hi = 10;
+  const t80 = Math.floor(total * 0.80);
+  for (let v = 0; v < 1024; v++) { cum += hist[v]; if (cum >= t80) { hi = v; break; } }
+  const lo = Math.round(hi * 0.4);
+
+  const mark = new Uint8Array(N);
+  const q    = new Int32Array(N);
+  let qn = 0;
+  for (let i = 0; i < N; i++) {
+    if (nmsPx[i] >= hi)      { mark[i] = 2; q[qn++] = i; }
+    else if (nmsPx[i] >= lo) { mark[i] = 1; }
+  }
+  const DX = [-1,0,1,-1,1,-1,0,1];
+  const DY = [-1,-1,-1,0,0,1,1,1];
+  for (let qi = 0; qi < qn; qi++) {
+    const idx = q[qi];
+    const iy = (idx / W) | 0, ix = idx % W;
+    for (let d = 0; d < 8; d++) {
+      const nx = ix + DX[d], ny = iy + DY[d];
+      if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+      const ni = ny * W + nx;
+      if (mark[ni] === 1) { mark[ni] = 2; q[qn++] = ni; }
+    }
+  }
+  const edges = new Uint8Array(N);
+  for (let i = 0; i < N; i++) if (mark[i] === 2) edges[i] = 255;
+  return edges;
+}
+
+/** Hough-Transform: befüllt _HACC (vorab alloziiert) */
+function houghAcc(edges: Uint8Array, W: number, H: number): void {
+  _HACC.fill(0);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (!edges[y * W + x]) continue;
+      for (let t = 0; t < HOUGH_N; t++) {
+        const rho = Math.round(x * COS_LUT[t] + y * SIN_LUT[t]);
+        _HACC[t * _HRRANGE + _HROFF + rho]++;
+      }
+    }
+  }
+}
+
+/** Vier dominante Linien aus Hough-Akkumulator (2 horizontal + 2 vertikal) */
+function fourLines(W: number, H: number): Array<{ t: number; rho: number }> | null {
+  // Lokale Maxima (3×3-Fenster, mindestens 4 Stimmen) sammeln
+  type P = { t: number; rho: number; v: number };
+  const cands: P[] = [];
+  for (let t = 0; t < HOUGH_N; t++) {
+    for (let ri = 1; ri < _HRRANGE - 1; ri++) {
+      const v = _HACC[t * _HRRANGE + ri];
+      if (v < 4) continue;
+      let ok = true;
+      for (let dt = -1; dt <= 1 && ok; dt++) {
+        for (let dr = -1; dr <= 1 && ok; dr++) {
+          if (!dt && !dr) continue;
+          const tt = (t + dt + HOUGH_N) % HOUGH_N;
+          const rr = ri + dr;
+          if (rr >= 0 && rr < _HRRANGE && _HACC[tt * _HRRANGE + rr] > v) ok = false;
+        }
+      }
+      if (ok) cands.push({ t, rho: ri - _HROFF, v });
+    }
+  }
+  cands.sort((a, b) => b.v - a.v);
+
+  // Greedy Non-Max-Suppression im Akkumulator-Raum
+  const T_R = 20, R_R = 15;
+  _HSUP.fill(0);
+  const sel: P[] = [];
+  for (const p of cands) {
+    const ri = p.rho + _HROFF;
+    if (_HSUP[p.t * _HRRANGE + ri]) continue;
+    sel.push(p);
+    for (let dt = -T_R; dt <= T_R; dt++) {
+      for (let dr = -R_R; dr <= R_R; dr++) {
+        const tt = (p.t + dt + HOUGH_N) % HOUGH_N;
+        const rr = ri + dr;
+        if (rr >= 0 && rr < _HRRANGE) _HSUP[tt * _HRRANGE + rr] = 1;
+      }
+    }
+    if (sel.length >= 30) break;
+  }
+
+  // theta ≈ 90° → horizontale Linie (Ober-/Unterkante der Karte)
+  // theta ≈ 0°/180° → vertikale Linie (Links-/Rechtskante)
+  const hL = sel.filter(p => p.t >= 65 && p.t <= 115);
+  const vL = sel.filter(p => p.t <= 25 || p.t >= 155);
+
+  const pick2 = (ps: P[], minDist: number): [P, P] | null => {
+    for (let i = 0; i < ps.length; i++)
+      for (let j = i + 1; j < ps.length; j++)
+        if (Math.abs(ps[i].rho - ps[j].rho) >= minDist) return [ps[i], ps[j]];
+    return null;
+  };
+
+  const hPair = pick2(hL, H * 0.28);
+  const vPair = pick2(vL, W * 0.28);
+  if (!hPair || !vPair) return null;
+
+  // Sortieren: kleines rho → oben/links
+  const [h1, h2] = hPair[0].rho < hPair[1].rho ? hPair : [hPair[1], hPair[0]];
+  const [v1, v2] = vPair[0].rho < vPair[1].rho ? vPair : [vPair[1], vPair[0]];
+  return [h1, h2, v1, v2];
+}
+
+/** Schnittpunkt zweier Hough-Linien (Cramer-Regel) */
+function lineXsect(t1: number, r1: number, t2: number, r2: number): { x: number; y: number } | null {
+  const det = COS_LUT[t1] * SIN_LUT[t2] - COS_LUT[t2] * SIN_LUT[t1];
+  if (Math.abs(det) < 1e-6) return null;
+  return {
+    x: (r1 * SIN_LUT[t2] - r2 * SIN_LUT[t1]) / det,
+    y: (r2 * COS_LUT[t1] - r1 * COS_LUT[t2]) / det,
+  };
+}
+
+/** Vier Schnittpunkte validieren und in tl/tr/bl/br sortieren */
+function toQuad(pts: Array<{ x: number; y: number } | null>, W: number, H: number): CardQuad | null {
+  if (pts.some(p => !p)) return null;
+  const pp = pts as Array<{ x: number; y: number }>;
+  const M = 12;
+  if (pp.some(p => p.x < -M || p.x > W + M || p.y < -M || p.y > H + M)) return null;
+  const s   = [...pp].sort((a, b) => a.y - b.y);
+  const top = s.slice(0, 2).sort((a, b) => a.x - b.x);
+  const bot = s.slice(2).sort((a, b) => a.x - b.x);
+  const [tl, tr, bl, br] = [top[0], top[1], bot[0], bot[1]];
+  const cw = ((tr.x - tl.x) + (br.x - bl.x)) / 2;
+  const ch = ((bl.y - tl.y) + (br.y - tr.y)) / 2;
+  if (cw < W * 0.15 || ch < H * 0.15) return null;
+  const asp = ch / cw;
+  if (asp < 1.1 || asp > 2.0) return null;
+  return { tl, tr, bl, br };
+}
+
+/** Pokémon-Karte via Canny-Kanten + Hough-Transform erkennen */
 function detectCard(data: Uint8ClampedArray, W: number, H: number): CardQuad | null {
   // Graustufen
   const gray = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++) {
-    gray[i] = (data[i * 4] * 77 + data[i * 4 + 1] * 150 + data[i * 4 + 2] * 29) >> 8;
+    gray[i] = (data[i*4]*77 + data[i*4+1]*150 + data[i*4+2]*29) >> 8;
   }
+  // Canny-Pipeline: Blur → Sobel → NMS → Hysterese
+  const blurred       = gaussBlur(gray, W, H);
+  const { mag, dir }  = sobelGrad(blurred, W, H);
+  const nmsPx         = nmsSup(mag, dir, W, H);
+  const edges         = cannyHyst(nmsPx, W, H);
 
-  // Zeilen- und Spalten-Projektionen der Kantenstärken
-  const rowSum = new Float32Array(H);
-  const colSum = new Float32Array(W);
-  for (let y = 1; y < H - 1; y++) {
-    for (let x = 1; x < W - 1; x++) {
-      rowSum[y] += Math.abs(gray[(y + 1) * W + x] - gray[(y - 1) * W + x]); // horizontale Kanten
-      colSum[x] += Math.abs(gray[y * W + x + 1] - gray[y * W + x - 1]);     // vertikale Kanten
-    }
-  }
+  // Edge-Count Gate: zu wenig → kein Objekt; zu viel → reiner Textur-Hintergrund
+  let ec = 0;
+  for (let i = 0; i < edges.length; i++) if (edges[i]) ec++;
+  if (ec < 40 || ec > 9000) return null;
 
-  // Boxfilter-Glättung (Breite 9) — dämpft Einzelpixel-Rauschen
-  const smooth = (arr: Float32Array): Float32Array => {
-    const out = new Float32Array(arr.length);
-    const R = 4;
-    for (let i = 0; i < arr.length; i++) {
-      let s = 0, c = 0;
-      for (let d = -R; d <= R; d++) {
-        const j = i + d;
-        if (j >= 0 && j < arr.length) { s += arr[j]; c++; }
-      }
-      out[i] = s / c;
-    }
-    return out;
-  };
+  // Hough-Transform + 4 dominante Linien
+  houghAcc(edges, W, H);
+  const lines = fourLines(W, H);
+  if (!lines) return null;
+  const [h1, h2, v1, v2] = lines;
 
-  const rows = smooth(rowSum);
-  const cols = smooth(colSum);
-
-  // Durchschnittliche Kantenstärke (Qualitäts-Gate + Normierung für Stärkecheck)
-  let rowMean = 0, colMean = 0;
-  for (let y = 0; y < H; y++) rowMean += rows[y];
-  for (let x = 0; x < W; x++) colMean += cols[x];
-  rowMean /= H; colMean /= W;
-  if (rowMean < 8 || colMean < 8) return null; // Bild zu dunkel/leer
-
-  const yM = Math.round(H * 0.05);
-  const xM = Math.round(W * 0.05);
-
-  // Peak-Suche: Maximum in einer Richtung (von → bis)
-  const peak = (arr: Float32Array, from: number, to: number): { pos: number; val: number } => {
-    let pos = -1, val = -1;
-    const step = from <= to ? 1 : -1;
-    for (let i = from; i !== to + step; i += step) {
-      if (arr[i] > val) { val = arr[i]; pos = i; }
-    }
-    return { pos, val };
-  };
-
-  // Obere Hälfte → Oberkante, untere Hälfte → Unterkante (von außen nach innen)
-  const topHalf = Math.round(H * 0.55);
-  const botHalf = Math.round(H * 0.45);
-  const lftHalf = Math.round(W * 0.55);
-  const rgtHalf = Math.round(W * 0.45);
-
-  const { pos: topY, val: topV } = peak(rows, yM, topHalf);
-  const { pos: botY, val: botV } = peak(rows, H - yM, botHalf);
-  const { pos: lftX, val: lftV } = peak(cols, xM, lftHalf);
-  const { pos: rgtX, val: rgtV } = peak(cols, W - xM, rgtHalf);
-
-  if (topY < 0 || botY < 0 || lftX < 0 || rgtX < 0) return null;
-  if (topY >= botY || lftX >= rgtX) return null;
-
-  const cardW = rgtX - lftX;
-  const cardH = botY - topY;
-
-  // Mindestgröße: 18 % des Analyse-Frames
-  if (cardW < W * 0.18 || cardH < H * 0.18) return null;
-
-  // Seitenverhältnis einer Pokémon-Karte (h/w ≈ 1.0–2.1)
-  const asp = cardH / cardW;
-  if (asp < 1.0 || asp > 2.1) return null;
-
-  // Peaks müssen klar über dem Durchschnitt liegen (Kartenkante ≥ 2.5× mittlere Kantenstärke)
-  if (topV < rowMean * 2.5 || botV < rowMean * 2.5) return null;
-  if (lftV < colMean * 2.5 || rgtV < colMean * 2.5) return null;
-
-  return {
-    tl: { x: lftX, y: topY },
-    tr: { x: rgtX, y: topY },
-    bl: { x: lftX, y: botY },
-    br: { x: rgtX, y: botY },
-  };
+  // Schnittpunkte → CardQuad
+  return toQuad([
+    lineXsect(h1.t, h1.rho, v1.t, v1.rho),
+    lineXsect(h1.t, h1.rho, v2.t, v2.rho),
+    lineXsect(h2.t, h2.rho, v1.t, v1.rho),
+    lineXsect(h2.t, h2.rho, v2.t, v2.rho),
+  ], W, H);
 }
 
 export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: Props) {
