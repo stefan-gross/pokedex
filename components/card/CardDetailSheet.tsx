@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { X, Plus, Heart, CheckCircle2, ChevronDown, Trash2, Info, Repeat2, LayoutGrid } from 'lucide-react';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe } from '@/lib/card-constants';
@@ -86,6 +87,7 @@ function AccHeader({
 
 /* ── Component ───────────────────────────────────────────────── */
 export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, onSaved }: Props) {
+  const router = useRouter();
   const [visible,      setVisible]      = useState(false);
   const [zoomed,       setZoomed]       = useState(false);
   const [openSec,      setOpenSec]      = useState<Set<Section>>(new Set(['cards']));
@@ -553,13 +555,20 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                                   >
                                     {copy.condition}
                                   </span>
+                                  <span
+                                    className="text-[11px] px-2 py-0.5 rounded-full"
+                                    style={{ background: 'rgba(255,255,255,.07)', color: 'var(--muted-foreground)' }}
+                                  >
+                                    — Preis
+                                  </span>
                                   {(() => {
                                     const binder = copyBinders[0];
                                     const isDefault = !binder || !!binder.isDefault;
                                     const label = binder ? binder.name : 'Meine Sammlung';
                                     const icon  = binder?.icon ?? null;
                                     return (
-                                      <span
+                                      <button
+                                        onClick={() => router.push(binder ? `/binders/${binder.id}` : '/binders')}
                                         className="text-[11px] font-medium pl-2 pr-1 py-0.5 rounded-full flex items-center gap-1"
                                         style={{ background: 'rgba(255,255,255,.07)', color: 'var(--muted-foreground)' }}
                                       >
@@ -567,7 +576,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                                         {label}
                                         {!isDefault && binder && (
                                           <button
-                                            onClick={() => handleRemoveFromBinder(copy, binder.id)}
+                                            onClick={(e) => { e.stopPropagation(); handleRemoveFromBinder(copy, binder.id); }}
                                             className="ml-0.5 rounded-full p-0.5 hover:bg-red-500/20 transition-colors"
                                             style={{ color: 'var(--pokedex-red)' }}
                                             title="Aus Sammlung entfernen"
@@ -575,15 +584,9 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                                             <Trash2 size={10} />
                                           </button>
                                         )}
-                                      </span>
+                                      </button>
                                     );
                                   })()}
-                                  <span
-                                    className="text-[11px] px-2 py-0.5 rounded-full"
-                                    style={{ background: 'rgba(255,255,255,.07)', color: 'var(--muted-foreground)' }}
-                                  >
-                                    — Preis
-                                  </span>
                                 </div>
 
                                 {/* Löschen */}

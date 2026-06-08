@@ -242,7 +242,11 @@ export default function DashboardPage() {
           ownedCopies={detailOwned}
           binders={binders}
           onClose={() => setDetailCard(null)}
-          onSaved={() => { getCards().then(setCards).catch(() => {}); }}
+          onSaved={async () => {
+            const fresh = await getCards().catch(() => [] as CardDoc[]);
+            setCards(fresh);
+            if (detailCard) setDetailOwned(fresh.filter(c => c.tcgId === detailCard.tcgId));
+          }}
         />
       )}
 
