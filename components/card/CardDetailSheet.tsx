@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Plus, Heart, CheckCircle2, ChevronDown, Trash2, Info, Repeat2, LayoutGrid } from 'lucide-react';
+import { X, Plus, Heart, CheckCircle2, ChevronDown, ChevronRight, Trash2, Info, Repeat2, LayoutGrid } from 'lucide-react';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
@@ -534,7 +534,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                                 style={{ background: 'var(--secondary)', minHeight: 44 }}
                               >
                                 {/* Chips */}
-                                <div className="flex gap-1.5 flex-wrap flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-1 min-w-0">
                                   {copy.needsReview && (
                                     <button
                                       onClick={async () => {
@@ -542,49 +542,61 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                                         window.dispatchEvent(new Event('review-count-changed'));
                                         onSaved?.();
                                       }}
-                                      className="text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1"
+                                      className="text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0"
                                       style={{ background: 'rgba(229,62,62,.15)', color: 'var(--pokedex-red)' }}
                                     >
                                       <CheckCircle2 size={10} /> Prüfen
                                     </button>
                                   )}
-                                  <span className="text-[14px]">{LANGUAGE_FLAGS[copy.language] ?? copy.language}</span>
+                                  <span className="text-[14px] shrink-0">{LANGUAGE_FLAGS[copy.language] ?? copy.language}</span>
                                   <span
-                                    className="text-[12px] font-semibold px-2 py-0.5 rounded-full"
+                                    className="text-[12px] font-semibold px-2 py-0.5 rounded-full shrink-0"
                                     style={{ background: 'rgba(255,255,255,.07)', color: 'var(--muted-foreground)' }}
                                   >
                                     {copy.condition}
                                   </span>
-                                  <span
-                                    className="text-[11px] px-2 py-0.5 rounded-full"
-                                    style={{ background: 'rgba(255,255,255,.07)', color: 'var(--muted-foreground)' }}
-                                  >
-                                    — Preis
-                                  </span>
+                                  {(copy as CardDoc & { price?: number }).price != null && (
+                                    <span
+                                      className="text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0"
+                                      style={{ background: 'rgba(255,255,255,.07)', color: 'var(--muted-foreground)' }}
+                                    >
+                                      {((copy as CardDoc & { price?: number }).price!).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
+                                    </span>
+                                  )}
+                                  {/* Sammlung-Pill — rechts ausgerichtet */}
                                   {(() => {
                                     const binder = copyBinders[0];
                                     const isDefault = !binder || !!binder.isDefault;
                                     const label = binder ? binder.name : 'Meine Sammlung';
                                     const icon  = binder?.icon ?? null;
                                     return (
-                                      <button
+                                      <div
+                                        role="button"
+                                        tabIndex={0}
                                         onClick={() => router.push(binder ? `/binders/${binder.id}` : '/binders')}
-                                        className="text-[11px] font-medium pl-2 pr-1 py-0.5 rounded-full flex items-center gap-1"
-                                        style={{ background: 'rgba(255,255,255,.07)', color: 'var(--muted-foreground)' }}
+                                        onKeyDown={(e) => e.key === 'Enter' && router.push(binder ? `/binders/${binder.id}` : '/binders')}
+                                        className="text-[12px] font-semibold pl-3 pr-2 py-1 rounded-full flex items-center gap-1.5 cursor-pointer shrink-0 ml-auto"
+                                        style={{
+                                          background: 'rgba(66,153,225,.12)',
+                                          border: '1px solid rgba(66,153,225,.35)',
+                                          color: '#4299e1',
+                                        }}
                                       >
                                         {icon && <span>{icon}</span>}
                                         {label}
-                                        {!isDefault && binder && (
+                                        {!isDefault && binder ? (
                                           <button
                                             onClick={(e) => { e.stopPropagation(); handleRemoveFromBinder(copy, binder.id); }}
-                                            className="ml-0.5 rounded-full p-0.5 hover:bg-red-500/20 transition-colors"
-                                            style={{ color: 'var(--pokedex-red)' }}
+                                            className="rounded-full p-0.5 transition-colors"
+                                            style={{ background: 'rgba(229,62,62,.2)', color: '#fc8181' }}
                                             title="Aus Sammlung entfernen"
                                           >
                                             <Trash2 size={10} />
                                           </button>
+                                        ) : (
+                                          <ChevronRight size={13} style={{ opacity: 0.7 }} />
                                         )}
-                                      </button>
+                                      </div>
                                     );
                                   })()}
                                 </div>
