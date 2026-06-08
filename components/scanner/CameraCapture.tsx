@@ -16,7 +16,8 @@ const SAMPLE_H = 266;
 const CHECK_MS               = 100;
 const MOTION_RESET_THRESHOLD = 800;
 const CARD_DETECT_VARIANCE   = 80;   // niedrig → Detection läuft fast immer
-const SNAP_STABLE_FRAMES     = 10; // 1 s Ruhe → Auslöser
+const SNAP_STABLE_FRAMES     = 10; // 1 s Ruhe mit erkanntem Quad → Auslöser
+const SNAP_STABLE_FALLBACK   = 15; // 1,5 s Ruhe ohne Quad (Karte nicht exakt erkannt)
 const SNAP_COOLDOWN_MS       = 2000;
 
 // Analyse-Canvas: feste Größe für konsistente Erkennung
@@ -507,13 +508,18 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         mse = mc > 0 ? mse / mc : 0;
         pCtx.drawImage(sample, 0, 0);
 
-        if (cooldownRef.current || mse > MOTION_RESET_THRESHOLD || !hasObject || !stableQuad) {
+        // Snap-Trigger: zwei Modi
+        // • Quad erkannt → 1 s Ruhe (SNAP_STABLE_FRAMES)
+        // • Kein Quad, aber Objekt still → 1,5 s Fallback (SNAP_STABLE_FALLBACK)
+        //   → Karte auch dann auslösen, wenn sie nicht exakt im Rahmen liegt
+        const snapTarget = stableQuad ? SNAP_STABLE_FRAMES : SNAP_STABLE_FALLBACK;
+        if (cooldownRef.current || mse > MOTION_RESET_THRESHOLD || !hasObject) {
           stableRef.current = 0;
           if (!cooldownRef.current) setProgress(0);
         } else {
           stableRef.current += 1;
-          setProgress(Math.min(stableRef.current / SNAP_STABLE_FRAMES, 1));
-          if (stableRef.current >= SNAP_STABLE_FRAMES) doCapture();
+          setProgress(Math.min(stableRef.current / snapTarget, 1));
+          if (stableRef.current >= snapTarget) doCapture();
         }
       }, CHECK_MS);
     }, 800);
@@ -532,8 +538,8 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   const hintText = paused             ? 'Scannen pausiert'
     : inCooldown                      ? 'Nächste Karte bereithalten …'
     : detected && progress > 0        ? 'Karte erkannt — kurz stillhalten'
-    : progress > 0                    ? 'Bitte kurz stillhalten …'
     : detected                        ? 'Karte erkannt'
+    : progress > 0                    ? 'Kurz stillhalten …'
     :                                   'Karte in den Rahmen halten und stillhalten';
 
   const hintColor = (detected || progress > 0) && !inCooldown && !paused
