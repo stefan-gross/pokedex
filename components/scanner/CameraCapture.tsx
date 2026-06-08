@@ -172,13 +172,14 @@ function houghAcc(edges: Uint8Array, W: number, H: number): void {
 
 /** Vier dominante Linien aus Hough-Akkumulator (2 horizontal + 2 vertikal) */
 function fourLines(W: number, H: number): Array<{ t: number; rho: number }> | null {
-  // Lokale Maxima (3×3-Fenster, mindestens 4 Stimmen) sammeln
+  // Lokale Maxima (3×3-Fenster, mindestens 20 Stimmen) sammeln
+  // → filtert schwache Schatten-/Hintergrundlinien sofort heraus
   type P = { t: number; rho: number; v: number };
   const cands: P[] = [];
   for (let t = 0; t < HOUGH_N; t++) {
     for (let ri = 1; ri < _HRRANGE - 1; ri++) {
       const v = _HACC[t * _HRRANGE + ri];
-      if (v < 4) continue;
+      if (v < 20) continue;
       let ok = true;
       for (let dt = -1; dt <= 1 && ok; dt++) {
         for (let dr = -1; dr <= 1 && ok; dr++) {
@@ -213,8 +214,9 @@ function fourLines(W: number, H: number): Array<{ t: number; rho: number }> | nu
 
   // theta ≈ 90° → horizontale Linie (Ober-/Unterkante der Karte)
   // theta ≈ 0°/180° → vertikale Linie (Links-/Rechtskante)
-  const hL = sel.filter(p => p.t >= 65 && p.t <= 115);
-  const vL = sel.filter(p => p.t <= 25 || p.t >= 155);
+  // Breiter Winkelbereich: erlaubt Neigung bis ±30°
+  const hL = sel.filter(p => p.t >= 58 && p.t <= 122);
+  const vL = sel.filter(p => p.t <= 30 || p.t >= 150);
 
   const pick2 = (ps: P[], minDist: number): [P, P] | null => {
     for (let i = 0; i < ps.length; i++)
@@ -226,6 +228,12 @@ function fourLines(W: number, H: number): Array<{ t: number; rho: number }> | nu
   const hPair = pick2(hL, H * 0.20);
   const vPair = pick2(vL, W * 0.15);
   if (!hPair || !vPair) return null;
+
+  // Qualitätsschwelle: jede der 4 Linien muss mindestens 30 Stimmen haben.
+  // Kartenrand-Pixel bei 30% Frame-Größe: ~90px → 90 Stimmen. Schattenlinien: <<30.
+  const MIN_V = 30;
+  if (hPair[0].v < MIN_V || hPair[1].v < MIN_V) return null;
+  if (vPair[0].v < MIN_V || vPair[1].v < MIN_V) return null;
 
   // Sortieren: kleines rho → oben/links
   const [h1, h2] = hPair[0].rho < hPair[1].rho ? hPair : [hPair[1], hPair[0]];
@@ -255,9 +263,10 @@ function toQuad(pts: Array<{ x: number; y: number } | null>, W: number, H: numbe
   const [tl, tr, bl, br] = [top[0], top[1], bot[0], bot[1]];
   const cw = ((tr.x - tl.x) + (br.x - bl.x)) / 2;
   const ch = ((bl.y - tl.y) + (br.y - tr.y)) / 2;
-  if (cw < W * 0.18 || ch < H * 0.22) return null;
+  if (cw < W * 0.20 || ch < H * 0.25) return null;
   const asp = ch / cw;
-  if (asp < 1.1 || asp > 2.0) return null;
+  // Pokémon-Karten: 63×88mm = Ratio 1.397 — mit Perspektivspielraum ±15%
+  if (asp < 1.22 || asp > 1.62) return null;
   return { tl, tr, bl, br };
 }
 
@@ -303,9 +312,12 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const streamRef  = useRef<MediaStream | null>(null);
   const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
-  const stableRef  = useRef(0);
-  const cooldownRef = useRef(false);
+  const stableRef    = useRef(0);
+  const cooldownRef  = useRef(false);
   const onCaptureRef = useRef(onCapture);
+  // Quad-Stabilisierung: Rahmen springt nicht bei Einzelframe-Falschpositivem
+  const lastQuadRef  = useRef<CardQuad | null>(null);
+  const quadFrameRef = useRef(0); // aufeinanderfolgende Frames mit ähnlichem Quad
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
 
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
@@ -460,8 +472,31 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
           quad = detectCard(eCtx.getImageData(0, 0, EDGE_W, EDGE_H).data, EDGE_W, EDGE_H);
         }
 
-        drawOverlay(quad, vw, vh, desx, desy, dw, dh);
-        setDetected(!!quad);
+        // Quad-Stabilisierung: grüner Rahmen erscheint erst nach 2 konsekutiven
+        // Frames mit ähnlicher Position (≤50px Mittelpunkt-Versatz).
+        // Verhindert das Springen durch einzelne Falschpositive.
+        let stableQuad: CardQuad | null = null;
+        if (quad) {
+          const prev = lastQuadRef.current;
+          const cx = (quad.tl.x + quad.tr.x + quad.bl.x + quad.br.x) / 4;
+          const cy = (quad.tl.y + quad.tr.y + quad.bl.y + quad.br.y) / 4;
+          if (prev) {
+            const pcx = (prev.tl.x + prev.tr.x + prev.bl.x + prev.br.x) / 4;
+            const pcy = (prev.tl.y + prev.tr.y + prev.bl.y + prev.br.y) / 4;
+            const dist = Math.sqrt((cx - pcx) ** 2 + (cy - pcy) ** 2);
+            quadFrameRef.current = dist < 50 ? quadFrameRef.current + 1 : 1;
+          } else {
+            quadFrameRef.current = 1;
+          }
+          lastQuadRef.current = quad;
+          if (quadFrameRef.current >= 2) stableQuad = quad;
+        } else {
+          quadFrameRef.current = 0;
+          lastQuadRef.current = null;
+        }
+
+        drawOverlay(stableQuad, vw, vh, desx, desy, dw, dh);
+        setDetected(!!stableQuad);
 
         // 3. Bewegungsmessung (MSE)
         let mse = 0, mc = 0;
@@ -471,7 +506,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         mse = mc > 0 ? mse / mc : 0;
         pCtx.drawImage(sample, 0, 0);
 
-        if (cooldownRef.current || mse > MOTION_RESET_THRESHOLD || !hasObject || !quad) {
+        if (cooldownRef.current || mse > MOTION_RESET_THRESHOLD || !hasObject || !stableQuad) {
           stableRef.current = 0;
           if (!cooldownRef.current) setProgress(0);
         } else {
