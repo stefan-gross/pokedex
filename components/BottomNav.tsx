@@ -30,6 +30,8 @@ export function BottomNav() {
     return () => window.removeEventListener('review-count-changed', fetchCount);
   }, [fetchCount]);
 
+  if (pathname === '/scanner') return null;
+
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
     return pathname.startsWith(href);
