@@ -197,4 +197,15 @@
   .h-safe-top {
     height: env(safe-area-inset-top, 0px);
   }
+  /* Elevation-System — ersetzt border border-border auf Cards */
+  .shadow-card {
+    box-shadow: 0 2px 16px rgba(30,40,80,0.08), 0 1px 4px rgba(30,40,80,0.04);
+  }
+  .shadow-elevated {
+    box-shadow: 0 6px 28px rgba(30,40,80,0.12), 0 2px 8px rgba(30,40,80,0.05);
+  }
+  /* Sticky-Header Schatten nach unten */
+  .shadow-header {
+    box-shadow: 0 4px 16px rgba(30,40,80,0.07), 0 1px 0 rgba(30,40,80,0.04);
+  }
 }

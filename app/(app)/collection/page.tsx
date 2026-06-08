@@ -441,7 +441,7 @@ function CollectionContent() {
     <div className="flex flex-col min-h-screen">
 
       {/* ── Sticky Header ──────────────────────────────────────── */}
-      <div className="sticky top-safe z-20 bg-background px-4 pt-4 pb-3 border-b border-border space-y-2">
+      <div className="sticky top-safe z-20 bg-background px-4 pt-4 pb-3 shadow-header space-y-2">
 
         {/* Suchfeld */}
         <div className="relative">
@@ -451,7 +451,7 @@ function CollectionContent() {
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             placeholder="Pokémon suchen… oder stöbern"
-            className="w-full h-10 pl-9 pr-8 rounded-xl bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            className="w-full h-10 pl-9 pr-8 rounded-xl bg-secondary shadow-card text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
           />
           {inputValue && (
             <button type="button" onClick={clearSearch}

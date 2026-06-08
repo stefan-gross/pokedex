@@ -135,7 +135,7 @@ export default function DashboardPage() {
 
       {/* Stat Tiles */}
       <div className="space-y-3">
-        <div className="rounded-xl border border-border bg-card px-4 py-3 flex items-center justify-between min-h-[68px]">
+        <div className="rounded-2xl bg-card shadow-card px-4 py-3 flex items-center justify-between min-h-[68px]">
           <div className="flex flex-col gap-0.5">
             <span className="text-xs text-muted-foreground font-medium">Sammlung</span>
             {thisWeek != null && thisWeek > 0 && (
@@ -170,7 +170,7 @@ export default function DashboardPage() {
       {!loading && (
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Sets</h2>
+            <h2 className="text-base font-bold">Sets</h2>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1">
                 <ViewBtn active={setView === 'favorites'} onClick={() => setSetView('favorites')} label="Meiste Karten">
@@ -188,7 +188,7 @@ export default function DashboardPage() {
           </div>
 
           {displayedSets.length > 0 ? (
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="bg-card rounded-2xl shadow-card overflow-hidden">
               {displayedSets.map((s, i) => (
                 <SetListItem
                   key={s.setId}
@@ -205,7 +205,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <div className="bg-card border border-border rounded-xl px-4 py-6 flex flex-col items-center gap-3 text-center">
+            <div className="bg-card rounded-2xl shadow-card px-4 py-6 flex flex-col items-center gap-3 text-center">
               <p className="text-sm text-muted-foreground">
                 {setView === 'favorites'
                   ? 'Noch keine Favoriten — scanne Karten um Sets zu befüllen.'
@@ -226,7 +226,7 @@ export default function DashboardPage() {
       {/* Zuletzt hinzugefügt */}
       {recentCards.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Zuletzt hinzugefügt</h2>
+          <h2 className="text-base font-bold mb-3">Zuletzt hinzugefügt</h2>
           <div className="grid grid-cols-3 gap-2">
             {recentCards.map(card => (
               <RecentCard key={card.id} name={card.name} number={card.number} img={card.tcgImageUrl!} onClick={() => openDetail(card)} />
@@ -268,7 +268,7 @@ export default function DashboardPage() {
 
 function StatTile({ label, sub, value }: { label: string; sub: string; value: string }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-3 flex items-center justify-between gap-2 min-h-[68px]">
+    <div className="rounded-2xl bg-card shadow-card p-3 flex items-center justify-between gap-2 min-h-[68px]">
       <div className="flex-1 min-w-0 flex flex-col justify-between">
         <div className="text-xs text-muted-foreground font-medium">{label}</div>
         <div className="text-[10px] text-muted-foreground/60 mt-1">{sub}</div>
@@ -300,7 +300,7 @@ function ViewBtn({ active, onClick, label, children }: {
 function RecentCard({ name, number, img, onClick }: { name: string; number: string; img: string; onClick: () => void }) {
   return (
     <button onClick={onClick} className="flex flex-col items-center gap-1 text-left w-full">
-      <div className="w-full aspect-[2/3] rounded-lg overflow-hidden bg-secondary border border-border">
+      <div className="w-full aspect-[2/3] rounded-lg overflow-hidden bg-secondary shadow-card">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={img} alt={name} className="w-full h-full object-cover" />
       </div>

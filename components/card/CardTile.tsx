@@ -35,7 +35,7 @@ export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWis
       <div className="relative flex flex-col">
         {/* Card image — tap → Detail */}
         <div
-          className="relative rounded-xl overflow-hidden border border-border cursor-pointer"
+          className="relative rounded-xl overflow-hidden shadow-card cursor-pointer"
           onClick={onCardClick}
         >
           <CardImage

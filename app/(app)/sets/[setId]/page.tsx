@@ -185,7 +185,7 @@ function SetDetailContent() {
     <div className="min-h-screen">
 
       {/* ── Sticky top bar ── */}
-      <div className="sticky top-safe z-20 bg-background border-b border-border px-4 pt-4 pb-3">
+      <div className="sticky top-safe z-20 bg-background shadow-header px-4 pt-4 pb-3">
         <Link href={backHref} className="inline-flex items-center gap-1 text-sm text-muted-foreground">
           <ChevronLeft size={18} strokeWidth={2} />
           {backLabel}
@@ -199,7 +199,7 @@ function SetDetailContent() {
       ) : (
         <>
           {/* ── Set info header (scrolls away) ── */}
-          <div className="px-4 pt-5 pb-4 border-b border-border space-y-4">
+          <div className="px-4 pt-5 pb-4 space-y-4">
             {/* Logo + Meta */}
             <div className="flex items-center gap-4">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -257,7 +257,7 @@ function SetDetailContent() {
           </div>
 
           {/* ── Sticky filter + sort bar ── */}
-          <div className="sticky z-10 bg-background border-b border-border px-4 py-2.5"
+          <div className="sticky z-10 bg-background shadow-header px-4 py-2.5"
                style={{ top: 'calc(env(safe-area-inset-top, 0px) + 49px)' }}>
 
             {/* Row 1: filter + sort + count */}

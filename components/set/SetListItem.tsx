@@ -33,7 +33,7 @@ export function SetListItem({
   return (
     <Link
       href={href}
-      className={`flex items-center gap-3 px-4 py-3 active:bg-secondary transition-colors${separator ? ' border-b border-border' : ''}`}
+      className={`flex items-center gap-3 px-4 py-3 active:bg-secondary transition-colors${separator ? ' border-b border-border/40' : ''}`}
     >
       {/* Logo */}
       <div className="w-14 shrink-0 flex items-center justify-center">
@@ -72,7 +72,7 @@ export function SetListItem({
             </span>
           </div>
         </div>
-        <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+        <div className="h-2 rounded-full bg-secondary overflow-hidden">
           <div
             className="h-full rounded-full transition-all"
             style={{ width: `${pct ?? 0}%`, background: 'var(--pokedex-red)' }}

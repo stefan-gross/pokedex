@@ -49,8 +49,8 @@ export function BottomNav() {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 grid items-center justify-items-center bg-card border-t border-border"
-      style={{ gridTemplateColumns: 'repeat(5, 1fr)', height: 'calc(68px + env(safe-area-inset-bottom, 0px))', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      className="fixed bottom-0 left-0 right-0 z-50 grid items-center justify-items-center bg-card/95 backdrop-blur-xl"
+      style={{ gridTemplateColumns: 'repeat(5, 1fr)', height: 'calc(68px + env(safe-area-inset-bottom, 0px))', paddingBottom: 'env(safe-area-inset-bottom, 0px)', boxShadow: '0 -4px 24px rgba(30,40,80,0.08), 0 -1px 0 rgba(30,40,80,0.05)' }}
     >
       {navItems.map((item, i) => {
         if (item === null) {

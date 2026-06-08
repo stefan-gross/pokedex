@@ -63,7 +63,7 @@ export default function SetsPage() {
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <div className="sticky top-safe z-20 bg-background border-b border-border px-4 pt-4 pb-3 flex items-center gap-3">
+      <div className="sticky top-safe z-20 bg-background shadow-header px-4 pt-4 pb-3 flex items-center gap-3">
         <Link href="/" className="text-muted-foreground shrink-0">
           <ChevronLeft size={22} />
         </Link>
@@ -82,9 +82,9 @@ export default function SetsPage() {
             const totalCards = group.sets.reduce((s, set) => s + set.total, 0);
 
             return (
-              <div key={group.name} className="bg-card border border-border rounded-xl overflow-hidden">
+              <div key={group.name} className="bg-card rounded-2xl shadow-card overflow-hidden">
                 {/* Series-Header */}
-                <div className="px-4 py-3 flex items-center justify-between border-b border-border"
+                <div className="px-4 py-3 flex items-center justify-between border-b border-border/30"
                      style={{ background: 'rgba(255,255,255,0.025)' }}>
                   <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
                     {seriesName}

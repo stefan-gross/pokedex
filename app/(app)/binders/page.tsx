@@ -27,7 +27,7 @@ export default function BindersPage() {
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <div className="px-4 pt-4 pb-4 flex items-center justify-between border-b border-border">
+      <div className="px-4 pt-4 pb-4 flex items-center justify-between shadow-header bg-background">
         <div>
           <h1 className="text-2xl font-bold">Sammlungen</h1>
           <p className="text-sm text-muted-foreground">{binders.length} {binders.length === 1 ? 'Sammlung' : 'Sammlungen'}</p>
@@ -89,7 +89,7 @@ function BinderTile({ binder, onDeleted: _ }: { binder: BinderDoc; onDeleted: ()
   return (
     <Link
       href={`/binders/${binder.id}`}
-      className="relative rounded-2xl border border-border bg-card overflow-hidden flex flex-col min-h-[120px] active:scale-[.98] transition-transform"
+      className="relative rounded-2xl bg-card shadow-card overflow-hidden flex flex-col min-h-[120px] active:scale-[.98] transition-transform"
     >
       {/* Color bar */}
       <div className="h-1.5 w-full" style={{ background: bgColor }} />
