@@ -229,9 +229,10 @@ function fourLines(W: number, H: number): Array<{ t: number; rho: number }> | nu
   const vPair = pick2(vL, W * 0.15);
   if (!hPair || !vPair) return null;
 
-  // Qualitätsschwelle: jede der 4 Linien muss mindestens 30 Stimmen haben.
-  // Kartenrand-Pixel bei 30% Frame-Größe: ~90px → 90 Stimmen. Schattenlinien: <<30.
-  const MIN_V = 30;
+  // Qualitätsschwelle: jede der 4 Linien muss mindestens 15 Stimmen haben.
+  // Min. Karte ~20% Breite = 64px; nach Canny ~60% Überleben → ~38 Stimmen.
+  // 15 lässt auch bei Unschärfe/Winkel noch echte Karten durch.
+  const MIN_V = 15;
   if (hPair[0].v < MIN_V || hPair[1].v < MIN_V) return null;
   if (vPair[0].v < MIN_V || vPair[1].v < MIN_V) return null;
 
@@ -263,10 +264,10 @@ function toQuad(pts: Array<{ x: number; y: number } | null>, W: number, H: numbe
   const [tl, tr, bl, br] = [top[0], top[1], bot[0], bot[1]];
   const cw = ((tr.x - tl.x) + (br.x - bl.x)) / 2;
   const ch = ((bl.y - tl.y) + (br.y - tr.y)) / 2;
-  if (cw < W * 0.20 || ch < H * 0.25) return null;
+  if (cw < W * 0.18 || ch < H * 0.22) return null;
   const asp = ch / cw;
-  // Pokémon-Karten: 63×88mm = Ratio 1.397 — mit Perspektivspielraum ±15%
-  if (asp < 1.22 || asp > 1.62) return null;
+  // Pokémon-Karten: 63×88mm = Ratio 1.397 — Spielraum für Perspektive/Winkel
+  if (asp < 1.15 || asp > 1.75) return null;
   return { tl, tr, bl, br };
 }
 
