@@ -126,10 +126,10 @@ function cannyHyst(nmsPx: Uint16Array, W: number, H: number): Uint8Array {
     if (v > 0) { hist[v]++; total++; }
   }
   if (!total) return new Uint8Array(N);
-  // High = 80. Perzentil der Nicht-Null-Pixel
+  // High = 65. Perzentil der Nicht-Null-Pixel (weniger aggressiv als 80.)
   let cum = 0, hi = 10;
-  const t80 = Math.floor(total * 0.80);
-  for (let v = 0; v < 1024; v++) { cum += hist[v]; if (cum >= t80) { hi = v; break; } }
+  const t65 = Math.floor(total * 0.65);
+  for (let v = 0; v < 1024; v++) { cum += hist[v]; if (cum >= t65) { hi = v; break; } }
   const lo = Math.round(hi * 0.4);
 
   const mark = new Uint8Array(N);
@@ -223,8 +223,8 @@ function fourLines(W: number, H: number): Array<{ t: number; rho: number }> | nu
     return null;
   };
 
-  const hPair = pick2(hL, H * 0.28);
-  const vPair = pick2(vL, W * 0.28);
+  const hPair = pick2(hL, H * 0.20);
+  const vPair = pick2(vL, W * 0.15);
   if (!hPair || !vPair) return null;
 
   // Sortieren: kleines rho → oben/links
@@ -255,7 +255,7 @@ function toQuad(pts: Array<{ x: number; y: number } | null>, W: number, H: numbe
   const [tl, tr, bl, br] = [top[0], top[1], bot[0], bot[1]];
   const cw = ((tr.x - tl.x) + (br.x - bl.x)) / 2;
   const ch = ((bl.y - tl.y) + (br.y - tr.y)) / 2;
-  if (cw < W * 0.30 || ch < H * 0.35) return null;
+  if (cw < W * 0.18 || ch < H * 0.22) return null;
   const asp = ch / cw;
   if (asp < 1.1 || asp > 2.0) return null;
   return { tl, tr, bl, br };
@@ -274,10 +274,10 @@ function detectCard(data: Uint8ClampedArray, W: number, H: number): CardQuad | n
   const nmsPx         = nmsSup(mag, dir, W, H);
   const edges         = cannyHyst(nmsPx, W, H);
 
-  // Edge-Count Gate: zu wenig → kein Objekt; zu viel → reiner Textur-Hintergrund
+  // Edge-Count Gate: zu wenige Kanten → leeres Bild
   let ec = 0;
   for (let i = 0; i < edges.length; i++) if (edges[i]) ec++;
-  if (ec < 40 || ec > 9000) return null;
+  if (ec < 30) return null;
 
   // Hough-Transform + 4 dominante Linien
   houghAcc(edges, W, H);
