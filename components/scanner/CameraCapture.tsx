@@ -255,7 +255,7 @@ function toQuad(pts: Array<{ x: number; y: number } | null>, W: number, H: numbe
   const [tl, tr, bl, br] = [top[0], top[1], bot[0], bot[1]];
   const cw = ((tr.x - tl.x) + (br.x - bl.x)) / 2;
   const ch = ((bl.y - tl.y) + (br.y - tr.y)) / 2;
-  if (cw < W * 0.15 || ch < H * 0.15) return null;
+  if (cw < W * 0.30 || ch < H * 0.35) return null;
   const asp = ch / cw;
   if (asp < 1.1 || asp > 2.0) return null;
   return { tl, tr, bl, br };
@@ -471,7 +471,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         mse = mc > 0 ? mse / mc : 0;
         pCtx.drawImage(sample, 0, 0);
 
-        if (cooldownRef.current || mse > MOTION_RESET_THRESHOLD || !hasObject) {
+        if (cooldownRef.current || mse > MOTION_RESET_THRESHOLD || !hasObject || !quad) {
           stableRef.current = 0;
           if (!cooldownRef.current) setProgress(0);
         } else {
