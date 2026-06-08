@@ -16,7 +16,7 @@ const SAMPLE_H = 266;
 const CHECK_MS               = 100;
 const MOTION_RESET_THRESHOLD = 800;
 const CARD_DETECT_VARIANCE   = 80;   // niedrig → Detection läuft fast immer
-const SNAP_STABLE_FRAMES     = 3;
+const SNAP_STABLE_FRAMES     = 10; // 1 s Ruhe → Auslöser
 const SNAP_COOLDOWN_MS       = 2000;
 
 // Analyse-Canvas: feste Größe für konsistente Erkennung
@@ -168,9 +168,35 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     overlay.height = dispH;
     const ctx = overlay.getContext('2d')!;
     ctx.clearRect(0, 0, dispW, dispH);
-    if (!quad || !vw || !vh) return;
+    if (!vw || !vh) return;
 
-    // object-cover Mapping: Analyse-Canvas → Video → Display
+    if (!quad) {
+      // Statischer gestrichelter Kartenrahmen als Orientierungshilfe
+      const guideW = Math.min(dispW * 0.62, dispH * 0.50);
+      const guideH = guideW * 1.4;
+      const gx = (dispW - guideW) / 2;
+      const gy = (dispH - guideH) / 2;
+      const r = 14;
+      ctx.setLineDash([10, 7]);
+      ctx.strokeStyle = 'rgba(255,255,255,0.30)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(gx + r, gy);
+      ctx.lineTo(gx + guideW - r, gy);
+      ctx.arcTo(gx + guideW, gy, gx + guideW, gy + r, r);
+      ctx.lineTo(gx + guideW, gy + guideH - r);
+      ctx.arcTo(gx + guideW, gy + guideH, gx + guideW - r, gy + guideH, r);
+      ctx.lineTo(gx + r, gy + guideH);
+      ctx.arcTo(gx, gy + guideH, gx, gy + guideH - r, r);
+      ctx.lineTo(gx, gy + r);
+      ctx.arcTo(gx, gy, gx + r, gy, r);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.setLineDash([]);
+      return;
+    }
+
+    // Grünes Viereck um erkannte Karte
     const vAsp = vw / vh, dAsp = dispW / dispH;
     let scale: number, ox: number, oy: number;
     if (vAsp > dAsp) { scale = dispH / vh; ox = -(vw * scale - dispW) / 2; oy = 0; }
@@ -282,7 +308,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         mse = mc > 0 ? mse / mc : 0;
         pCtx.drawImage(sample, 0, 0);
 
-        if (cooldownRef.current || mse > MOTION_RESET_THRESHOLD || !quad) {
+        if (cooldownRef.current || mse > MOTION_RESET_THRESHOLD || !hasObject) {
           stableRef.current = 0;
           if (!cooldownRef.current) setProgress(0);
         } else {
@@ -304,11 +330,12 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     catch { /* nicht unterstützt */ }
   };
 
-  const hintText = paused       ? 'Scannen pausiert'
-    : inCooldown                ? 'Nächste Karte bereithalten …'
-    : progress > 0              ? 'Foto wird gemacht …'
-    : detected                  ? 'Karte erkannt — kurz stillhalten'
-    :                             'Pokémon-Karte in die Kamera halten';
+  const hintText = paused             ? 'Scannen pausiert'
+    : inCooldown                      ? 'Nächste Karte bereithalten …'
+    : detected && progress > 0        ? 'Karte erkannt — kurz stillhalten'
+    : progress > 0                    ? 'Bitte kurz stillhalten …'
+    : detected                        ? 'Karte erkannt'
+    :                                   'Karte in den Rahmen halten und stillhalten';
 
   const hintColor = (detected || progress > 0) && !inCooldown && !paused
     ? '#48bb78' : 'rgba(255,255,255,0.55)';
@@ -368,10 +395,10 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
             </div>
           )}
 
-          {/* Torch + Kamerawechsel (rechts, etwas unterhalb des Headers) */}
+          {/* Torch + Kamerawechsel (links, unterhalb des Headers — X-Button ist rechts) */}
           <div
-            className="absolute right-4 flex flex-col gap-2 pointer-events-auto"
-            style={{ top: 80, zIndex: 4 }}
+            className="absolute left-4 flex flex-col gap-2 pointer-events-auto"
+            style={{ top: 'calc(env(safe-area-inset-top, 0px) + 68px)', zIndex: 4 }}
             onClick={e => e.stopPropagation()}
           >
             <button onClick={toggleTorch} className="w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center">
