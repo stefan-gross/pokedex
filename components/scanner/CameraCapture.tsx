@@ -34,9 +34,11 @@ interface CardQuad {
 }
 
 /**
- * Erkennt eine Pokémon-Karte im Pixel-Buffer via Sobel-Kanten + linearer Regression.
- * Verwendet ein Histogramm-Perzentil als Schwellwert statt maxE-Faktor — dadurch
- * deutlich robuster gegen texturierte Hintergründe (Tisch, Hand, Tapete).
+ * Erkennt eine Pokémon-Karte via Zeilen/Spalten-Projektionen.
+ *
+ * Statt "erster Kantenpixel pro Scanline" (anfällig für Hintergrundtexturen)
+ * werden ALLE Gradienten pro Zeile/Spalte aufsummiert. Eine vollständige
+ * Kartenkante erzeugt so einen deutlich höheren Peak als isolierte Hintergrundkanten.
  */
 function detectCard(data: Uint8ClampedArray, W: number, H: number): CardQuad | null {
   // Graustufen
@@ -45,110 +47,88 @@ function detectCard(data: Uint8ClampedArray, W: number, H: number): CardQuad | n
     gray[i] = (data[i * 4] * 77 + data[i * 4 + 1] * 150 + data[i * 4 + 2] * 29) >> 8;
   }
 
-  // Vollständige Kantenkarte + Histogramm
-  const edgeMap = new Uint16Array(W * H);
-  const hist    = new Int32Array(512);
-  let maxE = 0;
+  // Zeilen- und Spalten-Projektionen der Kantenstärken
+  const rowSum = new Float32Array(H);
+  const colSum = new Float32Array(W);
   for (let y = 1; y < H - 1; y++) {
     for (let x = 1; x < W - 1; x++) {
-      const e = Math.abs(gray[y * W + x + 1] - gray[y * W + x - 1])
-              + Math.abs(gray[(y + 1) * W + x] - gray[(y - 1) * W + x]);
-      edgeMap[y * W + x] = e;
-      if (e < 512) hist[e]++;
-      if (e > maxE) maxE = e;
+      rowSum[y] += Math.abs(gray[(y + 1) * W + x] - gray[(y - 1) * W + x]); // horizontale Kanten
+      colSum[x] += Math.abs(gray[y * W + x + 1] - gray[y * W + x - 1]);     // vertikale Kanten
     }
   }
-  if (maxE < 10) return null;
 
-  // 75th-Perzentil als Schwellwert:
-  // Nur die schärfsten 25 % der Kanten gelten — filtert Hintergrundtextur zuverlässig heraus.
-  const totalPx = (W - 2) * (H - 2);
-  const target  = Math.floor(totalPx * 0.75);
-  let cum = 0, thr = Math.round(maxE * 0.25);
-  for (let v = 1; v < 512; v++) { cum += hist[v]; if (cum >= target) { thr = v; break; } }
-  thr = Math.max(thr, 10);
+  // Boxfilter-Glättung (Breite 9) — dämpft Einzelpixel-Rauschen
+  const smooth = (arr: Float32Array): Float32Array => {
+    const out = new Float32Array(arr.length);
+    const R = 4;
+    for (let i = 0; i < arr.length; i++) {
+      let s = 0, c = 0;
+      for (let d = -R; d <= R; d++) {
+        const j = i + d;
+        if (j >= 0 && j < arr.length) { s += arr[j]; c++; }
+      }
+      out[i] = s / c;
+    }
+    return out;
+  };
 
-  const edgeAt = (y: number, x: number) => edgeMap[y * W + x] ?? 0;
+  const rows = smooth(rowSum);
+  const cols = smooth(colSum);
 
-  const xM = Math.round(W * 0.05);
+  // Durchschnittliche Kantenstärke (Qualitäts-Gate + Normierung für Stärkecheck)
+  let rowMean = 0, colMean = 0;
+  for (let y = 0; y < H; y++) rowMean += rows[y];
+  for (let x = 0; x < W; x++) colMean += cols[x];
+  rowMean /= H; colMean /= W;
+  if (rowMean < 8 || colMean < 8) return null; // Bild zu dunkel/leer
+
   const yM = Math.round(H * 0.05);
+  const xM = Math.round(W * 0.05);
 
-  // Kantenpunkte pro Seite: für jede Spalte/Zeile den ersten starken Kantenpixel
-  const topPts: [number, number][] = [];
-  const botPts: [number, number][] = [];
-  const lftPts: [number, number][] = [];
-  const rgtPts: [number, number][] = [];
-
-  for (let x = xM; x < W - xM; x += 2) {
-    for (let y = yM; y < H * 0.75; y++) {
-      if (edgeAt(y, x) >= thr) { topPts.push([x, y]); break; }
+  // Peak-Suche: Maximum in einer Richtung (von → bis)
+  const peak = (arr: Float32Array, from: number, to: number): { pos: number; val: number } => {
+    let pos = -1, val = -1;
+    const step = from <= to ? 1 : -1;
+    for (let i = from; i !== to + step; i += step) {
+      if (arr[i] > val) { val = arr[i]; pos = i; }
     }
-    for (let y = H - yM; y > H * 0.25; y--) {
-      if (edgeAt(y, x) >= thr) { botPts.push([x, y]); break; }
-    }
-  }
-  for (let y = yM; y < H - yM; y += 2) {
-    for (let x = xM; x < W * 0.75; x++) {
-      if (edgeAt(y, x) >= thr) { lftPts.push([y, x]); break; }
-    }
-    for (let x = W - xM; x > W * 0.25; x--) {
-      if (edgeAt(y, x) >= thr) { rgtPts.push([y, x]); break; }
-    }
-  }
-
-  const MIN = 8;
-  if (topPts.length < MIN || botPts.length < MIN || lftPts.length < MIN || rgtPts.length < MIN) return null;
-
-  // Lineare Regression mit R²
-  const fit = (pts: [number, number][]): { s: number; b: number; r2: number } => {
-    const n = pts.length;
-    let sx = 0, sy = 0, sxx = 0, sxy = 0;
-    for (const [x, y] of pts) { sx += x; sy += y; sxx += x * x; sxy += x * y; }
-    const d = n * sxx - sx * sx;
-    if (Math.abs(d) < 1) return { s: 0, b: sy / n, r2: 0 };
-    const s = (n * sxy - sx * sy) / d;
-    const b = (sy - s * sx) / n;
-    const ym = sy / n;
-    let sr = 0, st = 0;
-    for (const [x, y] of pts) { sr += (y - s * x - b) ** 2; st += (y - ym) ** 2; }
-    return { s, b, r2: st > 0 ? 1 - sr / st : 1 };
+    return { pos, val };
   };
 
-  const top = fit(topPts);
-  const bot = fit(botPts);
-  const lft = fit(lftPts);
-  const rgt = fit(rgtPts);
+  // Obere Hälfte → Oberkante, untere Hälfte → Unterkante (von außen nach innen)
+  const topHalf = Math.round(H * 0.55);
+  const botHalf = Math.round(H * 0.45);
+  const lftHalf = Math.round(W * 0.55);
+  const rgtHalf = Math.round(W * 0.45);
 
-  // R² > 0.4 — gerade Kante, kein zufälliges Rauschen
-  if (top.r2 < 0.4 || bot.r2 < 0.4 || lft.r2 < 0.4 || rgt.r2 < 0.4) return null;
+  const { pos: topY, val: topV } = peak(rows, yM, topHalf);
+  const { pos: botY, val: botV } = peak(rows, H - yM, botHalf);
+  const { pos: lftX, val: lftV } = peak(cols, xM, lftHalf);
+  const { pos: rgtX, val: rgtV } = peak(cols, W - xM, rgtHalf);
 
-  // Schnittpunkte der vier Geraden → Ecken
-  const ix = (ms: number, bs: number, ml: number, bl: number) => {
-    const d = 1 - ml * ms;
-    if (Math.abs(d) < 0.001) return { x: bl, y: ms * bl + bs };
-    const x = (ml * bs + bl) / d;
-    return { x, y: ms * x + bs };
-  };
+  if (topY < 0 || botY < 0 || lftX < 0 || rgtX < 0) return null;
+  if (topY >= botY || lftX >= rgtX) return null;
 
-  const tl = ix(top.s, top.b, lft.s, lft.b);
-  const tr = ix(top.s, top.b, rgt.s, rgt.b);
-  const bl = ix(bot.s, bot.b, lft.s, lft.b);
-  const br = ix(bot.s, bot.b, rgt.s, rgt.b);
+  const cardW = rgtX - lftX;
+  const cardH = botY - topY;
 
-  // Mindestgröße (15 % des Frames) + Seitenverhältnis einer Pokémon-Karte
-  const w = (Math.hypot(tr.x - tl.x, tr.y - tl.y) + Math.hypot(br.x - bl.x, br.y - bl.y)) / 2;
-  const h = (Math.hypot(bl.x - tl.x, bl.y - tl.y) + Math.hypot(br.x - tr.x, br.y - tr.y)) / 2;
+  // Mindestgröße: 18 % des Analyse-Frames
+  if (cardW < W * 0.18 || cardH < H * 0.18) return null;
 
-  if (w < W * 0.15 || h < H * 0.15) return null;
-  const asp = h / w;
+  // Seitenverhältnis einer Pokémon-Karte (h/w ≈ 1.0–2.1)
+  const asp = cardH / cardW;
   if (asp < 1.0 || asp > 2.1) return null;
 
-  // Ecken nicht weit außerhalb des Frames
-  for (const p of [tl, tr, bl, br]) {
-    if (p.x < -W * 0.25 || p.x > W * 1.25 || p.y < -H * 0.25 || p.y > H * 1.25) return null;
-  }
+  // Peaks müssen klar über dem Durchschnitt liegen (Kartenkante ≥ 2.5× mittlere Kantenstärke)
+  if (topV < rowMean * 2.5 || botV < rowMean * 2.5) return null;
+  if (lftV < colMean * 2.5 || rgtV < colMean * 2.5) return null;
 
-  return { tl, tr, bl, br };
+  return {
+    tl: { x: lftX, y: topY },
+    tr: { x: rgtX, y: topY },
+    bl: { x: lftX, y: botY },
+    br: { x: rgtX, y: botY },
+  };
 }
 
 export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: Props) {
