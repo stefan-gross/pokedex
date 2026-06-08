@@ -4,7 +4,6 @@ import { RotateCcw, Search, Plus } from 'lucide-react';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardLanguage, CardVariant } from '@/types';
 import { AddToCollectionModal } from './AddToCollectionModal';
-import { cardInfoToTcgApi } from '@/lib/card-info';
 import { toTcgdexId } from '@/lib/tcgdex';
 import { useState } from 'react';
 
@@ -150,7 +149,7 @@ export function CardScanResult({ card, candidates, language, confidence, preVari
 
       {showModal && activeCard && (
         <AddToCollectionModal
-          card={cardInfoToTcgApi(activeCard)}
+          card={activeCard}
           preVariant={preVariant}
           preLanguage={language}
           fromScanner

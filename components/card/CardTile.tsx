@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Lock } from 'lucide-react';
-import { cardInfoToTcgApi, type CardInfo } from '@/lib/card-info';
+import type { CardInfo } from '@/lib/card-info';
 import type { CardDoc } from '@/types';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { CardImage } from '@/components/card/CardImage';
@@ -119,7 +119,7 @@ export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWis
 
       {showModal && (
         <AddToCollectionModal
-          card={cardInfoToTcgApi(card)}
+          card={card}
           onClose={() => setShowModal(false)}
           onSaved={() => setShowModal(false)}
         />

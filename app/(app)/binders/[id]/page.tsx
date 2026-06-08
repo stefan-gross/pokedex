@@ -85,12 +85,14 @@ export default function BinderDetailPage({ params }: Props) {
             >
               Bearbeiten
             </button>
-            <button
-              onClick={() => { setShowActions(false); handleDelete(); }}
-              className="w-full px-4 py-3 text-sm text-left text-destructive hover:bg-secondary"
-            >
-              Sammlung löschen
-            </button>
+            {!binder.isDefault && (
+              <button
+                onClick={() => { setShowActions(false); handleDelete(); }}
+                className="w-full px-4 py-3 text-sm text-left text-destructive hover:bg-secondary"
+              >
+                Sammlung löschen
+              </button>
+            )}
           </div>
         )}
       </div>

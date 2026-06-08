@@ -37,6 +37,7 @@ export interface BinderDoc {
   /** 'binder' = Ordner mit fester Seitengröße, 'box' = offene Box ohne Größenlimit */
   collectionType?: 'binder' | 'box';
   size?: 9 | 12 | 16 | 18;   // nur bei collectionType === 'binder'
+  isDefault?: boolean;
   sortOrder: number;
   cardIds: string[];
   wishlistCardIds: string[];

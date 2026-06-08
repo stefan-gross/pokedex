@@ -46,3 +46,25 @@ export async function removeCardFromBinder(binderId: string, cardId: string): Pr
 export async function addWishlistCardToBinder(binderId: string, wishlistCardId: string): Promise<void> {
   await updateDoc(doc(db, COL, binderId), { wishlistCardIds: arrayUnion(wishlistCardId) });
 }
+
+export async function ensureDefaultBinder(): Promise<string> {
+  const binders = await getBinders();
+  const byFlag = binders.find(b => b.isDefault);
+  if (byFlag) return byFlag.id;
+  // Existierenden Binder gleichen Namens übernehmen statt Duplikat anlegen
+  const byName = binders.find(b => b.name === 'Meine Sammlung');
+  if (byName) {
+    await updateBinder(byName.id, { isDefault: true, sortOrder: -1, collectionType: 'box' });
+    return byName.id;
+  }
+  return addBinder({ name: 'Meine Sammlung', isDefault: true, sortOrder: -1, collectionType: 'box' });
+}
+
+/** Entfernt eine Karte aus einem Binder und löscht den Default-Binder automatisch wenn er danach leer ist. */
+export async function removeCardFromBinderAndCleanup(binderId: string, cardId: string): Promise<void> {
+  await removeCardFromBinder(binderId, cardId);
+  const binder = await getBinder(binderId);
+  if (binder?.isDefault && binder.cardIds.length === 0) {
+    await deleteBinder(binderId);
+  }
+}

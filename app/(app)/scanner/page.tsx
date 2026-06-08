@@ -7,7 +7,7 @@ import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { getCardBySetAndNumber, getCardsByDexNumber } from '@/lib/firestore/catalog';
 import { getCardsByTcgId } from '@/lib/firestore/cards';
-import { catalogCardToInfo, cardInfoToTcgApi } from '@/lib/card-info';
+import { catalogCardToInfo } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardLanguage, CardVariant } from '@/types';
 import { toTcgdexId } from '@/lib/tcgdex';
@@ -339,7 +339,7 @@ export default function ScannerPage() {
       {/* ── AddToCollectionModal ─────────────────────────────────── */}
       {activeJob?.result?.card && (
         <AddToCollectionModal
-          card={cardInfoToTcgApi(activeJob.result.card)}
+          card={activeJob.result.card}
           preVariant={activeJob.result.variant}
           preLanguage={activeJob.result.language}
           fromScanner

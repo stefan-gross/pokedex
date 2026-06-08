@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react';
 import { X, Plus, Heart, CheckCircle2, ChevronDown, Trash2, Info, Repeat2, LayoutGrid } from 'lucide-react';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe } from '@/lib/card-constants';
-import { cardInfoToTcgApi, catalogCardToInfo, type CardInfo } from '@/lib/card-info';
+import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { markReviewed, deleteCard } from '@/lib/firestore/cards';
-import { removeCardFromBinder } from '@/lib/firestore/binders';
+import { removeCardFromBinderAndCleanup } from '@/lib/firestore/binders';
 import { getCardsByEvolutionFamily, getCardsByDexNumber } from '@/lib/firestore/catalog';
 import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
 import { fetchPokemonSpeciesDE, getEvolutionFamilyDexNumbers, type SpeciesDE } from '@/lib/pokeapi';
@@ -192,7 +192,6 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
     ? card.variants
     : card.rarity ? detectVariants(card.rarity) : ['standard']
   ) as CardVariant[];
-  const tcgApiCard  = cardInfoToTcgApi(card);
   const stage       = getStage(card.subtypes ?? []);
   const energyTypes = (card.types ?? []).map(toEnergy).filter(Boolean) as EnergyType[];
   const setCode     = card.setCode ?? card.setId.toUpperCase();
@@ -217,7 +216,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
     setConfirmId(null);
     setDeletingId(copy.id);
     try {
-      await Promise.all(bindersOf(copy).map(b => removeCardFromBinder(b.id, copy.id)));
+      await Promise.all(bindersOf(copy).map(b => removeCardFromBinderAndCleanup(b.id, copy.id)));
       await deleteCard(copy.id);
       onSaved?.();
     } finally { setDeletingId(null); }
@@ -631,7 +630,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
       {/* ── AddToCollectionModal ──────────────────────────────── */}
       {addVariant !== null && (
         <AddToCollectionModal
-          card={tcgApiCard}
+          card={card}
           preVariant={addVariant}
           onClose={() => setAddVariant(null)}
           onSaved={() => { setAddVariant(null); onSaved?.(); }}

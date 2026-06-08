@@ -171,14 +171,16 @@ export default function SettingsPage() {
       const bfRes  = await fetch('/api/admin/backfill-set-codes', { method: 'POST' });
       const bfData = await bfRes.json();
 
-      // 6. Deutsche Karten-Bilder
-      step('🖼️ (6/6) Deutsche Karten-Bilder werden angereichert…');
+      // 6. Deutsche Karten-Bilder (mit Reset: auch bisher übersprungene Sets neu prüfen)
+      step('🖼️ (6/7) Deutsche Karten-Bilder werden angereichert…');
       let imgTotal = 0;
+      let imgFirst = true;
       while (true) {
-        const res  = await fetch('/api/admin/enrich-de-images', { method: 'POST' });
+        const res  = await fetch('/api/admin/enrich-de-images', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reset: imgFirst }) });
+        imgFirst = false;
         const data = await res.json();
         imgTotal += data.enriched ?? 0;
-        step(`🖼️ (6/6) DE-Bilder: ${imgTotal} Karten…`);
+        step(`🖼️ (6/7) DE-Bilder: ${imgTotal} Karten…`);
         if (data.status !== 'in-progress') break;
       }
 
@@ -352,7 +354,7 @@ export default function SettingsPage() {
                       {runningAll ? 'Läuft…' : 'Alles auf einmal ausführen'}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Evo · DE-Namen · Sets · Kürzel · DE-Bilder · Artdaten — alle 7 Schritte
+                      Evo · DE-Namen · Sets · Kürzel · DE-Bilder (Reset) · Artdaten — alle 7 Schritte
                     </p>
                   </div>
                 </button>
