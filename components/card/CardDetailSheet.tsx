@@ -70,7 +70,7 @@ function AccHeader({
     <button
       onClick={onToggle}
       className="w-full flex items-center justify-between px-4 min-h-[52px] text-left transition-colors"
-      style={{ borderTop: border ? '1px solid var(--border)' : 'none' }}
+      style={{ borderTop: border ? '1px solid color-mix(in srgb, var(--border) 50%, transparent)' : 'none' }}
     >
       <div className="flex items-center gap-2.5 font-semibold text-[15px]">
         <span className="text-muted-foreground">{icon}</span>
@@ -246,8 +246,11 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
 
       {/* Sheet */}
       <div
-        className="relative w-full rounded-t-2xl bg-card border-t border-border max-h-[93dvh] flex flex-col transition-transform duration-[250ms] ease-out"
-        style={{ transform: visible ? 'translateY(0)' : 'translateY(100%)' }}
+        className="relative w-full rounded-t-2xl bg-card max-h-[93dvh] flex flex-col transition-transform duration-[250ms] ease-out"
+        style={{
+          transform: visible ? 'translateY(0)' : 'translateY(100%)',
+          boxShadow: '0 -8px 32px rgba(30,40,80,0.14), 0 -2px 8px rgba(30,40,80,0.07)',
+        }}
       >
         {/* Handle */}
         <div className="flex items-center justify-center pt-3 pb-1 shrink-0">
@@ -350,7 +353,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
           </div>
 
           {/* ── Akkordion ─────────────────────────────────── */}
-          <div className="mx-4 rounded-2xl border border-border overflow-hidden mb-4">
+          <div className="mx-4 rounded-2xl shadow-card overflow-hidden mb-4">
 
             {/* 1 · Details */}
             <AccHeader
@@ -361,7 +364,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
               border={false}
             />
             {openSec.has('details') && (
-              <div className="px-4 pb-4 border-t border-border">
+              <div className="px-4 pb-4 border-t border-border/50">
                 {species ? (
                   <>
                     {species.genus && (
@@ -426,7 +429,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
               onToggle={() => toggle('evo')}
             />
             {openSec.has('evo') && (
-              <div className="px-4 pb-4 border-t border-border">
+              <div className="px-4 pb-4 border-t border-border/50">
                 {evoCards.length > 1 ? (
                   <div className="flex items-center gap-0 overflow-x-auto pt-3 pb-1" style={{ scrollbarWidth: 'none' }}>
                     {evoCards.map((ec, i) => (
@@ -476,7 +479,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
               onToggle={() => toggle('cards')}
             />
             {openSec.has('cards') && (
-              <div className="border-t border-border">
+              <div className="border-t border-border/50">
                 {variants.map((variant, vi) => {
                   const copies = ownedCopies.filter(c => c.variant === variant);
                   const isOwned = copies.length > 0;
@@ -485,7 +488,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                       key={variant}
                       className="px-4 py-3"
                       style={{
-                        borderTop: vi > 0 ? '1px solid var(--border)' : 'none',
+                        borderTop: vi > 0 ? '1px solid color-mix(in srgb, var(--border) 50%, transparent)' : 'none',
                         background: isOwned ? 'rgba(72,187,120,.04)' : 'transparent',
                       }}
                     >
@@ -628,9 +631,9 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                 })}
 
                 {/* Wunschliste */}
-                <div className="px-4 pt-2 pb-3 border-t border-border">
+                <div className="px-4 pt-2 pb-3 border-t border-border/50">
                   <button
-                    className="w-full h-11 rounded-xl border border-border flex items-center justify-center gap-2 text-[13px] font-semibold text-muted-foreground"
+                    className="w-full h-11 rounded-xl bg-secondary flex items-center justify-center gap-2 text-[13px] font-semibold text-muted-foreground"
                   >
                     <Heart size={15} />
                     Auf Wunschliste setzen
