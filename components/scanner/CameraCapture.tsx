@@ -15,15 +15,15 @@ const SAMPLE_H = 266;
 
 const CHECK_MS               = 100;
 const MOTION_RESET_THRESHOLD = 800;
-const CARD_DETECT_VARIANCE   = 600;
+const CARD_DETECT_VARIANCE   = 80;   // niedrig → Detection läuft fast immer
 const SNAP_STABLE_FRAMES     = 3;
 const SNAP_COOLDOWN_MS       = 2000;
 
 // Analyse-Canvas: feste Größe für konsistente Erkennung
-const EDGE_W = 280;
-const EDGE_H = 392; // ~1.4 Seitenverhältnis
+const EDGE_W = 320;
+const EDGE_H = 448; // ~1.4 Seitenverhältnis
 // Anteil des Videobilds der analysiert wird (groß = auch außermittige Karten)
-const DETECT_FRACTION = 0.85;
+const DETECT_FRACTION = 0.90;
 
 // ─── Rotationsrobuste Kartenerkennung ──────────────────────────────────────
 interface CardQuad {
@@ -35,8 +35,8 @@ interface CardQuad {
 
 /**
  * Erkennt eine Pokémon-Karte im Pixel-Buffer via Sobel-Kanten + linearer Regression.
- * Funktioniert auch bei leichter Rotation und off-center Lage, weil statt fixer
- * Bandpositionen Geraden durch alle Kantenpunkte gefittet werden.
+ * Verwendet ein Histogramm-Perzentil als Schwellwert statt maxE-Faktor — dadurch
+ * deutlich robuster gegen texturierte Hintergründe (Tisch, Hand, Tapete).
  */
 function detectCard(data: Uint8ClampedArray, W: number, H: number): CardQuad | null {
   // Graustufen
@@ -45,53 +45,61 @@ function detectCard(data: Uint8ClampedArray, W: number, H: number): CardQuad | n
     gray[i] = (data[i * 4] * 77 + data[i * 4 + 1] * 150 + data[i * 4 + 2] * 29) >> 8;
   }
 
-  // Schneller Gradientenbetrag (ohne sqrt, Manhattan-Norm reicht)
-  const edge = (y: number, x: number): number => {
-    if (x < 1 || x >= W - 1 || y < 1 || y >= H - 1) return 0;
-    return Math.abs(gray[y * W + x + 1] - gray[y * W + x - 1]) +
-           Math.abs(gray[(y + 1) * W + x] - gray[(y - 1) * W + x]);
-  };
-
-  // Adaptiver Schwellwert (sparse sample)
+  // Vollständige Kantenkarte + Histogramm
+  const edgeMap = new Uint16Array(W * H);
+  const hist    = new Int32Array(512);
   let maxE = 0;
-  for (let y = 2; y < H - 2; y += 4) {
-    for (let x = 2; x < W - 2; x += 4) {
-      const e = edge(y, x); if (e > maxE) maxE = e;
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      const e = Math.abs(gray[y * W + x + 1] - gray[y * W + x - 1])
+              + Math.abs(gray[(y + 1) * W + x] - gray[(y - 1) * W + x]);
+      edgeMap[y * W + x] = e;
+      if (e < 512) hist[e]++;
+      if (e > maxE) maxE = e;
     }
   }
-  if (maxE < 18) return null;
-  const thr = maxE * 0.22;
+  if (maxE < 10) return null;
 
-  const xM = Math.round(W * 0.06);
-  const yM = Math.round(H * 0.06);
+  // 75th-Perzentil als Schwellwert:
+  // Nur die schärfsten 25 % der Kanten gelten — filtert Hintergrundtextur zuverlässig heraus.
+  const totalPx = (W - 2) * (H - 2);
+  const target  = Math.floor(totalPx * 0.75);
+  let cum = 0, thr = Math.round(maxE * 0.25);
+  for (let v = 1; v < 512; v++) { cum += hist[v]; if (cum >= target) { thr = v; break; } }
+  thr = Math.max(thr, 10);
 
-  // Kantenpunkte pro Seite sammeln
-  const topPts: [number, number][] = [];   // [x, y] → y = f(x)
+  const edgeAt = (y: number, x: number) => edgeMap[y * W + x] ?? 0;
+
+  const xM = Math.round(W * 0.05);
+  const yM = Math.round(H * 0.05);
+
+  // Kantenpunkte pro Seite: für jede Spalte/Zeile den ersten starken Kantenpixel
+  const topPts: [number, number][] = [];
   const botPts: [number, number][] = [];
-  const lftPts: [number, number][] = [];   // [y, x] → x = f(y)
+  const lftPts: [number, number][] = [];
   const rgtPts: [number, number][] = [];
 
   for (let x = xM; x < W - xM; x += 2) {
-    for (let y = yM; y < H * 0.70; y++) {
-      if (edge(y, x) >= thr) { topPts.push([x, y]); break; }
+    for (let y = yM; y < H * 0.75; y++) {
+      if (edgeAt(y, x) >= thr) { topPts.push([x, y]); break; }
     }
-    for (let y = H - yM; y > H * 0.30; y--) {
-      if (edge(y, x) >= thr) { botPts.push([x, y]); break; }
+    for (let y = H - yM; y > H * 0.25; y--) {
+      if (edgeAt(y, x) >= thr) { botPts.push([x, y]); break; }
     }
   }
   for (let y = yM; y < H - yM; y += 2) {
-    for (let x = xM; x < W * 0.70; x++) {
-      if (edge(y, x) >= thr) { lftPts.push([y, x]); break; }
+    for (let x = xM; x < W * 0.75; x++) {
+      if (edgeAt(y, x) >= thr) { lftPts.push([y, x]); break; }
     }
-    for (let x = W - xM; x > W * 0.30; x--) {
-      if (edge(y, x) >= thr) { rgtPts.push([y, x]); break; }
+    for (let x = W - xM; x > W * 0.25; x--) {
+      if (edgeAt(y, x) >= thr) { rgtPts.push([y, x]); break; }
     }
   }
 
-  const MIN = 10;
+  const MIN = 8;
   if (topPts.length < MIN || botPts.length < MIN || lftPts.length < MIN || rgtPts.length < MIN) return null;
 
-  // Lineare Regression: y = slope*x + intercept, gibt auch R² zurück
+  // Lineare Regression mit R²
   const fit = (pts: [number, number][]): { s: number; b: number; r2: number } => {
     const n = pts.length;
     let sx = 0, sy = 0, sxx = 0, sxy = 0;
@@ -106,15 +114,15 @@ function detectCard(data: Uint8ClampedArray, W: number, H: number): CardQuad | n
     return { s, b, r2: st > 0 ? 1 - sr / st : 1 };
   };
 
-  const top = fit(topPts);   // y = top.s*x + top.b
+  const top = fit(topPts);
   const bot = fit(botPts);
-  const lft = fit(lftPts);   // x = lft.s*y + lft.b  (pts sind [y,x])
+  const lft = fit(lftPts);
   const rgt = fit(rgtPts);
 
-  // Mindest-Geradlinigkeit (R² > 0.6 → echte Kartenkante, kein Rauschen)
-  if (top.r2 < 0.6 || bot.r2 < 0.6 || lft.r2 < 0.6 || rgt.r2 < 0.6) return null;
+  // R² > 0.4 — gerade Kante, kein zufälliges Rauschen
+  if (top.r2 < 0.4 || bot.r2 < 0.4 || lft.r2 < 0.4 || rgt.r2 < 0.4) return null;
 
-  // Schnittpunkt: y = ms*x + bs  UND  x = ml*y + bl
+  // Schnittpunkte der vier Geraden → Ecken
   const ix = (ms: number, bs: number, ml: number, bl: number) => {
     const d = 1 - ml * ms;
     if (Math.abs(d) < 0.001) return { x: bl, y: ms * bl + bs };
@@ -127,17 +135,17 @@ function detectCard(data: Uint8ClampedArray, W: number, H: number): CardQuad | n
   const bl = ix(bot.s, bot.b, lft.s, lft.b);
   const br = ix(bot.s, bot.b, rgt.s, rgt.b);
 
-  // Größe & Seitenverhältnis prüfen
+  // Mindestgröße (15 % des Frames) + Seitenverhältnis einer Pokémon-Karte
   const w = (Math.hypot(tr.x - tl.x, tr.y - tl.y) + Math.hypot(br.x - bl.x, br.y - bl.y)) / 2;
   const h = (Math.hypot(bl.x - tl.x, bl.y - tl.y) + Math.hypot(br.x - tr.x, br.y - tr.y)) / 2;
 
   if (w < W * 0.15 || h < H * 0.15) return null;
   const asp = h / w;
-  if (asp < 1.05 || asp > 1.85) return null;
+  if (asp < 1.0 || asp > 2.1) return null;
 
-  // Ecken dürfen nicht weit außerhalb des Analyse-Frames liegen
+  // Ecken nicht weit außerhalb des Frames
   for (const p of [tl, tr, bl, br]) {
-    if (p.x < -W * 0.2 || p.x > W * 1.2 || p.y < -H * 0.2 || p.y > H * 1.2) return null;
+    if (p.x < -W * 0.25 || p.x > W * 1.25 || p.y < -H * 0.25 || p.y > H * 1.25) return null;
   }
 
   return { tl, tr, bl, br };
@@ -334,7 +342,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       <canvas ref={canvasRef} className="hidden" />
       <canvas ref={sampleRef} width={SAMPLE_W} height={SAMPLE_H} className="hidden" />
       <canvas ref={prevRef}   width={SAMPLE_W} height={SAMPLE_H} className="hidden" />
-      <canvas ref={edgeRef}   width={EDGE_W}   height={EDGE_H}   className="hidden" />
+      <canvas ref={edgeRef} width={EDGE_W} height={EDGE_H} className="hidden" />
 
       {error ? (
         <div className="absolute inset-0 flex items-center justify-center px-8 text-center">
