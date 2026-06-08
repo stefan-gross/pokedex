@@ -6,6 +6,8 @@ import { Home, Search, BookOpen, Heart, Camera } from 'lucide-react';
 import { useEffect, useState, useCallback } from 'react';
 import { getReviewCount } from '@/lib/firestore/cards';
 
+const FAB_SIZE = 72;
+
 const navItems = [
   { href: '/', icon: Home, label: 'Home' },
   { href: '/collection', icon: Search, label: 'Suchen' },
@@ -33,27 +35,37 @@ export function BottomNav() {
     return pathname.startsWith(href);
   };
 
+  // Leicht nach oben versetzt: nur minimal über den Nav-Rand ragen
+  const fabStyle: React.CSSProperties = {
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+    marginTop: -10,
+    flexShrink: 0,
+    background: 'var(--pokedex-red)',
+    boxShadow: '0 4px 20px rgba(220,38,38,0.45)',
+  };
+
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around bg-card border-t border-border"
-      style={{ height: 'calc(68px + env(safe-area-inset-bottom, 0px))', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      className="fixed bottom-0 left-0 right-0 z-50 grid items-center justify-items-center bg-card border-t border-border"
+      style={{ gridTemplateColumns: 'repeat(5, 1fr)', height: 'calc(68px + env(safe-area-inset-bottom, 0px))', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
       {navItems.map((item, i) => {
         if (item === null) {
           return (
-            <div key="fab" className="relative flex items-center justify-center" style={{ width: 56 }}>
+            <div key="fab" className="relative flex items-center justify-center" style={{ width: FAB_SIZE }}>
               <Link
                 href="/scanner"
-                className="absolute -top-6 flex items-center justify-center rounded-full shadow-lg"
-                style={{ width: 56, height: 56, background: 'var(--pokedex-red)' }}
+                className="flex items-center justify-center rounded-full shadow-xl"
+                style={fabStyle}
                 aria-label="Karte scannen"
               >
-                <Camera size={24} color="#fff" />
+                <Camera size={28} color="#fff" />
               </Link>
               {reviewCount > 0 && (
                 <span
-                  className="absolute -top-7 -right-1 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-white text-[10px] font-bold px-1"
-                  style={{ background: '#f59e0b', pointerEvents: 'none' }}
+                  className="absolute min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-white text-[10px] font-bold px-1"
+                  style={{ background: '#f59e0b', pointerEvents: 'none', top: 0, right: -2 }}
                 >
                   {reviewCount > 99 ? '99+' : reviewCount}
                 </span>

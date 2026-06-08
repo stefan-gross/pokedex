@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Pause, Play, Trash2, Loader2, AlertCircle, StopCircle, Check, Plus } from 'lucide-react';
+import { X, Trash2, Loader2, AlertCircle, Check, Plus } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { getCardBySetAndNumber, getCardsByDexNumber } from '@/lib/firestore/catalog';
@@ -128,41 +128,23 @@ export default function ScannerPage() {
 
       {/* ── Header ──────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-4 pt-4 pb-3 bg-black">
+        <div className="w-9" />
+
+        {mode === 'scanning' ? (
+          <h1 className="text-base font-semibold text-white">Karten scannen</h1>
+        ) : (
+          <h1 className="text-base font-semibold text-white">
+            {doneJobs.length} Karte{doneJobs.length !== 1 ? 'n' : ''} gescannt
+          </h1>
+        )}
+
         <button
           onClick={() => router.back()}
           className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10"
+          aria-label="Schließen"
         >
-          <ArrowLeft size={18} color="#fff" />
+          <X size={18} color="#fff" />
         </button>
-
-        {mode === 'scanning' ? (
-          <>
-            <h1 className="text-base font-semibold text-white">Karte scannen</h1>
-            <button
-              onClick={() => setIsPaused(p => !p)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors"
-              style={{
-                background: isPaused ? 'rgba(72,187,120,.2)' : 'rgba(255,255,255,.1)',
-                color: isPaused ? '#48bb78' : '#fff',
-              }}
-            >
-              {isPaused ? <><Play size={14} /> Weiter</> : <><Pause size={14} /> Pause</>}
-            </button>
-          </>
-        ) : (
-          <>
-            <h1 className="text-base font-semibold text-white">
-              {doneJobs.length} Karte{doneJobs.length !== 1 ? 'n' : ''} gescannt
-            </h1>
-            <button
-              onClick={() => setMode('scanning')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium"
-              style={{ background: 'rgba(255,255,255,.1)', color: '#fff' }}
-            >
-              <Plus size={14} /> Mehr
-            </button>
-          </>
-        )}
       </div>
 
       {/* ── Scanning-Modus: Kamera + Slider ─────────────────────── */}
@@ -314,27 +296,6 @@ export default function ScannerPage() {
         </div>
       )}
 
-      {/* ── Stop-FAB (überlagert BottomNav-Kamera) ──────────────── */}
-      {doneJobs.length > 0 && mode === 'scanning' && (
-        <button
-          onClick={() => setMode('review')}
-          className="fixed left-1/2 -translate-x-1/2 z-[55] rounded-full shadow-lg flex items-center justify-center"
-          style={{
-            width: 56, height: 56,
-            bottom: 'calc(58px + env(safe-area-inset-bottom, 0px))',
-            background: 'var(--pokedex-red)',
-          }}
-          aria-label="Scannen beenden"
-        >
-          <StopCircle size={26} color="#fff" />
-          <span
-            className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-white text-[10px] font-bold px-1"
-            style={{ background: '#22c55e' }}
-          >
-            {doneJobs.length}
-          </span>
-        </button>
-      )}
 
       {/* ── AddToCollectionModal ─────────────────────────────────── */}
       {activeJob?.result?.card && (

@@ -22,31 +22,37 @@ const SNAP_COOLDOWN_MS       = 2000;
 // Analyse-Canvas bei fester Größe (effizient)
 const EDGE_W = 300;
 const EDGE_H = Math.round(EDGE_W * CARD_ASPECT); // 420
-// Anteil des Video-Bildes der gesampelt wird (Karte + Rand)
-const DETECT_FRACTION = 0.45;
+// Größerer Suchbereich → erkennt Karten auch leicht außermittig
+const DETECT_FRACTION = 0.75;
 // Minimale Kantenstärke für eine gültige Kartengrenze
 const EDGE_MIN_STRENGTH = 8;
 
-/**
- * Echte Kontur-Erkennung: Sucht in 4 Scan-Bändern jeweils die stärkste Kante,
- * prüft dann das Seitenverhältnis des gefundenen Rechtecks (~1.4 = Pokémon-Karte).
- * Gibt edgesFound (0–4) und cardDetected (nur true bei korrekter Form) zurück.
- */
-function detectCardContour(
-  data: Uint8ClampedArray, W: number, H: number
-): { edgesFound: number; cardDetected: boolean } {
+interface ContourResult {
+  edgesFound: number;
+  cardDetected: boolean;
+  topY: number;
+  bottomY: number;
+  leftX: number;
+  rightX: number;
+}
 
-  // Graustufenwert per Integer-Arithmetik (kein Float-Array nötig)
+/**
+ * Kontur-Erkennung: Sucht in 4 Scan-Bändern die stärkste Kante,
+ * prüft Seitenverhältnis (~1.4 = Pokémon-Karte).
+ * Gibt neben edgesFound/cardDetected auch die Corner-Koordinaten zurück
+ * (im EDGE_W × EDGE_H Analyse-Koordinatensystem).
+ */
+function detectCardContour(data: Uint8ClampedArray, W: number, H: number): ContourResult {
+  const none: ContourResult = { edgesFound: 0, cardDetected: false, topY: 0, bottomY: H, leftX: 0, rightX: W };
+
   const grayAt = (y: number, x: number) => {
     const p = (y * W + x) * 4;
     return (data[p] * 77 + data[p + 1] * 150 + data[p + 2] * 29) >> 8;
   };
 
-  // Scan-Margins für quer laufende Achse (10–90 % des Bildes)
   const xA = Math.round(W * 0.1), xB = Math.round(W * 0.9);
   const yA = Math.round(H * 0.1), yB = Math.round(H * 0.9);
 
-  // Stärkste horizontale Kante (Übergang oben↔unten) in einem Band suchen
   const findHEdge = (yFrom: number, yTo: number): [number, number] => {
     let bestY = -1, best = 0;
     for (let y = Math.max(1, yFrom); y < Math.min(H - 1, yTo); y++) {
@@ -61,7 +67,6 @@ function detectCardContour(
     return [bestY, best];
   };
 
-  // Stärkste vertikale Kante (Übergang links↔rechts) in einem Band suchen
   const findVEdge = (xFrom: number, xTo: number): [number, number] => {
     let bestX = -1, best = 0;
     for (let x = Math.max(1, xFrom); x < Math.min(W - 1, xTo); x++) {
@@ -76,29 +81,26 @@ function detectCardContour(
     return [bestX, best];
   };
 
-  // Obere Hälfte → obere Kante, untere Hälfte → untere Kante (mit 10 % Abstand zur Mitte)
-  const [topY,    topStr]    = findHEdge(1,                  Math.round(H * 0.45));
+  const [topY,    topStr]    = findHEdge(1,                    Math.round(H * 0.45));
   const [bottomY, bottomStr] = findHEdge(Math.round(H * 0.55), H - 1);
-  const [leftX,   leftStr]   = findVEdge(1,                  Math.round(W * 0.45));
+  const [leftX,   leftStr]   = findVEdge(1,                    Math.round(W * 0.45));
   const [rightX,  rightStr]  = findVEdge(Math.round(W * 0.55), W - 1);
 
   const strengths  = [topStr, bottomStr, leftStr, rightStr];
   const edgesFound = strengths.filter(s => s > EDGE_MIN_STRENGTH).length;
 
-  if (edgesFound < 4) return { edgesFound, cardDetected: false };
+  if (edgesFound < 4) return { ...none, edgesFound };
 
   const cardW = rightX - leftX;
   const cardH = bottomY - topY;
-  if (cardW <= 0 || cardH <= 0) return { edgesFound: 3, cardDetected: false };
+  if (cardW <= 0 || cardH <= 0) return { ...none, edgesFound: 3 };
 
-  // Pokémon-Karte: 2.5 × 3.5 cm → Ratio ≈ 1.40 (Toleranz 1.1–1.7)
   const aspect = cardH / cardW;
-  if (aspect < 1.1 || aspect > 1.7) return { edgesFound: 3, cardDetected: false };
+  if (aspect < 1.1 || aspect > 1.7) return { ...none, edgesFound: 3 };
 
-  // Karte muss ausreichend groß im Bild sein (mind. 10 % der Fläche)
-  if ((cardW * cardH) / (W * H) < 0.10) return { edgesFound: 3, cardDetected: false };
+  if ((cardW * cardH) / (W * H) < 0.08) return { ...none, edgesFound: 3 };
 
-  return { edgesFound: 4, cardDetected: true };
+  return { edgesFound: 4, cardDetected: true, topY, bottomY, leftX, rightX };
 }
 
 export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: Props) {
@@ -106,7 +108,8 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   const canvasRef   = useRef<HTMLCanvasElement>(null);
   const sampleRef   = useRef<HTMLCanvasElement>(null);
   const prevRef     = useRef<HTMLCanvasElement>(null);
-  const edgeRef     = useRef<HTMLCanvasElement>(null);  // Kanten-Analyse
+  const edgeRef     = useRef<HTMLCanvasElement>(null);
+  const overlayRef  = useRef<HTMLCanvasElement>(null); // sichtbares Kontur-Overlay
   const streamRef   = useRef<MediaStream | null>(null);
   const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
   const stableFramesRef = useRef<number>(0);
@@ -114,6 +117,62 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   const onCaptureRef = useRef(onCapture);
 
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
+
+  // Zeichnet grünen Kartenrahmen auf das Overlay-Canvas.
+  // corners: Koordinaten im EDGE_W×EDGE_H Analyse-Raum, plus Video-Crop-Infos.
+  const drawCardOverlay = useCallback((
+    corners: { topY: number; bottomY: number; leftX: number; rightX: number } | null,
+    vw: number, vh: number,
+    desx: number, desy: number, dw: number, dh: number,
+  ) => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+
+    const dispW = overlay.clientWidth;
+    const dispH = overlay.clientHeight;
+    if (dispW === 0 || dispH === 0) return;
+    overlay.width  = dispW;
+    overlay.height = dispH;
+
+    const ctx = overlay.getContext('2d')!;
+    ctx.clearRect(0, 0, dispW, dispH);
+    if (!corners || !vw || !vh) return;
+
+    // Video-Pixel → Display-Pixel (object-cover Mapping)
+    const videoAspect = vw / vh;
+    const dispAspect  = dispW / dispH;
+    let scale: number, offX: number, offY: number;
+    if (videoAspect > dispAspect) {
+      scale = dispH / vh;
+      offX  = -(vw * scale - dispW) / 2;
+      offY  = 0;
+    } else {
+      scale = dispW / vw;
+      offX  = 0;
+      offY  = -(vh * scale - dispH) / 2;
+    }
+
+    // Analyse-Pixel → Video-Pixel → Display-Pixel
+    const toDispX = (ex: number) => (desx + (ex / EDGE_W) * dw) * scale + offX;
+    const toDispY = (ey: number) => (desy + (ey / EDGE_H) * dh) * scale + offY;
+
+    const x0 = toDispX(corners.leftX);
+    const x1 = toDispX(corners.rightX);
+    const y0 = toDispY(corners.topY);
+    const y1 = toDispY(corners.bottomY);
+
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y0);
+    ctx.lineTo(x1, y1);
+    ctx.lineTo(x0, y1);
+    ctx.closePath();
+    ctx.strokeStyle = '#48bb78';
+    ctx.lineWidth   = 3;
+    ctx.shadowColor = 'rgba(72,187,120,0.6)';
+    ctx.shadowBlur  = 8;
+    ctx.stroke();
+  }, []);
 
   const [facingMode,   setFacingMode]   = useState<'environment' | 'user'>('environment');
   const [torch,        setTorch]        = useState(false);
@@ -216,14 +275,17 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         const variance = vc > 0 ? sq / vc - (s / vc) ** 2 : 0;
         const hasObject = variance > CARD_DETECT_VARIANCE;
 
-        // ── 2. Kontur-Check (größerer Ausschnitt: Karte + Hintergrund) ──
+        // ── 2. Kontur-Check ──────────────────────────────────────────────
         let edges = 0;
         let localCardDetected = false;
+        let cropParams = { desx: 0, desy: 0, dw: 0, dh: 0 };
+
         if (hasObject) {
           const dw = Math.min(Math.round(Math.min(vw, vh) * DETECT_FRACTION), vw);
           const dh = Math.min(Math.round(dw * CARD_ASPECT), vh);
           const desx = Math.max(0, (vw - dw) / 2);
           const desy = Math.max(0, (vh - dh) / 2);
+          cropParams = { desx, desy, dw, dh };
 
           const eCtx = edge.getContext('2d')!;
           eCtx.drawImage(video, desx, desy, dw, dh, 0, 0, EDGE_W, EDGE_H);
@@ -231,7 +293,16 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
           const contour = detectCardContour(eData, EDGE_W, EDGE_H);
           edges = contour.edgesFound;
           localCardDetected = contour.cardDetected;
+
+          if (localCardDetected) {
+            drawCardOverlay(contour, vw, vh, desx, desy, dw, dh);
+          } else {
+            drawCardOverlay(null, vw, vh, desx, desy, dw, dh);
+          }
+        } else {
+          drawCardOverlay(null, 0, 0, 0, 0, 0, 0);
         }
+
         setEdgesFound(edges);
         setCardDetected(localCardDetected);
 
@@ -263,7 +334,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       clearTimeout(startDelay);
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [doCapture, paused]);
+  }, [doCapture, paused, drawCardOverlay]);
 
   // ── Torch ────────────────────────────────────────────────────────────────
   const toggleTorch = async () => {
@@ -304,6 +375,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       <canvas ref={sampleRef} width={FRAME_W} height={FRAME_H} className="hidden" />
       <canvas ref={prevRef}   width={FRAME_W} height={FRAME_H} className="hidden" />
       <canvas ref={edgeRef}   width={EDGE_W}  height={EDGE_H}  className="hidden" />
+      {/* Overlay-Canvas — sichtbar, über dem Video */}
 
       {error ? (
         <div className="w-full aspect-[3/4] bg-black rounded-2xl flex items-center justify-center text-center px-6">
@@ -315,6 +387,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
           onClick={!inCooldown && !paused ? doCapture : undefined}
         >
           <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
+          <canvas ref={overlayRef} className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 2 }} />
 
           {flashing && <div className="absolute inset-0 bg-white/75 pointer-events-none" />}
 
