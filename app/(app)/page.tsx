@@ -245,7 +245,7 @@ export default function DashboardPage() {
           onSaved={async () => {
             const fresh = await getCards().catch(() => [] as CardDoc[]);
             setCards(fresh);
-            if (detailCard) setDetailOwned(fresh.filter(c => c.tcgId === detailCard.tcgId));
+            if (detailCard) setDetailOwned(fresh.filter(c => c.tcgId === detailCard.id));
           }}
         />
       )}
