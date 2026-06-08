@@ -4,12 +4,16 @@ import Link from 'next/link';
 import { Settings, Star, Clock, Percent } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getCards } from '@/lib/firestore/cards';
+import { getBinders } from '@/lib/firestore/binders';
 import { getWishlists } from '@/lib/firestore/wishlists';
+import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
 import { getSetById } from '@/lib/firestore/sets';
+import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { getCountFromServer, collection, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { SetListItem } from '@/components/set/SetListItem';
-import type { CardDoc } from '@/types';
+import { CardDetailSheet } from '@/components/card/CardDetailSheet';
+import type { CardDoc, BinderDoc } from '@/types';
 
 type SetView = 'recent' | 'complete' | 'favorites';
 
@@ -26,16 +30,30 @@ interface SetEntry {
 export default function DashboardPage() {
   const [setView, setSetView]       = useState<SetView>('recent');
   const [cards, setCards]           = useState<CardDoc[] | null>(null);
+  const [binders, setBinders]       = useState<BinderDoc[]>([]);
   const [wishlistCount, setWishlistCount] = useState<number | null>(null);
   const [setTotals, setSetTotals]   = useState<Record<string, number>>({});
   const [setMeta,   setSetMeta]     = useState<Record<string, { nameDe?: string; logoDe?: string; ptcgoCode?: string }>>({});
+  const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
+  const [detailOwned, setDetailOwned] = useState<CardDoc[]>([]);
 
   useEffect(() => {
     getCards().then(setCards).catch(() => setCards([]));
+    getBinders().then(setBinders).catch(() => {});
     getWishlists()
       .then(wls => setWishlistCount(wls.reduce((s, w) => s + w.items.filter(i => !i.acquired).length, 0)))
       .catch(() => setWishlistCount(0));
   }, []);
+
+  async function openDetail(cardDoc: CardDoc) {
+    if (!cardDoc.tcgId) return;
+    const [catalogCard] = await getCatalogCardsByIds([cardDoc.tcgId]);
+    if (!catalogCard) return;
+    const info = catalogCardToInfo(catalogCard);
+    const owned = (cards ?? []).filter(c => c.tcgId === cardDoc.tcgId);
+    setDetailOwned(owned);
+    setDetailCard(info);
+  }
 
   // Computed stats
   const totalOwned  = cards ? cards.reduce((s, c) => s + c.quantity, 0) : null;
@@ -46,12 +64,12 @@ export default function DashboardPage() {
     ? cards.filter(c => (c.addedAt?.toMillis?.() ?? 0) > weekAgo).reduce((s, c) => s + c.quantity, 0)
     : null;
 
-  // Recently added — last 3 cards with image
+  // Recently added — last 6 cards with image
   const recentCards = cards
     ? [...cards]
         .filter(c => c.tcgImageUrl)
         .sort((a, b) => (b.addedAt?.seconds ?? 0) - (a.addedAt?.seconds ?? 0))
-        .slice(0, 3)
+        .slice(0, 6)
     : [];
 
   // Sets grouped by setId
@@ -208,16 +226,24 @@ export default function DashboardPage() {
       {/* Zuletzt hinzugefügt */}
       {recentCards.length > 0 && (
         <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Zuletzt hinzugefügt</h2>
-            <Link href="/collection" className="text-xs" style={{ color: 'var(--pokedex-red)' }}>Alle</Link>
-          </div>
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Zuletzt hinzugefügt</h2>
           <div className="grid grid-cols-3 gap-2">
             {recentCards.map(card => (
-              <RecentCard key={card.id} name={card.name} number={card.number} img={card.tcgImageUrl!} />
+              <RecentCard key={card.id} name={card.name} number={card.number} img={card.tcgImageUrl!} onClick={() => openDetail(card)} />
             ))}
           </div>
         </section>
+      )}
+
+      {/* Kartendetail-Modal */}
+      {detailCard && (
+        <CardDetailSheet
+          card={detailCard}
+          ownedCopies={detailOwned}
+          binders={binders}
+          onClose={() => setDetailCard(null)}
+          onSaved={() => { getCards().then(setCards).catch(() => {}); }}
+        />
       )}
 
       {/* Leerer Zustand */}
@@ -267,14 +293,14 @@ function ViewBtn({ active, onClick, label, children }: {
 }
 
 
-function RecentCard({ name, number, img }: { name: string; number: string; img: string }) {
+function RecentCard({ name, number, img, onClick }: { name: string; number: string; img: string; onClick: () => void }) {
   return (
-    <Link href="/collection" className="flex flex-col items-center gap-1">
+    <button onClick={onClick} className="flex flex-col items-center gap-1 text-left w-full">
       <div className="w-full aspect-[2/3] rounded-lg overflow-hidden bg-secondary border border-border">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={img} alt={name} className="w-full h-full object-cover" />
       </div>
-      <span className="text-[10px] text-muted-foreground text-center truncate w-full text-center">{number}</span>
-    </Link>
+      <span className="text-[10px] text-muted-foreground text-center truncate w-full">{number}</span>
+    </button>
   );
 }

@@ -6,7 +6,7 @@ import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal'
 import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { markReviewed, deleteCard } from '@/lib/firestore/cards';
-import { removeCardFromBinderAndCleanup } from '@/lib/firestore/binders';
+import { getBinders, addCardToBinder, removeCardFromBinder, removeCardFromBinderAndCleanup, ensureDefaultBinder } from '@/lib/firestore/binders';
 import { getCardsByEvolutionFamily, getCardsByDexNumber } from '@/lib/firestore/catalog';
 import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
 import { fetchPokemonSpeciesDE, getEvolutionFamilyDexNumbers, type SpeciesDE } from '@/lib/pokeapi';
@@ -50,7 +50,7 @@ export type { SetMeta };
 interface Props {
   card: CardInfo | null;
   ownedCopies: CardDoc[];
-  binders: BinderDoc[];
+  binders?: BinderDoc[];
   setMeta?: SetMeta;
   onClose: () => void;
   onSaved?: () => void;
@@ -97,7 +97,8 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
   const [evoLoaded,    setEvoLoaded]    = useState(false);
   const [deletingId,   setDeletingId]   = useState<string | null>(null);
   const [confirmId,    setConfirmId]    = useState<string | null>(null);
-  const [resolvedMeta, setResolvedMeta] = useState<SetMeta | undefined>(setMeta);
+  const [resolvedMeta,    setResolvedMeta]    = useState<SetMeta | undefined>(setMeta);
+  const [resolvedBinders, setResolvedBinders] = useState<BinderDoc[]>(binders ?? []);
 
   /* Reset + load on card change */
   useEffect(() => {
@@ -127,6 +128,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
       }
     };
     loadMeta();
+    getBinders().then(setResolvedBinders).catch(() => {});
 
     const isPokemon = !card.supertype ||
       card.supertype.toLowerCase().includes('pokémon') ||
@@ -201,11 +203,20 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
   const logoUrl     = resolvedMeta?.logoUrl ?? `https://images.pokemontcg.io/${card.setId}/logo.png`;
   const setNameDe   = resolvedMeta?.nameDe ?? card.setName;
 
-  function bindersOf(copy: CardDoc) { return binders.filter(b => b.cardIds.includes(copy.id)); }
+  function bindersOf(copy: CardDoc) { return resolvedBinders.filter(b => b.cardIds.includes(copy.id)); }
   function toggle(s: Section) {
     setOpenSec(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n; });
   }
   function handleClose() { setVisible(false); setTimeout(onClose, 250); }
+
+  async function handleRemoveFromBinder(copy: CardDoc, binderId: string) {
+    await removeCardFromBinder(binderId, copy.id);
+    const defaultId = await ensureDefaultBinder();
+    await addCardToBinder(defaultId, copy.id);
+    const fresh = await getBinders();
+    setResolvedBinders(fresh);
+    onSaved?.();
+  }
 
   async function handleDelete(copy: CardDoc) {
     if (confirmId !== copy.id) {
@@ -485,7 +496,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                               className="text-[11px] font-bold px-2 py-0.5 rounded-full"
                               style={{ background: 'rgba(72,187,120,.15)', color: 'var(--green, #48bb78)' }}
                             >
-                              ✓ {copies.reduce((s, c) => s + c.quantity, 0)}×
+                              ✓
                             </span>
                           )}
                         </div>
@@ -535,27 +546,45 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                                       <CheckCircle2 size={10} /> Prüfen
                                     </button>
                                   )}
+                                  <span className="text-[14px]">{LANGUAGE_FLAGS[copy.language] ?? copy.language}</span>
                                   <span
                                     className="text-[12px] font-semibold px-2 py-0.5 rounded-full"
                                     style={{ background: 'rgba(255,255,255,.07)', color: 'var(--muted-foreground)' }}
                                   >
                                     {copy.condition}
                                   </span>
-                                  <span className="text-[14px]">{LANGUAGE_FLAGS[copy.language] ?? copy.language}</span>
-                                  {copyBinders.map(b => (
-                                    <span key={b.id} className="text-[11px] text-muted-foreground flex items-center gap-0.5">
-                                      {b.icon ?? '📁'} {b.name}
-                                    </span>
-                                  ))}
+                                  {(() => {
+                                    const binder = copyBinders[0];
+                                    const isDefault = !binder || !!binder.isDefault;
+                                    const label = binder ? binder.name : 'Meine Sammlung';
+                                    const icon  = binder?.icon ?? null;
+                                    return (
+                                      <span
+                                        className="text-[11px] font-medium pl-2 pr-1 py-0.5 rounded-full flex items-center gap-1"
+                                        style={{ background: 'rgba(255,255,255,.07)', color: 'var(--muted-foreground)' }}
+                                      >
+                                        {icon && <span>{icon}</span>}
+                                        {label}
+                                        {!isDefault && binder && (
+                                          <button
+                                            onClick={() => handleRemoveFromBinder(copy, binder.id)}
+                                            className="ml-0.5 rounded-full p-0.5 hover:bg-red-500/20 transition-colors"
+                                            style={{ color: 'var(--pokedex-red)' }}
+                                            title="Aus Sammlung entfernen"
+                                          >
+                                            <Trash2 size={10} />
+                                          </button>
+                                        )}
+                                      </span>
+                                    );
+                                  })()}
+                                  <span
+                                    className="text-[11px] px-2 py-0.5 rounded-full"
+                                    style={{ background: 'rgba(255,255,255,.07)', color: 'var(--muted-foreground)' }}
+                                  >
+                                    — Preis
+                                  </span>
                                 </div>
-
-                                {/* Anzahl */}
-                                <span
-                                  className="text-[14px] font-extrabold shrink-0"
-                                  style={{ color: 'var(--green, #48bb78)' }}
-                                >
-                                  ×{copy.quantity}
-                                </span>
 
                                 {/* Löschen */}
                                 <button
