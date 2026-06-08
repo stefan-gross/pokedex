@@ -487,27 +487,37 @@ export interface EnrichDeImagesResult {
   remaining: number;
 }
 
-export async function enrichDeImages(batchSize = 500): Promise<EnrichDeImagesResult> {
+export async function enrichDeImages(batchSize = 500, reset = false): Promise<EnrichDeImagesResult> {
   const db = getAdminDb();
 
-  // Alle Set-Logo-URLs aus tcg_sets lesen (ein Firestore-Call)
+  // Alle Set-Daten aus tcg_sets lesen — Basis-URL für DE-Karten-Bilder bestimmen
   const setsSnap = await db.collection('tcg_sets').get();
-  const setLogoMap = new Map<string, string>(); // setId → logoUrl
+  const setLogoMap = new Map<string, string>(); // setId → TCGdex-Basis-URL (ohne /logo.png)
   setsSnap.docs.forEach(d => {
     const data = d.data();
     if (data.logoUrl && String(data.logoUrl).includes('assets.tcgdex.net')) {
+      // Direkt aus gespeicherter TCGdex-Logo-URL ableiten (bewährt)
       setLogoMap.set(d.id, data.logoUrl as string);
+    } else if (data.tcgdexId) {
+      // Fallback: Basis-URL aus tcgdexId konstruieren
+      // tcgdexId z.B. "sv1", "xy1", "bw1", "sv4pt5" → series = "sv", "xy", "bw", "sv"
+      const tcgdexId = data.tcgdexId as string;
+      const series = tcgdexId.match(/^[a-z]+/)?.[0];
+      if (series) {
+        setLogoMap.set(d.id, `https://assets.tcgdex.net/de/${series}/${tcgdexId}/logo.png`);
+      }
     }
   });
 
   if (setLogoMap.size === 0) {
-    return { status: 'up-to-date', message: 'Keine TCGdex-Set-Logos gefunden — erst "Sets sync" ausführen', enriched: 0, remaining: 0 };
+    return { status: 'up-to-date', message: 'Keine TCGdex-Set-Daten gefunden — erst "Sets sync" ausführen', enriched: 0, remaining: 0 };
   }
 
-  // Cursor-basierte Pagination
+  // Cursor-basierte Pagination (reset = neu von vorne anfangen)
   const cursorRef = db.doc('tcg_catalog_meta/de_images_cursor');
-  const cursorSnap = await cursorRef.get();
-  const lastDocId: string = cursorSnap.exists ? (cursorSnap.data()?.lastDocId ?? '') : '';
+  if (reset) await cursorRef.delete();
+  const cursorSnap = reset ? { exists: false, data: () => ({}) } : await cursorRef.get();
+  const lastDocId: string = cursorSnap.exists ? ((cursorSnap as FirebaseFirestore.DocumentSnapshot).data()?.lastDocId ?? '') : '';
 
   let q = db.collection(COL)
     .orderBy(FieldPath.documentId())

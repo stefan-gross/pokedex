@@ -82,6 +82,26 @@ export default function SettingsPage() {
     }
   }
 
+  async function runReEnrichImages() {
+    if (!confirm('DE-Karten-Bilder neu anreichern (Cursor zurücksetzen)?\nAlle Karten werden erneut verarbeitet — auch bisher übersprungene Sets.')) return;
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      let total = 0;
+      while (true) {
+        const res  = await fetch('/api/admin/enrich-de-images', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reset: total === 0 }) });
+        const data = await res.json();
+        total += data.enriched ?? 0;
+        setSyncResult(`🖼️ ${total} DE-Bilder angereichert…`);
+        if (data.status === 'complete' || data.status === 'up-to-date') {
+          setSyncResult(`✅ DE-Bilder fertig (${total} Karten)`);
+          break;
+        }
+        if (data.status === 'error' || data.error) { setSyncResult(data.error ?? 'Fehler'); break; }
+      }
+    } finally { setSyncing(false); }
+  }
+
   async function runAllSteps(withReset: boolean) {
     if (withReset) {
       if (!confirm('Catalog zurücksetzen und alle Schritte komplett neu ausführen?\nDas kann mehrere Minuten dauern.')) return;
@@ -334,6 +354,19 @@ export default function SettingsPage() {
                     <p className="text-xs text-muted-foreground">
                       Evo · DE-Namen · Sets · Kürzel · DE-Bilder · Artdaten — alle 7 Schritte
                     </p>
+                  </div>
+                </button>
+
+                {/* DE-Bilder neu anreichern */}
+                <button
+                  onClick={runReEnrichImages}
+                  disabled={busy}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left border-b border-border transition-colors active:bg-secondary disabled:opacity-40"
+                >
+                  <RotateCcw size={18} className="text-blue-400 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-blue-400">DE-Karten-Bilder neu anreichern</p>
+                    <p className="text-xs text-muted-foreground">Reset + alle Sets erneut verarbeiten · behebt fehlende DE-Bilder</p>
                   </div>
                 </button>
 

@@ -13,7 +13,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Nicht eingeloggt' }, { status: 401 });
   }
   try {
-    const result = await enrichDeImages(500);
+    const body = await req.json().catch(() => ({}));
+    const reset = body?.reset === true;
+    const result = await enrichDeImages(500, reset);
     return NextResponse.json(result);
   } catch (e) {
     console.error('[enrich-de-images]', e);
