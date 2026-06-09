@@ -172,9 +172,29 @@ export async function detectCardInFrame(
       }
     }
 
-    best.corners = found
-      ? [[tlX, tlY], [trX, trY], [brX, brY], [blX, blY]]
-      : null;
+    if (!found) {
+      best.corners = null;
+    } else {
+      // Plausibilitätsprüfung anhand der echten Karten-Abmessungen
+      // (verhindert dass Tische, Telefone, etc. als Karte erkannt werden)
+      const cardW  = (Math.hypot(trX-tlX, trY-tlY) + Math.hypot(brX-blX, brY-blY)) / 2;
+      const cardH  = (Math.hypot(blX-tlX, blY-tlY) + Math.hypot(brX-trX, brY-trY)) / 2;
+      const shorter = Math.min(cardW, cardH);
+      const longer  = Math.max(cardW, cardH);
+      const ratio   = longer / (shorter || 1);
+
+      // Zu groß: Objekt füllt >85 % der kürzeren Bildseite → kein Karten-Format
+      const tooLarge = shorter > Math.min(srcW, srcH) * 0.85;
+      // Falsches Seitenverhältnis: Pokémon-Karte 63×88mm = 1.40; Toleranz für Perspektive
+      const wrongRatio = ratio < 1.05 || ratio > 2.3;
+
+      if (tooLarge || wrongRatio) {
+        // Maske zeigt klar kein Kartenobjekt → Detection komplett verwerfen
+        return null;
+      }
+
+      best.corners = [[tlX, tlY], [trX, trY], [brX, brY], [blX, blY]];
+    }
   }
 
   return best;
