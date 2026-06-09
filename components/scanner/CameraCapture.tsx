@@ -10,6 +10,13 @@ interface Props {
   paused?: boolean;
 }
 
+// ─── Modul-Level: Stream überlebt React-Remounts ─────────────────────────────
+// CameraCapture wird nach dem ersten Snap neu gemountet (Parent re-render).
+// Damit kein zweiter getUserMedia-Dialog erscheint, bleibt der Stream erhalten.
+let _kameraStream:   MediaStream | null                       = null;
+let _stopTimer:      ReturnType<typeof setTimeout> | null     = null;
+let _mountGeneration = 0; // steigt bei jedem Mount — für Debug sichtbar
+
 // Motion-Sample-Canvas (klein, nur für Bewegungsmessung)
 const SAMPLE_W = 190;
 const SAMPLE_H = 266;
@@ -46,11 +53,12 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
   // Letztes ONNX-Ergebnis in Video-Koordinaten (für Overlay + Snap-Trigger + Crop)
   const onnxBoxRef    = useRef<CardBox | null>(null);
-  const onnxStickyRef  = useRef(0);
-  const ONNX_STICKY    = 4;
-  const inferringRef   = useRef(false);
+  const onnxStickyRef   = useRef(0);
+  const ONNX_STICKY     = 4;
+  const inferringRef    = useRef(false);
   const sessionReadyRef = useRef(false);
-  const cropSizeRef    = useRef('–'); // persistent, wird nicht bei jedem Tick überschrieben
+  const cropSizeRef     = useRef('–');
+  const mountGenRef     = useRef(++_mountGeneration); // steigt bei jedem Remount
 
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
 
@@ -142,12 +150,30 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
   // ── Kamera starten ────────────────────────────────────────────────────────
   const startCamera = useCallback(async () => {
-    streamRef.current?.getTracks().forEach(t => t.stop());
+    // Laufenden Stop-Timer abbrechen (Remount hat stattgefunden)
+    if (_stopTimer) { clearTimeout(_stopTimer); _stopTimer = null; }
+
+    // Vorhandenen Stream wiederverwenden — verhindert 2. Permission-Dialog bei Remount
+    const existingTrack = _kameraStream?.getVideoTracks()[0];
+    if (existingTrack?.readyState === 'live') {
+      const currentFacing = existingTrack.getSettings().facingMode;
+      if (!currentFacing || currentFacing === facingMode) {
+        streamRef.current = _kameraStream;
+        if (videoRef.current) videoRef.current.srcObject = _kameraStream;
+        return; // Kein neuer getUserMedia-Call
+      }
+    }
+
+    // Neuen Stream öffnen
+    _kameraStream?.getTracks().forEach(t => t.stop());
+    _kameraStream = null;
+    streamRef.current = null;
     setError(null); stableRef.current = 0; setProgress(0); setDetected(false);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
       });
+      _kameraStream = stream;
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
     } catch {
@@ -157,7 +183,14 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
   useEffect(() => {
     startCamera();
-    return () => { streamRef.current?.getTracks().forEach(t => t.stop()); };
+    return () => {
+      // Verzögert stoppen: gibt einem möglichen Remount Zeit, den Stream zu übernehmen
+      _stopTimer = setTimeout(() => {
+        _kameraStream?.getTracks().forEach(t => t.stop());
+        _kameraStream = null;
+        streamRef.current = null;
+      }, 800);
+    };
   }, [startCamera]);
 
   // ── Foto auslösen ─────────────────────────────────────────────────────────
@@ -352,6 +385,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
                 minWidth: 220,
               }}
             >
+              <div style={{ color: mountGenRef.current > 1 ? '#f87171' : '#aaa' }}>
+                Mount #{mountGenRef.current}{mountGenRef.current > 1 ? ' ⚠ Remount!' : ''}
+              </div>
               <div>
                 Session:{' '}
                 <span style={{ color: debug.sessionReady ? '#48bb78' : '#f87171' }}>
