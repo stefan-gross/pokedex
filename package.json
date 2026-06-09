@@ -7,7 +7,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "cp node_modules/onnxruntime-web/dist/*.wasm public/ 2>/dev/null || true"
+    "postinstall": "cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded*.wasm node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded*.mjs public/ 2>/dev/null || true"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
