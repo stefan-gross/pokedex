@@ -175,41 +175,66 @@ export async function detectCardInFrame(
     if (!found) {
       best.corners = null;
     } else {
-      // ── Plausibilitätsprüfung anhand der echten Karten-Abmessungen ───────────
-      // (verhindert Fehldetektionen von Tischen, Telefonen, Regalrändern, etc.)
-      const cardW   = (Math.hypot(trX-tlX, trY-tlY) + Math.hypot(brX-blX, brY-blY)) / 2;
-      const cardH   = (Math.hypot(blX-tlX, blY-tlY) + Math.hypot(brX-trX, brY-trY)) / 2;
-      const shorter = Math.min(cardW, cardH);
-      const longer  = Math.max(cardW, cardH);
-      const ratio   = longer / (shorter || 1);
+      // ── Winkel aus den Masken-Eckpunkten ────────────────────────────────────
+      // Auch eine spärliche Maske (nur Artwork-Bereich) liefert einen brauchbaren
+      // Winkel über die Richtung tl→tr.
+      const angle = Math.atan2(trY - tlY, trX - tlX);
+      const cosA  = Math.cos(angle);
+      const sinA  = Math.sin(angle);
+      const aca   = Math.abs(cosA);
+      const asa   = Math.abs(sinA);
 
-      // Zu groß: Objekt füllt >85 % der kürzeren Bildseite (z.B. iPhone-Display)
-      const tooLarge  = shorter > Math.min(srcW, srcH) * 0.85;
-      // Zu klein: Karte belegt <6 % der kürzeren Bildseite (z.B. Regalrand-Querschnitt)
-      const tooSmall  = shorter < Math.min(srcW, srcH) * 0.06;
-      // Falsches Seitenverhältnis: Pokémon-Karte 63×88 mm = 1.40; Toleranz für Perspektive
-      const wrongRatio = ratio < 1.05 || ratio > 2.3;
+      // ── Tatsächliche Karten-Dimensionen aus ONNX-AABB + Winkel ──────────────
+      // Für ein W×H-Rechteck mit Neigung a gilt:
+      //   AABB_W = W·|cos a| + H·|sin a|
+      //   AABB_H = W·|sin a| + H·|cos a|
+      // Lösung des 2×2-Systems (Determinante = cos(2a)):
+      const cos2a = aca * aca - asa * asa;
+      let estW: number, estH: number;
+      if (Math.abs(cos2a) > 0.15) {
+        estW = (aca * best.w - asa * best.h) / cos2a;
+        estH = (aca * best.h - asa * best.w) / cos2a;
+      } else {
+        estW = NaN; // Marker für Fallback
+        estH = NaN;
+      }
+      // Fallback: nahe 45° oder negative Lösung → Pokémon-Seitenverhältnis + Fläche
+      if (!isFinite(estW) || !isFinite(estH) || estW <= 0 || estH <= 0) {
+        const CARD_RATIO = 88 / 63; // ≈ 1.397
+        estW = Math.sqrt(best.w * best.h / CARD_RATIO);
+        estH = estW * CARD_RATIO;
+      }
+      // Hochformat sicherstellen (Pokémon-Karte ist immer höher als breit)
+      if (estW > estH) { const tmp = estW; estW = estH; estH = tmp; }
 
-      if (tooLarge || tooSmall || wrongRatio) {
+      // ── Plausibilitätsprüfung ────────────────────────────────────────────────
+      const shorter      = estW;
+      const ratio        = estH / (estW || 1);
+      const frameShorter = Math.min(srcW, srcH);
+
+      if (
+        shorter > frameShorter * 0.85 ||  // zu groß (iPhone-Display etc.)
+        shorter < frameShorter * 0.06 ||  // zu klein (Regalrand-Querschnitt etc.)
+        ratio < 1.05 || ratio > 2.3       // falsches Seitenverhältnis
+      ) {
         return null;
       }
 
-      // ── Corners-Qualitätsprüfung ─────────────────────────────────────────────
-      // Wenn die Corners-Boundingbox deutlich kleiner als die ONNX-AABB ist,
-      // aktiviert sich die Maske nur auf einem Teil der Karte (z.B. nur Artwork-
-      // Bereich bei abgedunkelten Randbereichen). In diesem Fall ist die AABB
-      // zuverlässiger → corners = null damit der Fallback-Pfad genutzt wird.
-      const aabbArea    = best.w * best.h;
-      const cSpanX = Math.max(tlX, trX, brX, blX) - Math.min(tlX, trX, brX, blX);
-      const cSpanY = Math.max(tlY, trY, brY, blY) - Math.min(tlY, trY, brY, blY);
-      const cornersArea = cSpanX * cSpanY;
+      // ── Rotierte Corners aus AABB-Zentrum + Winkel + Dimensionen ────────────
+      // Koordinatensystem (y zeigt nach unten):
+      //   rightDir = (cos a, sin a)
+      //   downDir  = (−sin a, cos a)  [90° CCW auf Screen = "unten" auf Karte]
+      const cx = best.x + best.w / 2;
+      const cy = best.y + best.h / 2;
+      const hw = estW / 2;
+      const hh = estH / 2;
 
-      if (aabbArea > 0 && cornersArea < aabbArea * 0.30) {
-        // Maske deckt < 30 % der AABB ab → unzuverlässig, AABB verwenden
-        best.corners = null;
-      } else {
-        best.corners = [[tlX, tlY], [trX, trY], [brX, brY], [blX, blY]];
-      }
+      best.corners = [
+        [cx - hw * cosA + hh * sinA, cy - hw * sinA - hh * cosA], // tl
+        [cx + hw * cosA + hh * sinA, cy + hw * sinA - hh * cosA], // tr
+        [cx + hw * cosA - hh * sinA, cy + hw * sinA + hh * cosA], // br
+        [cx - hw * cosA - hh * sinA, cy - hw * sinA + hh * cosA], // bl
+      ];
     }
   }
 
