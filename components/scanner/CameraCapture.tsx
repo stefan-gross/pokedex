@@ -17,6 +17,32 @@ let _kameraStream:   MediaStream | null                       = null;
 let _stopTimer:      ReturnType<typeof setTimeout> | null     = null;
 let _mountGeneration = 0; // steigt bei jedem Mount — für Debug sichtbar
 
+// ─── Gerundetes Polygon für rotierten Karten-Rahmen ──────────────────────────
+function drawRoundedPolygon(
+  ctx: CanvasRenderingContext2D,
+  pts: [number, number][],
+  radius: number,
+) {
+  const n = pts.length;
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const prev = pts[(i - 1 + n) % n];
+    const curr = pts[i];
+    const next = pts[(i + 1) % n];
+    const d1 = Math.hypot(curr[0] - prev[0], curr[1] - prev[1]);
+    const d2 = Math.hypot(next[0] - curr[0], next[1] - curr[1]);
+    if (d1 < 1 || d2 < 1) { ctx.lineTo(curr[0], curr[1]); continue; }
+    const r   = Math.min(radius, d1 / 2, d2 / 2);
+    const p1x = curr[0] - r * (curr[0] - prev[0]) / d1;
+    const p1y = curr[1] - r * (curr[1] - prev[1]) / d1;
+    const p2x = curr[0] + r * (next[0] - curr[0]) / d2;
+    const p2y = curr[1] + r * (next[1] - curr[1]) / d2;
+    if (i === 0) ctx.moveTo(p1x, p1y); else ctx.lineTo(p1x, p1y);
+    ctx.quadraticCurveTo(curr[0], curr[1], p2x, p2y);
+  }
+  ctx.closePath();
+}
+
 // Motion-Sample-Canvas (klein, nur für Bewegungsmessung)
 const SAMPLE_W = 190;
 const SAMPLE_H = 266;
@@ -108,13 +134,23 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       const bw = box.w * scale;
       const bh = box.h * scale;
 
-      // Grüner Rahmen mit runden Ecken
+      // Grüner Rahmen — rotiert wenn Maske Eckpunkte liefert, sonst AABB
       ctx.strokeStyle = '#48bb78';
       ctx.lineWidth = 3;
       ctx.shadowColor = 'rgba(72,187,120,0.6)';
       ctx.shadowBlur  = 12;
-      ctx.beginPath();
-      ctx.roundRect(bx, by, bw, bh, 14);
+
+      if (box.corners?.length === 4) {
+        // Exakter rotierter Rahmen aus Segmentierungsmaske
+        const pts = box.corners.map(
+          ([x, y]) => [x * scale + ox, y * scale + oy] as [number, number]
+        );
+        drawRoundedPolygon(ctx, pts, 14);
+      } else {
+        // Fallback: axis-aligned Bounding Box
+        ctx.beginPath();
+        ctx.roundRect(bx, by, bw, bh, 14);
+      }
       ctx.stroke();
       ctx.shadowBlur = 0;
 
