@@ -15,10 +15,11 @@ const SAMPLE_W = 190;
 const SAMPLE_H = 266;
 
 const CHECK_MS               = 150; // ONNX-Inferenz ~80ms → etwas mehr Budget
-const MOTION_RESET_THRESHOLD = 800;
+const MOTION_RESET_THRESHOLD = 1200; // großzügiger: nur grobe Bewegung stoppt Snap
 const CARD_DETECT_VARIANCE   = 80;   // niedrig → Detection läuft fast immer
-const SNAP_STABLE_FRAMES     = 7;  // ~1 s Ruhe mit erkanntem Quad → Auslöser
-const SNAP_STABLE_FALLBACK   = 8;  // ~1,2 s Ruhe ohne Quad (ONNX-only Modus)
+const SNAP_STABLE_FRAMES     = 2;  // ~300ms Ruhe mit erkanntem Quad → Auslöser
+const SNAP_STABLE_FALLBACK   = 3;  // ~450ms Ruhe ohne Quad (ONNX-only)
+const SNAP_INSTANT_CONF      = 0.85; // bei sehr hoher Konfidenz sofort auslösen
 const SNAP_COOLDOWN_MS       = 2000;
 
 // Analyse-Canvas: feste Größe für konsistente Erkennung
@@ -561,14 +562,21 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         // • Quad erkannt → 1 s Ruhe (SNAP_STABLE_FRAMES)
         // • Kein Quad, aber Objekt still → 1,5 s Fallback (SNAP_STABLE_FALLBACK)
         //   → Karte auch dann auslösen, wenn sie nicht exakt im Rahmen liegt
-        const snapTarget = stableQuad ? SNAP_STABLE_FRAMES : SNAP_STABLE_FALLBACK;
-        if (cooldownRef.current || mse > MOTION_RESET_THRESHOLD || !cardDetected) {
-          stableRef.current = 0;
-          if (!cooldownRef.current) setProgress(0);
+        // Sofort-Auslöser bei sehr hoher Konfidenz + minimale Bewegung
+        const highConf = (onnxBoxRef.current?.conf ?? 0) >= SNAP_INSTANT_CONF;
+        if (!cooldownRef.current && cardDetected && highConf && mse < MOTION_RESET_THRESHOLD / 2) {
+          setProgress(1);
+          doCapture();
         } else {
-          stableRef.current += 1;
-          setProgress(Math.min(stableRef.current / snapTarget, 1));
-          if (stableRef.current >= snapTarget) doCapture();
+          const snapTarget = stableQuad ? SNAP_STABLE_FRAMES : SNAP_STABLE_FALLBACK;
+          if (cooldownRef.current || mse > MOTION_RESET_THRESHOLD || !cardDetected) {
+            stableRef.current = 0;
+            if (!cooldownRef.current) setProgress(0);
+          } else {
+            stableRef.current += 1;
+            setProgress(Math.min(stableRef.current / snapTarget, 1));
+            if (stableRef.current >= snapTarget) doCapture();
+          }
         }
       }, CHECK_MS);
     }, 800);
