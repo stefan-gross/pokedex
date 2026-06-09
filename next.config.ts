@@ -1,6 +1,16 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  webpack(config, { isServer }) {
+    // onnxruntime-web ist nur im Browser nutzbar — auf dem Server ausblenden
+    if (isServer) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        'onnxruntime-web': false,
+      };
+    }
+    return config;
+  },
   images: {
     remotePatterns: [
       {

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Zap, ZapOff, RefreshCw, Loader2 } from 'lucide-react';
+import { loadCardDetectorSession, detectCardInFrame, type CardBox } from '@/lib/scanner/card-detector-onnx';
 
 interface Props {
   onCapture: (imageBase64: string, mimeType: string) => void;
@@ -13,7 +14,7 @@ interface Props {
 const SAMPLE_W = 190;
 const SAMPLE_H = 266;
 
-const CHECK_MS               = 100;
+const CHECK_MS               = 150; // ONNX-Inferenz ~80ms → etwas mehr Budget
 const MOTION_RESET_THRESHOLD = 800;
 const CARD_DETECT_VARIANCE   = 80;   // niedrig → Detection läuft fast immer
 const SNAP_STABLE_FRAMES     = 10; // 1 s Ruhe mit erkanntem Quad → Auslöser
@@ -320,7 +321,14 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   // Quad-Stabilisierung: Rahmen springt nicht bei Einzelframe-Falschpositivem
   const lastQuadRef  = useRef<CardQuad | null>(null);
   const quadFrameRef = useRef(0); // aufeinanderfolgende Frames mit ähnlichem Quad
+  // Letztes ONNX-Ergebnis in Video-Koordinaten (für Overlay + Snap-Trigger)
+  const onnxBoxRef   = useRef<CardBox | null>(null);
+  // Verhindert überlappende ONNX-Inferenz-Aufrufe
+  const inferringRef = useRef(false);
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
+
+  // ONNX-Session beim Mount laden (im Hintergrund, blockiert UI nicht)
+  useEffect(() => { loadCardDetectorSession().catch(console.warn); }, []);
 
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [torch,      setTorch]      = useState(false);
@@ -348,6 +356,27 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     if (!vw || !vh) return;
 
     if (!quad) {
+      // ONNX-Box: gelbes Rechteck wenn Karte erkannt aber kein Hough-Quad
+      const box = onnxBoxRef.current;
+      if (box && vw && vh) {
+        const vAsp2 = vw / vh, dAsp2 = dispW / dispH;
+        let scale2: number, ox2: number, oy2: number;
+        if (vAsp2 > dAsp2) { scale2 = dispH / vh; ox2 = -(vw * scale2 - dispW) / 2; oy2 = 0; }
+        else               { scale2 = dispW / vw; ox2 = 0; oy2 = -(vh * scale2 - dispH) / 2; }
+        // box ist in Video-Koordinaten (sample-canvas auf Video gemappt)
+        const bx = box.x * scale2 + ox2;
+        const by = box.y * scale2 + oy2;
+        const bw = box.w * scale2;
+        const bh = box.h * scale2;
+        ctx.strokeStyle = 'rgba(255, 200, 0, 0.75)';
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = 'rgba(255,200,0,0.4)';
+        ctx.shadowBlur  = 8;
+        ctx.strokeRect(bx, by, bw, bh);
+        ctx.shadowBlur = 0;
+        return;
+      }
+
       // Statischer gestrichelter Kartenrahmen als Orientierungshilfe
       const guideW = Math.min(dispW * 0.62, dispH * 0.50);
       const guideH = guideW * 1.4;
@@ -451,19 +480,28 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         const pCtx = prev.getContext('2d')!;
         const pData = pCtx.getImageData(0, 0, sw, sh).data;
 
-        // Varianz-Veto
-        let s = 0, sq = 0, n = 0;
-        for (let i = 0; i < sData.length; i += 64) {
-          const b = (sData[i] + sData[i + 1] + sData[i + 2]) / 3;
-          s += b; sq += b * b; n++;
+        // 1b. ONNX: fire-and-forget (Ergebnis wird im nächsten Frame genutzt)
+        // Überlappsschutz via inferringRef — sample ist in Video-Mitte-Koordinaten
+        if (!inferringRef.current && sample.width > 0) {
+          inferringRef.current = true;
+          detectCardInFrame(sample).then(box => {
+            // box-Koordinaten sind im sample-Canvas-Raum → in Video-Koordinaten umrechnen
+            onnxBoxRef.current = box
+              ? { x: box.x + sx, y: box.y + sy, w: box.w, h: box.h, conf: box.conf }
+              : null;
+          }).catch(() => {
+            onnxBoxRef.current = null;
+          }).finally(() => {
+            inferringRef.current = false;
+          });
         }
-        const hasObject = n > 0 && (sq / n - (s / n) ** 2) > CARD_DETECT_VARIANCE;
+        const cardDetected = onnxBoxRef.current !== null;
 
-        // 2. Kartenerkennung
+        // 2. Hough-Kartenerkennung (für grünen Quad-Overlay, optional)
         let quad: CardQuad | null = null;
         let desx = 0, desy = 0, dw = 0, dh = 0;
 
-        if (hasObject) {
+        if (cardDetected) {
           dw = Math.min(Math.round(Math.min(vw, vh) * DETECT_FRACTION), vw);
           dh = Math.min(Math.round(dw * (EDGE_H / EDGE_W)), vh);
           desx = Math.max(0, (vw - dw) / 2);
@@ -513,7 +551,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         // • Kein Quad, aber Objekt still → 1,5 s Fallback (SNAP_STABLE_FALLBACK)
         //   → Karte auch dann auslösen, wenn sie nicht exakt im Rahmen liegt
         const snapTarget = stableQuad ? SNAP_STABLE_FRAMES : SNAP_STABLE_FALLBACK;
-        if (cooldownRef.current || mse > MOTION_RESET_THRESHOLD || !hasObject) {
+        if (cooldownRef.current || mse > MOTION_RESET_THRESHOLD || !cardDetected) {
           stableRef.current = 0;
           if (!cooldownRef.current) setProgress(0);
         } else {
