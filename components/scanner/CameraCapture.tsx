@@ -96,7 +96,8 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   const waitForAbsenceRef = useRef(false);
 
   // Overlay-Skalierung (aus drawOverlay) für Snap-Animation-Positionierung
-  const snapScaleRef = useRef({ scale: 1, ox: 0, oy: 0 });
+  // null = drawOverlay hat noch nicht gelaufen → snapAnim nicht rendern
+  const snapScaleRef = useRef<{ scale: number; ox: number; oy: number } | null>(null);
 
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
 
@@ -204,7 +205,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     // Laufenden Stop-Timer abbrechen (Remount hat stattgefunden)
     if (_stopTimer) { clearTimeout(_stopTimer); _stopTimer = null; }
 
-    // Vorhandenen Stream wiederverwenden — verhindert 2. Permission-Dialog bei Remount
+    // Vorhandenen Stream wiederverwenden — verhindert Permission-Dialog bei Remount
     const existingTrack = _kameraStream?.getVideoTracks()[0];
     if (existingTrack && existingTrack.readyState !== 'ended') {
       const currentFacing = existingTrack.getSettings().facingMode;
@@ -212,10 +213,15 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         streamRef.current = _kameraStream;
         const vid = videoRef.current;
         if (vid) {
-          vid.srcObject = _kameraStream;
-          // iOS: autoPlay allein reicht bei programmatisch gesetztem srcObject nicht —
-          // explizites play() verhindert den nativen Video-Play-Button in der Bildmitte.
-          vid.play().catch(() => { /* iOS blockiert manchmal; kein fataler Fehler */ });
+          // srcObject nur setzen wenn nötig — verhindert iOS-Kamera-Indikator bei
+          // unnötigem Re-Attach (iOS zeigt gelben Punkt bei jeder srcObject-Zuweisung)
+          if (vid.srcObject !== _kameraStream) {
+            vid.srcObject = _kameraStream;
+          }
+          // play() nur wenn Video wirklich pausiert ist (nicht nochmals triggern)
+          if (vid.paused) {
+            vid.play().catch(() => { /* iOS blockiert manchmal; kein fataler Fehler */ });
+          }
         }
         return; // Kein neuer getUserMedia-Call
       }
@@ -237,8 +243,8 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       streamRef.current = stream;
       const vid = videoRef.current;
       if (vid) {
-        vid.srcObject = stream;
-        vid.play().catch(() => { /* Autoplay-Policy; bei gesetzten Permissions kein Problem */ });
+        if (vid.srcObject !== stream) vid.srcObject = stream;
+        if (vid.paused) vid.play().catch(() => {});
       }
     } catch {
       setError('Kamera konnte nicht gestartet werden. Bitte Zugriff erlauben.');
@@ -559,7 +565,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
           )}
 
           {/* Rahmen-Burst: weißer Rahmen an der Kartenposition leuchtet auf und faded weg */}
-          {snapAnim && (() => {
+          {snapAnim && snapScaleRef.current && (() => {
+            // snapScaleRef ist null bis drawOverlay zum ersten Mal gelaufen ist →
+            // kein Rendern mit falschen Koordinaten (Video-Space statt Screen-Space)
             const { scale, ox, oy } = snapScaleRef.current;
             const b = snapAnim.box;
             return (

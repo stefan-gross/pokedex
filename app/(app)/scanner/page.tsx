@@ -172,7 +172,15 @@ export default function ScannerPage() {
           {mode === 'scanning' ? 'Karten scannen' : `${doneJobs.length} Karte${doneJobs.length !== 1 ? 'n' : ''} gescannt`}
         </h1>
         <button
-          onClick={() => router.back()}
+          onClick={() => {
+            // router.back() funktioniert nur wenn Browser-History existiert.
+            // Fallback: sofort zur Startseite navigieren.
+            if (window.history.length > 1) {
+              router.back();
+            } else {
+              router.replace('/');
+            }
+          }}
           className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10 backdrop-blur-sm"
           aria-label="Schließen"
         >
