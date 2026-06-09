@@ -34,9 +34,12 @@ interface ScanJob {
   status: 'processing' | 'done' | 'error';
   result: ScanState | null;
   added?: boolean;
+  debugImageBase64?: string; // DEBUG: aufgenommenes Bild anzeigen
 }
 
 function cardImgUrl(job: ScanJob): string | null {
+  // DEBUG: aufgenommenes Bild anzeigen
+  if (job.debugImageBase64) return `data:image/jpeg;base64,${job.debugImageBase64}`;
   const card = job.result?.card;
   if (!card) return null;
   const lang = job.result?.language ?? 'en';
@@ -69,58 +72,15 @@ export default function ScannerPage() {
 
   const handleCapture = useCallback(async (imageBase64: string, mimeType: string) => {
     const id = Math.random().toString(36).slice(2);
-    setJobs(prev => [...prev, { id, status: 'processing', result: null }]);
 
-    try {
-      const res = await fetch('/api/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64, mimeType }),
-      });
-      const gemini: GeminiResponse = await res.json();
-
-      if (gemini.error || !gemini.setId || !gemini.number) {
-        setJobs(prev => prev.map(j => j.id === id
-          ? { ...j, status: 'error', result: { card: null, language: 'de' } }
-          : j));
-        return;
-      }
-
-      const rawNumber = gemini.number.includes('/') ? gemini.number.split('/')[0] : gemini.number;
-
-      let catalogCard = await getCardBySetAndNumber(gemini.setId, rawNumber);
-      if (!catalogCard) {
-        const alt = /^\d+$/.test(rawNumber) ? String(parseInt(rawNumber, 10)) : rawNumber.padStart(3, '0');
-        if (alt !== rawNumber) catalogCard = await getCardBySetAndNumber(gemini.setId, alt);
-      }
-
-      if (!catalogCard && gemini.nationalDexNumber) {
-        const dexCards = await getCardsByDexNumber(gemini.nationalDexNumber, 1);
-        if (dexCards.length > 0) catalogCard = dexCards[0];
-      }
-
-      const ownedCopies = catalogCard ? await getCardsByTcgId(catalogCard.id) : [];
-
-      const variantMap: Record<string, CardVariant> = {
-        holo: 'holo', reverse: 'reverse', 'alt-art': 'alt-art', promo: 'promo', standard: 'standard',
-      };
-
-      setJobs(prev => prev.map(j => j.id === id ? {
-        ...j,
-        status: catalogCard ? 'done' : 'error',
-        result: {
-          card: catalogCard ? catalogCardToInfo(catalogCard) : null,
-          language: (gemini.language ?? 'de') as CardLanguage,
-          variant: variantMap[gemini.variant ?? ''] ?? 'standard',
-          ownedCount: ownedCopies.length,
-        },
-      } : j));
-    } catch (err) {
-      console.error('Scan error:', err);
-      setJobs(prev => prev.map(j => j.id === id
-        ? { ...j, status: 'error', result: { card: null, language: 'de' } }
-        : j));
-    }
+    // ── DEBUG: Gemini deaktiviert — Bild direkt anzeigen ──────────────────
+    setJobs(prev => [...prev, {
+      id,
+      status: 'done',
+      result: { card: null, language: 'de' },
+      debugImageBase64: imageBase64,
+    }]);
+    // TODO: Gemini-Erkennung wieder aktivieren (siehe git history für vollständige Implementierung)
   }, []);
 
   return (

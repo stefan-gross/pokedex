@@ -23,6 +23,15 @@ const SNAP_COOLDOWN_MS       = 2000;
 // Rand um die ONNX-Box beim Zuschneiden für Gemini (Pixel in Video-Koordinaten)
 const CROP_PADDING = 24;
 
+interface DebugInfo {
+  conf: number;
+  mse: number;
+  stable: number;
+  detected: boolean;
+  sessionReady: boolean;
+  cropSize: string;
+}
+
 export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: Props) {
   const videoRef   = useRef<HTMLVideoElement>(null);
   const canvasRef  = useRef<HTMLCanvasElement>(null);
@@ -37,16 +46,12 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
   // Letztes ONNX-Ergebnis in Video-Koordinaten (für Overlay + Snap-Trigger + Crop)
   const onnxBoxRef    = useRef<CardBox | null>(null);
-  // Sticky-Counter: ONNX-Ergebnis bleibt für N Frames erhalten nach letzter Erkennung.
   const onnxStickyRef = useRef(0);
   const ONNX_STICKY   = 4;
-  // Verhindert überlappende ONNX-Inferenz-Aufrufe
   const inferringRef  = useRef(false);
+  const sessionReadyRef = useRef(false);
 
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
-
-  // ONNX-Session beim Mount laden (im Hintergrund, blockiert UI nicht)
-  useEffect(() => { loadCardDetectorSession().catch(console.warn); }, []);
 
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [torch,      setTorch]      = useState(false);
@@ -55,8 +60,18 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   const [detected,   setDetected]   = useState(false);
   const [inCooldown, setInCooldown] = useState(false);
   const [flashing,   setFlashing]   = useState(false);
+  const [debug,      setDebug]      = useState<DebugInfo>({
+    conf: 0, mse: 0, stable: 0, detected: false, sessionReady: false, cropSize: '–',
+  });
 
-  // ── Overlay: zeichnet gelbes Rechteck (ONNX-Box) oder Hilfsrahmen ─────────
+  // ONNX-Session beim Mount laden
+  useEffect(() => {
+    loadCardDetectorSession()
+      .then(() => { sessionReadyRef.current = true; })
+      .catch(console.warn);
+  }, []);
+
+  // ── Overlay: ONNX-Box oder gestrichelter Hilfsrahmen ─────────────────────
   const drawOverlay = useCallback(() => {
     const overlay = overlayRef.current;
     if (!overlay) return;
@@ -74,7 +89,6 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
     const box = onnxBoxRef.current;
     if (box && vw && vh) {
-      // Video-Koordinaten → Display-Koordinaten (object-cover-Mapping)
       const vAsp = vw / vh, dAsp = dispW / dispH;
       let scale: number, ox: number, oy: number;
       if (vAsp > dAsp) { scale = dispH / vh; ox = -(vw * scale - dispW) / 2; oy = 0; }
@@ -84,16 +98,24 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       const by = box.y * scale + oy;
       const bw = box.w * scale;
       const bh = box.h * scale;
-      ctx.strokeStyle = 'rgba(255, 200, 0, 0.85)';
-      ctx.lineWidth = 2.5;
-      ctx.shadowColor = 'rgba(255,200,0,0.4)';
-      ctx.shadowBlur  = 8;
-      ctx.strokeRect(bx, by, bw, bh);
+
+      // Grüner Rahmen mit runden Ecken
+      ctx.strokeStyle = '#48bb78';
+      ctx.lineWidth = 3;
+      ctx.shadowColor = 'rgba(72,187,120,0.6)';
+      ctx.shadowBlur  = 12;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, bh, 14);
+      ctx.stroke();
       ctx.shadowBlur = 0;
+
+      // Halbtransparente Füllung
+      ctx.fillStyle = 'rgba(72,187,120,0.07)';
+      ctx.fill();
       return;
     }
 
-    // Kein ONNX-Treffer → statischer gestrichelter Kartenrahmen als Orientierungshilfe
+    // Kein ONNX-Treffer → gestrichelter Hilfsrahmen
     const guideW = Math.min(dispW * 0.62, dispH * 0.50);
     const guideH = guideW * 1.4;
     const gx = (dispW - guideW) / 2;
@@ -143,15 +165,15 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     const video = videoRef.current, canvas = canvasRef.current;
     if (!video || !canvas || video.readyState < 2) return;
 
-    // Vollbild ins Canvas zeichnen
     canvas.width  = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d')!.drawImage(video, 0, 0);
 
     // ONNX-Box bekannt → Karte ausschneiden für bessere Gemini-Erkennung
-    // (Gemini sieht nur die Karte, kein störender Hintergrund)
     const box = onnxBoxRef.current;
     let imageBase64: string;
+    let cropInfo = `${canvas.width}×${canvas.height} (voll)`;
+
     if (box && box.w > 50 && box.h > 50) {
       const pad = CROP_PADDING;
       const cx = Math.max(0, Math.round(box.x - pad));
@@ -163,11 +185,12 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       crop.height = ch;
       crop.getContext('2d')!.drawImage(canvas, cx, cy, cw, ch, 0, 0, cw, ch);
       imageBase64 = crop.toDataURL('image/jpeg', 0.92).split(',')[1];
+      cropInfo = `${cw}×${ch} (crop)`;
     } else {
-      // Kein ONNX-Treffer → volles Bild senden
       imageBase64 = canvas.toDataURL('image/jpeg', 0.90).split(',')[1];
     }
 
+    setDebug(d => ({ ...d, cropSize: cropInfo }));
     onCaptureRef.current(imageBase64, 'image/jpeg');
 
     setFlashing(true); setTimeout(() => setFlashing(false), 180);
@@ -187,7 +210,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         const vw = video.videoWidth, vh = video.videoHeight;
         if (!vw || !vh) return;
 
-        // 1. Motion-Sample (für MSE)
+        // 1. Motion-Sample
         const sw = Math.min(SAMPLE_W, vw), sh = Math.min(SAMPLE_H, vh);
         const sx = Math.max(0, (vw - sw) / 2), sy = Math.max(0, (vh - sh) / 2);
         const sCtx = sample.getContext('2d')!;
@@ -196,7 +219,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         const pCtx = prev.getContext('2d')!;
         const pData = pCtx.getImageData(0, 0, sw, sh).data;
 
-        // 2. ONNX: fire-and-forget (Ergebnis wird im nächsten Frame genutzt)
+        // 2. ONNX: fire-and-forget
         if (!inferringRef.current && vw > 0) {
           inferringRef.current = true;
           detectCardInFrame(video).then(box => {
@@ -216,11 +239,11 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         }
         const cardDetected = onnxBoxRef.current !== null;
 
-        // 3. Overlay aktualisieren
+        // 3. Overlay
         drawOverlay();
         setDetected(cardDetected);
 
-        // 4. Bewegungsmessung (MSE)
+        // 4. MSE
         let mse = 0, mc = 0;
         for (let i = 0; i < sData.length; i += 32) {
           const d = sData[i] - pData[i]; mse += d * d; mc++;
@@ -228,8 +251,17 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         mse = mc > 0 ? mse / mc : 0;
         pCtx.drawImage(sample, 0, 0);
 
-        // 5. Snap-Trigger
-        // Sofort-Auslöser bei sehr hoher Konfidenz + minimale Bewegung
+        // 5. Debug-State aktualisieren
+        setDebug({
+          conf:    onnxBoxRef.current?.conf ?? 0,
+          mse:     Math.round(mse),
+          stable:  stableRef.current,
+          detected: cardDetected,
+          sessionReady: sessionReadyRef.current,
+          cropSize: '',  // wird nur bei Snap gesetzt
+        });
+
+        // 6. Snap-Trigger
         const highConf = (onnxBoxRef.current?.conf ?? 0) >= SNAP_INSTANT_CONF;
         if (!cooldownRef.current && cardDetected && highConf && mse < MOTION_RESET_THRESHOLD / 2) {
           setProgress(1);
@@ -297,6 +329,46 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
             style={{ zIndex: 2 }}
           />
 
+          {/* ── DEBUG-Panel ────────────────────────────────────────── */}
+          <div
+            className="absolute left-0 right-0 pointer-events-none"
+            style={{
+              top: 'calc(env(safe-area-inset-top, 0px) + 60px)',
+              zIndex: 10,
+              display: 'flex',
+              justifyContent: 'center',
+            }}
+          >
+            <div
+              style={{
+                background: 'rgba(0,0,0,0.72)',
+                borderRadius: 10,
+                padding: '6px 12px',
+                fontFamily: 'monospace',
+                fontSize: 12,
+                color: '#fff',
+                lineHeight: 1.6,
+                minWidth: 220,
+              }}
+            >
+              <div>
+                Session:{' '}
+                <span style={{ color: debug.sessionReady ? '#48bb78' : '#f87171' }}>
+                  {debug.sessionReady ? 'bereit' : 'lädt …'}
+                </span>
+              </div>
+              <div>
+                Karte:{' '}
+                <span style={{ color: debug.detected ? '#48bb78' : '#f87171' }}>
+                  {debug.detected ? `erkannt (conf ${debug.conf.toFixed(2)})` : 'nicht erkannt'}
+                </span>
+              </div>
+              <div>Bewegung (MSE): <span style={{ color: debug.mse > MOTION_RESET_THRESHOLD ? '#facc15' : '#fff' }}>{debug.mse}</span></div>
+              <div>Stabil: {debug.stable} / {SNAP_STABLE_FRAMES}</div>
+              {debug.cropSize && <div style={{ color: '#60a5fa' }}>Crop: {debug.cropSize}</div>}
+            </div>
+          </div>
+
           {/* Weißer Blitz beim Snap */}
           {flashing && (
             <div className="absolute inset-0 bg-white/70 pointer-events-none" style={{ zIndex: 3 }} />
@@ -322,7 +394,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
             </div>
           )}
 
-          {/* Torch + Kamerawechsel (links, unterhalb des Headers) */}
+          {/* Torch + Kamerawechsel */}
           <div
             className="absolute left-4 flex flex-col gap-2 pointer-events-auto"
             style={{ top: 'calc(env(safe-area-inset-top, 0px) + 68px)', zIndex: 4 }}
