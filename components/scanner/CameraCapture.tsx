@@ -46,10 +46,11 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
   // Letztes ONNX-Ergebnis in Video-Koordinaten (für Overlay + Snap-Trigger + Crop)
   const onnxBoxRef    = useRef<CardBox | null>(null);
-  const onnxStickyRef = useRef(0);
-  const ONNX_STICKY   = 4;
-  const inferringRef  = useRef(false);
+  const onnxStickyRef  = useRef(0);
+  const ONNX_STICKY    = 4;
+  const inferringRef   = useRef(false);
   const sessionReadyRef = useRef(false);
+  const cropSizeRef    = useRef('–'); // persistent, wird nicht bei jedem Tick überschrieben
 
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
 
@@ -190,7 +191,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       imageBase64 = canvas.toDataURL('image/jpeg', 0.90).split(',')[1];
     }
 
-    setDebug(d => ({ ...d, cropSize: cropInfo }));
+    cropSizeRef.current = cropInfo;
     onCaptureRef.current(imageBase64, 'image/jpeg');
 
     setFlashing(true); setTimeout(() => setFlashing(false), 180);
@@ -253,12 +254,12 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
         // 5. Debug-State aktualisieren
         setDebug({
-          conf:    onnxBoxRef.current?.conf ?? 0,
-          mse:     Math.round(mse),
-          stable:  stableRef.current,
-          detected: cardDetected,
+          conf:         onnxBoxRef.current?.conf ?? 0,
+          mse:          Math.round(mse),
+          stable:       stableRef.current,
+          detected:     cardDetected,
           sessionReady: sessionReadyRef.current,
-          cropSize: '',  // wird nur bei Snap gesetzt
+          cropSize:     cropSizeRef.current, // bleibt erhalten bis zum nächsten Snap
         });
 
         // 6. Snap-Trigger
@@ -329,12 +330,12 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
             style={{ zIndex: 2 }}
           />
 
-          {/* ── DEBUG-Panel ────────────────────────────────────────── */}
+          {/* ── DEBUG-Panel (z-50 > Scanner-Header z-20, unterhalb des Headers) ── */}
           <div
             className="absolute left-0 right-0 pointer-events-none"
             style={{
-              top: 'calc(env(safe-area-inset-top, 0px) + 60px)',
-              zIndex: 10,
+              top: 'calc(env(safe-area-inset-top, 0px) + 120px)',
+              zIndex: 50,
               display: 'flex',
               justifyContent: 'center',
             }}
