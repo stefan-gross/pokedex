@@ -70,26 +70,42 @@ export async function detectCardInFrame(
   const inputTensor = new ort.Tensor('float32', t, [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
   const outputs = await session.run({ images: inputTensor });
 
-  // 3. Output0 parsen: [1, 38, 8400]
-  //    Zeile 0–3: cx, cy, w, h (in 640×640 Koordinaten)
-  //    Zeile 4:   Card-score (sigmoid, 0–1)
-  //    Zeile 5:   Name-score (ignoriert)
-  //    Zeile 6–37: Masken-Koeffizienten (ignoriert)
-  const out         = outputs['output0'].data as Float32Array;
-  const numAnchors  = 8400;
+  // DEBUG: Output-Struktur einmalig loggen
+  if (!(detectCardInFrame as { _debugged?: boolean })._debugged) {
+    (detectCardInFrame as { _debugged?: boolean })._debugged = true;
+    for (const [key, tensor] of Object.entries(outputs)) {
+      console.log(`[ONNX] output key="${key}" shape=${JSON.stringify(tensor.dims)} type=${tensor.type}`);
+    }
+  }
+
+  // 3. Output0 parsen: erwartetes Format [1, 38, 8400]
+  //    Layout features-first: Zeile k = out[k * numAnchors + i]
+  //    Zeile 0–3: cx, cy, w, h | Zeile 4: Card-score | Zeile 5: Name-score
+  const outTensor   = outputs['output0'] ?? outputs[Object.keys(outputs)[0]];
+  const out         = outTensor.data as Float32Array;
+  const dims        = outTensor.dims; // z.B. [1, 38, 8400]
+  // Unterstützt beide Layouts: [1, F, N] und [1, N, F]
+  const isFeatureFirst = dims[1] < dims[2]; // F < N → features-first
+  const numFeatures = isFeatureFirst ? dims[1] : dims[2];
+  const numAnchors  = isFeatureFirst ? dims[2] : dims[1];
   const scaleX      = canvas.width  / MODEL_INPUT_SIZE;
   const scaleY      = canvas.height / MODEL_INPUT_SIZE;
 
+  const getVal = (feat: number, anchor: number) =>
+    isFeatureFirst ? out[feat * numAnchors + anchor] : out[anchor * numFeatures + feat];
+
   let best: CardBox | null = null;
+  let maxConf = 0;
 
   for (let i = 0; i < numAnchors; i++) {
-    const cardConf = out[(4 + CLASS_CARD) * numAnchors + i];
+    const cardConf = getVal(4 + CLASS_CARD, i);
     if (cardConf < CONF_THRESHOLD) continue;
+    if (cardConf > maxConf) maxConf = cardConf;
 
-    const cx = out[0 * numAnchors + i];
-    const cy = out[1 * numAnchors + i];
-    const w  = out[2 * numAnchors + i];
-    const h  = out[3 * numAnchors + i];
+    const cx = getVal(0, i);
+    const cy = getVal(1, i);
+    const w  = getVal(2, i);
+    const h  = getVal(3, i);
 
     if (!best || cardConf > best.conf) {
       best = {
@@ -101,6 +117,9 @@ export async function detectCardInFrame(
       };
     }
   }
+
+  if (best) console.log(`[ONNX] Card detected conf=${best.conf.toFixed(2)}`);
+  else console.log(`[ONNX] No card (maxConf=${maxConf.toFixed(3)}, threshold=${CONF_THRESHOLD})`);
 
   return best;
 }
