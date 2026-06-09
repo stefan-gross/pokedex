@@ -50,8 +50,9 @@ const SAMPLE_H = 266;
 const CHECK_MS               = 150;   // ONNX-Inferenz ~80ms → etwas mehr Budget
 const MOTION_RESET_THRESHOLD = 1200;  // grobe Bewegung → stable zurücksetzen
 const MOTION_SNAP_THRESHOLD  = 700;   // unter diesem MSE-Wert gilt es als "ruhig"
-const SNAP_STABLE_FRAMES     = 1;     // 1 ruhiger Frame reicht → kein "stillhalten" nötig
-const SNAP_COOLDOWN_MS       = 2000;
+const SNAP_STABLE_FRAMES     = 1;     // 1 ruhiger Frame reicht
+const BOX_SETTLED_THRESHOLD  = 12;   // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames
+const SNAP_COOLDOWN_SAFETY   = 8000; // Fallback-Timeout falls Karte nie verschwindet
 
 // Rand um die ONNX-Box beim Zuschneiden für Gemini (Pixel in Video-Koordinaten)
 const CROP_PADDING = 24;
@@ -60,6 +61,7 @@ interface DebugInfo {
   conf: number;
   mse: number;
   stable: number;
+  boxDelta: number;
   detected: boolean;
   sessionReady: boolean;
   cropSize: string;
@@ -86,6 +88,16 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   const cropSizeRef     = useRef('–');
   const mountGenRef     = useRef(++_mountGeneration); // steigt bei jedem Remount
 
+  // Box-Settling: Drift zwischen zwei aufeinanderfolgenden ONNX-Ergebnissen
+  const prevBoxRef    = useRef<CardBox | null>(null); // letztes ONNX-Ergebnis
+  const boxDeltaRef   = useRef<number>(Infinity);     // Positions-/Größen-Drift in px
+
+  // Absence-basierter Cooldown: nach Snap auf Verschwinden der Karte warten
+  const waitForAbsenceRef = useRef(false);
+
+  // Overlay-Skalierung (aus drawOverlay) für Snap-Animation-Positionierung
+  const snapScaleRef = useRef({ scale: 1, ox: 0, oy: 0 });
+
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
 
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
@@ -95,8 +107,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   const [detected,   setDetected]   = useState(false);
   const [inCooldown, setInCooldown] = useState(false);
   const [flashing,   setFlashing]   = useState(false);
+  const [snapAnim,   setSnapAnim]   = useState<{ box: CardBox; phase: 'burst' | 'fade' } | null>(null);
   const [debug,      setDebug]      = useState<DebugInfo>({
-    conf: 0, mse: 0, stable: 0, detected: false, sessionReady: false, cropSize: '–',
+    conf: 0, mse: 0, stable: 0, boxDelta: Infinity, detected: false, sessionReady: false, cropSize: '–',
   });
 
   // ONNX-Session beim Mount laden
@@ -128,6 +141,8 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       let scale: number, ox: number, oy: number;
       if (vAsp > dAsp) { scale = dispH / vh; ox = -(vw * scale - dispW) / 2; oy = 0; }
       else             { scale = dispW / vw; ox = 0; oy = -(vh * scale - dispH) / 2; }
+      // Skalierung für Snap-Animation merken (wird in doCapture-Zeitpunkt gelesen)
+      snapScaleRef.current = { scale, ox, oy };
 
       const bx = box.x * scale + ox;
       const by = box.y * scale + oy;
@@ -306,10 +321,32 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     cropSizeRef.current = cropInfo;
     onCaptureRef.current(imageBase64, 'image/jpeg');
 
+    // Weißer Blitz
     setFlashing(true); setTimeout(() => setFlashing(false), 180);
+
+    // Rahmen-Burst-Animation: kurz aufleuchten + wegfaden
+    const snapBox = onnxBoxRef.current;
+    if (snapBox) {
+      setSnapAnim({ box: snapBox, phase: 'burst' });
+      setTimeout(() => setSnapAnim(s => s ? { ...s, phase: 'fade' } : null), 80);
+      setTimeout(() => setSnapAnim(null), 380);
+    }
+
     stableRef.current = 0; setProgress(0); setDetected(false);
-    cooldownRef.current = true; setInCooldown(true);
-    setTimeout(() => { cooldownRef.current = false; setInCooldown(false); }, SNAP_COOLDOWN_MS);
+    prevBoxRef.current = null; boxDeltaRef.current = Infinity;
+
+    // Absence-basierter Cooldown: blockiert bis Karte das Bild verlässt
+    cooldownRef.current = true;
+    waitForAbsenceRef.current = true;
+    setInCooldown(true);
+    // Sicherheits-Timeout: falls ONNX die Karte nie als "weg" erkennt (z.B. Dauerbeleuchtung)
+    setTimeout(() => {
+      if (waitForAbsenceRef.current) {
+        waitForAbsenceRef.current = false;
+        cooldownRef.current = false;
+        setInCooldown(false);
+      }
+    }, SNAP_COOLDOWN_SAFETY);
   }, [paused]);
 
   // ── Detection-Loop ────────────────────────────────────────────────────────
@@ -337,15 +374,39 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
           inferringRef.current = true;
           detectCardInFrame(video).then(box => {
             if (box) {
+              // Box-Delta: Drift des Mittelpunkts + Größe zwischen zwei ONNX-Frames
+              const prev = prevBoxRef.current;
+              if (prev) {
+                const dCx = (box.x + box.w / 2) - (prev.x + prev.w / 2);
+                const dCy = (box.y + box.h / 2) - (prev.y + prev.h / 2);
+                boxDeltaRef.current = Math.hypot(dCx, dCy) + Math.abs(box.w - prev.w) * 0.3;
+              } else {
+                boxDeltaRef.current = Infinity; // erster Treffer → noch nicht settled
+              }
+              prevBoxRef.current    = box;
               onnxBoxRef.current    = box;
               onnxStickyRef.current = ONNX_STICKY;
             } else {
               onnxStickyRef.current = Math.max(0, onnxStickyRef.current - 1);
-              if (onnxStickyRef.current === 0) onnxBoxRef.current = null;
+              if (onnxStickyRef.current === 0) {
+                onnxBoxRef.current  = null;
+                prevBoxRef.current  = null;
+                boxDeltaRef.current = Infinity;
+                // Absence erkannt → Cooldown aufheben (nächste Karte darf gescannt werden)
+                if (waitForAbsenceRef.current) {
+                  waitForAbsenceRef.current = false;
+                  cooldownRef.current       = false;
+                  setInCooldown(false);
+                  stableRef.current = 0;
+                  setProgress(0);
+                }
+              }
             }
           }).catch(() => {
             onnxBoxRef.current    = null;
             onnxStickyRef.current = 0;
+            prevBoxRef.current    = null;
+            boxDeltaRef.current   = Infinity;
           }).finally(() => {
             inferringRef.current = false;
           });
@@ -369,21 +430,25 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
           conf:         onnxBoxRef.current?.conf ?? 0,
           mse:          Math.round(mse),
           stable:       stableRef.current,
+          boxDelta:     isFinite(boxDeltaRef.current) ? Math.round(boxDeltaRef.current) : 999,
           detected:     cardDetected,
           sessionReady: sessionReadyRef.current,
-          cropSize:     cropSizeRef.current, // bleibt erhalten bis zum nächsten Snap
+          cropSize:     cropSizeRef.current,
         });
 
-        // 6. Snap-Trigger — sofort auslösen, kein "stillhalten" nötig
-        if (!cooldownRef.current && cardDetected && mse < MOTION_SNAP_THRESHOLD) {
+        // 6. Snap-Trigger — Karte ruhig + Box settled (ONNX konvergiert)
+        const boxSettled = boxDeltaRef.current < BOX_SETTLED_THRESHOLD;
+        if (!cooldownRef.current && cardDetected && mse < MOTION_SNAP_THRESHOLD && boxSettled) {
           stableRef.current += 1;
           setProgress(1);
-          if (stableRef.current >= SNAP_STABLE_FRAMES) doCapture(); // SNAP_STABLE_FRAMES=1 → 1. ruhiger Frame reicht
-        } else {
-          if (!cooldownRef.current) {
-            stableRef.current = 0;
-            setProgress(cardDetected ? Math.min(1 - mse / MOTION_RESET_THRESHOLD, 0.6) : 0);
-          }
+          if (stableRef.current >= SNAP_STABLE_FRAMES) doCapture();
+        } else if (!cooldownRef.current) {
+          stableRef.current = 0;
+          // Progress: wächst proportional zur Box-Konvergenz (0 = unsettled, 0.9 = fast fertig)
+          const convergence = isFinite(boxDeltaRef.current)
+            ? Math.max(0, 1 - boxDeltaRef.current / 60)
+            : 0;
+          setProgress(cardDetected ? Math.min(convergence, 0.9) : 0);
         }
       }, CHECK_MS);
     }, 800);
@@ -400,7 +465,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   };
 
   const hintText = paused             ? 'Scannen pausiert'
-    : inCooldown                      ? 'Nächste Karte bereithalten …'
+    : inCooldown                      ? 'Karte aus dem Bild nehmen …'
     : detected && progress >= 1       ? 'Karte erkannt — wird aufgenommen …'
     : detected                        ? 'Karte erkannt'
     : progress > 0                    ? 'Fast …'
@@ -477,6 +542,13 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
               </div>
               <div>Bewegung (MSE): <span style={{ color: debug.mse > MOTION_RESET_THRESHOLD ? '#facc15' : '#fff' }}>{debug.mse}</span></div>
               <div>Stabil: {debug.stable} / {SNAP_STABLE_FRAMES}</div>
+              <div>
+                Box-Delta:{' '}
+                <span style={{ color: debug.boxDelta < BOX_SETTLED_THRESHOLD ? '#48bb78' : debug.boxDelta < 60 ? '#facc15' : '#f87171' }}>
+                  {debug.boxDelta === 999 ? '∞' : `${debug.boxDelta} px`}
+                  {debug.boxDelta < BOX_SETTLED_THRESHOLD ? ' ✓' : ''}
+                </span>
+              </div>
               {debug.cropSize && <div style={{ color: '#60a5fa' }}>Crop: {debug.cropSize}</div>}
             </div>
           </div>
@@ -485,6 +557,33 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
           {flashing && (
             <div className="absolute inset-0 bg-white/70 pointer-events-none" style={{ zIndex: 3 }} />
           )}
+
+          {/* Rahmen-Burst: weißer Rahmen an der Kartenposition leuchtet auf und faded weg */}
+          {snapAnim && (() => {
+            const { scale, ox, oy } = snapScaleRef.current;
+            const b = snapAnim.box;
+            return (
+              <div
+                className="absolute pointer-events-none"
+                style={{
+                  left:   b.x * scale + ox,
+                  top:    b.y * scale + oy,
+                  width:  b.w * scale,
+                  height: b.h * scale,
+                  borderRadius: 14,
+                  border: '4px solid white',
+                  boxShadow: '0 0 24px rgba(255,255,255,0.9), inset 0 0 12px rgba(255,255,255,0.15)',
+                  opacity:   snapAnim.phase === 'burst' ? 1 : 0,
+                  transform: snapAnim.phase === 'burst' ? 'scale(1.07)' : 'scale(1.0)',
+                  transition: snapAnim.phase === 'fade'
+                    ? 'opacity 260ms ease-out, transform 260ms ease-out'
+                    : 'none',
+                  transformOrigin: 'center',
+                  zIndex: 5,
+                }}
+              />
+            );
+          })()}
 
           {/* Pause-Overlay */}
           {paused && (
