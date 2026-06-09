@@ -96,8 +96,10 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   const waitForAbsenceRef = useRef(false);
 
   // Overlay-Skalierung (aus drawOverlay) für Snap-Animation-Positionierung
-  // null = drawOverlay hat noch nicht gelaufen → snapAnim nicht rendern
   const snapScaleRef = useRef<{ scale: number; ox: number; oy: number } | null>(null);
+
+  // Geglättete Box für flüssiges Overlay-Rendering (Lerp zur ONNX-Zielbox bei 60fps)
+  const lerpBoxRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
 
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
 
@@ -108,7 +110,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   const [detected,   setDetected]   = useState(false);
   const [inCooldown, setInCooldown] = useState(false);
   const [flashing,   setFlashing]   = useState(false);
-  const [snapAnim,   setSnapAnim]   = useState<{ box: CardBox; phase: 'burst' | 'fade' } | null>(null);
+  const [snapAnim,   setSnapAnim]   = useState<{
+    left: number; top: number; width: number; height: number; phase: 'burst' | 'fade';
+  } | null>(null);
   const [debug,      setDebug]      = useState<DebugInfo>({
     conf: 0, mse: 0, stable: 0, boxDelta: Infinity, detected: false, sessionReady: false, cropSize: '–',
   });
@@ -121,62 +125,72 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   }, []);
 
   // ── Overlay: ONNX-Box oder gestrichelter Hilfsrahmen ─────────────────────
+  // Läuft im rAF-Loop (60fps) → Lerp macht den Rahmen flüssig
   const drawOverlay = useCallback(() => {
     const overlay = overlayRef.current;
     if (!overlay) return;
     const dispW = overlay.clientWidth;
     const dispH = overlay.clientHeight;
     if (!dispW || !dispH) return;
-    overlay.width  = dispW;
-    overlay.height = dispH;
+    // Canvas nur bei Größenänderung neu dimensionieren (verhindert State-Reset bei 60fps)
+    if (overlay.width  !== dispW) overlay.width  = dispW;
+    if (overlay.height !== dispH) overlay.height = dispH;
     const ctx = overlay.getContext('2d')!;
     ctx.clearRect(0, 0, dispW, dispH);
+    ctx.setLineDash([]); // Reset nach möglichem gestricheltem Hilfsrahmen
 
     const video = videoRef.current;
     const vw = video?.videoWidth  ?? 0;
     const vh = video?.videoHeight ?? 0;
 
-    const box = onnxBoxRef.current;
-    if (box && vw && vh) {
+    const target = onnxBoxRef.current;
+    if (target && vw && vh) {
+      // Skalierung: Video-Koordinaten → Bildschirmkoordinaten (object-cover)
       const vAsp = vw / vh, dAsp = dispW / dispH;
       let scale: number, ox: number, oy: number;
       if (vAsp > dAsp) { scale = dispH / vh; ox = -(vw * scale - dispW) / 2; oy = 0; }
       else             { scale = dispW / vw; ox = 0; oy = -(vh * scale - dispH) / 2; }
-      // Skalierung für Snap-Animation merken (wird in doCapture-Zeitpunkt gelesen)
       snapScaleRef.current = { scale, ox, oy };
 
-      const bx = box.x * scale + ox;
-      const by = box.y * scale + oy;
-      const bw = box.w * scale;
-      const bh = box.h * scale;
+      // Exponentielles Lerp: Box fließend zur ONNX-Zielposition bewegen (60fps)
+      const LERP_F = 0.28;
+      const prev = lerpBoxRef.current;
+      const lb = prev ? {
+        x: prev.x + (target.x - prev.x) * LERP_F,
+        y: prev.y + (target.y - prev.y) * LERP_F,
+        w: prev.w + (target.w - prev.w) * LERP_F,
+        h: prev.h + (target.h - prev.h) * LERP_F,
+      } : { x: target.x, y: target.y, w: target.w, h: target.h };
+      lerpBoxRef.current = lb;
 
-      // Grüner Rahmen — rotiert wenn Maske Eckpunkte liefert, sonst AABB
+      // Grüner Rahmen
       ctx.strokeStyle = '#48bb78';
       ctx.lineWidth = 3;
       ctx.shadowColor = 'rgba(72,187,120,0.6)';
       ctx.shadowBlur  = 12;
 
-      if (box.corners?.length === 4) {
-        // Exakter rotierter Rahmen aus Segmentierungsmaske
-        const pts = box.corners.map(
+      const settled = boxDeltaRef.current < BOX_SETTLED_THRESHOLD;
+      if (settled && target.corners?.length === 4) {
+        // Box stabil → präzisen rotierten Rahmen aus Segmentierungsmaske
+        const pts = target.corners.map(
           ([x, y]) => [x * scale + ox, y * scale + oy] as [number, number]
         );
         drawRoundedPolygon(ctx, pts, 14);
       } else {
-        // Fallback: axis-aligned Bounding Box
+        // Box noch am Einschwingen → geglättete AABB (ruckelfrei dank Lerp)
         ctx.beginPath();
-        ctx.roundRect(bx, by, bw, bh, 14);
+        ctx.roundRect(lb.x * scale + ox, lb.y * scale + oy, lb.w * scale, lb.h * scale, 14);
       }
       ctx.stroke();
       ctx.shadowBlur = 0;
 
-      // Halbtransparente Füllung
       ctx.fillStyle = 'rgba(72,187,120,0.07)';
       ctx.fill();
       return;
     }
 
-    // Kein ONNX-Treffer → gestrichelter Hilfsrahmen
+    // Kein Treffer → Lerp zurücksetzen + gestrichelter Hilfsrahmen
+    lerpBoxRef.current = null;
     const guideW = Math.min(dispW * 0.62, dispH * 0.50);
     const guideH = guideW * 1.4;
     const gx = (dispW - guideW) / 2;
@@ -199,6 +213,14 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     ctx.stroke();
     ctx.setLineDash([]);
   }, []);
+
+  // ── rAF-Loop: Overlay bei 60fps rendern (Lerp macht Box flüssig) ──────────
+  useEffect(() => {
+    let raf: number;
+    const loop = () => { drawOverlay(); raf = requestAnimationFrame(loop); };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [drawOverlay]);
 
   // ── Kamera starten ────────────────────────────────────────────────────────
   const startCamera = useCallback(async () => {
@@ -292,9 +314,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       const minY = Math.min(...ys), maxY = Math.max(...ys);
       const bw   = maxX - minX;
       const bh   = maxY - minY;
-      // 20 % horizontal, 30 % vertikal (ONNX detektiert untere Kartenhälfte öfter stärker)
-      const padX = Math.round(bw * 0.20) + CROP_PADDING;
-      const padY = Math.round(bh * 0.30) + CROP_PADDING;
+      // Konservatives Padding: Eckpunkte liegen bereits nah an Kartenkanten
+      const padX = Math.round(bw * 0.05) + CROP_PADDING;
+      const padY = Math.round(bh * 0.08) + CROP_PADDING;
       const cx   = Math.max(0, Math.round(minX - padX));
       const cy   = Math.max(0, Math.round(minY - padY));
       const cw   = Math.min(canvas.width  - cx, Math.round(bw + padX * 2));
@@ -307,9 +329,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       cropInfo    = `${cw}×${ch} (corners)`;
 
     } else if (box && box.w > 50 && box.h > 50) {
-      // ── Fallback: ONNX-AABB mit proportionalem Padding ─────────────────────
-      const padX = Math.max(CROP_PADDING, Math.round(box.w * 0.20));
-      const padY = Math.max(CROP_PADDING, Math.round(box.h * 0.30));
+      // ── Fallback: ONNX-AABB mit konservativem Padding ──────────────────────
+      const padX = Math.max(CROP_PADDING, Math.round(box.w * 0.05));
+      const padY = Math.max(CROP_PADDING, Math.round(box.h * 0.08));
       const cx   = Math.max(0, Math.round(box.x - padX));
       const cy   = Math.max(0, Math.round(box.y - padY));
       const cw   = Math.min(canvas.width  - cx, Math.round(box.w + padX * 2));
@@ -330,10 +352,18 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     // Weißer Blitz
     setFlashing(true); setTimeout(() => setFlashing(false), 180);
 
-    // Rahmen-Burst-Animation: kurz aufleuchten + wegfaden
+    // Rahmen-Burst-Animation: Bildschirmkoordinaten jetzt berechnen (nicht erst beim Render)
+    // — verhindert Timing-Probleme wenn snapScaleRef sich zwischen Snap und Render ändert
     const snapBox = onnxBoxRef.current;
-    if (snapBox) {
-      setSnapAnim({ box: snapBox, phase: 'burst' });
+    const ss = snapScaleRef.current;
+    if (snapBox && ss) {
+      setSnapAnim({
+        left:   snapBox.x * ss.scale + ss.ox,
+        top:    snapBox.y * ss.scale + ss.oy,
+        width:  snapBox.w * ss.scale,
+        height: snapBox.h * ss.scale,
+        phase:  'burst',
+      });
       setTimeout(() => setSnapAnim(s => s ? { ...s, phase: 'fade' } : null), 80);
       setTimeout(() => setSnapAnim(null), 380);
     }
@@ -419,8 +449,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         }
         const cardDetected = onnxBoxRef.current !== null;
 
-        // 3. Overlay
-        drawOverlay();
+        // 3. Detected-State (Overlay läuft separat im rAF-Loop)
         setDetected(cardDetected);
 
         // 4. MSE
@@ -460,7 +489,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     }, 800);
 
     return () => { clearTimeout(delay); if (timerRef.current) clearInterval(timerRef.current); };
-  }, [doCapture, paused, drawOverlay]);
+  }, [doCapture, paused]);
 
   // ── Taschenlampe ─────────────────────────────────────────────────────────
   const toggleTorch = async () => {
@@ -565,33 +594,27 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
           )}
 
           {/* Rahmen-Burst: weißer Rahmen an der Kartenposition leuchtet auf und faded weg */}
-          {snapAnim && snapScaleRef.current && (() => {
-            // snapScaleRef ist null bis drawOverlay zum ersten Mal gelaufen ist →
-            // kein Rendern mit falschen Koordinaten (Video-Space statt Screen-Space)
-            const { scale, ox, oy } = snapScaleRef.current;
-            const b = snapAnim.box;
-            return (
-              <div
-                className="absolute pointer-events-none"
-                style={{
-                  left:   b.x * scale + ox,
-                  top:    b.y * scale + oy,
-                  width:  b.w * scale,
-                  height: b.h * scale,
-                  borderRadius: 14,
-                  border: '4px solid white',
-                  boxShadow: '0 0 24px rgba(255,255,255,0.9), inset 0 0 12px rgba(255,255,255,0.15)',
-                  opacity:   snapAnim.phase === 'burst' ? 1 : 0,
-                  transform: snapAnim.phase === 'burst' ? 'scale(1.07)' : 'scale(1.0)',
-                  transition: snapAnim.phase === 'fade'
-                    ? 'opacity 260ms ease-out, transform 260ms ease-out'
-                    : 'none',
-                  transformOrigin: 'center',
-                  zIndex: 5,
-                }}
-              />
-            );
-          })()}
+          {snapAnim && (
+            <div
+              className="absolute pointer-events-none"
+              style={{
+                left:   snapAnim.left,
+                top:    snapAnim.top,
+                width:  snapAnim.width,
+                height: snapAnim.height,
+                borderRadius: 14,
+                border: '4px solid white',
+                boxShadow: '0 0 24px rgba(255,255,255,0.9), inset 0 0 12px rgba(255,255,255,0.15)',
+                opacity:   snapAnim.phase === 'burst' ? 1 : 0,
+                transform: snapAnim.phase === 'burst' ? 'scale(1.07)' : 'scale(1.0)',
+                transition: snapAnim.phase === 'fade'
+                  ? 'opacity 260ms ease-out, transform 260ms ease-out'
+                  : 'none',
+                transformOrigin: 'center',
+                zIndex: 5,
+              }}
+            />
+          )}
 
           {/* Pause-Overlay */}
           {paused && (
