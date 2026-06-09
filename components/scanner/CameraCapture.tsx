@@ -486,12 +486,13 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
         // 1b. ONNX: fire-and-forget (Ergebnis wird im nächsten Frame genutzt)
         // Überlappsschutz via inferringRef — sample ist in Video-Mitte-Koordinaten
-        if (!inferringRef.current && sample.width > 0) {
+        if (!inferringRef.current && vw > 0) {
           inferringRef.current = true;
-          detectCardInFrame(sample).then(box => {
+          // Video direkt übergeben → Modell sieht das vollständige Bild, nicht nur den Mittenausschnitt
+          detectCardInFrame(video).then(box => {
             if (box) {
-              // Karte erkannt → in Video-Koordinaten umrechnen + Sticky auffrischen
-              onnxBoxRef.current  = { x: box.x + sx, y: box.y + sy, w: box.w, h: box.h, conf: box.conf };
+              // Koordinaten sind bereits in Video-Space (Letterboxing schon rückgerechnet)
+              onnxBoxRef.current  = box;
               onnxStickyRef.current = ONNX_STICKY;
             } else {
               // Kein Ergebnis → Sticky runterzählen, erst bei 0 wirklich löschen

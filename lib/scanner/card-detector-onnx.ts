@@ -14,7 +14,7 @@ import * as ort from 'onnxruntime-web';
 
 const MODEL_PATH       = '/models/card-detector.onnx';
 const MODEL_INPUT_SIZE = 640;
-const CONF_THRESHOLD   = 0.45;
+const CONF_THRESHOLD   = 0.60; // 0.45 produziert zu viele Falsch-Positive
 
 // Klassen-Index laut Roboflow-Training
 const CLASS_CARD = 0;
@@ -49,14 +49,26 @@ export interface CardBox {
  * Gibt null zurück wenn keine Karte mit conf >= CONF_THRESHOLD gefunden.
  */
 export async function detectCardInFrame(
-  canvas: HTMLCanvasElement
+  source: HTMLCanvasElement | HTMLVideoElement
 ): Promise<CardBox | null> {
   if (!session) return null;
 
-  // 1. Frame auf 640×640 skalieren, RGB Float32 channel-first [1, 3, 640, 640]
+  // Quell-Dimensionen ermitteln (Video vs Canvas)
+  const srcW = source instanceof HTMLVideoElement ? source.videoWidth  : source.width;
+  const srcH = source instanceof HTMLVideoElement ? source.videoHeight : source.height;
+  if (!srcW || !srcH) return null;
+
+  // 1. Vollbild mit Letterboxing auf 640×640 skalieren (kein Ausschnitt!)
   const off = new OffscreenCanvas(MODEL_INPUT_SIZE, MODEL_INPUT_SIZE);
   const ctx = off.getContext('2d')!;
-  ctx.drawImage(canvas, 0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE);
+  const scale = Math.min(MODEL_INPUT_SIZE / srcW, MODEL_INPUT_SIZE / srcH);
+  const drawW = srcW * scale;
+  const drawH = srcH * scale;
+  const padX  = (MODEL_INPUT_SIZE - drawW) / 2;
+  const padY  = (MODEL_INPUT_SIZE - drawH) / 2;
+  ctx.drawImage(source, padX, padY, drawW, drawH);
   const px = ctx.getImageData(0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE).data;
   const N  = MODEL_INPUT_SIZE * MODEL_INPUT_SIZE;
   const t  = new Float32Array(3 * N);
@@ -88,8 +100,9 @@ export async function detectCardInFrame(
   const isFeatureFirst = dims[1] < dims[2]; // F < N → features-first
   const numFeatures = isFeatureFirst ? dims[1] : dims[2];
   const numAnchors  = isFeatureFirst ? dims[2] : dims[1];
-  const scaleX      = canvas.width  / MODEL_INPUT_SIZE;
-  const scaleY      = canvas.height / MODEL_INPUT_SIZE;
+  // Letterboxing rückgängig: Modell-Koordinaten → Original-Quell-Koordinaten
+  const toSrcX = (mx: number) => (mx - padX) / scale;
+  const toSrcY = (my: number) => (my - padY) / scale;
 
   const getVal = (feat: number, anchor: number) =>
     isFeatureFirst ? out[feat * numAnchors + anchor] : out[anchor * numFeatures + feat];
@@ -108,11 +121,12 @@ export async function detectCardInFrame(
     const h  = getVal(3, i);
 
     if (!best || cardConf > best.conf) {
+      // Letterboxing rückgängig → Koordinaten in Quell-Dimensionen (Video oder Canvas)
       best = {
-        x: (cx - w / 2) * scaleX,
-        y: (cy - h / 2) * scaleY,
-        w: w * scaleX,
-        h: h * scaleY,
+        x: toSrcX(cx - w / 2),
+        y: toSrcY(cy - h / 2),
+        w: w / scale,
+        h: h / scale,
         conf: cardConf,
       };
     }
