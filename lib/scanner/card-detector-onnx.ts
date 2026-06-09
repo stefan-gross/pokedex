@@ -175,25 +175,41 @@ export async function detectCardInFrame(
     if (!found) {
       best.corners = null;
     } else {
-      // Plausibilitätsprüfung anhand der echten Karten-Abmessungen
-      // (verhindert dass Tische, Telefone, etc. als Karte erkannt werden)
-      const cardW  = (Math.hypot(trX-tlX, trY-tlY) + Math.hypot(brX-blX, brY-blY)) / 2;
-      const cardH  = (Math.hypot(blX-tlX, blY-tlY) + Math.hypot(brX-trX, brY-trY)) / 2;
+      // ── Plausibilitätsprüfung anhand der echten Karten-Abmessungen ───────────
+      // (verhindert Fehldetektionen von Tischen, Telefonen, Regalrändern, etc.)
+      const cardW   = (Math.hypot(trX-tlX, trY-tlY) + Math.hypot(brX-blX, brY-blY)) / 2;
+      const cardH   = (Math.hypot(blX-tlX, blY-tlY) + Math.hypot(brX-trX, brY-trY)) / 2;
       const shorter = Math.min(cardW, cardH);
       const longer  = Math.max(cardW, cardH);
       const ratio   = longer / (shorter || 1);
 
-      // Zu groß: Objekt füllt >85 % der kürzeren Bildseite → kein Karten-Format
-      const tooLarge = shorter > Math.min(srcW, srcH) * 0.85;
-      // Falsches Seitenverhältnis: Pokémon-Karte 63×88mm = 1.40; Toleranz für Perspektive
+      // Zu groß: Objekt füllt >85 % der kürzeren Bildseite (z.B. iPhone-Display)
+      const tooLarge  = shorter > Math.min(srcW, srcH) * 0.85;
+      // Zu klein: Karte belegt <6 % der kürzeren Bildseite (z.B. Regalrand-Querschnitt)
+      const tooSmall  = shorter < Math.min(srcW, srcH) * 0.06;
+      // Falsches Seitenverhältnis: Pokémon-Karte 63×88 mm = 1.40; Toleranz für Perspektive
       const wrongRatio = ratio < 1.05 || ratio > 2.3;
 
-      if (tooLarge || wrongRatio) {
-        // Maske zeigt klar kein Kartenobjekt → Detection komplett verwerfen
+      if (tooLarge || tooSmall || wrongRatio) {
         return null;
       }
 
-      best.corners = [[tlX, tlY], [trX, trY], [brX, brY], [blX, blY]];
+      // ── Corners-Qualitätsprüfung ─────────────────────────────────────────────
+      // Wenn die Corners-Boundingbox deutlich kleiner als die ONNX-AABB ist,
+      // aktiviert sich die Maske nur auf einem Teil der Karte (z.B. nur Artwork-
+      // Bereich bei abgedunkelten Randbereichen). In diesem Fall ist die AABB
+      // zuverlässiger → corners = null damit der Fallback-Pfad genutzt wird.
+      const aabbArea    = best.w * best.h;
+      const cSpanX = Math.max(tlX, trX, brX, blX) - Math.min(tlX, trX, brX, blX);
+      const cSpanY = Math.max(tlY, trY, brY, blY) - Math.min(tlY, trY, brY, blY);
+      const cornersArea = cSpanX * cSpanY;
+
+      if (aabbArea > 0 && cornersArea < aabbArea * 0.30) {
+        // Maske deckt < 30 % der AABB ab → unzuverlässig, AABB verwenden
+        best.corners = null;
+      } else {
+        best.corners = [[tlX, tlY], [trX, trY], [brX, brY], [blX, blY]];
+      }
     }
   }
 
