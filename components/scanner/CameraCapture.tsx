@@ -191,11 +191,17 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
     // Vorhandenen Stream wiederverwenden — verhindert 2. Permission-Dialog bei Remount
     const existingTrack = _kameraStream?.getVideoTracks()[0];
-    if (existingTrack?.readyState === 'live') {
+    if (existingTrack && existingTrack.readyState !== 'ended') {
       const currentFacing = existingTrack.getSettings().facingMode;
       if (!currentFacing || currentFacing === facingMode) {
         streamRef.current = _kameraStream;
-        if (videoRef.current) videoRef.current.srcObject = _kameraStream;
+        const vid = videoRef.current;
+        if (vid) {
+          vid.srcObject = _kameraStream;
+          // iOS: autoPlay allein reicht bei programmatisch gesetztem srcObject nicht —
+          // explizites play() verhindert den nativen Video-Play-Button in der Bildmitte.
+          vid.play().catch(() => { /* iOS blockiert manchmal; kein fataler Fehler */ });
+        }
         return; // Kein neuer getUserMedia-Call
       }
     }
@@ -211,7 +217,11 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       });
       _kameraStream = stream;
       streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
+      const vid = videoRef.current;
+      if (vid) {
+        vid.srcObject = stream;
+        vid.play().catch(() => { /* Autoplay-Policy; bei gesetzten Permissions kein Problem */ });
+      }
     } catch {
       setError('Kamera konnte nicht gestartet werden. Bitte Zugriff erlauben.');
     }
@@ -220,12 +230,13 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   useEffect(() => {
     startCamera();
     return () => {
-      // Verzögert stoppen: gibt einem möglichen Remount Zeit, den Stream zu übernehmen
+      // Verzögert stoppen: gibt einem möglichen Remount genug Zeit, den Stream zu übernehmen.
+      // 5 s statt 800 ms — iOS kann etwas länger brauchen, den Effect auszuführen.
       _stopTimer = setTimeout(() => {
         _kameraStream?.getTracks().forEach(t => t.stop());
         _kameraStream = null;
         streamRef.current = null;
-      }, 800);
+      }, 5000);
     };
   }, [startCamera]);
 

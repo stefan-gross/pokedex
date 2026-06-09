@@ -53,7 +53,6 @@ export default function ScannerPage() {
   const router = useRouter();
   const [jobs, setJobs] = useState<ScanJob[]>([]);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [isPaused, setIsPaused] = useState(false);
   const [mode, setMode] = useState<'scanning' | 'review'>('scanning');
 
   const pendingCount = jobs.filter(j => j.status === 'processing').length;
@@ -89,7 +88,7 @@ export default function ScannerPage() {
       {/* ── Kamera fullscreen (nur im Scan-Modus) ───────────────── */}
       {mode === 'scanning' && (
         <div className="absolute inset-0">
-          <CameraCapture onCapture={handleCapture} pendingCount={pendingCount} paused={isPaused} />
+          <CameraCapture onCapture={handleCapture} pendingCount={pendingCount} paused={false} />
         </div>
       )}
 
