@@ -82,14 +82,6 @@ export async function detectCardInFrame(
   const inputTensor = new ort.Tensor('float32', t, [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
   const outputs = await session.run({ images: inputTensor });
 
-  // DEBUG: Output-Struktur einmalig loggen
-  if (!(detectCardInFrame as { _debugged?: boolean })._debugged) {
-    (detectCardInFrame as { _debugged?: boolean })._debugged = true;
-    for (const [key, tensor] of Object.entries(outputs)) {
-      console.log(`[ONNX] output key="${key}" shape=${JSON.stringify(tensor.dims)} type=${tensor.type}`);
-    }
-  }
-
   // 3. Output0 parsen: erwartetes Format [1, 38, 8400]
   //    Layout features-first: Zeile k = out[k * numAnchors + i]
   //    Zeile 0–3: cx, cy, w, h | Zeile 4: Card-score | Zeile 5: Name-score
@@ -132,8 +124,6 @@ export async function detectCardInFrame(
     }
   }
 
-  if (best) console.log(`[ONNX] Card detected conf=${best.conf.toFixed(2)}`);
-  else console.log(`[ONNX] No card (maxConf=${maxConf.toFixed(3)}, threshold=${CONF_THRESHOLD})`);
 
   return best;
 }
