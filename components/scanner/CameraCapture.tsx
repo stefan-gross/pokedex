@@ -17,8 +17,8 @@ const SAMPLE_H = 266;
 const CHECK_MS               = 150; // ONNX-Inferenz ~80ms → etwas mehr Budget
 const MOTION_RESET_THRESHOLD = 800;
 const CARD_DETECT_VARIANCE   = 80;   // niedrig → Detection läuft fast immer
-const SNAP_STABLE_FRAMES     = 10; // 1 s Ruhe mit erkanntem Quad → Auslöser
-const SNAP_STABLE_FALLBACK   = 15; // 1,5 s Ruhe ohne Quad (Karte nicht exakt erkannt)
+const SNAP_STABLE_FRAMES     = 7;  // ~1 s Ruhe mit erkanntem Quad → Auslöser
+const SNAP_STABLE_FALLBACK   = 8;  // ~1,2 s Ruhe ohne Quad (ONNX-only Modus)
 const SNAP_COOLDOWN_MS       = 2000;
 
 // Analyse-Canvas: feste Größe für konsistente Erkennung
@@ -323,6 +323,10 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   const quadFrameRef = useRef(0); // aufeinanderfolgende Frames mit ähnlichem Quad
   // Letztes ONNX-Ergebnis in Video-Koordinaten (für Overlay + Snap-Trigger)
   const onnxBoxRef   = useRef<CardBox | null>(null);
+  // Sticky-Counter: ONNX-Ergebnis bleibt für N Frames erhalten nach letzter Erkennung.
+  // Verhindert, dass einzelne Ausreißer-Frames den Snap-Counter resetten.
+  const onnxStickyRef = useRef(0);
+  const ONNX_STICKY   = 4; // Frames die ein positives Ergebnis "überbrückt"
   // Verhindert überlappende ONNX-Inferenz-Aufrufe
   const inferringRef = useRef(false);
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
@@ -485,12 +489,18 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         if (!inferringRef.current && sample.width > 0) {
           inferringRef.current = true;
           detectCardInFrame(sample).then(box => {
-            // box-Koordinaten sind im sample-Canvas-Raum → in Video-Koordinaten umrechnen
-            onnxBoxRef.current = box
-              ? { x: box.x + sx, y: box.y + sy, w: box.w, h: box.h, conf: box.conf }
-              : null;
+            if (box) {
+              // Karte erkannt → in Video-Koordinaten umrechnen + Sticky auffrischen
+              onnxBoxRef.current  = { x: box.x + sx, y: box.y + sy, w: box.w, h: box.h, conf: box.conf };
+              onnxStickyRef.current = ONNX_STICKY;
+            } else {
+              // Kein Ergebnis → Sticky runterzählen, erst bei 0 wirklich löschen
+              onnxStickyRef.current = Math.max(0, onnxStickyRef.current - 1);
+              if (onnxStickyRef.current === 0) onnxBoxRef.current = null;
+            }
           }).catch(() => {
             onnxBoxRef.current = null;
+            onnxStickyRef.current = 0;
           }).finally(() => {
             inferringRef.current = false;
           });
