@@ -48,9 +48,9 @@ const SAMPLE_W = 190;
 const SAMPLE_H = 266;
 
 const CHECK_MS               = 150;   // ONNX-Inferenz ~80ms → etwas mehr Budget
-const MOTION_RESET_THRESHOLD = 1200;  // nur grobe Bewegung stoppt Snap
-const SNAP_STABLE_FRAMES     = 3;     // ~450ms Ruhe → Auslöser
-const SNAP_INSTANT_CONF      = 0.85;  // bei sehr hoher Konfidenz sofort auslösen
+const MOTION_RESET_THRESHOLD = 1200;  // grobe Bewegung → stable zurücksetzen
+const MOTION_SNAP_THRESHOLD  = 700;   // unter diesem MSE-Wert gilt es als "ruhig"
+const SNAP_STABLE_FRAMES     = 1;     // 1 ruhiger Frame reicht → kein "stillhalten" nötig
 const SNAP_COOLDOWN_MS       = 2000;
 
 // Rand um die ONNX-Box beim Zuschneiden für Gemini (Pixel in Video-Koordinaten)
@@ -233,9 +233,11 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   useEffect(() => {
     startCamera();
     return () => {
-      // Verzögert stoppen: gibt einem möglichen Remount genug Zeit, den Stream zu übernehmen.
-      // 5 s statt 800 ms — iOS kann etwas länger brauchen, den Effect auszuführen.
+      // Verzögert stoppen — gibt Remounts Zeit, den Stream zu übernehmen.
+      // Generations-Check: nur stoppen wenn kein neuerer Mount aktiv ist.
+      const myGen = mountGenRef.current;
       _stopTimer = setTimeout(() => {
+        if (_mountGeneration !== myGen) return; // Neuerer Mount hat Stream bereits übernommen
         _kameraStream?.getTracks().forEach(t => t.stop());
         _kameraStream = null;
         streamRef.current = null;
@@ -372,19 +374,15 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
           cropSize:     cropSizeRef.current, // bleibt erhalten bis zum nächsten Snap
         });
 
-        // 6. Snap-Trigger
-        const highConf = (onnxBoxRef.current?.conf ?? 0) >= SNAP_INSTANT_CONF;
-        if (!cooldownRef.current && cardDetected && highConf && mse < MOTION_RESET_THRESHOLD / 2) {
+        // 6. Snap-Trigger — sofort auslösen, kein "stillhalten" nötig
+        if (!cooldownRef.current && cardDetected && mse < MOTION_SNAP_THRESHOLD) {
+          stableRef.current += 1;
           setProgress(1);
-          doCapture();
+          if (stableRef.current >= SNAP_STABLE_FRAMES) doCapture(); // SNAP_STABLE_FRAMES=1 → 1. ruhiger Frame reicht
         } else {
-          if (cooldownRef.current || mse > MOTION_RESET_THRESHOLD || !cardDetected) {
+          if (!cooldownRef.current) {
             stableRef.current = 0;
-            if (!cooldownRef.current) setProgress(0);
-          } else {
-            stableRef.current += 1;
-            setProgress(Math.min(stableRef.current / SNAP_STABLE_FRAMES, 1));
-            if (stableRef.current >= SNAP_STABLE_FRAMES) doCapture();
+            setProgress(cardDetected ? Math.min(1 - mse / MOTION_RESET_THRESHOLD, 0.6) : 0);
           }
         }
       }, CHECK_MS);
@@ -403,10 +401,10 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
   const hintText = paused             ? 'Scannen pausiert'
     : inCooldown                      ? 'Nächste Karte bereithalten …'
-    : detected && progress > 0        ? 'Karte erkannt — kurz stillhalten'
+    : detected && progress >= 1       ? 'Karte erkannt — wird aufgenommen …'
     : detected                        ? 'Karte erkannt'
-    : progress > 0                    ? 'Kurz stillhalten …'
-    :                                   'Karte in den Rahmen halten und stillhalten';
+    : progress > 0                    ? 'Fast …'
+    :                                   'Karte in den Rahmen halten';
 
   const hintColor = (detected || progress > 0) && !inCooldown && !paused
     ? '#48bb78' : 'rgba(255,255,255,0.55)';
