@@ -213,7 +213,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     setError(null); stableRef.current = 0; setProgress(0); setDetected(false);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        // Portrait-Dimensionen: iPhone liefert sonst Landscape (1920×1080) auch im Portrait-
+        // Modus, was die Karten-Koordinaten um 90° dreht und den Rahmen axis-aligned aussehen lässt.
+        video: { facingMode, width: { ideal: 1080 }, height: { ideal: 1920 } },
       });
       _kameraStream = stream;
       streamRef.current = stream;
@@ -250,23 +252,67 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     canvas.height = video.videoHeight;
     canvas.getContext('2d')!.drawImage(video, 0, 0);
 
-    // ONNX-Box bekannt → Karte ausschneiden für bessere Gemini-Erkennung
+    // Karte ausschneiden — Deskew wenn Corners bekannt, sonst AABB-Crop
     const box = onnxBoxRef.current;
     let imageBase64: string;
     let cropInfo = `${canvas.width}×${canvas.height} (voll)`;
 
-    if (box && box.w > 50 && box.h > 50) {
-      const pad = CROP_PADDING;
-      const cx = Math.max(0, Math.round(box.x - pad));
-      const cy = Math.max(0, Math.round(box.y - pad));
-      const cw = Math.min(canvas.width  - cx, Math.round(box.w + pad * 2));
-      const ch = Math.min(canvas.height - cy, Math.round(box.h + pad * 2));
+    if (box?.corners?.length === 4) {
+      // ── Deskew-Crop: Karte um ihren Mittelpunkt geradedrehen ────────────────
+      // Winkel + Mittelpunkt aus den Corners (in Video-Koordinaten)
+      const c = box.corners as [[number,number],[number,number],[number,number],[number,number]];
+      const angle = Math.atan2(c[1][1] - c[0][1], c[1][0] - c[0][0]);
+      const cx = (c[0][0] + c[1][0] + c[2][0] + c[3][0]) / 4;
+      const cy = (c[0][1] + c[1][1] + c[2][1] + c[3][1]) / 4;
+
+      // Karten-Abmessungen (Länge der Seiten in Video-Pixeln)
+      const wCard = (Math.hypot(c[1][0]-c[0][0], c[1][1]-c[0][1]) +
+                     Math.hypot(c[2][0]-c[3][0], c[2][1]-c[3][1])) / 2;
+      const hCard = (Math.hypot(c[3][0]-c[0][0], c[3][1]-c[0][1]) +
+                     Math.hypot(c[2][0]-c[1][0], c[2][1]-c[1][1])) / 2;
+
+      // Shorter/longer für Deskew-Canvas
+      const shorter = Math.min(wCard, hCard);
+      const longer  = Math.max(wCard, hCard);
+
+      // Padding: horizontal 20 %, vertikal 35 % — extra oben, da ONNX-Mittelpunkt
+      // oft etwas zu tief ist (Text/HP-Bereich hat höhere Konfidenz als Artwork)
+      const padW = Math.round(shorter * 0.20) + CROP_PADDING;
+      const padH = Math.round(shorter * 0.35) + CROP_PADDING;
+
+      const deskewW = Math.round(shorter) + padW * 2;
+      const deskewH = Math.round(longer)  + padH * 2;
+
+      const deskew = document.createElement('canvas');
+      deskew.width  = deskewW;
+      deskew.height = deskewH;
+      const dCtx = deskew.getContext('2d')!;
+      // Koordinatentransformation:
+      //   1. Canvas-Mitte → card center
+      //   2. Rotation −angle → Karte gerade
+      //   3. Versatz zur Kartenmitte im Quellbild
+      dCtx.translate(deskewW / 2, deskewH / 2);
+      dCtx.rotate(-angle);
+      dCtx.translate(-cx, -cy);
+      dCtx.drawImage(canvas, 0, 0); // ganzes Video-Frame transformiert zeichnen
+
+      imageBase64 = deskew.toDataURL('image/jpeg', 0.92).split(',')[1];
+      cropInfo    = `${Math.round(shorter)}×${Math.round(longer)} (deskew ${Math.round(angle * 180 / Math.PI)}°)`;
+
+    } else if (box && box.w > 50 && box.h > 50) {
+      // ── Fallback: achsenparalleler Crop mit großzügigem Padding ─────────────
+      const padX = Math.max(CROP_PADDING, Math.round(box.w * 0.15));
+      const padY = Math.max(CROP_PADDING, Math.round(box.h * 0.35)); // oben mehr Puffer
+      const cx   = Math.max(0, Math.round(box.x - padX));
+      const cy   = Math.max(0, Math.round(box.y - padY));
+      const cw   = Math.min(canvas.width  - cx, Math.round(box.w + padX * 2));
+      const ch   = Math.min(canvas.height - cy, Math.round(box.h + padY * 2));
       const crop = document.createElement('canvas');
       crop.width  = cw;
       crop.height = ch;
       crop.getContext('2d')!.drawImage(canvas, cx, cy, cw, ch, 0, 0, cw, ch);
       imageBase64 = crop.toDataURL('image/jpeg', 0.92).split(',')[1];
-      cropInfo = `${cw}×${ch} (crop)`;
+      cropInfo    = `${cw}×${ch} (crop)`;
     } else {
       imageBase64 = canvas.toDataURL('image/jpeg', 0.90).split(',')[1];
     }
