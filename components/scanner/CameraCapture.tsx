@@ -276,13 +276,23 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       });
       _kameraStream = stream;
       streamRef.current = stream;
+      // Track-Ended explizit behandeln: iOS beendet Tracks bei Speicher-Druck,
+      // anderer Kameranutzung oder Background-Suspend. Statt blind neu zu
+      // acquiren (löst spontanen Permission-Dialog aus) zeigen wir eine
+      // Nutzer-Geste → Restart kommt nur bei explizitem Tap.
+      stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+        setError('interrupted');
+      });
       const vid = videoRef.current;
       if (vid) {
         if (vid.srcObject !== stream) vid.srcObject = stream;
         if (vid.paused) vid.play().catch(() => {});
       }
-    } catch {
-      setError('Kamera konnte nicht gestartet werden. Bitte Zugriff erlauben.');
+    } catch (err: unknown) {
+      const name = (err as { name?: string })?.name;
+      // 'NotAllowedError' = User hat „Nicht erlauben" gedrückt oder iOS-Einstellung
+      // ist auf „Ablehnen". Spezielles UI mit Anleitung statt generischer Meldung.
+      setError(name === 'NotAllowedError' ? 'blocked' : 'failed');
     }
   }, [facingMode]);
 
@@ -308,9 +318,15 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   // kein neuer getUserMedia-Call → kein Permission-Dialog.
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        startCamera();
-      }
+      if (document.visibilityState !== 'visible') return;
+      // iOS feuert visibilitychange auch bei subtilen Vorgängen
+      // (Kontrollzentrum, Benachrichtigung, Permission-Dialog selbst).
+      // Nur startCamera aufrufen wenn der Stream wirklich tot ist —
+      // sonst löst jeder dieser Events einen erneuten getUserMedia-Dialog aus.
+      const track = _kameraStream?.getVideoTracks()[0];
+      const vid   = videoRef.current;
+      if (track && track.readyState === 'live' && vid && !vid.paused) return;
+      startCamera();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
@@ -594,8 +610,61 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       <canvas ref={prevRef}   width={SAMPLE_W} height={SAMPLE_H} className="hidden" />
 
       {error ? (
-        <div className="absolute inset-0 flex items-center justify-center px-8 text-center">
-          <p className="text-sm text-white/50">{error}</p>
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-8 text-center gap-4">
+          {error === 'interrupted' && (
+            <>
+              <p className="text-base text-white font-semibold">
+                Kamera wurde unterbrochen
+              </p>
+              <p className="text-sm text-white/60 max-w-xs">
+                iOS hat den Kamera-Zugriff pausiert (z.B. weil eine andere App
+                die Kamera kurzzeitig nutzte oder die PWA im Hintergrund war).
+              </p>
+              <button
+                onClick={() => { setError(null); startCamera(); }}
+                className="mt-2 px-6 py-3 rounded-xl font-semibold text-white"
+                style={{ background: 'var(--pokedex-red)' }}
+              >
+                Tippe zum Neustart
+              </button>
+            </>
+          )}
+          {error === 'blocked' && (
+            <>
+              <p className="text-base text-white font-semibold">
+                Kamera-Zugriff blockiert
+              </p>
+              <p className="text-sm text-white/70 max-w-xs leading-relaxed">
+                Damit der Permission-Dialog nicht immer wieder erscheint:
+              </p>
+              <p className="text-sm text-white/90 max-w-xs leading-relaxed">
+                <strong>Einstellungen → Safari → Kamera → „Erlauben"</strong>
+                <br />
+                (gilt global für alle Websites)
+              </p>
+              <button
+                onClick={() => { setError(null); startCamera(); }}
+                className="mt-2 px-6 py-3 rounded-xl font-semibold text-white"
+                style={{ background: 'var(--pokedex-red)' }}
+              >
+                Erneut versuchen
+              </button>
+            </>
+          )}
+          {error === 'failed' && (
+            <>
+              <p className="text-sm text-white/60">
+                Kamera konnte nicht gestartet werden.
+              </p>
+              <button
+                onClick={() => { setError(null); startCamera(); }}
+                className="mt-2 px-6 py-3 rounded-xl font-semibold text-white"
+                style={{ background: 'var(--pokedex-red)' }}
+              >
+                Erneut versuchen
+              </button>
+            </>
+          )}
         </div>
       ) : (
         <>
