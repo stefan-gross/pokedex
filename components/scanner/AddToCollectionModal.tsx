@@ -14,15 +14,16 @@ import type { BinderDoc } from '@/types';
 interface Props {
   card: CardInfo;
   preVariant?: CardVariant;
+  preCondition?: CardCondition;
   preLanguage?: CardLanguage;
   fromScanner?: boolean;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function AddToCollectionModal({ card, preVariant, preLanguage, fromScanner = false, onClose, onSaved }: Props) {
+export function AddToCollectionModal({ card, preVariant, preCondition, preLanguage, fromScanner = false, onClose, onSaved }: Props) {
   const [variant] = useState<CardVariant>(preVariant ?? (card.variants?.[0] as CardVariant) ?? 'standard');
-  const [condition, setCondition] = useState<CardCondition>('NM');
+  const [condition, setCondition] = useState<CardCondition>(preCondition ?? 'NM');
   const [language, setLanguage] = useState<CardLanguage>(preLanguage ?? 'de');
   const [selectedBinder, setSelectedBinder] = useState<string>(DEFAULT_ID);
   const [binders, setBinders] = useState<BinderDoc[]>([]);

@@ -2,9 +2,10 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Trash2, Loader2, AlertCircle, Check, Plus, LayoutGrid, Camera, Bug, ScanLine, Pause } from 'lucide-react';
+import { X, Trash2, Loader2, AlertCircle, Check, Plus, LayoutGrid, Camera, Bug, ScanLine, Pause, ChevronLeft, AlertTriangle } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
+import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
          getCardsByDexNumberRest      as getCardsByDexNumber } from '@/lib/firestore/catalog-rest';
 import { getCardsByTcgId } from '@/lib/firestore/cards';
@@ -141,6 +142,16 @@ export default function ScannerPage() {
   // ohne Ref wäre der Wert stale.
   const scanModeRef = useRef(scanMode);
   useEffect(() => { scanModeRef.current = scanMode; }, [scanMode]);
+
+  // Quick-Add via +-Button: öffnet AddToCollectionModal direkt (kein
+  // CardDetailSheet-Zwischenschritt). preVariant/preCondition aus dem Job.
+  const [quickAddJobId, setQuickAddJobId] = useState<string | null>(null);
+  const quickAddJob = jobs.find(j => j.id === quickAddJobId) ?? null;
+
+  // Fake-Reasons-Popup: zeigt Gemini-Begründungen warum die Karte als
+  // medium/high fake-risk eingestuft wurde.
+  const [fakeReasonsJobId, setFakeReasonsJobId] = useState<string | null>(null);
+  const fakeReasonsJob = jobs.find(j => j.id === fakeReasonsJobId) ?? null;
   // FIFO-Queue für Uploads: parallele Scans senden nacheinander statt
   // gleichzeitig — verhindert Bandbreiten-Konkurrenz auf schwachem Mobilnetz.
   const uploadChainRef = useRef<Promise<unknown>>(Promise.resolve());
@@ -375,7 +386,7 @@ export default function ScannerPage() {
           className="absolute inset-0 overflow-y-auto bg-black px-4 pb-6"
           style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 64px)' }}
         >
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             {jobs.map(job => {
               const img = cardImgUrl(job);
               const card = job.result?.card;
@@ -385,11 +396,19 @@ export default function ScannerPage() {
                 if (canOpen) setActiveJobId(job.id);
                 else if (canDebug) setDebugJobId(job.id);
               };
+              const reviewBorder = job.result?.fakeRisk
+                ? FAKE_RISK_BORDER[job.result.fakeRisk]
+                : 'rgba(255,255,255,0.15)';
               return (
                 <div key={job.id} className="relative flex flex-col">
                   <div
-                    className="relative rounded-xl overflow-hidden border border-white/10"
-                    style={{ background: '#1a1a1a', aspectRatio: '2.5/3.5', cursor: (canOpen || canDebug) ? 'pointer' : 'default' }}
+                    className="relative rounded-md overflow-hidden"
+                    style={{
+                      background: '#1a1a1a',
+                      aspectRatio: '63/88',
+                      border: `2.5px solid ${reviewBorder}`,
+                      cursor: (canOpen || canDebug) ? 'pointer' : 'default',
+                    }}
                     onClick={onCardClick}
                   >
                     {job.status === 'processing' ? (
@@ -411,28 +430,47 @@ export default function ScannerPage() {
                         </div>
                       </div>
                     )}
+                    {/* Quick-Add (+) oben links */}
+                    {canOpen && !job.added && (
+                      <button
+                        onClick={e => { e.stopPropagation(); setQuickAddJobId(job.id); }}
+                        className="absolute top-2 left-2 w-9 h-9 rounded-full flex items-center justify-center shadow-md"
+                        style={{ background: 'var(--pokedex-red)' }}
+                        aria-label="Zur Sammlung hinzufügen"
+                      >
+                        <Plus size={20} color="#fff" strokeWidth={3} />
+                      </button>
+                    )}
+                    {/* Trash oben rechts */}
                     <button
                       onClick={e => { e.stopPropagation(); removeJob(job.id); }}
-                      className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center"
+                      className="absolute top-2 right-2 w-9 h-9 rounded-full flex items-center justify-center"
                       style={{ background: 'rgba(0,0,0,0.7)' }}
+                      aria-label="Entfernen"
                     >
-                      <Trash2 size={11} color="#ef4444" />
+                      <Trash2 size={16} color="#ef4444" />
                     </button>
+                    {/* Debug-Bug auf der Tile nur als kleines Icon im Eck-Bereich neben Trash */}
                     {canDebug && (
                       <button
                         onClick={e => { e.stopPropagation(); setDebugJobId(job.id); }}
-                        className="absolute top-1 right-8 w-6 h-6 rounded-full flex items-center justify-center"
+                        className="absolute top-2 right-12 w-9 h-9 rounded-full flex items-center justify-center"
                         style={{ background: 'rgba(0,0,0,0.7)' }}
                         aria-label="Debug-Info"
                       >
-                        <Bug size={11} color="#60a5fa" />
+                        <Bug size={15} color="#60a5fa" />
                       </button>
                     )}
-                    {(job.result?.ownedCount ?? 0) > 0 && !job.added && (
-                      <span className="absolute top-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
-                        style={{ background: 'rgba(72,187,120,.85)', color: '#fff' }}>
-                        ×{job.result!.ownedCount}
-                      </span>
+                    {/* Fake-Warnung */}
+                    {(job.result?.fakeRisk === 'medium' || job.result?.fakeRisk === 'high') && (
+                      <button
+                        onClick={e => { e.stopPropagation(); setFakeReasonsJobId(job.id); }}
+                        className="absolute top-12 left-2 w-9 h-9 rounded-full flex items-center justify-center"
+                        style={{ background: 'rgba(0,0,0,0.7)' }}
+                        aria-label="Fake-Verdacht"
+                      >
+                        <AlertTriangle size={16} color={job.result.fakeRisk === 'high' ? '#ef4444' : '#facc15'} fill={job.result.fakeRisk === 'high' ? '#ef4444' : '#facc15'} />
+                      </button>
                     )}
                     {job.result?.condition && (() => {
                       const p = GEMINI_TO_PERSISTED[job.result.condition];
@@ -444,37 +482,14 @@ export default function ScannerPage() {
                         </span>
                       );
                     })()}
-                    {job.result?.fakeRisk === 'high' && (
-                      <span className="absolute bottom-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
-                        style={{ background: 'rgba(239,68,68,.9)', color: '#fff' }}
-                        title={job.result.fakeReasons?.join(', ')}>
-                        FAKE?
-                      </span>
-                    )}
-                    {job.result?.fakeRisk === 'medium' && (
-                      <span className="absolute bottom-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
-                        style={{ background: 'rgba(234,179,8,.9)', color: '#000' }}
-                        title={job.result.fakeReasons?.join(', ')}>
-                        Verdächtig
-                      </span>
-                    )}
                   </div>
-                  <p className="text-[10px] text-white/60 text-center mt-1 truncate px-0.5">
+                  <p className="text-xs text-white/80 text-center mt-2 truncate px-1">
                     {card?.name ?? (job.status === 'processing' ? '…' : 'Fehler')}
                   </p>
-                  {canDebug && (
-                    <p className="text-[9px] text-blue-300 text-center font-mono">
-                      Tippen für Debug
+                  {card?.setCode && (
+                    <p className="text-[10px] text-white/55 text-center font-mono">
+                      {card.setCode} {card.number}
                     </p>
-                  )}
-                  {canOpen && !job.added && (
-                    <button
-                      onClick={() => setActiveJobId(job.id)}
-                      className="mt-1 w-full h-7 rounded-lg text-[10px] font-semibold text-white flex items-center justify-center gap-1"
-                      style={{ background: 'var(--pokedex-red)' }}
-                    >
-                      <Plus size={11} /> Hinzufügen
-                    </button>
                   )}
                 </div>
               );
@@ -483,11 +498,25 @@ export default function ScannerPage() {
         </div>
       )}
 
-      {/* ── Header (schwebt oben, nur X) ─────────────────────────── */}
+      {/* ── Header (schwebt oben) ──────────────────────────────────
+          Im Review-Modus links Back-Arrow zurück zum Scan,
+          rechts X-Close zum vollständigen Schließen. */}
       <div
-        className="absolute top-0 right-0 z-20 px-4 pb-3"
+        className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 pb-3"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
       >
+        {mode === 'review' ? (
+          <button
+            onClick={() => setMode('scanning')}
+            className="flex items-center gap-1 h-9 px-3 rounded-full bg-white/10 backdrop-blur-sm text-white text-sm font-medium"
+            aria-label="Zurück zum Scannen"
+          >
+            <ChevronLeft size={18} color="#fff" />
+            Scannen
+          </button>
+        ) : (
+          <div className="w-9" />
+        )}
         <button
           onClick={() => {
             if (window.history.length > 1) router.back();
@@ -518,6 +547,8 @@ export default function ScannerPage() {
                 onCardTap={() => setActiveJobId(job.id)}
                 onDebug={() => setDebugJobId(job.id)}
                 onRemove={() => removeJob(job.id)}
+                onQuickAdd={() => setQuickAddJobId(job.id)}
+                onFakeReasons={() => setFakeReasonsJobId(job.id)}
                 onVariantChange={v => setJobVariant(job.id, v)}
                 onConditionChange={c => setJobCondition(job.id, c)}
               />
@@ -727,6 +758,73 @@ export default function ScannerPage() {
           if (activeJob) markAdded(activeJob.id);
         }}
       />
+
+      {/* ── Quick-Add-Modal (via + Button auf der Tile) ────────────────
+          Öffnet AddToCollectionModal mit Variante/Condition/Sprache
+          aus den Job-Werten vorbelegt — User pickt nur Binder + speichert. */}
+      {quickAddJob?.result?.card && (
+        <AddToCollectionModal
+          card={quickAddJob.result.card}
+          preVariant={quickAddJob.editedVariant ?? quickAddJob.result.variant}
+          preCondition={quickAddJob.editedCondition}
+          preLanguage={quickAddJob.result.language}
+          fromScanner
+          onClose={() => setQuickAddJobId(null)}
+          onSaved={() => {
+            markAdded(quickAddJob.id);
+            setQuickAddJobId(null);
+          }}
+        />
+      )}
+
+      {/* ── Fake-Reasons-Sheet (warum Gemini Fake/Verdacht meldet) ─────── */}
+      {fakeReasonsJob?.result && (fakeReasonsJob.result.fakeRisk === 'medium' || fakeReasonsJob.result.fakeRisk === 'high') && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-end justify-center"
+          onClick={() => setFakeReasonsJobId(null)}
+        >
+          <div
+            className="w-full max-w-md bg-card rounded-t-2xl p-5 pb-8 shadow-elevated"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 32px)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle
+                size={22}
+                color={fakeReasonsJob.result.fakeRisk === 'high' ? '#ef4444' : '#facc15'}
+                fill={fakeReasonsJob.result.fakeRisk === 'high' ? '#ef4444' : '#facc15'}
+              />
+              <h3 className="text-foreground font-semibold text-base">
+                {fakeReasonsJob.result.fakeRisk === 'high' ? 'Fake-Verdacht' : 'Verdächtig'}
+              </h3>
+              <button
+                onClick={() => setFakeReasonsJobId(null)}
+                className="ml-auto w-9 h-9 rounded-full bg-secondary flex items-center justify-center"
+                aria-label="Schließen"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-sm text-muted-foreground mb-3">
+              Gemini meldet diese Karte als <strong>{fakeReasonsJob.result.fakeRisk === 'high' ? 'wahrscheinlich gefälscht' : 'verdächtig'}</strong>. Begründungen:
+            </p>
+            {fakeReasonsJob.result.fakeReasons && fakeReasonsJob.result.fakeReasons.length > 0 ? (
+              <ul className="space-y-2 text-sm text-foreground">
+                {fakeReasonsJob.result.fakeReasons.map((r, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="text-muted-foreground shrink-0">•</span>
+                    <span>{r}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground italic">
+                Keine spezifischen Gründe genannt. Manchmal liegt's an Bildqualität, Beleuchtung oder Reflexionen — kein zwingender Fake-Hinweis.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -740,12 +838,15 @@ interface ScannedCardTileProps {
   onCardTap:         () => void;
   onDebug:           () => void;
   onRemove:          () => void;
+  onQuickAdd:        () => void;
+  onFakeReasons:     () => void;
   onVariantChange:   (v: CardVariant) => void;
   onConditionChange: (c: PersistedCondition) => void;
 }
 
 function ScannedCardTile({
-  job, onCardTap, onDebug, onRemove, onVariantChange, onConditionChange,
+  job, onCardTap, onDebug, onRemove, onQuickAdd, onFakeReasons,
+  onVariantChange, onConditionChange,
 }: ScannedCardTileProps) {
   const img       = cardImgUrl(job);
   const card      = job.result?.card;
@@ -764,11 +865,23 @@ function ScannedCardTile({
       className="shrink-0 flex flex-col gap-1"
       style={{ width: TILE_WIDTH_CSS, scrollSnapAlign: 'start' }}
     >
-      {/* Name oben */}
+      {/* Name oben + Icons (Owned ×N, Warn ⚠, Bug 🐞) */}
       <div className="flex items-center justify-center gap-1 px-0.5 min-h-[14px]">
         <p className="text-[10px] text-white font-medium text-center truncate leading-tight">
           {card?.name ?? (job.status === 'processing' ? '…' : 'Fehler')}
         </p>
+        {(job.result?.ownedCount ?? 0) > 0 && !job.added && (
+          <span className="shrink-0 text-[9px] font-bold text-green-400">×{job.result!.ownedCount}</span>
+        )}
+        {(job.result?.fakeRisk === 'medium' || job.result?.fakeRisk === 'high') && (
+          <button
+            onClick={e => { e.stopPropagation(); onFakeReasons(); }}
+            className="shrink-0 w-3.5 h-3.5 flex items-center justify-center"
+            aria-label="Fake-Verdacht-Gründe"
+          >
+            <AlertTriangle size={12} color={job.result?.fakeRisk === 'high' ? '#ef4444' : '#facc15'} fill={job.result?.fakeRisk === 'high' ? '#ef4444' : '#facc15'} />
+          </button>
+        )}
         {canDebug && (
           <button
             onClick={e => { e.stopPropagation(); onDebug(); }}
@@ -782,7 +895,7 @@ function ScannedCardTile({
 
       {/* Karten-Body */}
       <div
-        className="relative w-full rounded-2xl overflow-hidden"
+        className="relative w-full rounded-md overflow-hidden"
         style={{
           aspectRatio: '63 / 88',
           border: `2.5px solid ${borderCol}`,
@@ -809,32 +922,34 @@ function ScannedCardTile({
           <img src={img} alt={card?.name ?? ''} className="w-full h-full object-cover" />
         )}
 
-        {/* Owned-Badge (oben links) */}
-        {(job.result?.ownedCount ?? 0) > 0 && !job.added && (
-          <span
-            className="absolute top-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
-            style={{ background: 'rgba(72,187,120,.85)', color: '#fff' }}
+        {/* Quick-Add (+) oben links — nur wenn Karte erkannt und nicht added */}
+        {canOpen && !job.added && (
+          <button
+            onClick={e => { e.stopPropagation(); onQuickAdd(); }}
+            className="absolute top-1 left-1 w-7 h-7 rounded-full flex items-center justify-center shadow-md"
+            style={{ background: 'var(--pokedex-red)' }}
+            aria-label="Zur Sammlung hinzufügen"
           >
-            ×{job.result!.ownedCount}
-          </span>
+            <Plus size={16} color="#fff" strokeWidth={3} />
+          </button>
         )}
 
         {/* Trash (oben rechts) */}
         <button
           onClick={e => { e.stopPropagation(); onRemove(); }}
-          className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center"
+          className="absolute top-1 right-1 w-7 h-7 rounded-full flex items-center justify-center"
           style={{ background: 'rgba(0,0,0,0.7)' }}
           aria-label="Entfernen"
         >
-          <Trash2 size={12} color="#ef4444" />
+          <Trash2 size={14} color="#ef4444" />
         </button>
 
         {/* Variant-Pill (unten links) — mit unsichtbarem <select> für iOS-Wheel-Picker */}
         {card && (
-          <div className="absolute bottom-1 left-1">
+          <div className="absolute bottom-1.5 left-1.5">
             <span
-              className="text-[8px] font-bold px-1.5 py-0.5 rounded-md inline-block"
-              style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}
+              className="text-[10px] font-bold px-2 py-1 rounded inline-block"
+              style={{ background: 'rgba(0,0,0,0.78)', color: '#fff', minHeight: 22 }}
             >
               {VARIANT_LABELS[variant]}
             </span>
@@ -854,10 +969,10 @@ function ScannedCardTile({
 
         {/* Condition-Pill (unten rechts) */}
         {card && (
-          <div className="absolute bottom-1 right-1">
+          <div className="absolute bottom-1.5 right-1.5">
             <span
-              className="text-[8px] font-bold px-1.5 py-0.5 rounded-md inline-block"
-              style={{ background: condColor.bg, color: condColor.text }}
+              className="text-[10px] font-bold px-2 py-1 rounded inline-block"
+              style={{ background: condColor.bg, color: condColor.text, minHeight: 22 }}
             >
               {condition}
             </span>
@@ -963,7 +1078,7 @@ function RecognizedCardLarge({
 
       {/* Karten-Body — Höhe begrenzt durch verfügbaren Platz, Breite via aspect-ratio */}
       <div
-        className="relative rounded-2xl overflow-hidden"
+        className="relative rounded-lg overflow-hidden"
         style={{
           aspectRatio: '63 / 88',
           height: 'min(70vh, 100%)',
