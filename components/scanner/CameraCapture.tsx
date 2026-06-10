@@ -17,6 +17,17 @@ interface Props {
 let _kameraStream:   MediaStream | null = null;
 let _mountGeneration = 0; // steigt bei jedem Mount — für Debug sichtbar
 
+// sessionStorage überlebt iOS-PWA-Reloads (im Gegensatz zu Modul-State).
+// Counter > 0 beim Mount = wir wurden gerade reloaded → Permission war schon
+// einmal in dieser Session gegeben → wir können das „Kamera starten"-Overlay
+// überspringen und direkt erneut prompten.
+const CAM_MOUNT_KEY = 'cam-mounts';
+const initialReloadCount = (() => {
+  if (typeof window === 'undefined') return 0;
+  try { return Number(sessionStorage.getItem(CAM_MOUNT_KEY) ?? '0'); }
+  catch { return 0; }
+})();
+
 // ─── Gerundetes Polygon für rotierten Karten-Rahmen ──────────────────────────
 function drawRoundedPolygon(
   ctx: CanvasRenderingContext2D,
@@ -146,7 +157,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
 
-  const [started,    setStarted]    = useState(false);
+  // Auto-Start wenn wir nach iOS-Reload remounten (sessionStorage Counter > 0)
+  const [started,    setStarted]    = useState(initialReloadCount > 0);
+  const [streamReady, setStreamReady] = useState(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [torch,      setTorch]      = useState(false);
   const [error,      setError]      = useState<string | null>(null);
@@ -162,12 +175,22 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     detected: false, sessionReady: false, cropSize: '–', triggerReason: '–', changeMse: 0,
   });
 
-  // ONNX-Session beim Mount laden
+  // Mount-Counter in sessionStorage hochzählen — überlebt iOS-PWA-Reloads.
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try { sessionStorage.setItem(CAM_MOUNT_KEY, String(initialReloadCount + 1)); }
+    catch { /* ignorieren */ }
+  }, []);
+
+  // ONNX-Session NICHT mehr eager beim Mount laden — WASM-Compile-Spike
+  // konkurriert sonst mit Camera-Setup um Memory und kann iOS-PWA-Reload
+  // triggern. Erst nachdem der Stream live ist, das Modell laden.
+  useEffect(() => {
+    if (!streamReady) return;
     loadCardDetectorSession()
       .then(() => { sessionReadyRef.current = true; })
       .catch(console.warn);
-  }, []);
+  }, [streamReady]);
 
   // ── Overlay: ONNX-Box oder gestrichelter Hilfsrahmen ─────────────────────
   // Läuft im rAF-Loop (60fps) → Lerp macht den Rahmen flüssig
@@ -290,6 +313,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
           }
         }
         streamHealthyRef.current = true;
+        setStreamReady(true);
         return; // Kein neuer getUserMedia-Call
       }
     }
@@ -316,6 +340,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         if (vid.paused) vid.play().catch(() => {});
       }
       streamHealthyRef.current = true; // erst NACH erfolgreicher Anbindung
+      setStreamReady(true);            // triggert lazyen ONNX-Load
     } catch (err: unknown) {
       const name = (err as { name?: string })?.name;
       setError(name === 'NotAllowedError' ? 'blocked' : 'failed');
@@ -747,6 +772,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
             >
               <div style={{ color: mountGenRef.current > 1 ? '#f87171' : '#aaa' }}>
                 Mount #{mountGenRef.current}{mountGenRef.current > 1 ? ' ⚠ Remount!' : ''}
+              </div>
+              <div style={{ color: initialReloadCount > 0 ? '#f87171' : '#aaa' }}>
+                Reloads: {initialReloadCount}{initialReloadCount > 0 ? ' ⚠ iOS-Reload!' : ''}
               </div>
               <div>
                 Session:{' '}

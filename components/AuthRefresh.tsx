@@ -17,8 +17,12 @@ import { getSyncMeta } from '@/lib/firestore/catalog'
  */
 export default function AuthRefresh() {
   useEffect(() => {
-    // Fire-and-forget Warm-up. tcg_catalog_meta hat public-read-Rule, kein Auth nötig.
-    getSyncMeta().catch(() => {})
+    // 2s-Delay: auf /scanner braucht iOS Memory-Budget für Camera-Stream + ONNX-WASM
+    // zuerst. Parallel-WebSocket während dieser Phase kann iOS-Standalone-PWA zum
+    // Reload bringen. Auf Nicht-Scanner-Seiten ist die Verzögerung irrelevant.
+    const warmupTimer = setTimeout(() => {
+      getSyncMeta().catch(() => {})
+    }, 2000)
 
     const unsubscribe = onIdTokenChanged(auth, async (user) => {
       if (user) {
@@ -30,7 +34,10 @@ export default function AuthRefresh() {
         })
       }
     })
-    return () => unsubscribe()
+    return () => {
+      clearTimeout(warmupTimer)
+      unsubscribe()
+    }
   }, [])
 
   return null
