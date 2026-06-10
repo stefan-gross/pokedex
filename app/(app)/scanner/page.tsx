@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, Trash2, Loader2, AlertCircle, Check, Plus, LayoutGrid, Camera, Bug } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
@@ -51,8 +51,11 @@ interface ScanDebug {
   mimeType?: string;
   imageSizeKb?: number;
   geminiModel?: string;          // Welches Gemini-Modell hat geantwortet
-  geminiMs?: number;             // Dauer Gemini-Call
-  totalMs?: number;              // Gesamtdauer Scan→DB
+  geminiMs?: number;             // Reines Gemini-Modell (server-gemessen)
+  uploadMs?: number;             // Wire-Time: fetch-Roundtrip minus Gemini-Modell
+  lookupMs?: number;             // Catalog-Lookups (setCode/number + dexNr-Fallback)
+  ownedMs?: number;              // getCardsByTcgId Owned-Count (asynchron)
+  totalMs?: number;              // Gesamtdauer Scan→Render (ohne ownedMs)
   geminiRaw?: string;            // Rohantwort von Gemini (vor JSON-Parse)
   geminiParsed?: unknown;        // Geparste Gemini-Antwort
   lookupSteps?: string[];        // Welche DB-Lookups wurden probiert
@@ -90,6 +93,9 @@ export default function ScannerPage() {
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [debugJobId, setDebugJobId] = useState<string | null>(null);
   const [mode, setMode] = useState<'scanning' | 'review'>('scanning');
+  // FIFO-Queue für Uploads: parallele Scans senden nacheinander statt
+  // gleichzeitig — verhindert Bandbreiten-Konkurrenz auf schwachem Mobilnetz.
+  const uploadChainRef = useRef<Promise<unknown>>(Promise.resolve());
 
   const debugJob = jobs.find(j => j.id === debugJobId) ?? null;
 
@@ -121,21 +127,38 @@ export default function ScannerPage() {
     }]);
 
     try {
+      // ── FIFO-Upload-Queue: warten bis vorheriger Upload fertig ist ────────
+      // (verhindert Bandbreiten-Konkurrenz auf schwachem Mobilnetz)
+      const prevUpload = uploadChainRef.current;
       const tFetch = Date.now();
-      const res = await fetch('/api/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64, mimeType }),
+      const myUpload = prevUpload.then(async () => {
+        // ── AbortController: 30s Timeout statt ewig hängen ─────────────────
+        const ac = new AbortController();
+        const to = setTimeout(() => ac.abort(), 30_000);
+        try {
+          return await fetch('/api/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64, mimeType }),
+            signal: ac.signal,
+          });
+        } finally {
+          clearTimeout(to);
+        }
       });
+      uploadChainRef.current = myUpload.catch(() => {}); // Chain-Bruch verhindern
+      const res = await myUpload;
       const gemini: GeminiResponse & { _debug?: { model: string; ms: number; rawText: string } }
         = await res.json();
       const fetchMs = Date.now() - tFetch;
 
       debug.geminiModel = gemini._debug?.model;
       debug.geminiMs    = gemini._debug?.ms ?? fetchMs;
+      // Wire-Overhead = Upload+Server-Parse+Download (alles außer Modell-Call)
+      debug.uploadMs    = gemini._debug?.ms != null ? fetchMs - gemini._debug.ms : undefined;
       debug.geminiRaw   = gemini._debug?.rawText;
       debug.geminiParsed = { ...gemini, _debug: undefined };
-      console.log('[scanner] Gemini response:', { ms: fetchMs, parsed: gemini });
+      console.log('[scanner] Gemini response:', { fetchMs, uploadMs: debug.uploadMs, gemini });
 
       // Gemini-Antwort als Debug-Info aufzeichnen
       const fakeTag = gemini.fakeRisk && gemini.fakeRisk !== 'low' ? ` ⚠️${gemini.fakeRisk}` : '';
@@ -154,8 +177,9 @@ export default function ScannerPage() {
 
       const rawNumber = gemini.number.includes('/') ? gemini.number.split('/')[0] : gemini.number;
 
-      // Firestore-Catalog: Lookup per gedrucktem Set-Kürzel (ptcgoCode) + Nummer.
-      // Zuverlässiger als setId, da Gemini nur liest was auf der Karte steht.
+      // ── Catalog-Lookups (lookupMs misst diesen ganzen Block) ─────────────
+      const tLookup = Date.now();
+
       debug.lookupSteps!.push(`getCardBySetCodeAndNumber("${gemini.setCode}", "${rawNumber}")`);
       let catalogCard = await getCardBySetCodeAndNumber(gemini.setCode, rawNumber);
       debug.lookupSteps![debug.lookupSteps!.length - 1] += catalogCard ? ` → ${catalogCard.id}` : ' → null';
@@ -180,6 +204,7 @@ export default function ScannerPage() {
         if (dexCards.length > 0) catalogCard = dexCards[0];
       }
 
+      debug.lookupMs = Date.now() - tLookup;
       debug.catalogMatch = catalogCard
         ? { id: catalogCard.id, name: catalogCard.name, setId: catalogCard.setId, number: catalogCard.number }
         : null;
@@ -189,21 +214,13 @@ export default function ScannerPage() {
         ? `Katalog: ${catalogCard.name} (${catalogCard.setId}/${catalogCard.number})`
         : `Katalog: nicht gefunden (setCode=${gemini.setCode}/${rawNumber})`;
 
-      // getCardsByTcgId benötigt Firebase-Client-Auth (Security Rules).
-      // Falls der Client noch nicht eingeloggt ist → graceful fallback auf 0.
-      let ownedCopies: Awaited<ReturnType<typeof getCardsByTcgId>> = [];
-      try {
-        ownedCopies = catalogCard ? await getCardsByTcgId(catalogCard.id) : [];
-      } catch {
-        // Firebase-Auth noch nicht initialisiert oder Security-Rules greifen → ownedCount = 0
-      }
-      // Bei erfolgreicher Karten-Erkennung das base64-Bild aus dem Debug-Objekt
-      // entfernen → spart pro Scan ~200KB RAM (Katalog-Bild kommt von CDN).
-      // Fehler-Karten behalten das Bild für die Debug-Anzeige.
+      // Bild-Cleanup: bei erfolgreicher Erkennung base64 verwerfen (Katalog-CDN-Bild reicht).
       const finalDebug: ScanDebug = catalogCard
         ? { ...debug, imageBase64: undefined }
         : { ...debug };
 
+      // Karte SOFORT rendern, ownedCount kommt asynchron nach.
+      // Spart 5-15s Render-Verzögerung auf schwacher Firebase-Verbindung.
       setJobs(prev => prev.map(j => j.id === id ? {
         ...j,
         status: catalogCard ? 'done' : 'error',
@@ -212,15 +229,37 @@ export default function ScannerPage() {
         result: {
           card: catalogCard ? catalogCardToInfo(catalogCard) : null,
           language: (gemini.language ?? 'de') as CardLanguage,
-          ownedCount: ownedCopies.length,
+          ownedCount: undefined, // wird non-blocking nachgeladen
           condition: gemini.condition,
           fakeRisk: gemini.fakeRisk,
           fakeReasons: gemini.fakeReasons,
         },
       } : j));
+
+      // ── Owned-Count non-blocking nachladen ────────────────────────────────
+      if (catalogCard) {
+        const tOwned = Date.now();
+        getCardsByTcgId(catalogCard.id)
+          .then(copies => {
+            setJobs(prev => prev.map(j => j.id === id && j.result
+              ? {
+                  ...j,
+                  result: { ...j.result, ownedCount: copies.length },
+                  debug: { ...j.debug, ownedMs: Date.now() - tOwned } as ScanDebug,
+                }
+              : j));
+          })
+          .catch(() => {
+            // Auth/Permission-Fehler → ownedCount bleibt undefined (Badge blendet aus)
+            setJobs(prev => prev.map(j => j.id === id && j.debug
+              ? { ...j, debug: { ...j.debug, ownedMs: Date.now() - tOwned } }
+              : j));
+          });
+      }
     } catch (err) {
       console.error('Scan error:', err);
-      const msg = err instanceof Error ? err.message : String(err);
+      const isAbort = err instanceof Error && err.name === 'AbortError';
+      const msg = isAbort ? 'Upload-Timeout 30s' : err instanceof Error ? err.message : String(err);
       debug.error = msg;
       debug.totalMs = Date.now() - t0;
       setJobs(prev => prev.map(j => j.id === id
@@ -542,8 +581,14 @@ export default function ScannerPage() {
             {/* Timing */}
             <div className="mb-4 p-3 rounded-lg bg-white/5 text-xs font-mono text-white/80">
               <div>Modell: <span className="text-blue-300">{debugJob.debug.geminiModel ?? '—'}</span></div>
-              <div>Gemini-Dauer: <span className="text-blue-300">{debugJob.debug.geminiMs ?? '—'} ms</span></div>
-              <div>Gesamt-Dauer: <span className="text-blue-300">{debugJob.debug.totalMs ?? '—'} ms</span></div>
+              <div>Payload: <span className="text-blue-300">{debugJob.debug.imageSizeKb ?? '—'} KB</span></div>
+              <div>Upload (wire): <span className="text-blue-300">{debugJob.debug.uploadMs ?? '—'} ms</span></div>
+              <div>Gemini: <span className="text-blue-300">{debugJob.debug.geminiMs ?? '—'} ms</span></div>
+              <div>Lookup: <span className="text-blue-300">{debugJob.debug.lookupMs ?? '—'} ms</span></div>
+              <div>Owned: <span className="text-blue-300">{debugJob.debug.ownedMs ?? '—'} ms</span> <span className="text-white/40">(async)</span></div>
+              <div className="pt-1 border-t border-white/10 mt-1">
+                Gesamt (Render): <span className="text-blue-300">{debugJob.debug.totalMs ?? '—'} ms</span>
+              </div>
               {debugJob.debug.error && (
                 <div className="text-red-300 mt-1">Fehler: {debugJob.debug.error}</div>
               )}

@@ -67,6 +67,22 @@ const SNAP_COOLDOWN_MIN_MS    = 800;  // Mindest-Wartezeit nach Snap (verlänger
 // Rand um die ONNX-Box beim Zuschneiden für Gemini (Pixel in Video-Koordinaten)
 const CROP_PADDING = 24;
 
+// Upload-Optimierung: lange Kante auf 1024px begrenzen + JPEG-Quality 0.60.
+// Vorher 0.75 ohne Resize → ~300-500KB Base64 → 20-40s Upload auf schwachem LTE.
+// Gemini-OCR liest Schriften zuverlässig auch bei 0.60 / 1024px.
+const MAX_EDGE_PX = 1024;
+const JPEG_QUALITY = 0.60;
+function encodeCropToJpeg(src: HTMLCanvasElement, sx: number, sy: number, sw: number, sh: number): string {
+  const scale = Math.min(1, MAX_EDGE_PX / Math.max(sw, sh));
+  const dw = Math.round(sw * scale);
+  const dh = Math.round(sh * scale);
+  const out = document.createElement('canvas');
+  out.width  = dw;
+  out.height = dh;
+  out.getContext('2d')!.drawImage(src, sx, sy, sw, sh, 0, 0, dw, dh);
+  return out.toDataURL('image/jpeg', JPEG_QUALITY).split(',')[1];
+}
+
 interface DebugInfo {
   conf: number;
   mse: number;
@@ -372,11 +388,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       const cy   = Math.max(0, Math.round(minY - padY));
       const cw   = Math.min(canvas.width  - cx, Math.round(bw + padX * 2));
       const ch   = Math.min(canvas.height - cy, Math.round(bh + padY * 2));
-      const crop = document.createElement('canvas');
-      crop.width  = cw;
-      crop.height = ch;
-      crop.getContext('2d')!.drawImage(canvas, cx, cy, cw, ch, 0, 0, cw, ch);
-      imageBase64 = crop.toDataURL('image/jpeg', 0.75).split(',')[1];
+      imageBase64 = encodeCropToJpeg(canvas, cx, cy, cw, ch);
       cropInfo    = `${cw}×${ch} (corners)`;
 
     } else if (box && box.w > 50 && box.h > 50) {
@@ -387,14 +399,10 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       const cy   = Math.max(0, Math.round(box.y - padY));
       const cw   = Math.min(canvas.width  - cx, Math.round(box.w + padX * 2));
       const ch   = Math.min(canvas.height - cy, Math.round(box.h + padY * 2));
-      const crop = document.createElement('canvas');
-      crop.width  = cw;
-      crop.height = ch;
-      crop.getContext('2d')!.drawImage(canvas, cx, cy, cw, ch, 0, 0, cw, ch);
-      imageBase64 = crop.toDataURL('image/jpeg', 0.75).split(',')[1];
+      imageBase64 = encodeCropToJpeg(canvas, cx, cy, cw, ch);
       cropInfo    = `${cw}×${ch} (aabb)`;
     } else {
-      imageBase64 = canvas.toDataURL('image/jpeg', 0.75).split(',')[1];
+      imageBase64 = encodeCropToJpeg(canvas, 0, 0, canvas.width, canvas.height);
     }
 
     cropSizeRef.current = cropInfo;
