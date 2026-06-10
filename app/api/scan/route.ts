@@ -55,19 +55,21 @@ export async function POST(req: NextRequest) {
 
     let lastError: string = 'Scan failed';
     for (const modelName of MODEL_FALLBACKS) {
+      const t0 = Date.now();
       try {
         const model = genAI.getGenerativeModel({ model: modelName });
         const result = await model.generateContent([
           { inlineData: { data: imageBase64, mimeType } },
           PROMPT,
         ]);
+        const ms = Date.now() - t0;
 
-        const text = result.response.text().trim();
+        const rawText = result.response.text().trim();
         let parsed: Record<string, unknown>;
         try {
-          parsed = JSON.parse(text);
+          parsed = JSON.parse(rawText);
         } catch {
-          const match = text.match(/\{[\s\S]*\}/);
+          const match = rawText.match(/\{[\s\S]*\}/);
           parsed = match ? JSON.parse(match[0]) : { error: 'Could not parse response' };
         }
 
@@ -76,8 +78,14 @@ export async function POST(req: NextRequest) {
           parsed.number = parsed.number.split('/')[0];
         }
 
+        console.log(`[scan] ${modelName} OK in ${ms}ms`);
+
+        // _debug-Felder rein für Client-Debug-Modal (Rohantwort + Timing + Modellname)
+        parsed._debug = { model: modelName, ms, rawText };
         return NextResponse.json(parsed);
       } catch (err) {
+        const ms = Date.now() - t0;
+        console.warn(`[scan] ${modelName} failed after ${ms}ms:`, err);
         lastError = err instanceof Error ? err.message : String(err);
         const is503 = lastError.includes('503') || lastError.includes('high demand') || lastError.includes('overloaded');
         if (!is503) break; // Nur bei Überlast weiterprobieren, nicht bei Auth-Fehlern etc.

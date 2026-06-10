@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Trash2, Loader2, AlertCircle, Check, Plus } from 'lucide-react';
+import { X, Trash2, Loader2, AlertCircle, Check, Plus, Bug } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { getCardBySetCodeAndNumber, getCardsByDexNumber } from '@/lib/firestore/catalog';
@@ -47,13 +47,28 @@ interface ScanState {
   fakeReasons?: string[];
 }
 
+interface ScanDebug {
+  imageBase64?: string;          // Bild das an Gemini geschickt wurde
+  mimeType?: string;
+  imageSizeKb?: number;
+  geminiModel?: string;          // Welches Gemini-Modell hat geantwortet
+  geminiMs?: number;             // Dauer Gemini-Call
+  totalMs?: number;              // Gesamtdauer Scan→DB
+  geminiRaw?: string;            // Rohantwort von Gemini (vor JSON-Parse)
+  geminiParsed?: unknown;        // Geparste Gemini-Antwort
+  lookupSteps?: string[];        // Welche DB-Lookups wurden probiert
+  catalogMatch?: { id: string; name: string; setId: string; number: string } | null;
+  error?: string;
+}
+
 interface ScanJob {
   id: string;
   status: 'processing' | 'done' | 'error';
   result: ScanState | null;
   added?: boolean;
   capturedImageBase64?: string; // Vorschau während Gemini lädt
-  debugInfo?: string;           // Fehlerdetails (Gemini-Antwort, Catalog-Lookup)
+  debugInfo?: string;           // Kurz-Status (z.B. unten am Thumbnail)
+  debug?: ScanDebug;            // Detail-Debug für Modal
 }
 
 function cardImgUrl(job: ScanJob): string | null {
@@ -73,7 +88,10 @@ export default function ScannerPage() {
   const router = useRouter();
   const [jobs, setJobs] = useState<ScanJob[]>([]);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [debugJobId, setDebugJobId] = useState<string | null>(null);
   const [mode, setMode] = useState<'scanning' | 'review'>('scanning');
+
+  const debugJob = jobs.find(j => j.id === debugJobId) ?? null;
 
   const pendingCount = jobs.filter(j => j.status === 'processing').length;
   const doneJobs = jobs.filter(j => j.status === 'done' && j.result?.card);
@@ -91,16 +109,31 @@ export default function ScannerPage() {
 
   const handleCapture = useCallback(async (imageBase64: string, mimeType: string) => {
     const id = Math.random().toString(36).slice(2);
+    const t0 = Date.now();
+    const imageSizeKb = Math.round((imageBase64.length * 3 / 4) / 1024);
+    const debug: ScanDebug = { imageBase64, mimeType, imageSizeKb, lookupSteps: [] };
+
     // Aufgenommenes Bild als Vorschau zeigen während Gemini lädt
-    setJobs(prev => [...prev, { id, status: 'processing', result: null, capturedImageBase64: imageBase64 }]);
+    setJobs(prev => [...prev, {
+      id, status: 'processing', result: null, capturedImageBase64: imageBase64, debug,
+    }]);
 
     try {
+      const tFetch = Date.now();
       const res = await fetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64, mimeType }),
       });
-      const gemini: GeminiResponse = await res.json();
+      const gemini: GeminiResponse & { _debug?: { model: string; ms: number; rawText: string } }
+        = await res.json();
+      const fetchMs = Date.now() - tFetch;
+
+      debug.geminiModel = gemini._debug?.model;
+      debug.geminiMs    = gemini._debug?.ms ?? fetchMs;
+      debug.geminiRaw   = gemini._debug?.rawText;
+      debug.geminiParsed = { ...gemini, _debug: undefined };
+      console.log('[scanner] Gemini response:', { ms: fetchMs, parsed: gemini });
 
       // Gemini-Antwort als Debug-Info aufzeichnen
       const fakeTag = gemini.fakeRisk && gemini.fakeRisk !== 'low' ? ` ⚠️${gemini.fakeRisk}` : '';
@@ -109,8 +142,10 @@ export default function ScannerPage() {
         : `Gemini: ${gemini.setCode ?? '?'}/${gemini.number ?? '?'} ${gemini.language ?? '?'} (${gemini.confidence ?? '?'})${fakeTag}`;
 
       if (gemini.error || !gemini.setCode || !gemini.number) {
+        debug.error = gemini.error ?? 'setCode oder number fehlt';
+        debug.totalMs = Date.now() - t0;
         setJobs(prev => prev.map(j => j.id === id
-          ? { ...j, status: 'error', result: { card: null, language: 'de' }, debugInfo: geminiSummary }
+          ? { ...j, status: 'error', result: { card: null, language: 'de' }, debugInfo: geminiSummary, debug: { ...debug } }
           : j));
         return;
       }
@@ -119,21 +154,34 @@ export default function ScannerPage() {
 
       // Firestore-Catalog: Lookup per gedrucktem Set-Kürzel (ptcgoCode) + Nummer.
       // Zuverlässiger als setId, da Gemini nur liest was auf der Karte steht.
+      debug.lookupSteps!.push(`getCardBySetCodeAndNumber("${gemini.setCode}", "${rawNumber}")`);
       let catalogCard = await getCardBySetCodeAndNumber(gemini.setCode, rawNumber);
+      debug.lookupSteps![debug.lookupSteps!.length - 1] += catalogCard ? ` → ${catalogCard.id}` : ' → null';
 
       // Nummernformat-Variante: "005" ↔ "5"
       if (!catalogCard) {
         const alt = /^\d+$/.test(rawNumber)
           ? String(parseInt(rawNumber, 10))
           : rawNumber.padStart(3, '0');
-        if (alt !== rawNumber) catalogCard = await getCardBySetCodeAndNumber(gemini.setCode, alt);
+        if (alt !== rawNumber) {
+          debug.lookupSteps!.push(`getCardBySetCodeAndNumber("${gemini.setCode}", "${alt}")`);
+          catalogCard = await getCardBySetCodeAndNumber(gemini.setCode, alt);
+          debug.lookupSteps![debug.lookupSteps!.length - 1] += catalogCard ? ` → ${catalogCard.id}` : ' → null';
+        }
       }
 
       // Fallback: Pokédex-Nummer (wenn setCode nicht lesbar oder Katalog lückenhaft)
       if (!catalogCard && gemini.nationalDexNumber) {
+        debug.lookupSteps!.push(`getCardsByDexNumber(${gemini.nationalDexNumber})`);
         const dexCards = await getCardsByDexNumber(gemini.nationalDexNumber, 1);
+        debug.lookupSteps![debug.lookupSteps!.length - 1] += dexCards.length > 0 ? ` → ${dexCards[0].id}` : ' → null';
         if (dexCards.length > 0) catalogCard = dexCards[0];
       }
+
+      debug.catalogMatch = catalogCard
+        ? { id: catalogCard.id, name: catalogCard.name, setId: catalogCard.setId, number: catalogCard.number }
+        : null;
+      debug.totalMs = Date.now() - t0;
 
       const catalogInfo = catalogCard
         ? `Katalog: ${catalogCard.name} (${catalogCard.setId}/${catalogCard.number})`
@@ -151,6 +199,7 @@ export default function ScannerPage() {
         ...j,
         status: catalogCard ? 'done' : 'error',
         debugInfo: `${geminiSummary} | ${catalogInfo}`,
+        debug: { ...debug },
         result: {
           card: catalogCard ? catalogCardToInfo(catalogCard) : null,
           language: (gemini.language ?? 'de') as CardLanguage,
@@ -163,8 +212,10 @@ export default function ScannerPage() {
     } catch (err) {
       console.error('Scan error:', err);
       const msg = err instanceof Error ? err.message : String(err);
+      debug.error = msg;
+      debug.totalMs = Date.now() - t0;
       setJobs(prev => prev.map(j => j.id === id
-        ? { ...j, status: 'error', result: { card: null, language: 'de' }, debugInfo: `Netzwerkfehler: ${msg}` }
+        ? { ...j, status: 'error', result: { card: null, language: 'de' }, debugInfo: `Netzwerkfehler: ${msg}`, debug: { ...debug } }
         : j));
     }
   }, []);
@@ -223,6 +274,16 @@ export default function ScannerPage() {
                     >
                       <Trash2 size={11} color="#ef4444" />
                     </button>
+                    {job.debug && (
+                      <button
+                        onClick={e => { e.stopPropagation(); setDebugJobId(job.id); }}
+                        className="absolute top-1 right-9 w-6 h-6 rounded-full flex items-center justify-center"
+                        style={{ background: 'rgba(0,0,0,0.7)' }}
+                        aria-label="Debug-Info"
+                      >
+                        <Bug size={11} color="#93c5fd" />
+                      </button>
+                    )}
                     {(job.result?.ownedCount ?? 0) > 0 && !job.added && (
                       <span className="absolute top-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
                         style={{ background: 'rgba(72,187,120,.85)', color: '#fff' }}>
@@ -367,6 +428,16 @@ export default function ScannerPage() {
                           </div>
                         )}
                       </div>
+                      {job.debug && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDebugJobId(job.id); }}
+                          className="absolute -top-2 -left-2 w-6 h-6 rounded-full flex items-center justify-center z-10"
+                          style={{ background: '#1e3a8a', border: '1.5px solid rgba(255,255,255,0.2)' }}
+                          aria-label="Debug-Info"
+                        >
+                          <Bug size={11} color="#93c5fd" />
+                        </button>
+                      )}
                       <button
                         onClick={() => removeJob(job.id)}
                         className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center z-10"
@@ -382,6 +453,93 @@ export default function ScannerPage() {
         </div>
       )}
 
+
+      {/* ── Debug-Modal ──────────────────────────────────────────── */}
+      {debugJob?.debug && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 overflow-y-auto"
+          onClick={() => setDebugJobId(null)}
+        >
+          <div
+            className="min-h-full px-4 py-6"
+            style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-white font-semibold text-base">Debug-Info</h2>
+              <button
+                onClick={() => setDebugJobId(null)}
+                className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10"
+                aria-label="Schließen"
+              >
+                <X size={18} color="#fff" />
+              </button>
+            </div>
+
+            {/* Aufgenommenes Bild */}
+            {debugJob.debug.imageBase64 && (
+              <div className="mb-4">
+                <p className="text-white/60 text-xs mb-2 font-mono">An Gemini gesendetes Bild ({debugJob.debug.imageSizeKb} KB)</p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`data:${debugJob.debug.mimeType ?? 'image/jpeg'};base64,${debugJob.debug.imageBase64}`}
+                  alt="Captured"
+                  className="w-full rounded-lg border border-white/20"
+                />
+              </div>
+            )}
+
+            {/* Timing */}
+            <div className="mb-4 p-3 rounded-lg bg-white/5 text-xs font-mono text-white/80">
+              <div>Modell: <span className="text-blue-300">{debugJob.debug.geminiModel ?? '—'}</span></div>
+              <div>Gemini-Dauer: <span className="text-blue-300">{debugJob.debug.geminiMs ?? '—'} ms</span></div>
+              <div>Gesamt-Dauer: <span className="text-blue-300">{debugJob.debug.totalMs ?? '—'} ms</span></div>
+              {debugJob.debug.error && (
+                <div className="text-red-300 mt-1">Fehler: {debugJob.debug.error}</div>
+              )}
+            </div>
+
+            {/* Gemini-Antwort */}
+            <div className="mb-4">
+              <p className="text-white/60 text-xs mb-2 font-mono">Gemini-Antwort (geparst)</p>
+              <pre className="p-3 rounded-lg bg-white/5 text-[10px] text-green-200 overflow-x-auto font-mono whitespace-pre-wrap break-all">
+{JSON.stringify(debugJob.debug.geminiParsed, null, 2)}
+              </pre>
+            </div>
+
+            {/* Rohantwort */}
+            {debugJob.debug.geminiRaw && (
+              <div className="mb-4">
+                <p className="text-white/60 text-xs mb-2 font-mono">Gemini-Rohantwort</p>
+                <pre className="p-3 rounded-lg bg-white/5 text-[10px] text-white/70 overflow-x-auto font-mono whitespace-pre-wrap break-all">
+{debugJob.debug.geminiRaw}
+                </pre>
+              </div>
+            )}
+
+            {/* DB-Lookup */}
+            <div className="mb-4">
+              <p className="text-white/60 text-xs mb-2 font-mono">Firestore-Lookups</p>
+              <div className="p-3 rounded-lg bg-white/5 text-[10px] font-mono text-white/80 space-y-1">
+                {debugJob.debug.lookupSteps && debugJob.debug.lookupSteps.length > 0 ? (
+                  debugJob.debug.lookupSteps.map((step, i) => (
+                    <div key={i} className={step.endsWith('null') ? 'text-red-300' : 'text-green-300'}>
+                      {i + 1}. {step}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-white/40">Kein Lookup durchgeführt</div>
+                )}
+                <div className="pt-2 border-t border-white/10 mt-2">
+                  Ergebnis: {debugJob.debug.catalogMatch
+                    ? <span className="text-green-300">{debugJob.debug.catalogMatch.name} ({debugJob.debug.catalogMatch.setId}/{debugJob.debug.catalogMatch.number})</span>
+                    : <span className="text-red-300">nicht gefunden</span>}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── AddToCollectionModal ─────────────────────────────────── */}
       {activeJob?.result?.card && (
