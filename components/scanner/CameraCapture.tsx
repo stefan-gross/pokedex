@@ -51,7 +51,7 @@ const CHECK_MS               = 150;   // ONNX-Inferenz ~80ms → etwas mehr Budg
 const MOTION_RESET_THRESHOLD = 1200;  // grobe Bewegung → stable zurücksetzen
 const MOTION_SNAP_THRESHOLD  = 700;   // unter diesem MSE-Wert gilt es als "ruhig"
 const SNAP_STABLE_FRAMES     = 1;     // 1 ruhiger Frame reicht
-const BOX_SETTLED_THRESHOLD  = 12;   // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames
+const BOX_SETTLED_THRESHOLD  = 35;   // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames
 const SNAP_COOLDOWN_SAFETY   = 8000; // Fallback-Timeout falls Karte nie verschwindet
 
 // Rand um die ONNX-Box beim Zuschneiden für Gemini (Pixel in Video-Koordinaten)
@@ -163,11 +163,11 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       } : { x: target.x, y: target.y, w: target.w, h: target.h };
       lerpBoxRef.current = lb;
 
-      // Grüner Rahmen
-      ctx.strokeStyle = '#48bb78';
+      // Weißer Erkennungsrahmen — grüner Burst beim Snap übernimmt als Animation
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
       ctx.lineWidth = 3;
-      ctx.shadowColor = 'rgba(72,187,120,0.6)';
-      ctx.shadowBlur  = 12;
+      ctx.shadowColor = 'rgba(255,255,255,0.35)';
+      ctx.shadowBlur  = 10;
 
       const settled = boxDeltaRef.current < BOX_SETTLED_THRESHOLD;
       if (settled && target.corners?.length === 4) {
@@ -184,7 +184,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       ctx.stroke();
       ctx.shadowBlur = 0;
 
-      ctx.fillStyle = 'rgba(72,187,120,0.07)';
+      ctx.fillStyle = 'rgba(255,255,255,0.04)';
       ctx.fill();
       return;
     }
@@ -593,7 +593,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
             <div className="absolute inset-0 bg-white/70 pointer-events-none" style={{ zIndex: 3 }} />
           )}
 
-          {/* Rahmen-Burst: weißer Rahmen an der Kartenposition leuchtet auf und faded weg */}
+          {/* Rahmen-Burst: grüner dicker Rahmen leuchtet auf und faded weg (Foto gemacht) */}
           {snapAnim && (
             <div
               className="absolute pointer-events-none"
@@ -603,12 +603,12 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
                 width:  snapAnim.width,
                 height: snapAnim.height,
                 borderRadius: 14,
-                border: '4px solid white',
-                boxShadow: '0 0 24px rgba(255,255,255,0.9), inset 0 0 12px rgba(255,255,255,0.15)',
+                border: '5px solid #48bb78',
+                boxShadow: '0 0 28px rgba(72,187,120,0.95), inset 0 0 14px rgba(72,187,120,0.2)',
                 opacity:   snapAnim.phase === 'burst' ? 1 : 0,
-                transform: snapAnim.phase === 'burst' ? 'scale(1.07)' : 'scale(1.0)',
+                transform: snapAnim.phase === 'burst' ? 'scale(1.05)' : 'scale(1.0)',
                 transition: snapAnim.phase === 'fade'
-                  ? 'opacity 260ms ease-out, transform 260ms ease-out'
+                  ? 'opacity 300ms ease-out, transform 300ms ease-out'
                   : 'none',
                 transformOrigin: 'center',
                 zIndex: 5,
