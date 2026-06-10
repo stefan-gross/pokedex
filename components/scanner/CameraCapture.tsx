@@ -53,10 +53,10 @@ const MOTION_SNAP_THRESHOLD  = 700;   // unter diesem MSE-Wert gilt es als "ruhi
 const SNAP_STABLE_FRAMES     = 1;     // 1 ruhiger Frame reicht
 const BOX_SETTLED_THRESHOLD  = 35;   // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames
 const CONSECUTIVE_SNAP_FRAMES = 3;   // Fallback: nach N aufeinander folgenden Treffern immer auslösen
-// Fester Cooldown nach Snap — kein Absence-Warten mehr.
-// Nach SNAP_COOLDOWN_MS ist der Scanner sofort bereit, auch wenn die Karte noch im Bild ist.
-// Stativ-Zyklus: 700ms Pause + ~450ms Neu-Erkennung = ~1.1s pro Karte.
-const SNAP_COOLDOWN_MS       = 700;
+// Szenen-Änderungs-Cooldown: nach Snap warten bis MSE vs. Snapshot > Threshold.
+// Verhindert Duplikat-Scans wenn dieselbe Karte noch im Bild liegt.
+const CHANGE_DETECT_THRESHOLD = 200; // MSE vs. Snap-Snapshot → Szene hat sich verändert
+const SNAP_COOLDOWN_MIN_MS    = 300; // Mindest-Wartezeit nach Snap (verhindert sofortigen Doppel-Snap)
 
 // Rand um die ONNX-Box beim Zuschneiden für Gemini (Pixel in Video-Koordinaten)
 const CROP_PADDING = 24;
@@ -71,6 +71,7 @@ interface DebugInfo {
   sessionReady: boolean;
   cropSize: string;
   triggerReason: string; // welcher Pfad den Snap ausgelöst hat
+  changeMse: number;     // MSE vs. Snap-Snapshot (Kalibrierung CHANGE_DETECT_THRESHOLD)
 }
 
 export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: Props) {
@@ -101,6 +102,11 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   // Aufeinanderfolgende ONNX-Treffer (Fallback-Trigger ohne Box-Settling)
   const consecutiveDetectRef = useRef(0);
 
+  // Szenen-Änderungs-Cooldown: Snapshot beim Snap + Change-Detection
+  const waitForChangeRef     = useRef(false);
+  const capturedSampleRef    = useRef<ImageData | null>(null);
+  const changeReadyAtRef     = useRef<number>(0);
+
   // Overlay-Skalierung (aus drawOverlay) für Snap-Animation-Positionierung
   const snapScaleRef = useRef<{ scale: number; ox: number; oy: number } | null>(null);
 
@@ -121,7 +127,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   } | null>(null);
   const [debug,      setDebug]      = useState<DebugInfo>({
     conf: 0, mse: 0, stable: 0, boxDelta: Infinity, consecutiveFrames: 0,
-    detected: false, sessionReady: false, cropSize: '–', triggerReason: '–',
+    detected: false, sessionReady: false, cropSize: '–', triggerReason: '–', changeMse: 0,
   });
 
   // ONNX-Session beim Mount laden
@@ -393,17 +399,18 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     stableRef.current = 0; setProgress(0); setDetected(false);
     prevBoxRef.current = null; boxDeltaRef.current = Infinity;
 
-    // Fester Timer-Cooldown — kein Absence-Warten.
-    // Nach SNAP_COOLDOWN_MS bereit für nächste Karte, auch wenn sie noch im Bild ist.
-    cooldownRef.current = true;
+    // Snapshot des Motion-Sample-Canvas für Szenen-Änderungs-Erkennung
+    const s = sampleRef.current;
+    if (s) {
+      capturedSampleRef.current = s.getContext('2d')!.getImageData(0, 0, s.width, s.height);
+    }
+
+    // Cooldown: Ende wird durch Szenen-Änderung ausgelöst (nicht per Timer).
+    // SNAP_COOLDOWN_MIN_MS verhindert sofortigen Doppel-Snap.
+    cooldownRef.current      = true;
     setInCooldown(true);
-    setTimeout(() => {
-      cooldownRef.current          = false;
-      setInCooldown(false);
-      consecutiveDetectRef.current = 0; // Zähler neu starten → verhindert Doppel-Snap
-      stableRef.current            = 0;
-      setProgress(0);
-    }, SNAP_COOLDOWN_MS);
+    waitForChangeRef.current = true;
+    changeReadyAtRef.current = Date.now() + SNAP_COOLDOWN_MIN_MS;
   }, [paused]);
 
   // ── Detection-Loop ────────────────────────────────────────────────────────
@@ -478,7 +485,29 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         mse = mc > 0 ? mse / mc : 0;
         pCtx.drawImage(sample, 0, 0);
 
-        // 5. Snap-Trigger — zwei Pfade:
+        // 5. Szenen-Änderungs-Erkennung: Cooldown per Snapshot-Vergleich beenden
+        let changeMse = 0;
+        if (waitForChangeRef.current && Date.now() >= changeReadyAtRef.current) {
+          const cap = capturedSampleRef.current;
+          if (cap) {
+            let cSum = 0, cCount = 0;
+            for (let ci = 0; ci < sData.length && ci < cap.data.length; ci += 32) {
+              const d = sData[ci] - cap.data[ci]; cSum += d * d; cCount++;
+            }
+            changeMse = cCount > 0 ? Math.round(cSum / cCount) : 0;
+            if (changeMse > CHANGE_DETECT_THRESHOLD) {
+              // Szene hat sich verändert → Cooldown beenden
+              waitForChangeRef.current     = false;
+              cooldownRef.current          = false;
+              setInCooldown(false);
+              consecutiveDetectRef.current = 0;
+              stableRef.current            = 0;
+              setProgress(0);
+            }
+          }
+        }
+
+        // 6. Snap-Trigger — zwei Pfade:
         //    A) Box-Delta settled (genau, aber langsam)
         //    B) N aufeinanderfolgende Treffer (Fallback für Stativ/Scanning-Station)
         const consFrames      = consecutiveDetectRef.current;
@@ -487,7 +516,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         const snapCondition   = !cooldownRef.current && cardDetected && mse < MOTION_SNAP_THRESHOLD;
         const triggerReason   = boxSettled ? 'delta' : consecutiveOk ? 'consecutive' : '–';
 
-        // 6. Debug-State aktualisieren
+        // 7. Debug-State aktualisieren
         setDebug({
           conf:              onnxBoxRef.current?.conf ?? 0,
           mse:               Math.round(mse),
@@ -498,6 +527,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
           sessionReady:      sessionReadyRef.current,
           cropSize:          cropSizeRef.current,
           triggerReason,
+          changeMse,
         });
 
         if (snapCondition && (boxSettled || consecutiveOk)) {
@@ -532,7 +562,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   };
 
   const hintText = paused             ? 'Scannen pausiert'
-    : inCooldown                      ? 'Nächste Karte …'
+    : inCooldown                      ? 'Karte wechseln …'
     : detected && progress >= 1       ? 'Karte erkannt — wird aufgenommen …'
     : detected                        ? 'Karte erkannt'
     : progress > 0                    ? 'Fast …'
@@ -625,6 +655,14 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
               </div>
               {debug.triggerReason !== '–' && (
                 <div style={{ color: '#48bb78' }}>Trigger: {debug.triggerReason}</div>
+              )}
+              {inCooldown && (
+                <div>
+                  Änderung:{' '}
+                  <span style={{ color: debug.changeMse > CHANGE_DETECT_THRESHOLD ? '#48bb78' : '#f87171' }}>
+                    {debug.changeMse} {debug.changeMse > CHANGE_DETECT_THRESHOLD ? '✓' : `/ ${CHANGE_DETECT_THRESHOLD}`}
+                  </span>
+                </div>
               )}
               {debug.cropSize && <div style={{ color: '#60a5fa' }}>Crop: {debug.cropSize}</div>}
             </div>
