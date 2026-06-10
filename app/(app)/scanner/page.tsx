@@ -12,12 +12,26 @@ import type { CardInfo } from '@/lib/card-info';
 import type { CardLanguage, CardVariant } from '@/types';
 import { toTcgdexId } from '@/lib/tcgdex';
 
+export type CardCondition = 'nm' | 'lp' | 'mp' | 'hp' | 'd';
+
+const CONDITION_LABEL: Record<CardCondition, string> = {
+  nm: 'NM', lp: 'LP', mp: 'MP', hp: 'HP', d: 'D',
+};
+const CONDITION_COLOR: Record<CardCondition, { bg: string; text: string }> = {
+  nm: { bg: 'rgba(34,197,94,.85)',  text: '#fff' },
+  lp: { bg: 'rgba(132,204,22,.85)', text: '#fff' },
+  mp: { bg: 'rgba(234,179,8,.85)',  text: '#000' },
+  hp: { bg: 'rgba(249,115,22,.85)', text: '#fff' },
+  d:  { bg: 'rgba(239,68,68,.85)',  text: '#fff' },
+};
+
 interface GeminiResponse {
   setCode?: string;                      // gedrucktes Set-Kürzel (z.B. "ASC", "SSP")
   number?: string;
   language?: string;
   confidence?: string;
   nationalDexNumber?: number | null;
+  condition?: CardCondition;
   fakeRisk?: 'low' | 'medium' | 'high';
   fakeReasons?: string[];
   error?: string;
@@ -28,6 +42,7 @@ interface ScanState {
   language: CardLanguage;
   variant?: CardVariant;
   ownedCount?: number;
+  condition?: CardCondition;
   fakeRisk?: 'low' | 'medium' | 'high';
   fakeReasons?: string[];
 }
@@ -140,6 +155,7 @@ export default function ScannerPage() {
           card: catalogCard ? catalogCardToInfo(catalogCard) : null,
           language: (gemini.language ?? 'de') as CardLanguage,
           ownedCount: ownedCopies.length,
+          condition: gemini.condition,
           fakeRisk: gemini.fakeRisk,
           fakeReasons: gemini.fakeReasons,
         },
@@ -211,6 +227,12 @@ export default function ScannerPage() {
                       <span className="absolute top-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
                         style={{ background: 'rgba(72,187,120,.85)', color: '#fff' }}>
                         ×{job.result!.ownedCount}
+                      </span>
+                    )}
+                    {job.result?.condition && CONDITION_COLOR[job.result.condition] && (
+                      <span className="absolute bottom-1 right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
+                        style={{ background: CONDITION_COLOR[job.result.condition].bg, color: CONDITION_COLOR[job.result.condition].text }}>
+                        {CONDITION_LABEL[job.result.condition]}
                       </span>
                     )}
                     {job.result?.fakeRisk === 'high' && (
@@ -317,6 +339,12 @@ export default function ScannerPage() {
                           <span className="absolute top-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
                             style={{ background: 'rgba(72,187,120,.85)', color: '#fff' }}>
                             ×{job.result!.ownedCount}
+                          </span>
+                        )}
+                        {job.result?.condition && CONDITION_COLOR[job.result.condition] && (
+                          <span className="absolute bottom-1 right-1 text-[8px] font-bold px-1 py-0.5 rounded"
+                            style={{ background: CONDITION_COLOR[job.result.condition].bg, color: CONDITION_COLOR[job.result.condition].text }}>
+                            {CONDITION_LABEL[job.result.condition]}
                           </span>
                         )}
                         {job.result?.fakeRisk === 'high' && (
