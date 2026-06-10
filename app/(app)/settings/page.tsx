@@ -394,13 +394,29 @@ export default function SettingsPage() {
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">App</p>
           <div className="bg-card border border-border rounded-xl overflow-hidden">
             <button
-              onClick={() => window.location.reload()}
+              onClick={async () => {
+                // iOS-PWA cached den App-Shell aggressiv — normales reload() reicht nicht.
+                // Service-Worker-Caches leeren (falls vorhanden), dann Hard-Navigation
+                // mit einmaligem Query-Parameter, damit iOS frischen Content vom Server holt.
+                try {
+                  if ('caches' in window) {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map(k => caches.delete(k)));
+                  }
+                  if ('serviceWorker' in navigator) {
+                    const regs = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(regs.map(r => r.unregister()));
+                  }
+                } catch { /* ignorieren */ }
+                // Unique URL → iOS muss frischen HTML vom Server laden
+                window.location.href = '/?updated=' + Date.now();
+              }}
               className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-secondary transition-colors"
             >
               <RefreshCw size={18} className="text-muted-foreground shrink-0" />
               <div>
-                <p className="text-sm font-medium">App neu laden</p>
-                <p className="text-xs text-muted-foreground">Aktualisiert die App auf die neueste Version</p>
+                <p className="text-sm font-medium">App aktualisieren</p>
+                <p className="text-xs text-muted-foreground">Lädt die neueste Version — Cache wird geleert</p>
               </div>
             </button>
           </div>
