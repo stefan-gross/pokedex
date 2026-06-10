@@ -132,9 +132,10 @@ export default function ScannerPage() {
       const prevUpload = uploadChainRef.current;
       const tFetch = Date.now();
       const myUpload = prevUpload.then(async () => {
-        // ── AbortController: 30s Timeout statt ewig hängen ─────────────────
+        // ── AbortController: 90s Timeout (Gemini hat gelegentlich 20-30s
+        // Latenz; iOS-PWA-Standalone kann Page kurz pausieren) ────────────
         const ac = new AbortController();
-        const to = setTimeout(() => ac.abort(), 30_000);
+        const to = setTimeout(() => ac.abort(), 90_000);
         try {
           return await fetch('/api/scan', {
             method: 'POST',
@@ -259,7 +260,7 @@ export default function ScannerPage() {
     } catch (err) {
       console.error('Scan error:', err);
       const isAbort = err instanceof Error && err.name === 'AbortError';
-      const msg = isAbort ? 'Upload-Timeout 30s' : err instanceof Error ? err.message : String(err);
+      const msg = isAbort ? 'Upload-Timeout 90s' : err instanceof Error ? err.message : String(err);
       debug.error = msg;
       debug.totalMs = Date.now() - t0;
       setJobs(prev => prev.map(j => j.id === id
