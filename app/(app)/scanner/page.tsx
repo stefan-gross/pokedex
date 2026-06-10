@@ -10,7 +10,6 @@ import { getCardsByTcgId } from '@/lib/firestore/cards';
 import { catalogCardToInfo } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardLanguage, CardVariant } from '@/types';
-import { toTcgdexId } from '@/lib/tcgdex';
 
 export type CardCondition = 'nm' | 'lp' | 'mp' | 'hp' | 'd';
 
@@ -78,9 +77,10 @@ function cardImgUrl(job: ScanJob): string | null {
   const card = job.result?.card;
   if (!card) return null;
   const lang = job.result?.language ?? 'en';
-  if (lang === 'de') {
-    return `https://assets.tcgdex.net/de/${toTcgdexId(card.setId)}/${card.number}/high.webp`;
-  }
+  // DE-First: gespeicherte DE-Bild-URL aus dem Catalog nehmen (Enrichment-
+  // Output). Vorherige Lösung baute on-the-fly tcgdex-URLs — 404 bei Sets
+  // ohne DE-Assets (z.B. Pokémon TCG Classic `me2pt5`). Fallback EN.
+  if (lang === 'de' && card.imgSmallDe) return card.imgSmallDe;
   return card.imgSmall ?? null;
 }
 
