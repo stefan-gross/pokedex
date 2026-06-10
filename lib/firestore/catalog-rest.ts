@@ -11,10 +11,24 @@
  */
 
 import type { CatalogCard } from './catalog';
+import { auth } from '@/lib/firebase/client';
 
 const PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!;
 const API_KEY    = process.env.NEXT_PUBLIC_FIREBASE_API_KEY!;
 const BASE       = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
+
+/** Versucht das Firebase-ID-Token zu holen — wenn User eingeloggt ist, geht's mit
+ *  der Rule `if request.auth != null` durch (egal was deployed ist). */
+async function getAuthHeader(): Promise<Record<string, string>> {
+  try {
+    const u = auth.currentUser;
+    if (!u) return {};
+    const token = await u.getIdToken();
+    return { Authorization: `Bearer ${token}` };
+  } catch {
+    return {};
+  }
+}
 
 // Firestore-encoded Value → JS-Value
 type FsValue =
@@ -56,9 +70,10 @@ interface RunQueryResponseEntry {
 }
 
 async function runQuery(structuredQuery: Record<string, unknown>): Promise<CatalogCard[]> {
+  const authHeader = await getAuthHeader();
   const res = await fetch(`${BASE}:runQuery?key=${API_KEY}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeader },
     body: JSON.stringify({ structuredQuery }),
   });
   if (!res.ok) {
