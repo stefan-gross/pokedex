@@ -3,84 +3,37 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
-const PROMPT = `You are a Pokémon TCG expert. Identify the card in this image.
+const PROMPT = `You are a Pokémon TCG card reader. Extract the printed information from this card image.
 
-CARD LAYOUT — where to look:
-- BOTTOM of the card: regulation mark letter (e.g. "J", "H", "G") + a small box/stamp containing the set code and card number.
-  - Modern format: "[RegMark] [SETCODE] [NNN/TTT]"
-  - German DE editions: the stamp box shows SETCODE and "DE" together, e.g. "J ASC DE 005/217"
-    → SETCODE = "ASC", number = "005", language = "de". Ignore "DE" — it is the language marker, NOT part of the set code.
-  - Return ONLY the NNN part of the card number (e.g. "005", NOT "005/217").
-- Language: German cards say "KP" (not HP), "Fähigkeit" (Ability), "Angriff" (Attack). Japanese cards use Japanese text.
+WHAT TO READ:
+- Set code: the short letter abbreviation in the small stamp at the card bottom
+  - Modern format: regulation mark letter + stamp, e.g. "J ASC DE 005/217"
+    → setCode = "ASC"  (ignore regulation mark "J" and language marker "DE")
+  - English modern: "J SSP 142/191" → setCode = "SSP"
+  - Older cards without a printed code (Base Set, Jungle, Fossil etc.): setCode = null
+- Card number: the NNN part of NNN/TTT, return ONLY digits (e.g. "142", NOT "142/191")
+- Language: German cards say "KP" (not HP) and "Fähigkeit" (Ability)
+- National Pokédex number: "Nr. XXXX" on German, "#XXX" on English cards. null if not a Pokémon.
+
+FAKE DETECTION — examine print quality carefully:
+  "low": fonts sharp and correct, colors accurate, set symbol matches known design → genuine
+  "medium": minor issues (slightly off colors, fonts look close but not exact)
+  "high": obvious problems (blurry text, wrong fonts, incorrect energy symbols, wrong layout)
 
 Return ONLY this JSON — no markdown, no explanation:
 {
-  "setId": "pokemontcg.io set ID",
-  "number": "card number only — digits and letters, NO slash, NO total (e.g. 049 not 049/198)",
+  "setCode": "printed set abbreviation as-is, or null",
+  "number": "card number digits only, no slash",
   "language": "de | en | ja | fr | es | it | pt | ko | zh-hant",
   "confidence": "high | medium | low",
   "nationalDexNumber": null,
-  "variant": "standard | holo | reverse | alt-art | promo"
+  "fakeRisk": "low | medium | high",
+  "fakeReasons": []
 }
 
-For "nationalDexNumber": set to the Pokédex number if the card shows a Pokémon, otherwise null.
-For "variant" — look carefully at the card surface:
-  "alt-art": the Pokémon illustration extends to the full card edge with no visible white border
-  "holo": the Pokémon illustration area has a visible holographic/rainbow shimmer
-  "reverse": the card border and background are foil/shimmering, but the illustration is not
-  "promo": there is a promo or special stamp visible on the card
-  "standard": none of the above — normal non-foil card
+fakeReasons: list specific issues, e.g. ["blurry text", "wrong font"]. Empty array [] if genuine.
 
-If no Pokémon card is visible, return: { "error": "No card detected" }
-
-SET REFERENCE — printed set code → pokemontcg.io setId:
-IMPORTANT: If the set code is NOT in this list, return it lowercase as-is (e.g. "ASC" → "asc", "DST" → "dst").
-Never return "?" — always return the best guess or the raw code.
-
-Scarlet & Violet era:
-  SVP / SVP-EN / SVP-DE → svp
-  SV01 / SVI / SVE → sv1  (Scarlet & Violet base, 2023)
-  SV02 / PAL → sv2  (Paldea Evolved)
-  SV03 / OBF → sv3  (Obsidian Flames)
-  SV03.5 / MEW / 151 → sv3pt5  (Pokémon 151)
-  SV04 / PAR → sv4  (Paradox Rift)
-  SV05 / TEF → sv5  (Temporal Forces)
-  SV06 / TWM → sv6  (Twilight Masquerade)
-  SV07 / SCR → sv7  (Stellar Crown)
-  SV08 / SSP → sv8  (Surging Sparks)
-  SV08.5 / PRE → sv8pt5  (Prismatic Evolutions, 2025)
-  SV09 / JTG → sv9  (Journey Together, 2025)
-  SV09.5 / SFA → sv9pt5  (Scarlet & Violet Black Star Promos)
-Sword & Shield era:
-  SWSH01 / SSH → swsh1
-  SWSH02 / RCL → swsh2
-  SWSH03 / DAA → swsh3
-  SWSH04 / VIV → swsh4
-  SWSH04.5 / SHF → swsh4pt5
-  SWSH05 / BST → swsh5
-  SWSH06 / CRE → swsh6
-  SWSH07 / EVS → swsh7
-  SWSH08 / FUS → swsh8
-  SWSH09 / BRS → swsh9
-  SWSH10 / ASR → swsh10
-  SWSH11 / LOR → swsh11
-  SWSH12 / SIT → swsh12
-  SWSH12.5 / CRZ → swsh12pt5
-Sun & Moon era: sm1–sm12, sm12pt5
-XY era: xy1–xy12
-Black & White era: bw1–bw11
-Classic sets (only symbol, no printed code — identify visually):
-  No symbol / no mark → base1  (Base Set, 1999)
-  Jungle leaf icon → jungle
-  Fossil ammonite/spiral → fossil
-  Same as Base Set but with "2" text → base2
-  "R" rocket logo → team-rocket
-  Gym badge shapes → gym1 (Gym Heroes) or gym2 (Gym Challenge)
-  Silver circle/ring → neo1 (Neo Genesis)
-  Spiral/diamond crystal → neo2 (Neo Discovery)
-  Dark spiral → neo3 (Neo Revelation)
-  Large spiral/destiny → neo4 (Neo Destiny)
-  Legend triangle/sun → ex series (exand, ex1–ex16)`;
+If no Pokémon card is visible: { "error": "No card detected" }`;
 
 // Fallback-Kette: 2.5-flash zuerst, bei 503/429 auf 2.0-flash
 // gemini-1.5-flash ist für API v1beta nicht mehr verfügbar (404)

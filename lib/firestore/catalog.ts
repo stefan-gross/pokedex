@@ -109,6 +109,16 @@ export async function getCardBySetAndNumber(setId: string, number: string): Prom
   return snap.docs[0]?.data() as CatalogCard ?? null;
 }
 
+/** Suche per gedrucktem Set-Kürzel (ptcgoCode) + Kartennummer.
+ *  Zuverlässiger als setId-Lookup für moderne Karten (ASC, SSP, TEF ...).
+ *  Das setCode-Feld enthält den auf der Karte aufgedruckten Buchstaben-Code. */
+export async function getCardBySetCodeAndNumber(setCode: string, number: string): Promise<CatalogCard | null> {
+  const snap = await getDocs(
+    query(collection(db, COL), where('setCode', '==', setCode), where('number', '==', number), limit(1))
+  );
+  return snap.docs[0]?.data() as CatalogCard ?? null;
+}
+
 // Batch-Upsert (Firestore max 500 pro Batch)
 export async function upsertCatalogBatch(cards: CatalogCard[]): Promise<void> {
   const chunks = [];

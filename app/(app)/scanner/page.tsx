@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { X, Trash2, Loader2, AlertCircle, Check, Plus } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
-import { getCardBySetAndNumber, getCardsByDexNumber } from '@/lib/firestore/catalog';
+import { getCardBySetCodeAndNumber, getCardsByDexNumber } from '@/lib/firestore/catalog';
 import { getCardsByTcgId } from '@/lib/firestore/cards';
 import { catalogCardToInfo } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
@@ -13,12 +13,13 @@ import type { CardLanguage, CardVariant } from '@/types';
 import { toTcgdexId } from '@/lib/tcgdex';
 
 interface GeminiResponse {
-  setId?: string;
+  setCode?: string;                      // gedrucktes Set-Kürzel (z.B. "ASC", "SSP")
   number?: string;
   language?: string;
   confidence?: string;
   nationalDexNumber?: number | null;
-  variant?: string;
+  fakeRisk?: 'low' | 'medium' | 'high';
+  fakeReasons?: string[];
   error?: string;
 }
 
@@ -27,6 +28,8 @@ interface ScanState {
   language: CardLanguage;
   variant?: CardVariant;
   ownedCount?: number;
+  fakeRisk?: 'low' | 'medium' | 'high';
+  fakeReasons?: string[];
 }
 
 interface ScanJob {
@@ -85,11 +88,12 @@ export default function ScannerPage() {
       const gemini: GeminiResponse = await res.json();
 
       // Gemini-Antwort als Debug-Info aufzeichnen
+      const fakeTag = gemini.fakeRisk && gemini.fakeRisk !== 'low' ? ` ⚠️${gemini.fakeRisk}` : '';
       const geminiSummary = gemini.error
         ? `Gemini: ${gemini.error}`
-        : `Gemini: ${gemini.setId ?? '?'}/${gemini.number ?? '?'} ${gemini.language ?? '?'} (${gemini.confidence ?? '?'})`;
+        : `Gemini: ${gemini.setCode ?? '?'}/${gemini.number ?? '?'} ${gemini.language ?? '?'} (${gemini.confidence ?? '?'})${fakeTag}`;
 
-      if (gemini.error || !gemini.setId || !gemini.number) {
+      if (gemini.error || !gemini.setCode || !gemini.number) {
         setJobs(prev => prev.map(j => j.id === id
           ? { ...j, status: 'error', result: { card: null, language: 'de' }, debugInfo: geminiSummary }
           : j));
@@ -98,27 +102,19 @@ export default function ScannerPage() {
 
       const rawNumber = gemini.number.includes('/') ? gemini.number.split('/')[0] : gemini.number;
 
-      // Firestore-Catalog: Karte per Set + Nummer suchen
-      // Gemini liefert setId entweder als pokemontcg.io-ID (z.B. "sv8") oder als
-      // raw Set-Code lowercase (z.B. "asc" für unbekannte/neue Sets).
-      // Wir probieren den genauen Wert + Alternativen beim Nummernformat.
-      let catalogCard = await getCardBySetAndNumber(gemini.setId, rawNumber);
+      // Firestore-Catalog: Lookup per gedrucktem Set-Kürzel (ptcgoCode) + Nummer.
+      // Zuverlässiger als setId, da Gemini nur liest was auf der Karte steht.
+      let catalogCard = await getCardBySetCodeAndNumber(gemini.setCode, rawNumber);
+
+      // Nummernformat-Variante: "005" ↔ "5"
       if (!catalogCard) {
-        // Alternativer Nummernformat-Versuch (mit/ohne führende Nullen)
-        const alt = /^\d+$/.test(rawNumber) ? String(parseInt(rawNumber, 10)) : rawNumber.padStart(3, '0');
-        if (alt !== rawNumber) catalogCard = await getCardBySetAndNumber(gemini.setId, alt);
+        const alt = /^\d+$/.test(rawNumber)
+          ? String(parseInt(rawNumber, 10))
+          : rawNumber.padStart(3, '0');
+        if (alt !== rawNumber) catalogCard = await getCardBySetCodeAndNumber(gemini.setCode, alt);
       }
-      if (!catalogCard) {
-        // Nummernformat-Alternative auch ohne führende Null (z.B. "5" statt "005")
-        const noLeading = rawNumber.replace(/^0+(\d)/, '$1');
-        if (noLeading !== rawNumber) {
-          catalogCard = await getCardBySetAndNumber(gemini.setId, noLeading);
-          if (!catalogCard) {
-            const altPadded = noLeading.padStart(3, '0');
-            if (altPadded !== rawNumber) catalogCard = await getCardBySetAndNumber(gemini.setId, altPadded);
-          }
-        }
-      }
+
+      // Fallback: Pokédex-Nummer (wenn setCode nicht lesbar oder Katalog lückenhaft)
       if (!catalogCard && gemini.nationalDexNumber) {
         const dexCards = await getCardsByDexNumber(gemini.nationalDexNumber, 1);
         if (dexCards.length > 0) catalogCard = dexCards[0];
@@ -126,7 +122,7 @@ export default function ScannerPage() {
 
       const catalogInfo = catalogCard
         ? `Katalog: ${catalogCard.name} (${catalogCard.setId}/${catalogCard.number})`
-        : `Katalog: nicht gefunden (${gemini.setId}/${rawNumber})`;
+        : `Katalog: nicht gefunden (setCode=${gemini.setCode}/${rawNumber})`;
 
       // getCardsByTcgId benötigt Firebase-Client-Auth (Security Rules).
       // Falls der Client noch nicht eingeloggt ist → graceful fallback auf 0.
@@ -136,10 +132,6 @@ export default function ScannerPage() {
       } catch {
         // Firebase-Auth noch nicht initialisiert oder Security-Rules greifen → ownedCount = 0
       }
-      const variantMap: Record<string, CardVariant> = {
-        holo: 'holo', reverse: 'reverse', 'alt-art': 'alt-art', promo: 'promo', standard: 'standard',
-      };
-
       setJobs(prev => prev.map(j => j.id === id ? {
         ...j,
         status: catalogCard ? 'done' : 'error',
@@ -147,8 +139,9 @@ export default function ScannerPage() {
         result: {
           card: catalogCard ? catalogCardToInfo(catalogCard) : null,
           language: (gemini.language ?? 'de') as CardLanguage,
-          variant: variantMap[gemini.variant ?? ''] ?? 'standard',
           ownedCount: ownedCopies.length,
+          fakeRisk: gemini.fakeRisk,
+          fakeReasons: gemini.fakeReasons,
         },
       } : j));
     } catch (err) {
@@ -218,6 +211,20 @@ export default function ScannerPage() {
                       <span className="absolute top-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
                         style={{ background: 'rgba(72,187,120,.85)', color: '#fff' }}>
                         ×{job.result!.ownedCount}
+                      </span>
+                    )}
+                    {job.result?.fakeRisk === 'high' && (
+                      <span className="absolute bottom-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
+                        style={{ background: 'rgba(239,68,68,.9)', color: '#fff' }}
+                        title={job.result.fakeReasons?.join(', ')}>
+                        FAKE?
+                      </span>
+                    )}
+                    {job.result?.fakeRisk === 'medium' && (
+                      <span className="absolute bottom-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
+                        style={{ background: 'rgba(234,179,8,.9)', color: '#000' }}
+                        title={job.result.fakeReasons?.join(', ')}>
+                        Verdächtig
                       </span>
                     )}
                   </div>
@@ -310,6 +317,20 @@ export default function ScannerPage() {
                           <span className="absolute top-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
                             style={{ background: 'rgba(72,187,120,.85)', color: '#fff' }}>
                             ×{job.result!.ownedCount}
+                          </span>
+                        )}
+                        {job.result?.fakeRisk === 'high' && (
+                          <span className="absolute bottom-1 left-1 text-[8px] font-bold px-1 py-0.5 rounded"
+                            style={{ background: 'rgba(239,68,68,.9)', color: '#fff' }}
+                            title={job.result.fakeReasons?.join(', ')}>
+                            FAKE?
+                          </span>
+                        )}
+                        {job.result?.fakeRisk === 'medium' && (
+                          <span className="absolute bottom-1 left-1 text-[8px] font-bold px-1 py-0.5 rounded"
+                            style={{ background: 'rgba(234,179,8,.9)', color: '#000' }}
+                            title={job.result.fakeReasons?.join(', ')}>
+                            ?
                           </span>
                         )}
                         {job.added && (
