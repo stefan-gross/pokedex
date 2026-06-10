@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Zap, ZapOff, RefreshCw, Loader2 } from 'lucide-react';
+import { Zap, ZapOff, RefreshCw, Loader2, Camera } from 'lucide-react';
 import { loadCardDetectorSession, detectCardInFrame, type CardBox } from '@/lib/scanner/card-detector-onnx';
 
 interface Props {
@@ -121,6 +121,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
 
+  const [started,    setStarted]    = useState(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [torch,      setTorch]      = useState(false);
   const [error,      setError]      = useState<string | null>(null);
@@ -302,17 +303,17 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   }, [facingMode]);
 
   useEffect(() => {
+    // Kein Auto-Start: getUserMedia darf nur als direkte Reaktion auf einen
+    // Nutzer-Tap laufen (sonst iOS-Permission-Dialog ohne Vorwarnung).
+    // 'started' wird erst durch Tap auf das Start-Overlay TRUE gesetzt.
+    if (!started) return;
     startCamera();
     return () => {
-      // Sofort stoppen — Unmount = explizite Nutzer-Aktion
-      // (Review-Toggle, Scanner-Schließen). Kein 5s-Grace, der Stream
-      // würde sonst noch laufen wenn der Nutzer im Review-Modus ist
-      // (grüner iOS-Indikator obwohl Kamera nicht sichtbar).
       _kameraStream?.getTracks().forEach(t => t.stop());
       _kameraStream = null;
       streamRef.current = null;
     };
-  }, [startCamera]);
+  }, [startCamera, started]);
 
   // ── App-Resume nach iOS-Background-Suspend ───────────────────────────────
   // iOS beendet Camera-Tracks wenn die PWA in den Hintergrund geht (Hardware
@@ -325,6 +326,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
+      if (!started) return; // Noch nicht gestartet → nichts zu prüfen
       const track = _kameraStream?.getVideoTracks()[0];
       const vid   = videoRef.current;
       // Alles läuft → nichts tun
@@ -335,7 +337,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, []);
+  }, [started]);
 
   // ── Foto auslösen ─────────────────────────────────────────────────────────
   const doCapture = useCallback(() => {
@@ -614,7 +616,24 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       <canvas ref={sampleRef} width={SAMPLE_W} height={SAMPLE_H} className="hidden" />
       <canvas ref={prevRef}   width={SAMPLE_W} height={SAMPLE_H} className="hidden" />
 
-      {error ? (
+      {!started ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-8 text-center gap-4">
+          <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center">
+            <Camera size={28} color="#fff" />
+          </div>
+          <p className="text-base text-white font-semibold">Kamera starten</p>
+          <p className="text-sm text-white/60 max-w-xs">
+            Tippe unten, um den Kamera-Zugriff anzufordern.
+          </p>
+          <button
+            onClick={() => setStarted(true)}
+            className="mt-2 px-6 py-3 rounded-xl font-semibold text-white"
+            style={{ background: 'var(--pokedex-red)' }}
+          >
+            Kamera starten
+          </button>
+        </div>
+      ) : error ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center px-8 text-center gap-4">
           {error === 'interrupted' && (
             <>
@@ -626,7 +645,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
                 die Kamera kurzzeitig nutzte oder die PWA im Hintergrund war).
               </p>
               <button
-                onClick={() => { setError(null); startCamera(); }}
+                onClick={() => { setError(null); setStarted(true); startCamera(); }}
                 className="mt-2 px-6 py-3 rounded-xl font-semibold text-white"
                 style={{ background: 'var(--pokedex-red)' }}
               >
@@ -648,7 +667,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
                 (gilt global für alle Websites)
               </p>
               <button
-                onClick={() => { setError(null); startCamera(); }}
+                onClick={() => { setError(null); setStarted(true); startCamera(); }}
                 className="mt-2 px-6 py-3 rounded-xl font-semibold text-white"
                 style={{ background: 'var(--pokedex-red)' }}
               >
@@ -662,7 +681,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
                 Kamera konnte nicht gestartet werden.
               </p>
               <button
-                onClick={() => { setError(null); startCamera(); }}
+                onClick={() => { setError(null); setStarted(true); startCamera(); }}
                 className="mt-2 px-6 py-3 rounded-xl font-semibold text-white"
                 style={{ background: 'var(--pokedex-red)' }}
               >

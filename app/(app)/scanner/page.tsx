@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Trash2, Loader2, AlertCircle, Check, Plus, LayoutGrid, Camera } from 'lucide-react';
+import { X, Trash2, Loader2, AlertCircle, Check, Plus, LayoutGrid, Camera, Bug } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { getCardBySetCodeAndNumber, getCardsByDexNumber } from '@/lib/firestore/catalog';
@@ -232,7 +232,10 @@ export default function ScannerPage() {
   return (
     <div className="fixed inset-0 bg-black overflow-hidden">
 
-      {/* ── Kamera fullscreen (nur im Scan-Modus) ───────────────── */}
+      {/* ── Kamera fullscreen (nur im Scan-Modus) ──────────────────
+          Beim Wechsel zu Review wird CameraCapture unmounted → Stream stoppt.
+          Beim Zurück-Wechsel mountet die Komponente neu und zeigt initial
+          das „Kamera starten"-Overlay — getUserMedia erst nach Tap. */}
       {mode === 'scanning' && (
         <div className="absolute inset-0">
           <CameraCapture onCapture={handleCapture} pendingCount={pendingCount} paused={false} />
@@ -250,7 +253,7 @@ export default function ScannerPage() {
               const img = cardImgUrl(job);
               const card = job.result?.card;
               const canOpen = job.status === 'done' && !!card;
-              const canDebug = job.status === 'error' && !!job.debug;
+              const canDebug = !!job.debug;
               const onCardClick = () => {
                 if (canOpen) setActiveJobId(job.id);
                 else if (canDebug) setDebugJobId(job.id);
@@ -288,6 +291,16 @@ export default function ScannerPage() {
                     >
                       <Trash2 size={11} color="#ef4444" />
                     </button>
+                    {canDebug && (
+                      <button
+                        onClick={e => { e.stopPropagation(); setDebugJobId(job.id); }}
+                        className="absolute top-1 right-8 w-6 h-6 rounded-full flex items-center justify-center"
+                        style={{ background: 'rgba(0,0,0,0.7)' }}
+                        aria-label="Debug-Info"
+                      >
+                        <Bug size={11} color="#60a5fa" />
+                      </button>
+                    )}
                     {(job.result?.ownedCount ?? 0) > 0 && !job.added && (
                       <span className="absolute top-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
                         style={{ background: 'rgba(72,187,120,.85)', color: '#fff' }}>
@@ -395,9 +408,10 @@ export default function ScannerPage() {
                 {jobs.map(job => {
                   const img = cardImgUrl(job);
                   const canOpen = job.status === 'done' && !!job.result?.card;
-                  // Bei Fehler-Karten öffnet Tap das Debug-Modal —
-                  // gesamte Thumbnail-Fläche als Touch-Target (statt winzigem Bug-Icon).
-                  const canDebug = job.status === 'error' && !!job.debug;
+                  // Debug-Zugang für alle Jobs mit Debug-Info (Fehler ODER erfolgreich).
+                  // Bei done-Karten öffnet der Bug-Button das Debug-Modal,
+                  // Tap auf die Thumbnail-Fläche bleibt für 'Hinzufügen' reserviert.
+                  const canDebug = !!job.debug;
                   const onThumbClick = () => {
                     if (canOpen) setActiveJobId(job.id);
                     else if (canDebug) setDebugJobId(job.id);
@@ -473,9 +487,14 @@ export default function ScannerPage() {
                         <Trash2 size={12} color="#ef4444" />
                       </button>
                       {canDebug && (
-                        <p className="text-[8px] text-blue-300 text-center mt-1 font-mono">
-                          Tippen für Debug
-                        </p>
+                        <button
+                          onClick={e => { e.stopPropagation(); setDebugJobId(job.id); }}
+                          className="absolute -top-2 -left-2 w-7 h-7 rounded-full flex items-center justify-center z-10"
+                          style={{ background: '#2a2a2a', border: '1.5px solid rgba(255,255,255,0.2)' }}
+                          aria-label="Debug-Info"
+                        >
+                          <Bug size={12} color="#60a5fa" />
+                        </button>
                       )}
                     </div>
                   );
