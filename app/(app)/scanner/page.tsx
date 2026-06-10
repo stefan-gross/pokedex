@@ -504,10 +504,9 @@ export default function ScannerPage() {
         </button>
       </div>
 
-      {/* ── Thumbnail-Slider (Scan-Modus, schwebt unten) ──────────────
-          4 Tiles immer sichtbar (Tile-Breite = (100vw − Container-Padding
-          − 3 Gaps) / 4). Rest per horizontal swipe mit scroll-snap. */}
-      {mode === 'scanning' && jobs.length > 0 && (
+      {/* ── Hinzufügen-Modus: Thumbnail-Slider unten ──────────────────
+          4 Tiles immer sichtbar, Rest per Swipe mit scroll-snap. */}
+      {mode === 'scanning' && scanMode === 'add' && jobs.length > 0 && (
         <div
           className="absolute left-0 right-0 z-10 px-4"
           style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
@@ -530,6 +529,23 @@ export default function ScannerPage() {
           </div>
         </div>
       )}
+
+      {/* ── Erkennen-Modus: zentrale große Karten-Anzeige ──────────────
+          Zeigt nur den zuletzt erfolgreich gescannten Job. Neuer Scan
+          überschreibt visuell, aber alle Scans bleiben in `jobs`. */}
+      {mode === 'scanning' && scanMode === 'recognize' && (() => {
+        const latest = [...doneJobs].reverse()[0] ?? null;
+        if (!latest) return null;
+        return (
+          <RecognizedCardLarge
+            job={latest}
+            onCardTap={() => setActiveJobId(latest.id)}
+            onDebug={() => setDebugJobId(latest.id)}
+            onVariantChange={v => setJobVariant(latest.id, v)}
+            onConditionChange={c => setJobCondition(latest.id, c)}
+          />
+        );
+      })()}
 
 
       {/* ── Debug-Modal ──────────────────────────────────────────── */}
@@ -793,6 +809,153 @@ function ScannedCardTile({
       {/* Set-Code + Nummer unten */}
       <p className="text-[9px] text-white/55 text-center font-mono leading-tight truncate px-0.5 min-h-[12px]">
         {card?.setCode ? `${card.setCode} ${card.number}` : ' '}
+      </p>
+    </div>
+  );
+}
+
+// ───── Recognized-Card-Large ─────────────────────────────────────────────
+// Zentrale große Karten-Anzeige im Erkennen-Modus. Banner oben zeigt Owned-
+// Status (grün=in Sammlung, rot=neu). Pills bleiben editierbar (für Stufe-2-
+// Add-Workflow via Tap), aber kein Trash, kein Add-Button.
+
+interface RecognizedCardLargeProps {
+  job: ScanJob;
+  onCardTap:         () => void;
+  onDebug:           () => void;
+  onVariantChange:   (v: CardVariant) => void;
+  onConditionChange: (c: PersistedCondition) => void;
+}
+
+function RecognizedCardLarge({
+  job, onCardTap, onDebug, onVariantChange, onConditionChange,
+}: RecognizedCardLargeProps) {
+  const img       = cardImgUrl(job);
+  const card      = job.result?.card;
+  const borderCol = job.result?.fakeRisk
+    ? FAKE_RISK_BORDER[job.result.fakeRisk]
+    : 'rgba(255,255,255,0.15)';
+  const cardVariants = card?.variants?.length ? card.variants : (['standard'] as CardVariant[]);
+  const variant   = job.editedVariant   ?? cardVariants[0];
+  const condition = job.editedCondition ?? 'NM';
+  const condColor = PERSISTED_CONDITION_COLOR[condition];
+
+  const ownedCount = job.result?.ownedCount;
+  const isOwned    = (ownedCount ?? 0) > 0;
+  const ownedKnown = ownedCount !== undefined;
+
+  return (
+    <div
+      className="absolute inset-x-0 z-10 flex flex-col items-center px-6 gap-3"
+      style={{
+        top: 'calc(env(safe-area-inset-top, 0px) + 64px)',
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)',
+      }}
+    >
+      {/* Owned-Banner */}
+      <div
+        className="w-full px-4 py-2.5 rounded-xl text-center text-sm font-semibold"
+        style={{
+          background: !ownedKnown
+            ? 'rgba(0,0,0,0.55)'
+            : isOwned ? 'rgba(34,197,94,0.85)' : 'rgba(239,68,68,0.85)',
+          color: '#fff',
+          backdropFilter: 'blur(6px)',
+        }}
+      >
+        {!ownedKnown ? 'Sammlung wird geprüft …'
+          : isOwned ? `Bereits in deiner Sammlung (×${ownedCount})`
+          : 'Noch nicht in deiner Sammlung'}
+      </div>
+
+      {/* Name + Debug */}
+      <div className="flex items-center justify-center gap-2 max-w-full">
+        <h2 className="text-white font-semibold text-lg truncate">
+          {card?.name ?? 'Karte'}
+        </h2>
+        {job.debug && (
+          <button
+            onClick={onDebug}
+            className="shrink-0 w-6 h-6 flex items-center justify-center"
+            aria-label="Debug-Info"
+          >
+            <Bug size={14} color="#60a5fa" />
+          </button>
+        )}
+      </div>
+
+      {/* Karten-Body — Höhe begrenzt durch verfügbaren Platz, Breite via aspect-ratio */}
+      <div
+        className="relative rounded-2xl overflow-hidden"
+        style={{
+          aspectRatio: '63 / 88',
+          height: 'min(70vh, 100%)',
+          maxWidth: '100%',
+          border: `3px solid ${borderCol}`,
+          background: '#1a1a1a',
+          cursor: card ? 'pointer' : 'default',
+        }}
+        onClick={card ? onCardTap : undefined}
+      >
+        {img ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src={img} alt={card?.name ?? ''} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-red-500/10">
+            <AlertCircle size={28} color="#f87171" />
+          </div>
+        )}
+
+        {/* Variant-Pill unten links */}
+        {card && (
+          <div className="absolute bottom-2 left-2">
+            <span
+              className="text-xs font-bold px-3 py-1.5 rounded-lg inline-block"
+              style={{ background: 'rgba(0,0,0,0.75)', color: '#fff' }}
+            >
+              {VARIANT_LABELS[variant]}
+            </span>
+            <select
+              value={variant}
+              onClick={e => e.stopPropagation()}
+              onChange={e => onVariantChange(e.target.value as CardVariant)}
+              className="absolute inset-0 opacity-0 cursor-pointer"
+              aria-label="Variante ändern"
+            >
+              {cardVariants.map(v => (
+                <option key={v} value={v}>{VARIANT_LABELS[v]}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Condition-Pill unten rechts */}
+        {card && (
+          <div className="absolute bottom-2 right-2">
+            <span
+              className="text-xs font-bold px-3 py-1.5 rounded-lg inline-block"
+              style={{ background: condColor.bg, color: condColor.text }}
+            >
+              {condition}
+            </span>
+            <select
+              value={condition}
+              onClick={e => e.stopPropagation()}
+              onChange={e => onConditionChange(e.target.value as PersistedCondition)}
+              className="absolute inset-0 opacity-0 cursor-pointer"
+              aria-label="Zustand ändern"
+            >
+              {CONDITIONS.map(c => (
+                <option key={c.value} value={c.value}>{c.short}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      {/* Set-Code + Nummer */}
+      <p className="text-sm text-white/70 text-center font-mono">
+        {card?.setCode ? `${card.setCode} ${card.number}` : '—'}
       </p>
     </div>
   );
