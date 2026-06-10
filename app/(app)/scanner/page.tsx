@@ -2,13 +2,14 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Trash2, Loader2, AlertCircle, Check, Plus, LayoutGrid, Camera, Bug, ScanLine, Pause, ChevronLeft, AlertTriangle } from 'lucide-react';
+import { X, Trash2, Loader2, AlertCircle, Check, Plus, LayoutGrid, ScanLine, Pause, ChevronLeft, AlertTriangle } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
          getCardsByDexNumberRest      as getCardsByDexNumber } from '@/lib/firestore/catalog-rest';
-import { getCardsByTcgId } from '@/lib/firestore/cards';
+import { addCard, getCardsByTcgId } from '@/lib/firestore/cards';
+import { addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
 import { catalogCardToInfo } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition as PersistedCondition, CardDoc, CardLanguage, CardVariant } from '@/types';
@@ -156,6 +157,15 @@ export default function ScannerPage() {
   // gleichzeitig — verhindert Bandbreiten-Konkurrenz auf schwachem Mobilnetz.
   const uploadChainRef = useRef<Promise<unknown>>(Promise.resolve());
 
+  // Slider-Ref + Auto-Scroll-to-end-Effekt: neuester Job sitzt rechts am Rand,
+  // bei jedem neuen Job wird der Slider an die rechte Position gescrollt.
+  const sliderRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (sliderRef.current) {
+      sliderRef.current.scrollTo({ left: sliderRef.current.scrollWidth, behavior: 'smooth' });
+    }
+  }, [jobs.length]);
+
   const debugJob = jobs.find(j => j.id === debugJobId) ?? null;
 
   const pendingCount = jobs.filter(j => j.status === 'processing').length;
@@ -178,6 +188,61 @@ export default function ScannerPage() {
 
   const setJobCondition = useCallback((id: string, condition: PersistedCondition) => {
     setJobs(prev => prev.map(j => j.id === id ? { ...j, editedCondition: condition } : j));
+  }, []);
+
+  // Alle erkannten + nicht-already-added Jobs in einem Rutsch zur
+  // Default-Sammlung hinzufügen.
+  const [bulkAdding, setBulkAdding] = useState(false);
+  const addAllUnadded = useCallback(async () => {
+    if (bulkAdding) return;
+    const targets = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added);
+    if (targets.length === 0) return;
+    setBulkAdding(true);
+    try {
+      const defaultBinderId = await ensureDefaultBinder();
+      for (const job of targets) {
+        const card = job.result!.card!;
+        const v = (job.editedVariant ?? card.variants?.[0] ?? 'standard') as CardVariant;
+        const c = job.editedCondition ?? 'NM';
+        const lang = job.result!.language ?? 'de';
+        try {
+          const cardId = await addCard({
+            tcgId: card.id,
+            name: card.name,
+            setId: card.setId,
+            setName: card.setName,
+            series: card.series,
+            number: card.number,
+            rarity: card.rarity,
+            pokemonType: card.types?.[0],
+            supertype: card.supertype,
+            variant: v,
+            condition: c,
+            language: lang,
+            isFoil: v === 'holo',
+            isFirstEd: v === '1st-ed',
+            quantity: 1,
+            tcgImageUrl: card.imgLargeDe || card.imgLarge,
+            needsReview: true,
+          });
+          await addCardToBinder(defaultBinderId, cardId);
+          markAdded(job.id);
+        } catch (err) {
+          console.error('[bulk-add] error for job', job.id, err);
+        }
+      }
+      window.dispatchEvent(new Event('review-count-changed'));
+    } finally {
+      setBulkAdding(false);
+    }
+  }, [bulkAdding, jobs, markAdded]);
+
+  const clearAllJobs = useCallback(() => {
+    setJobs([]);
+    setActiveJobId(null);
+    setQuickAddJobId(null);
+    setFakeReasonsJobId(null);
+    setRecognizedJobId(null);
   }, []);
 
   // Owned-Copies frisch laden, wenn ein Job ausgewählt wird (für das CardDetailSheet).
@@ -391,10 +456,8 @@ export default function ScannerPage() {
               const img = cardImgUrl(job);
               const card = job.result?.card;
               const canOpen = job.status === 'done' && !!card;
-              const canDebug = !!job.debug;
               const onCardClick = () => {
                 if (canOpen) setActiveJobId(job.id);
-                else if (canDebug) setDebugJobId(job.id);
               };
               const reviewBorder = job.result?.fakeRisk
                 ? FAKE_RISK_BORDER[job.result.fakeRisk]
@@ -407,7 +470,7 @@ export default function ScannerPage() {
                       background: '#1a1a1a',
                       aspectRatio: '63/88',
                       border: `2.5px solid ${reviewBorder}`,
-                      cursor: (canOpen || canDebug) ? 'pointer' : 'default',
+                      cursor: canOpen ? 'pointer' : 'default',
                     }}
                     onClick={onCardClick}
                   >
@@ -450,17 +513,6 @@ export default function ScannerPage() {
                     >
                       <Trash2 size={16} color="#ef4444" />
                     </button>
-                    {/* Debug-Bug auf der Tile nur als kleines Icon im Eck-Bereich neben Trash */}
-                    {canDebug && (
-                      <button
-                        onClick={e => { e.stopPropagation(); setDebugJobId(job.id); }}
-                        className="absolute top-2 right-12 w-9 h-9 rounded-full flex items-center justify-center"
-                        style={{ background: 'rgba(0,0,0,0.7)' }}
-                        aria-label="Debug-Info"
-                      >
-                        <Bug size={15} color="#60a5fa" />
-                      </button>
-                    )}
                     {/* Fake-Warnung */}
                     {(job.result?.fakeRisk === 'medium' || job.result?.fakeRisk === 'high') && (
                       <button
@@ -505,7 +557,7 @@ export default function ScannerPage() {
         className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 pb-3"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
       >
-        {mode === 'review' ? (
+        {mode === 'review' && (
           <button
             onClick={() => setMode('scanning')}
             className="flex items-center gap-1 h-9 px-3 rounded-full bg-white/10 backdrop-blur-sm text-white text-sm font-medium"
@@ -514,19 +566,7 @@ export default function ScannerPage() {
             <ChevronLeft size={18} color="#fff" />
             Scannen
           </button>
-        ) : (
-          <div className="w-9" />
         )}
-        <button
-          onClick={() => {
-            if (window.history.length > 1) router.back();
-            else router.replace('/');
-          }}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10 backdrop-blur-sm"
-          aria-label="Schließen"
-        >
-          <X size={18} color="#fff" />
-        </button>
       </div>
 
       {/* ── Hinzufügen-Modus: Thumbnail-Slider unten ──────────────────
@@ -534,18 +574,19 @@ export default function ScannerPage() {
       {mode === 'scanning' && scanMode === 'add' && jobs.length > 0 && (
         <div
           className="absolute left-0 right-0 z-10 px-4"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 104px)' }}
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 156px)' }}
         >
           <div
-            className="flex gap-2 overflow-x-auto pb-2 pt-1"
+            ref={sliderRef}
+            className="flex gap-2 overflow-x-auto pb-3 pt-3"
             style={{ scrollbarWidth: 'none', scrollSnapType: 'x mandatory' }}
           >
-            {jobs.map(job => (
+            {jobs.map((job, idx) => (
               <ScannedCardTile
                 key={job.id}
                 job={job}
+                isLatest={idx === jobs.length - 1}
                 onCardTap={() => setActiveJobId(job.id)}
-                onDebug={() => setDebugJobId(job.id)}
                 onRemove={() => removeJob(job.id)}
                 onQuickAdd={() => setQuickAddJobId(job.id)}
                 onFakeReasons={() => setFakeReasonsJobId(job.id)}
@@ -567,10 +608,56 @@ export default function ScannerPage() {
           <RecognizedCardLarge
             job={recognized}
             onCardTap={() => setActiveJobId(recognized.id)}
-            onDebug={() => setDebugJobId(recognized.id)}
             onVariantChange={v => setJobVariant(recognized.id, v)}
             onConditionChange={c => setJobCondition(recognized.id, c)}
           />
+        );
+      })()}
+
+      {/* ── Bulk-Action-Row: Alle hinzufügen / Alle löschen ─────────────
+          Sichtbar wenn Karten im Slider (Add-Modus) oder im Review-Grid.
+          Im Add-Modus zwischen Slider und Toolbar.
+          Im Review-Modus direkt über der Safe-Area (Toolbar ist dort weg). */}
+      {(() => {
+        const visible =
+          (mode === 'scanning' && scanMode === 'add' && jobs.length > 0) ||
+          (mode === 'review' && jobs.length > 0);
+        if (!visible) return null;
+        const unaddedCount = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added).length;
+        const bottomOffset = mode === 'review'
+          ? 'calc(env(safe-area-inset-bottom, 0px) + 12px)'
+          : 'calc(env(safe-area-inset-bottom, 0px) + 104px)';
+        return (
+          <div
+            className="absolute left-0 right-0 z-15 flex gap-2 px-4"
+            style={{ bottom: bottomOffset }}
+          >
+            <button
+              onClick={clearAllJobs}
+              className="flex-1 h-11 rounded-full text-sm font-semibold flex items-center justify-center gap-1.5"
+              style={{
+                background: 'rgba(255,255,255,0.08)',
+                color: 'rgba(255,255,255,0.9)',
+                border: '1px solid rgba(255,255,255,0.15)',
+              }}
+            >
+              <Trash2 size={15} color="#ef4444" />
+              Alle löschen
+            </button>
+            <button
+              onClick={addAllUnadded}
+              disabled={unaddedCount === 0 || bulkAdding}
+              className="flex-1 h-11 rounded-full text-sm font-semibold text-white flex items-center justify-center gap-1.5 disabled:opacity-50"
+              style={{ background: 'var(--pokedex-red)' }}
+            >
+              {bulkAdding ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <Plus size={16} strokeWidth={3} />
+              )}
+              {bulkAdding ? 'Speichern …' : `Alle hinzufügen${unaddedCount > 0 ? ` (${unaddedCount})` : ''}`}
+            </button>
+          </div>
         );
       })()}
 
@@ -835,8 +922,8 @@ const TILE_WIDTH_CSS = 'calc((100vw - 56px) / 4)';
 
 interface ScannedCardTileProps {
   job: ScanJob;
+  isLatest:          boolean;
   onCardTap:         () => void;
-  onDebug:           () => void;
   onRemove:          () => void;
   onQuickAdd:        () => void;
   onFakeReasons:     () => void;
@@ -845,13 +932,12 @@ interface ScannedCardTileProps {
 }
 
 function ScannedCardTile({
-  job, onCardTap, onDebug, onRemove, onQuickAdd, onFakeReasons,
+  job, isLatest, onCardTap, onRemove, onQuickAdd, onFakeReasons,
   onVariantChange, onConditionChange,
 }: ScannedCardTileProps) {
   const img       = cardImgUrl(job);
   const card      = job.result?.card;
   const canOpen   = job.status === 'done' && !!card;
-  const canDebug  = !!job.debug;
   const borderCol = job.result?.fakeRisk
     ? FAKE_RISK_BORDER[job.result.fakeRisk]
     : 'rgba(255,255,255,0.15)';
@@ -862,37 +948,16 @@ function ScannedCardTile({
 
   return (
     <div
-      className="shrink-0 flex flex-col gap-1"
-      style={{ width: TILE_WIDTH_CSS, scrollSnapAlign: 'start' }}
+      className="shrink-0 flex flex-col gap-1.5"
+      style={{
+        width: TILE_WIDTH_CSS,
+        scrollSnapAlign: 'end',
+        transform: isLatest ? 'scale(1.08)' : undefined,
+        transformOrigin: 'right bottom',
+        transition: 'transform 0.2s ease-out',
+        zIndex: isLatest ? 2 : 1,
+      }}
     >
-      {/* Name oben + Icons (Owned ×N, Warn ⚠, Bug 🐞) */}
-      <div className="flex items-center justify-center gap-1 px-0.5 min-h-[14px]">
-        <p className="text-[10px] text-white font-medium text-center truncate leading-tight">
-          {card?.name ?? (job.status === 'processing' ? '…' : 'Fehler')}
-        </p>
-        {(job.result?.ownedCount ?? 0) > 0 && !job.added && (
-          <span className="shrink-0 text-[9px] font-bold text-green-400">×{job.result!.ownedCount}</span>
-        )}
-        {(job.result?.fakeRisk === 'medium' || job.result?.fakeRisk === 'high') && (
-          <button
-            onClick={e => { e.stopPropagation(); onFakeReasons(); }}
-            className="shrink-0 w-3.5 h-3.5 flex items-center justify-center"
-            aria-label="Fake-Verdacht-Gründe"
-          >
-            <AlertTriangle size={12} color={job.result?.fakeRisk === 'high' ? '#ef4444' : '#facc15'} fill={job.result?.fakeRisk === 'high' ? '#ef4444' : '#facc15'} />
-          </button>
-        )}
-        {canDebug && (
-          <button
-            onClick={e => { e.stopPropagation(); onDebug(); }}
-            className="shrink-0 w-3 h-3 flex items-center justify-center"
-            aria-label="Debug-Info"
-          >
-            <Bug size={10} color="#60a5fa" />
-          </button>
-        )}
-      </div>
-
       {/* Karten-Body */}
       <div
         className="relative w-full rounded-md overflow-hidden"
@@ -909,47 +974,42 @@ function ScannedCardTile({
             <Loader2 size={24} color="rgba(255,255,255,0.4)" className="animate-spin" />
           </div>
         ) : !img ? (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-1 bg-red-500/10 p-1.5">
-            <AlertCircle size={20} color="#f87171" />
-            {job.debugInfo && (
-              <p className="text-[7px] text-red-300/80 text-center leading-tight break-all">
-                {job.debugInfo}
-              </p>
-            )}
+          <div className="w-full h-full flex items-center justify-center bg-red-500/10">
+            <AlertCircle size={22} color="#f87171" />
           </div>
         ) : (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img src={img} alt={card?.name ?? ''} className="w-full h-full object-cover" />
         )}
 
-        {/* Quick-Add (+) oben links — nur wenn Karte erkannt und nicht added */}
-        {canOpen && !job.added && (
+        {/* + und Trash nebeneinander unten rechts (~2 px Abstand zum Rand) */}
+        <div className="absolute bottom-0.5 right-0.5 flex gap-1">
+          {canOpen && !job.added && (
+            <button
+              onClick={e => { e.stopPropagation(); onQuickAdd(); }}
+              className="w-7 h-7 rounded-full flex items-center justify-center shadow-md"
+              style={{ background: 'var(--pokedex-red)' }}
+              aria-label="Zur Sammlung hinzufügen"
+            >
+              <Plus size={16} color="#fff" strokeWidth={3} />
+            </button>
+          )}
           <button
-            onClick={e => { e.stopPropagation(); onQuickAdd(); }}
-            className="absolute top-1 left-1 w-7 h-7 rounded-full flex items-center justify-center shadow-md"
-            style={{ background: 'var(--pokedex-red)' }}
-            aria-label="Zur Sammlung hinzufügen"
+            onClick={e => { e.stopPropagation(); onRemove(); }}
+            className="w-7 h-7 rounded-full flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.75)' }}
+            aria-label="Entfernen"
           >
-            <Plus size={16} color="#fff" strokeWidth={3} />
+            <Trash2 size={14} color="#ef4444" />
           </button>
-        )}
+        </div>
 
-        {/* Trash (oben rechts) */}
-        <button
-          onClick={e => { e.stopPropagation(); onRemove(); }}
-          className="absolute top-1 right-1 w-7 h-7 rounded-full flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.7)' }}
-          aria-label="Entfernen"
-        >
-          <Trash2 size={14} color="#ef4444" />
-        </button>
-
-        {/* Variant-Pill (unten links) — mit unsichtbarem <select> für iOS-Wheel-Picker */}
+        {/* Variant-Pill (top-left) */}
         {card && (
-          <div className="absolute bottom-1.5 left-1.5">
+          <div className="absolute top-0.5 left-0.5">
             <span
-              className="text-[10px] font-bold px-2 py-1 rounded inline-block"
-              style={{ background: 'rgba(0,0,0,0.78)', color: '#fff', minHeight: 22 }}
+              className="text-[10px] font-bold px-1.5 py-0.5 rounded inline-block"
+              style={{ background: 'rgba(0,0,0,0.78)', color: '#fff' }}
             >
               {VARIANT_LABELS[variant]}
             </span>
@@ -967,12 +1027,12 @@ function ScannedCardTile({
           </div>
         )}
 
-        {/* Condition-Pill (unten rechts) */}
+        {/* Condition-Pill (top-right) */}
         {card && (
-          <div className="absolute bottom-1.5 right-1.5">
+          <div className="absolute top-0.5 right-0.5">
             <span
-              className="text-[10px] font-bold px-2 py-1 rounded inline-block"
-              style={{ background: condColor.bg, color: condColor.text, minHeight: 22 }}
+              className="text-[10px] font-bold px-1.5 py-0.5 rounded inline-block"
+              style={{ background: condColor.bg, color: condColor.text }}
             >
               {condition}
             </span>
@@ -998,10 +1058,40 @@ function ScannedCardTile({
         )}
       </div>
 
-      {/* Set-Code + Nummer unten */}
-      <p className="text-[9px] text-white/55 text-center font-mono leading-tight truncate px-0.5 min-h-[12px]">
-        {card?.setCode ? `${card.setCode} ${card.number}` : ' '}
-      </p>
+      {/* Unter der Karte: SetCode-Badge links + Pokemon-Name horizontal zentriert */}
+      <div className="flex items-center gap-1.5 px-0.5 min-h-[18px]">
+        {card?.setCode && (
+          <span
+            className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded font-mono leading-none"
+            style={{
+              background: 'rgba(255,255,255,0.08)',
+              color: 'rgba(255,255,255,0.85)',
+              border: '1px solid rgba(255,255,255,0.18)',
+            }}
+          >
+            {card.setCode}
+          </span>
+        )}
+        <p className="flex-1 text-[10px] text-white font-medium text-center truncate leading-tight">
+          {card?.name ?? (job.status === 'processing' ? '…' : 'Fehler')}
+          {(job.result?.ownedCount ?? 0) > 0 && !job.added && (
+            <span className="ml-1 text-[9px] font-bold text-green-400">×{job.result!.ownedCount}</span>
+          )}
+          {(job.result?.fakeRisk === 'medium' || job.result?.fakeRisk === 'high') && (
+            <button
+              onClick={(e: React.MouseEvent) => { e.stopPropagation(); onFakeReasons(); }}
+              className="inline-flex align-middle ml-1"
+              aria-label="Fake-Verdacht-Gründe"
+            >
+              <AlertTriangle
+                size={11}
+                color={job.result?.fakeRisk === 'high' ? '#ef4444' : '#facc15'}
+                fill={job.result?.fakeRisk === 'high' ? '#ef4444' : '#facc15'}
+              />
+            </button>
+          )}
+        </p>
+      </div>
     </div>
   );
 }
@@ -1014,13 +1104,12 @@ function ScannedCardTile({
 interface RecognizedCardLargeProps {
   job: ScanJob;
   onCardTap:         () => void;
-  onDebug:           () => void;
   onVariantChange:   (v: CardVariant) => void;
   onConditionChange: (c: PersistedCondition) => void;
 }
 
 function RecognizedCardLarge({
-  job, onCardTap, onDebug, onVariantChange, onConditionChange,
+  job, onCardTap, onVariantChange, onConditionChange,
 }: RecognizedCardLargeProps) {
   const img       = cardImgUrlLarge(job);
   const card      = job.result?.card;
@@ -1060,21 +1149,10 @@ function RecognizedCardLarge({
           : 'Noch nicht in deiner Sammlung'}
       </div>
 
-      {/* Name + Debug */}
-      <div className="flex items-center justify-center gap-2 max-w-full">
-        <h2 className="text-white font-semibold text-lg truncate">
-          {card?.name ?? 'Karte'}
-        </h2>
-        {job.debug && (
-          <button
-            onClick={onDebug}
-            className="shrink-0 w-6 h-6 flex items-center justify-center"
-            aria-label="Debug-Info"
-          >
-            <Bug size={14} color="#60a5fa" />
-          </button>
-        )}
-      </div>
+      {/* Pokemon-Name */}
+      <h2 className="text-white font-semibold text-lg truncate text-center max-w-full">
+        {card?.name ?? 'Karte'}
+      </h2>
 
       {/* Karten-Body — Höhe begrenzt durch verfügbaren Platz, Breite via aspect-ratio */}
       <div
