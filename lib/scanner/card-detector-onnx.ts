@@ -15,7 +15,7 @@ import * as ort from 'onnxruntime-web';
 
 const MODEL_PATH       = '/models/card-detector.onnx';
 const MODEL_INPUT_SIZE = 640;
-const CONF_THRESHOLD   = 0.72; // 0.60 erkannte iPhone-Display als Karte
+const CONF_THRESHOLD   = 0.80; // 0.72 erkannte leere Kartonkiste als Karte
 const MASK_SIZE        = 160;  // Output1-Auflösung (640 / 4)
 
 // Klassen-Index laut Roboflow-Training
