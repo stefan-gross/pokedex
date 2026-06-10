@@ -99,11 +99,25 @@ export default function ScannerPage() {
       const rawNumber = gemini.number.includes('/') ? gemini.number.split('/')[0] : gemini.number;
 
       // Firestore-Catalog: Karte per Set + Nummer suchen
+      // Gemini liefert setId entweder als pokemontcg.io-ID (z.B. "sv8") oder als
+      // raw Set-Code lowercase (z.B. "asc" für unbekannte/neue Sets).
+      // Wir probieren den genauen Wert + Alternativen beim Nummernformat.
       let catalogCard = await getCardBySetAndNumber(gemini.setId, rawNumber);
       if (!catalogCard) {
         // Alternativer Nummernformat-Versuch (mit/ohne führende Nullen)
         const alt = /^\d+$/.test(rawNumber) ? String(parseInt(rawNumber, 10)) : rawNumber.padStart(3, '0');
         if (alt !== rawNumber) catalogCard = await getCardBySetAndNumber(gemini.setId, alt);
+      }
+      if (!catalogCard) {
+        // Nummernformat-Alternative auch ohne führende Null (z.B. "5" statt "005")
+        const noLeading = rawNumber.replace(/^0+(\d)/, '$1');
+        if (noLeading !== rawNumber) {
+          catalogCard = await getCardBySetAndNumber(gemini.setId, noLeading);
+          if (!catalogCard) {
+            const altPadded = noLeading.padStart(3, '0');
+            if (altPadded !== rawNumber) catalogCard = await getCardBySetAndNumber(gemini.setId, altPadded);
+          }
+        }
       }
       if (!catalogCard && gemini.nationalDexNumber) {
         const dexCards = await getCardsByDexNumber(gemini.nationalDexNumber, 1);

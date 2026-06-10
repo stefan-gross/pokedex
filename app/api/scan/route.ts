@@ -6,8 +6,11 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const PROMPT = `You are a Pokémon TCG expert. Identify the card in this image.
 
 CARD LAYOUT — where to look:
-- BOTTOM-RIGHT corner: card number printed as "NNN/TTT" — return ONLY the NNN part (e.g. "049", NOT "049/198"). Promo cards: "SVPXXX" → return "SVPXXX".
-- BOTTOM-LEFT corner: small set symbol icon + a short printed code (e.g. "TEF", "OBF", "SV01"). Use this to identify the setId.
+- BOTTOM of the card: regulation mark letter (e.g. "J", "H", "G") + a small box/stamp containing the set code and card number.
+  - Modern format: "[RegMark] [SETCODE] [NNN/TTT]"
+  - German DE editions: the stamp box shows SETCODE and "DE" together, e.g. "J ASC DE 005/217"
+    → SETCODE = "ASC", number = "005", language = "de". Ignore "DE" — it is the language marker, NOT part of the set code.
+  - Return ONLY the NNN part of the card number (e.g. "005", NOT "005/217").
 - Language: German cards say "KP" (not HP), "Fähigkeit" (Ability), "Angriff" (Attack). Japanese cards use Japanese text.
 
 Return ONLY this JSON — no markdown, no explanation:
@@ -30,9 +33,12 @@ For "variant" — look carefully at the card surface:
 
 If no Pokémon card is visible, return: { "error": "No card detected" }
 
-SET REFERENCE — printed code → pokemontcg.io setId:
+SET REFERENCE — printed set code → pokemontcg.io setId:
+IMPORTANT: If the set code is NOT in this list, return it lowercase as-is (e.g. "ASC" → "asc", "DST" → "dst").
+Never return "?" — always return the best guess or the raw code.
+
 Scarlet & Violet era:
-  SVP / SVP-EN → svp
+  SVP / SVP-EN / SVP-DE → svp
   SV01 / SVI / SVE → sv1  (Scarlet & Violet base, 2023)
   SV02 / PAL → sv2  (Paldea Evolved)
   SV03 / OBF → sv3  (Obsidian Flames)
