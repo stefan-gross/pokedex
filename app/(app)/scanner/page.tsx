@@ -114,7 +114,14 @@ export default function ScannerPage() {
         ? `Katalog: ${catalogCard.name} (${catalogCard.setId}/${catalogCard.number})`
         : `Katalog: nicht gefunden (${gemini.setId}/${rawNumber})`;
 
-      const ownedCopies = catalogCard ? await getCardsByTcgId(catalogCard.id) : [];
+      // getCardsByTcgId benötigt Firebase-Client-Auth (Security Rules).
+      // Falls der Client noch nicht eingeloggt ist → graceful fallback auf 0.
+      let ownedCopies: Awaited<ReturnType<typeof getCardsByTcgId>> = [];
+      try {
+        ownedCopies = catalogCard ? await getCardsByTcgId(catalogCard.id) : [];
+      } catch {
+        // Firebase-Auth noch nicht initialisiert oder Security-Rules greifen → ownedCount = 0
+      }
       const variantMap: Record<string, CardVariant> = {
         holo: 'holo', reverse: 'reverse', 'alt-art': 'alt-art', promo: 'promo', standard: 'standard',
       };

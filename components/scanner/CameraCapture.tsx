@@ -486,7 +486,10 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         pCtx.drawImage(sample, 0, 0);
 
         // 5. Szenen-Änderungs-Erkennung: Cooldown per Snapshot-Vergleich beenden
+        //    WICHTIG: changeDetectedThisTick verhindert, dass im SELBEN Tick
+        //    Cooldown endet UND Snap auslöst (Race Condition → Doppel-Snap).
         let changeMse = 0;
+        let changeDetectedThisTick = false;
         if (waitForChangeRef.current && Date.now() >= changeReadyAtRef.current) {
           const cap = capturedSampleRef.current;
           if (cap) {
@@ -497,9 +500,17 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
             changeMse = cCount > 0 ? Math.round(cSum / cCount) : 0;
             if (changeMse > CHANGE_DETECT_THRESHOLD) {
               // Szene hat sich verändert → Cooldown beenden
+              changeDetectedThisTick       = true; // Snap in DIESEM Tick blocken
               waitForChangeRef.current     = false;
               cooldownRef.current          = false;
               setInCooldown(false);
+              // ONNX-State komplett zurücksetzen → erzwingt frische Erkennung
+              // Verhindert Sofort-Snap nach Change-Detection (Box war noch settled)
+              onnxBoxRef.current           = null;
+              onnxStickyRef.current        = 0;
+              prevBoxRef.current           = null;
+              boxDeltaRef.current          = Infinity;
+              lerpBoxRef.current           = null;
               consecutiveDetectRef.current = 0;
               stableRef.current            = 0;
               setProgress(0);
@@ -513,7 +524,8 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         const consFrames      = consecutiveDetectRef.current;
         const boxSettled      = boxDeltaRef.current < BOX_SETTLED_THRESHOLD;
         const consecutiveOk   = consFrames >= CONSECUTIVE_SNAP_FRAMES;
-        const snapCondition   = !cooldownRef.current && cardDetected && mse < MOTION_SNAP_THRESHOLD;
+        // changeDetectedThisTick: Snap erst im nächsten Tick möglich (Race-Condition-Schutz)
+        const snapCondition   = !cooldownRef.current && !changeDetectedThisTick && cardDetected && mse < MOTION_SNAP_THRESHOLD;
         const triggerReason   = boxSettled ? 'delta' : consecutiveOk ? 'consecutive' : '–';
 
         // 7. Debug-State aktualisieren
