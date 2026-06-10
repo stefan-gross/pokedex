@@ -7,7 +7,11 @@ import { loadCardDetectorSession, detectCardInFrame, type CardBox } from '@/lib/
 interface Props {
   onCapture: (imageBase64: string, mimeType: string) => void;
   pendingCount?: number;
+  /** Soft-Pause: Stream läuft, Detection + Snap pausieren. */
   paused?: boolean;
+  /** Hard-Active: false → kein Stream (kein getUserMedia). Parent kontrolliert
+   *  Lifecycle via Footer-FAB. Aufnahme erfolgt nur per direkter Nutzer-Geste. */
+  active: boolean;
 }
 
 // ─── Modul-Level: Stream-Referenz für Visibility-Handler ─────────────────────
@@ -107,7 +111,7 @@ interface DebugInfo {
   changeMse: number;     // MSE vs. Snap-Snapshot (Kalibrierung CHANGE_DETECT_THRESHOLD)
 }
 
-export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: Props) {
+export function CameraCapture({ onCapture, pendingCount = 0, paused = false, active }: Props) {
   const videoRef   = useRef<HTMLVideoElement>(null);
   const canvasRef  = useRef<HTMLCanvasElement>(null);
   const sampleRef  = useRef<HTMLCanvasElement>(null);
@@ -157,8 +161,6 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
 
-  // Auto-Start wenn wir nach iOS-Reload remounten (sessionStorage Counter > 0)
-  const [started,    setStarted]    = useState(initialReloadCount > 0);
   const [streamReady, setStreamReady] = useState(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [torch,      setTorch]      = useState(false);
@@ -351,16 +353,23 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
   useEffect(() => {
     // Kein Auto-Start: getUserMedia darf nur als direkte Reaktion auf einen
-    // Nutzer-Tap laufen (sonst iOS-Permission-Dialog ohne Vorwarnung).
-    // 'started' wird erst durch Tap auf das Start-Overlay TRUE gesetzt.
-    if (!started) return;
+    // Nutzer-Tap laufen. `active` wird vom Parent (Footer-FAB) gesetzt.
+    if (!active) {
+      // Wenn vorher aktiv war und jetzt nicht mehr → Stream sauber stoppen
+      _kameraStream?.getTracks().forEach(t => t.stop());
+      _kameraStream = null;
+      streamRef.current = null;
+      streamHealthyRef.current = false;
+      setStreamReady(false);
+      return;
+    }
     startCamera();
     return () => {
       _kameraStream?.getTracks().forEach(t => t.stop());
       _kameraStream = null;
       streamRef.current = null;
     };
-  }, [startCamera, started]);
+  }, [startCamera, active]);
 
   // ── App-Resume nach iOS-Background-Suspend ───────────────────────────────
   // iOS beendet Camera-Tracks wenn die PWA in den Hintergrund geht (Hardware
@@ -373,7 +382,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
-      if (!started) return; // Noch nicht gestartet → nichts zu prüfen
+      if (!active) return; // Nicht aktiv → nichts zu prüfen
       // iOS feuert visibilitychange wenn der Permission-Dialog erscheint/geht.
       // Während getUserMedia in-flight ist → Handler ignorieren, sonst rennen wir
       // gegen einen halb-acquireten Stream und feuern fälschlich 'interrupted'.
@@ -388,7 +397,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [started]);
+  }, [active]);
 
   // ── Foto auslösen ─────────────────────────────────────────────────────────
   const doCapture = useCallback(() => {
@@ -659,22 +668,14 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       <canvas ref={sampleRef} width={SAMPLE_W} height={SAMPLE_H} className="hidden" />
       <canvas ref={prevRef}   width={SAMPLE_W} height={SAMPLE_H} className="hidden" />
 
-      {!started ? (
+      {!active ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center px-8 text-center gap-4">
           <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center">
-            <Camera size={28} color="#fff" />
+            <Camera size={28} color="rgba(255,255,255,0.5)" />
           </div>
-          <p className="text-base text-white font-semibold">Kamera starten</p>
-          <p className="text-sm text-white/60 max-w-xs">
-            Tippe unten, um den Kamera-Zugriff anzufordern.
+          <p className="text-sm text-white/55 max-w-xs">
+            Tippe auf den Kamera-Button unten, um den Stream zu starten.
           </p>
-          <button
-            onClick={() => setStarted(true)}
-            className="mt-2 px-6 py-3 rounded-xl font-semibold text-white"
-            style={{ background: 'var(--pokedex-red)' }}
-          >
-            Kamera starten
-          </button>
         </div>
       ) : error ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center px-8 text-center gap-4">

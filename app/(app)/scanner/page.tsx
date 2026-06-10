@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Trash2, Loader2, AlertCircle, Check, Plus, LayoutGrid, Camera, Bug } from 'lucide-react';
+import { X, Trash2, Loader2, AlertCircle, Check, Plus, LayoutGrid, Camera, Bug, Play, Square } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
@@ -110,8 +110,16 @@ export default function ScannerPage() {
   const [debugJobId, setDebugJobId] = useState<string | null>(null);
   const [mode, setMode] = useState<'scanning' | 'review'>('scanning');
   // Scanner-Workflow: Hinzufügen (Slider-Sammlung) vs. Erkennen (Lookup-Anzeige).
-  // In Stufe 3 nur Visual — Verhalten ändert sich in Stufe 4.
   const [scanMode, setScanMode] = useState<'add' | 'recognize'>('add');
+  // Stream-Lifecycle wird vom Footer-FAB gesteuert. Initial false → kein
+  // getUserMedia ohne expliziten Tap. Nach iOS-PWA-Reload (cam-mounts > 0
+  // im sessionStorage) starten wir auto, um den Re-Tap zu sparen.
+  const [cameraActive, setCameraActive] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try { return Number(sessionStorage.getItem('cam-mounts') ?? '0') > 0; }
+    catch { return false; }
+  });
+  const [streamPaused, setStreamPaused] = useState(false);
   // FIFO-Queue für Uploads: parallele Scans senden nacheinander statt
   // gleichzeitig — verhindert Bandbreiten-Konkurrenz auf schwachem Mobilnetz.
   const uploadChainRef = useRef<Promise<unknown>>(Promise.resolve());
@@ -324,7 +332,12 @@ export default function ScannerPage() {
           das „Kamera starten"-Overlay — getUserMedia erst nach Tap. */}
       {mode === 'scanning' && (
         <div className="absolute inset-0">
-          <CameraCapture onCapture={handleCapture} pendingCount={pendingCount} paused={false} />
+          <CameraCapture
+            onCapture={handleCapture}
+            pendingCount={pendingCount}
+            active={cameraActive}
+            paused={streamPaused}
+          />
         </div>
       )}
 
@@ -547,6 +560,35 @@ export default function ScannerPage() {
         );
       })()}
 
+
+      {/* ── Footer-FAB: Stream-Toggle (Start / Pause / Resume) ──────
+          Erscheint nur im Scan-Modus. Position + Größe wie BottomNav-FAB.
+          - cameraActive=false  → Camera-Icon  → Tap startet Stream (getUserMedia)
+          - cameraActive=true, !paused → Pause-Icon → Tap pausiert Detection
+          - cameraActive=true, paused  → Play-Icon  → Tap nimmt Detection wieder auf */}
+      {mode === 'scanning' && (
+        <button
+          onClick={() => {
+            if (!cameraActive) { setCameraActive(true); setStreamPaused(false); return; }
+            setStreamPaused(p => !p);
+          }}
+          className="absolute z-30 left-1/2 -translate-x-1/2 flex items-center justify-center rounded-full shadow-lg"
+          style={{
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
+            width: 72, height: 72,
+            background: 'var(--pokedex-red)',
+          }}
+          aria-label={!cameraActive ? 'Kamera starten' : streamPaused ? 'Stream fortsetzen' : 'Stream pausieren'}
+        >
+          {!cameraActive ? (
+            <Camera size={28} color="#fff" />
+          ) : streamPaused ? (
+            <Play size={28} color="#fff" />
+          ) : (
+            <Square size={26} color="#fff" fill="#fff" />
+          )}
+        </button>
+      )}
 
       {/* ── Debug-Modal ──────────────────────────────────────────── */}
       {debugJob?.debug && (
