@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Trash2, Loader2, AlertCircle, Check, Plus, Bug, LayoutGrid, Camera } from 'lucide-react';
+import { X, Trash2, Loader2, AlertCircle, Check, Plus, LayoutGrid, Camera } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { getCardBySetCodeAndNumber, getCardsByDexNumber } from '@/lib/firestore/catalog';
@@ -241,12 +241,17 @@ export default function ScannerPage() {
               const img = cardImgUrl(job);
               const card = job.result?.card;
               const canOpen = job.status === 'done' && !!card;
+              const canDebug = job.status === 'error' && !!job.debug;
+              const onCardClick = () => {
+                if (canOpen) setActiveJobId(job.id);
+                else if (canDebug) setDebugJobId(job.id);
+              };
               return (
                 <div key={job.id} className="relative flex flex-col">
                   <div
                     className="relative rounded-xl overflow-hidden border border-white/10"
-                    style={{ background: '#1a1a1a', aspectRatio: '2.5/3.5', cursor: canOpen ? 'pointer' : 'default' }}
-                    onClick={() => canOpen && setActiveJobId(job.id)}
+                    style={{ background: '#1a1a1a', aspectRatio: '2.5/3.5', cursor: (canOpen || canDebug) ? 'pointer' : 'default' }}
+                    onClick={onCardClick}
                   >
                     {job.status === 'processing' ? (
                       <div className="w-full h-full flex items-center justify-center">
@@ -274,16 +279,6 @@ export default function ScannerPage() {
                     >
                       <Trash2 size={11} color="#ef4444" />
                     </button>
-                    {job.debug && (
-                      <button
-                        onClick={e => { e.stopPropagation(); setDebugJobId(job.id); }}
-                        className="absolute top-1 right-9 w-6 h-6 rounded-full flex items-center justify-center"
-                        style={{ background: 'rgba(0,0,0,0.7)' }}
-                        aria-label="Debug-Info"
-                      >
-                        <Bug size={11} color="#93c5fd" />
-                      </button>
-                    )}
                     {(job.result?.ownedCount ?? 0) > 0 && !job.added && (
                       <span className="absolute top-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
                         style={{ background: 'rgba(72,187,120,.85)', color: '#fff' }}>
@@ -314,6 +309,11 @@ export default function ScannerPage() {
                   <p className="text-[10px] text-white/60 text-center mt-1 truncate px-0.5">
                     {card?.name ?? (job.status === 'processing' ? '…' : 'Fehler')}
                   </p>
+                  {canDebug && (
+                    <p className="text-[9px] text-blue-300 text-center font-mono">
+                      Tippen für Debug
+                    </p>
+                  )}
                   {canOpen && !job.added && (
                     <button
                       onClick={() => setActiveJobId(job.id)}
@@ -386,6 +386,13 @@ export default function ScannerPage() {
                 {jobs.map(job => {
                   const img = cardImgUrl(job);
                   const canOpen = job.status === 'done' && !!job.result?.card;
+                  // Bei Fehler-Karten öffnet Tap das Debug-Modal —
+                  // gesamte Thumbnail-Fläche als Touch-Target (statt winzigem Bug-Icon).
+                  const canDebug = job.status === 'error' && !!job.debug;
+                  const onThumbClick = () => {
+                    if (canOpen) setActiveJobId(job.id);
+                    else if (canDebug) setDebugJobId(job.id);
+                  };
                   return (
                     <div key={job.id} className="relative shrink-0" style={{ width: 72 }}>
                       <div
@@ -394,10 +401,10 @@ export default function ScannerPage() {
                           width: 72, height: 101,
                           border: `2px solid ${activeJobId === job.id ? 'var(--pokedex-red)' : 'rgba(255,255,255,0.15)'}`,
                           background: '#1a1a1a',
-                          cursor: canOpen ? 'pointer' : 'default',
+                          cursor: (canOpen || canDebug) ? 'pointer' : 'default',
                           transition: 'border-color 0.15s',
                         }}
-                        onClick={() => canOpen && setActiveJobId(job.id)}
+                        onClick={onThumbClick}
                       >
                         {job.status === 'processing' ? (
                           <div className="w-full h-full flex items-center justify-center">
@@ -448,24 +455,19 @@ export default function ScannerPage() {
                           </div>
                         )}
                       </div>
-                      {job.debug && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setDebugJobId(job.id); }}
-                          className="absolute -top-2 -left-2 w-6 h-6 rounded-full flex items-center justify-center z-10"
-                          style={{ background: '#1e3a8a', border: '1.5px solid rgba(255,255,255,0.2)' }}
-                          aria-label="Debug-Info"
-                        >
-                          <Bug size={11} color="#93c5fd" />
-                        </button>
-                      )}
                       <button
                         onClick={() => removeJob(job.id)}
-                        className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center z-10"
+                        className="absolute -top-2 -right-2 w-7 h-7 rounded-full flex items-center justify-center z-10"
                         style={{ background: '#2a2a2a', border: '1.5px solid rgba(255,255,255,0.2)' }}
                         aria-label="Entfernen"
                       >
-                        <Trash2 size={11} color="#ef4444" />
+                        <Trash2 size={12} color="#ef4444" />
                       </button>
+                      {canDebug && (
+                        <p className="text-[8px] text-blue-300 text-center mt-1 font-mono">
+                          Tippen für Debug
+                        </p>
+                      )}
                     </div>
                   );
                 })}
