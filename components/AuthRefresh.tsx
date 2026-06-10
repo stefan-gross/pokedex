@@ -17,12 +17,11 @@ import { getSyncMeta } from '@/lib/firestore/catalog'
  */
 export default function AuthRefresh() {
   useEffect(() => {
-    // 2s-Delay: auf /scanner braucht iOS Memory-Budget für Camera-Stream + ONNX-WASM
-    // zuerst. Parallel-WebSocket während dieser Phase kann iOS-Standalone-PWA zum
-    // Reload bringen. Auf Nicht-Scanner-Seiten ist die Verzögerung irrelevant.
-    const warmupTimer = setTimeout(() => {
-      getSyncMeta().catch(() => {})
-    }, 2000)
+    // Sofortiger Warm-up: Firestore-Cold-Start (WebSocket-Handshake) braucht
+    // ~30s. Frühe Verbindung steht bereit, wenn die erste echte User-Query
+    // (Scan-Lookup, Collection-Suche) feuert. Der frühere 2s-Delay wurde
+    // entfernt — Memory-Druck-Reload-Theorie war falsch, ONNX-Lazy-Load reicht.
+    getSyncMeta().catch(() => {})
 
     const unsubscribe = onIdTokenChanged(auth, async (user) => {
       if (user) {
@@ -34,10 +33,7 @@ export default function AuthRefresh() {
         })
       }
     })
-    return () => {
-      clearTimeout(warmupTimer)
-      unsubscribe()
-    }
+    return () => unsubscribe()
   }, [])
 
   return null
