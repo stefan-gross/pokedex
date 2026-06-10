@@ -35,6 +35,7 @@ interface ScanJob {
   result: ScanState | null;
   added?: boolean;
   capturedImageBase64?: string; // Vorschau während Gemini lädt
+  debugInfo?: string;           // Fehlerdetails (Gemini-Antwort, Catalog-Lookup)
 }
 
 function cardImgUrl(job: ScanJob): string | null {
@@ -83,9 +84,14 @@ export default function ScannerPage() {
       });
       const gemini: GeminiResponse = await res.json();
 
+      // Gemini-Antwort als Debug-Info aufzeichnen
+      const geminiSummary = gemini.error
+        ? `Gemini: ${gemini.error}`
+        : `Gemini: ${gemini.setId ?? '?'}/${gemini.number ?? '?'} ${gemini.language ?? '?'} (${gemini.confidence ?? '?'})`;
+
       if (gemini.error || !gemini.setId || !gemini.number) {
         setJobs(prev => prev.map(j => j.id === id
-          ? { ...j, status: 'error', result: { card: null, language: 'de' } }
+          ? { ...j, status: 'error', result: { card: null, language: 'de' }, debugInfo: geminiSummary }
           : j));
         return;
       }
@@ -104,6 +110,10 @@ export default function ScannerPage() {
         if (dexCards.length > 0) catalogCard = dexCards[0];
       }
 
+      const catalogInfo = catalogCard
+        ? `Katalog: ${catalogCard.name} (${catalogCard.setId}/${catalogCard.number})`
+        : `Katalog: nicht gefunden (${gemini.setId}/${rawNumber})`;
+
       const ownedCopies = catalogCard ? await getCardsByTcgId(catalogCard.id) : [];
       const variantMap: Record<string, CardVariant> = {
         holo: 'holo', reverse: 'reverse', 'alt-art': 'alt-art', promo: 'promo', standard: 'standard',
@@ -112,6 +122,7 @@ export default function ScannerPage() {
       setJobs(prev => prev.map(j => j.id === id ? {
         ...j,
         status: catalogCard ? 'done' : 'error',
+        debugInfo: `${geminiSummary} | ${catalogInfo}`,
         result: {
           card: catalogCard ? catalogCardToInfo(catalogCard) : null,
           language: (gemini.language ?? 'de') as CardLanguage,
@@ -121,8 +132,9 @@ export default function ScannerPage() {
       } : j));
     } catch (err) {
       console.error('Scan error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
       setJobs(prev => prev.map(j => j.id === id
-        ? { ...j, status: 'error', result: { card: null, language: 'de' } }
+        ? { ...j, status: 'error', result: { card: null, language: 'de' }, debugInfo: `Netzwerkfehler: ${msg}` }
         : j));
     }
   }, []);
@@ -261,8 +273,13 @@ export default function ScannerPage() {
                             <Loader2 size={22} color="rgba(255,255,255,0.4)" className="animate-spin" />
                           </div>
                         ) : !img ? (
-                          <div className="w-full h-full flex items-center justify-center bg-red-500/10">
-                            <AlertCircle size={22} color="#f87171" />
+                          <div className="w-full h-full flex flex-col items-center justify-center gap-1 bg-red-500/10 p-1.5">
+                            <AlertCircle size={16} color="#f87171" />
+                            {job.debugInfo && (
+                              <p className="text-[6.5px] text-red-300/80 text-center leading-tight break-all">
+                                {job.debugInfo}
+                              </p>
+                            )}
                           </div>
                         ) : (
                           /* eslint-disable-next-line @next/next/no-img-element */

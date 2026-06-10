@@ -52,7 +52,8 @@ const MOTION_RESET_THRESHOLD = 1200;  // grobe Bewegung → stable zurücksetzen
 const MOTION_SNAP_THRESHOLD  = 700;   // unter diesem MSE-Wert gilt es als "ruhig"
 const SNAP_STABLE_FRAMES     = 1;     // 1 ruhiger Frame reicht
 const BOX_SETTLED_THRESHOLD  = 35;   // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames
-const SNAP_COOLDOWN_SAFETY   = 8000; // Fallback-Timeout falls Karte nie verschwindet
+const CONSECUTIVE_SNAP_FRAMES = 3;   // Fallback: nach N aufeinander folgenden Treffern immer auslösen
+const SNAP_COOLDOWN_SAFETY   = 2500; // Fallback-Timeout falls Karte nie verschwindet (war 8 s)
 
 // Rand um die ONNX-Box beim Zuschneiden für Gemini (Pixel in Video-Koordinaten)
 const CROP_PADDING = 24;
@@ -62,9 +63,11 @@ interface DebugInfo {
   mse: number;
   stable: number;
   boxDelta: number;
+  consecutiveFrames: number;
   detected: boolean;
   sessionReady: boolean;
   cropSize: string;
+  triggerReason: string; // welcher Pfad den Snap ausgelöst hat
 }
 
 export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: Props) {
@@ -82,7 +85,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   // Letztes ONNX-Ergebnis in Video-Koordinaten (für Overlay + Snap-Trigger + Crop)
   const onnxBoxRef    = useRef<CardBox | null>(null);
   const onnxStickyRef   = useRef(0);
-  const ONNX_STICKY     = 4;
+  const ONNX_STICKY     = 2; // 2 × 150ms = 300ms bis Absence erkannt (war 4 = 600ms)
   const inferringRef    = useRef(false);
   const sessionReadyRef = useRef(false);
   const cropSizeRef     = useRef('–');
@@ -94,6 +97,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
   // Absence-basierter Cooldown: nach Snap auf Verschwinden der Karte warten
   const waitForAbsenceRef = useRef(false);
+
+  // Aufeinanderfolgende ONNX-Treffer (Fallback-Trigger ohne Box-Settling)
+  const consecutiveDetectRef = useRef(0);
 
   // Overlay-Skalierung (aus drawOverlay) für Snap-Animation-Positionierung
   const snapScaleRef = useRef<{ scale: number; ox: number; oy: number } | null>(null);
@@ -114,7 +120,8 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     left: number; top: number; width: number; height: number; phase: 'burst' | 'fade';
   } | null>(null);
   const [debug,      setDebug]      = useState<DebugInfo>({
-    conf: 0, mse: 0, stable: 0, boxDelta: Infinity, detected: false, sessionReady: false, cropSize: '–',
+    conf: 0, mse: 0, stable: 0, boxDelta: Infinity, consecutiveFrames: 0,
+    detected: false, sessionReady: false, cropSize: '–', triggerReason: '–',
   });
 
   // ONNX-Session beim Mount laden
@@ -370,6 +377,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
     stableRef.current = 0; setProgress(0); setDetected(false);
     prevBoxRef.current = null; boxDeltaRef.current = Infinity;
+    consecutiveDetectRef.current = 0;
 
     // Absence-basierter Cooldown: blockiert bis Karte das Bild verlässt
     cooldownRef.current = true;
@@ -422,12 +430,14 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
               prevBoxRef.current    = box;
               onnxBoxRef.current    = box;
               onnxStickyRef.current = ONNX_STICKY;
+              consecutiveDetectRef.current += 1; // Zähler für Fallback-Trigger
             } else {
               onnxStickyRef.current = Math.max(0, onnxStickyRef.current - 1);
               if (onnxStickyRef.current === 0) {
-                onnxBoxRef.current  = null;
-                prevBoxRef.current  = null;
-                boxDeltaRef.current = Infinity;
+                onnxBoxRef.current           = null;
+                prevBoxRef.current           = null;
+                boxDeltaRef.current          = Infinity;
+                consecutiveDetectRef.current = 0; // Reset: Karte weg
                 // Absence erkannt → Cooldown aufheben (nächste Karte darf gescannt werden)
                 if (waitForAbsenceRef.current) {
                   waitForAbsenceRef.current = false;
@@ -439,10 +449,11 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
               }
             }
           }).catch(() => {
-            onnxBoxRef.current    = null;
-            onnxStickyRef.current = 0;
-            prevBoxRef.current    = null;
-            boxDeltaRef.current   = Infinity;
+            onnxBoxRef.current           = null;
+            onnxStickyRef.current        = 0;
+            prevBoxRef.current           = null;
+            boxDeltaRef.current          = Infinity;
+            consecutiveDetectRef.current = 0;
           }).finally(() => {
             inferringRef.current = false;
           });
@@ -460,33 +471,47 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         mse = mc > 0 ? mse / mc : 0;
         pCtx.drawImage(sample, 0, 0);
 
-        // 5. Debug-State aktualisieren
+        // 5. Snap-Trigger — zwei Pfade:
+        //    A) Box-Delta settled (genau, aber langsam)
+        //    B) N aufeinanderfolgende Treffer (Fallback für Stativ/Scanning-Station)
+        const consFrames      = consecutiveDetectRef.current;
+        const boxSettled      = boxDeltaRef.current < BOX_SETTLED_THRESHOLD;
+        const consecutiveOk   = consFrames >= CONSECUTIVE_SNAP_FRAMES;
+        const snapCondition   = !cooldownRef.current && cardDetected && mse < MOTION_SNAP_THRESHOLD;
+        const triggerReason   = boxSettled ? 'delta' : consecutiveOk ? 'consecutive' : '–';
+
+        // 6. Debug-State aktualisieren
         setDebug({
-          conf:         onnxBoxRef.current?.conf ?? 0,
-          mse:          Math.round(mse),
-          stable:       stableRef.current,
-          boxDelta:     isFinite(boxDeltaRef.current) ? Math.round(boxDeltaRef.current) : 999,
-          detected:     cardDetected,
-          sessionReady: sessionReadyRef.current,
-          cropSize:     cropSizeRef.current,
+          conf:              onnxBoxRef.current?.conf ?? 0,
+          mse:               Math.round(mse),
+          stable:            stableRef.current,
+          boxDelta:          isFinite(boxDeltaRef.current) ? Math.round(boxDeltaRef.current) : 999,
+          consecutiveFrames: consFrames,
+          detected:          cardDetected,
+          sessionReady:      sessionReadyRef.current,
+          cropSize:          cropSizeRef.current,
+          triggerReason,
         });
 
-        // 6. Snap-Trigger — Karte ruhig + Box settled (ONNX konvergiert)
-        const boxSettled = boxDeltaRef.current < BOX_SETTLED_THRESHOLD;
-        if (!cooldownRef.current && cardDetected && mse < MOTION_SNAP_THRESHOLD && boxSettled) {
+        if (snapCondition && (boxSettled || consecutiveOk)) {
           stableRef.current += 1;
           setProgress(1);
           if (stableRef.current >= SNAP_STABLE_FRAMES) doCapture();
         } else if (!cooldownRef.current) {
           stableRef.current = 0;
-          // Progress: wächst proportional zur Box-Konvergenz (0 = unsettled, 0.9 = fast fertig)
-          const convergence = isFinite(boxDeltaRef.current)
-            ? Math.max(0, 1 - boxDeltaRef.current / 60)
-            : 0;
-          setProgress(cardDetected ? Math.min(convergence, 0.9) : 0);
+          if (cardDetected) {
+            // Progress: beste der beiden Konvergenz-Metriken
+            const byDelta  = isFinite(boxDeltaRef.current)
+              ? Math.max(0, 1 - boxDeltaRef.current / (BOX_SETTLED_THRESHOLD * 3))
+              : 0;
+            const byFrames = Math.min(consFrames / CONSECUTIVE_SNAP_FRAMES, 0.95);
+            setProgress(Math.max(byDelta, byFrames));
+          } else {
+            setProgress(0);
+          }
         }
       }, CHECK_MS);
-    }, 800);
+    }, 300);
 
     return () => { clearTimeout(delay); if (timerRef.current) clearInterval(timerRef.current); };
   }, [doCapture, paused]);
@@ -579,11 +604,21 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
               <div>Stabil: {debug.stable} / {SNAP_STABLE_FRAMES}</div>
               <div>
                 Box-Delta:{' '}
-                <span style={{ color: debug.boxDelta < BOX_SETTLED_THRESHOLD ? '#48bb78' : debug.boxDelta < 60 ? '#facc15' : '#f87171' }}>
+                <span style={{ color: debug.boxDelta < BOX_SETTLED_THRESHOLD ? '#48bb78' : debug.boxDelta < 80 ? '#facc15' : '#f87171' }}>
                   {debug.boxDelta === 999 ? '∞' : `${debug.boxDelta} px`}
                   {debug.boxDelta < BOX_SETTLED_THRESHOLD ? ' ✓' : ''}
                 </span>
               </div>
+              <div>
+                Aufeinander:{' '}
+                <span style={{ color: debug.consecutiveFrames >= CONSECUTIVE_SNAP_FRAMES ? '#48bb78' : '#facc15' }}>
+                  {debug.consecutiveFrames} / {CONSECUTIVE_SNAP_FRAMES}
+                  {debug.consecutiveFrames >= CONSECUTIVE_SNAP_FRAMES ? ' ✓' : ''}
+                </span>
+              </div>
+              {debug.triggerReason !== '–' && (
+                <div style={{ color: '#48bb78' }}>Trigger: {debug.triggerReason}</div>
+              )}
               {debug.cropSize && <div style={{ color: '#60a5fa' }}>Crop: {debug.cropSize}</div>}
             </div>
           </div>
