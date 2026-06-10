@@ -10,19 +10,30 @@ import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
 import { getCardsByTcgId } from '@/lib/firestore/cards';
 import { catalogCardToInfo } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
-import type { CardLanguage, CardVariant } from '@/types';
+import type { CardCondition as PersistedCondition, CardLanguage, CardVariant } from '@/types';
+import { CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
 
+// Gemini liefert Condition in Kurzform (lowercase). Für Persistence wird in
+// die offizielle CardCondition (uppercase) gemappt.
 export type CardCondition = 'nm' | 'lp' | 'mp' | 'hp' | 'd';
 
-const CONDITION_LABEL: Record<CardCondition, string> = {
-  nm: 'NM', lp: 'LP', mp: 'MP', hp: 'HP', d: 'D',
+const GEMINI_TO_PERSISTED: Record<CardCondition, PersistedCondition> = {
+  nm: 'NM', lp: 'LP', mp: 'MP', hp: 'HP', d: 'Poor',
 };
-const CONDITION_COLOR: Record<CardCondition, { bg: string; text: string }> = {
-  nm: { bg: 'rgba(34,197,94,.85)',  text: '#fff' },
-  lp: { bg: 'rgba(132,204,22,.85)', text: '#fff' },
-  mp: { bg: 'rgba(234,179,8,.85)',  text: '#000' },
-  hp: { bg: 'rgba(249,115,22,.85)', text: '#fff' },
-  d:  { bg: 'rgba(239,68,68,.85)',  text: '#fff' },
+
+// Fake-Risk → Border-Color der Tile
+const FAKE_RISK_BORDER: Record<'low' | 'medium' | 'high', string> = {
+  low:    'rgba(72,187,120,.70)',
+  medium: 'rgba(234,179,8,.70)',
+  high:   'rgba(239,68,68,.80)',
+};
+
+const PERSISTED_CONDITION_COLOR: Record<PersistedCondition, { bg: string; text: string }> = {
+  NM:   { bg: 'rgba(34,197,94,.85)',  text: '#fff' },
+  LP:   { bg: 'rgba(132,204,22,.85)', text: '#fff' },
+  MP:   { bg: 'rgba(234,179,8,.85)',  text: '#000' },
+  HP:   { bg: 'rgba(249,115,22,.85)', text: '#fff' },
+  Poor: { bg: 'rgba(239,68,68,.85)',  text: '#fff' },
 };
 
 interface GeminiResponse {
@@ -71,6 +82,9 @@ interface ScanJob {
   added?: boolean;
   debugInfo?: string;           // Kurz-Status (z.B. unten am Thumbnail)
   debug?: ScanDebug;            // Detail-Debug für Modal (enthält imageBase64 als einzige Quelle)
+  // User-bearbeitbare Felder (initialisiert aus Gemini-Result, danach Pill-Editierbar)
+  editedVariant?:   CardVariant;
+  editedCondition?: PersistedCondition;
 }
 
 function cardImgUrl(job: ScanJob): string | null {
@@ -112,6 +126,14 @@ export default function ScannerPage() {
   const markAdded = useCallback((id: string) => {
     setJobs(prev => prev.map(j => j.id === id ? { ...j, added: true } : j));
     setActiveJobId(null);
+  }, []);
+
+  const setJobVariant = useCallback((id: string, variant: CardVariant) => {
+    setJobs(prev => prev.map(j => j.id === id ? { ...j, editedVariant: variant } : j));
+  }, []);
+
+  const setJobCondition = useCallback((id: string, condition: PersistedCondition) => {
+    setJobs(prev => prev.map(j => j.id === id ? { ...j, editedCondition: condition } : j));
   }, []);
 
   const handleCapture = useCallback(async (imageBase64: string, mimeType: string) => {
@@ -223,11 +245,17 @@ export default function ScannerPage() {
 
       // Karte SOFORT rendern, ownedCount kommt asynchron nach.
       // Spart 5-15s Render-Verzögerung auf schwacher Firebase-Verbindung.
+      const initialVariant: CardVariant = (catalogCard?.variants?.[0]) ?? 'standard';
+      const initialCondition: PersistedCondition = gemini.condition
+        ? GEMINI_TO_PERSISTED[gemini.condition]
+        : 'NM';
       setJobs(prev => prev.map(j => j.id === id ? {
         ...j,
         status: catalogCard ? 'done' : 'error',
         debugInfo: `${geminiSummary} | ${catalogInfo}`,
         debug: finalDebug,
+        editedVariant:   initialVariant,
+        editedCondition: initialCondition,
         result: {
           card: catalogCard ? catalogCardToInfo(catalogCard) : null,
           language: (gemini.language ?? 'de') as CardLanguage,
@@ -348,12 +376,16 @@ export default function ScannerPage() {
                         ×{job.result!.ownedCount}
                       </span>
                     )}
-                    {job.result?.condition && CONDITION_COLOR[job.result.condition] && (
-                      <span className="absolute bottom-1 right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
-                        style={{ background: CONDITION_COLOR[job.result.condition].bg, color: CONDITION_COLOR[job.result.condition].text }}>
-                        {CONDITION_LABEL[job.result.condition]}
-                      </span>
-                    )}
+                    {job.result?.condition && (() => {
+                      const p = GEMINI_TO_PERSISTED[job.result.condition];
+                      const c = PERSISTED_CONDITION_COLOR[p];
+                      return (
+                        <span className="absolute bottom-1 right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
+                          style={{ background: c.bg, color: c.text }}>
+                          {p}
+                        </span>
+                      );
+                    })()}
                     {job.result?.fakeRisk === 'high' && (
                       <span className="absolute bottom-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
                         style={{ background: 'rgba(239,68,68,.9)', color: '#fff' }}
@@ -439,107 +471,29 @@ export default function ScannerPage() {
         </button>
       </div>
 
-      {/* ── Thumbnail-Slider (Scan-Modus, schwebt unten) ─────────── */}
+      {/* ── Thumbnail-Slider (Scan-Modus, schwebt unten) ──────────────
+          4 Tiles immer sichtbar (Tile-Breite = (100vw − Container-Padding
+          − 3 Gaps) / 4). Rest per horizontal swipe mit scroll-snap. */}
       {mode === 'scanning' && jobs.length > 0 && (
         <div
           className="absolute left-0 right-0 z-10 px-4"
           style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
         >
-          <div className="flex gap-3 overflow-x-auto py-2" style={{ scrollbarWidth: 'none' }}>
-                {jobs.map(job => {
-                  const img = cardImgUrl(job);
-                  const canOpen = job.status === 'done' && !!job.result?.card;
-                  // Debug-Zugang für alle Jobs mit Debug-Info (Fehler ODER erfolgreich).
-                  // Bei done-Karten öffnet der Bug-Button das Debug-Modal,
-                  // Tap auf die Thumbnail-Fläche bleibt für 'Hinzufügen' reserviert.
-                  const canDebug = !!job.debug;
-                  const onThumbClick = () => {
-                    if (canOpen) setActiveJobId(job.id);
-                    else if (canDebug) setDebugJobId(job.id);
-                  };
-                  return (
-                    <div key={job.id} className="relative shrink-0" style={{ width: 72 }}>
-                      <div
-                        className="relative rounded-xl overflow-hidden"
-                        style={{
-                          width: 72, height: 101,
-                          border: `2px solid ${activeJobId === job.id ? 'var(--pokedex-red)' : 'rgba(255,255,255,0.15)'}`,
-                          background: '#1a1a1a',
-                          cursor: (canOpen || canDebug) ? 'pointer' : 'default',
-                          transition: 'border-color 0.15s',
-                        }}
-                        onClick={onThumbClick}
-                      >
-                        {job.status === 'processing' ? (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <Loader2 size={22} color="rgba(255,255,255,0.4)" className="animate-spin" />
-                          </div>
-                        ) : !img ? (
-                          <div className="w-full h-full flex flex-col items-center justify-center gap-1 bg-red-500/10 p-1.5">
-                            <AlertCircle size={16} color="#f87171" />
-                            {job.debugInfo && (
-                              <p className="text-[6.5px] text-red-300/80 text-center leading-tight break-all">
-                                {job.debugInfo}
-                              </p>
-                            )}
-                          </div>
-                        ) : (
-                          /* eslint-disable-next-line @next/next/no-img-element */
-                          <img src={img} alt="" className="w-full h-full object-cover" />
-                        )}
-                        {(job.result?.ownedCount ?? 0) > 0 && (
-                          <span className="absolute top-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
-                            style={{ background: 'rgba(72,187,120,.85)', color: '#fff' }}>
-                            ×{job.result!.ownedCount}
-                          </span>
-                        )}
-                        {job.result?.condition && CONDITION_COLOR[job.result.condition] && (
-                          <span className="absolute bottom-1 right-1 text-[8px] font-bold px-1 py-0.5 rounded"
-                            style={{ background: CONDITION_COLOR[job.result.condition].bg, color: CONDITION_COLOR[job.result.condition].text }}>
-                            {CONDITION_LABEL[job.result.condition]}
-                          </span>
-                        )}
-                        {job.result?.fakeRisk === 'high' && (
-                          <span className="absolute bottom-1 left-1 text-[8px] font-bold px-1 py-0.5 rounded"
-                            style={{ background: 'rgba(239,68,68,.9)', color: '#fff' }}
-                            title={job.result.fakeReasons?.join(', ')}>
-                            FAKE?
-                          </span>
-                        )}
-                        {job.result?.fakeRisk === 'medium' && (
-                          <span className="absolute bottom-1 left-1 text-[8px] font-bold px-1 py-0.5 rounded"
-                            style={{ background: 'rgba(234,179,8,.9)', color: '#000' }}
-                            title={job.result.fakeReasons?.join(', ')}>
-                            ?
-                          </span>
-                        )}
-                        {job.added && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                            <Check size={20} color="#48bb78" strokeWidth={3} />
-                          </div>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => removeJob(job.id)}
-                        className="absolute -top-2 -right-2 w-7 h-7 rounded-full flex items-center justify-center z-10"
-                        style={{ background: '#2a2a2a', border: '1.5px solid rgba(255,255,255,0.2)' }}
-                        aria-label="Entfernen"
-                      >
-                        <Trash2 size={12} color="#ef4444" />
-                      </button>
-                      {canDebug && (
-                        <button
-                          onClick={e => { e.stopPropagation(); setDebugJobId(job.id); }}
-                          className="absolute -top-2 -left-2 w-7 h-7 rounded-full flex items-center justify-center z-10"
-                          style={{ background: '#2a2a2a', border: '1.5px solid rgba(255,255,255,0.2)' }}
-                          aria-label="Debug-Info"
-                        >
-                          <Bug size={12} color="#60a5fa" />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+          <div
+            className="flex gap-2 overflow-x-auto pb-2 pt-1"
+            style={{ scrollbarWidth: 'none', scrollSnapType: 'x mandatory' }}
+          >
+            {jobs.map(job => (
+              <ScannedCardTile
+                key={job.id}
+                job={job}
+                onCardTap={() => setActiveJobId(job.id)}
+                onDebug={() => setDebugJobId(job.id)}
+                onRemove={() => removeJob(job.id)}
+                onVariantChange={v => setJobVariant(job.id, v)}
+                onConditionChange={c => setJobCondition(job.id, c)}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -649,6 +603,166 @@ export default function ScannerPage() {
           onSaved={() => markAdded(activeJob.id)}
         />
       )}
+    </div>
+  );
+}
+
+// ───── Scanned-Card-Tile ─────────────────────────────────────────────────
+// Tile-Breite: (100vw − 32px Container-Padding − 24px für 3 Gaps) / 4
+const TILE_WIDTH_CSS = 'calc((100vw - 56px) / 4)';
+
+interface ScannedCardTileProps {
+  job: ScanJob;
+  onCardTap:         () => void;
+  onDebug:           () => void;
+  onRemove:          () => void;
+  onVariantChange:   (v: CardVariant) => void;
+  onConditionChange: (c: PersistedCondition) => void;
+}
+
+function ScannedCardTile({
+  job, onCardTap, onDebug, onRemove, onVariantChange, onConditionChange,
+}: ScannedCardTileProps) {
+  const img       = cardImgUrl(job);
+  const card      = job.result?.card;
+  const canOpen   = job.status === 'done' && !!card;
+  const canDebug  = !!job.debug;
+  const borderCol = job.result?.fakeRisk
+    ? FAKE_RISK_BORDER[job.result.fakeRisk]
+    : 'rgba(255,255,255,0.15)';
+  const cardVariants = card?.variants?.length ? card.variants : (['standard'] as CardVariant[]);
+  const variant   = job.editedVariant   ?? cardVariants[0];
+  const condition = job.editedCondition ?? 'NM';
+  const condColor = PERSISTED_CONDITION_COLOR[condition];
+
+  return (
+    <div
+      className="shrink-0 flex flex-col gap-1"
+      style={{ width: TILE_WIDTH_CSS, scrollSnapAlign: 'start' }}
+    >
+      {/* Name oben */}
+      <div className="flex items-center justify-center gap-1 px-0.5 min-h-[14px]">
+        <p className="text-[10px] text-white font-medium text-center truncate leading-tight">
+          {card?.name ?? (job.status === 'processing' ? '…' : 'Fehler')}
+        </p>
+        {canDebug && (
+          <button
+            onClick={e => { e.stopPropagation(); onDebug(); }}
+            className="shrink-0 w-3 h-3 flex items-center justify-center"
+            aria-label="Debug-Info"
+          >
+            <Bug size={10} color="#60a5fa" />
+          </button>
+        )}
+      </div>
+
+      {/* Karten-Body */}
+      <div
+        className="relative w-full rounded-2xl overflow-hidden"
+        style={{
+          aspectRatio: '63 / 88',
+          border: `2.5px solid ${borderCol}`,
+          background: '#1a1a1a',
+          cursor: canOpen ? 'pointer' : 'default',
+        }}
+        onClick={canOpen ? onCardTap : undefined}
+      >
+        {job.status === 'processing' ? (
+          <div className="w-full h-full flex items-center justify-center">
+            <Loader2 size={24} color="rgba(255,255,255,0.4)" className="animate-spin" />
+          </div>
+        ) : !img ? (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-1 bg-red-500/10 p-1.5">
+            <AlertCircle size={20} color="#f87171" />
+            {job.debugInfo && (
+              <p className="text-[7px] text-red-300/80 text-center leading-tight break-all">
+                {job.debugInfo}
+              </p>
+            )}
+          </div>
+        ) : (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src={img} alt={card?.name ?? ''} className="w-full h-full object-cover" />
+        )}
+
+        {/* Owned-Badge (oben links) */}
+        {(job.result?.ownedCount ?? 0) > 0 && !job.added && (
+          <span
+            className="absolute top-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
+            style={{ background: 'rgba(72,187,120,.85)', color: '#fff' }}
+          >
+            ×{job.result!.ownedCount}
+          </span>
+        )}
+
+        {/* Trash (oben rechts) */}
+        <button
+          onClick={e => { e.stopPropagation(); onRemove(); }}
+          className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.7)' }}
+          aria-label="Entfernen"
+        >
+          <Trash2 size={12} color="#ef4444" />
+        </button>
+
+        {/* Variant-Pill (unten links) — mit unsichtbarem <select> für iOS-Wheel-Picker */}
+        {card && (
+          <div className="absolute bottom-1 left-1">
+            <span
+              className="text-[8px] font-bold px-1.5 py-0.5 rounded-md inline-block"
+              style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}
+            >
+              {VARIANT_LABELS[variant]}
+            </span>
+            <select
+              value={variant}
+              onClick={e => e.stopPropagation()}
+              onChange={e => onVariantChange(e.target.value as CardVariant)}
+              className="absolute inset-0 opacity-0 cursor-pointer"
+              aria-label="Variante ändern"
+            >
+              {cardVariants.map(v => (
+                <option key={v} value={v}>{VARIANT_LABELS[v]}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Condition-Pill (unten rechts) */}
+        {card && (
+          <div className="absolute bottom-1 right-1">
+            <span
+              className="text-[8px] font-bold px-1.5 py-0.5 rounded-md inline-block"
+              style={{ background: condColor.bg, color: condColor.text }}
+            >
+              {condition}
+            </span>
+            <select
+              value={condition}
+              onClick={e => e.stopPropagation()}
+              onChange={e => onConditionChange(e.target.value as PersistedCondition)}
+              className="absolute inset-0 opacity-0 cursor-pointer"
+              aria-label="Zustand ändern"
+            >
+              {CONDITIONS.map(c => (
+                <option key={c.value} value={c.value}>{c.short}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Added-Overlay */}
+        {job.added && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+            <Check size={28} color="#48bb78" strokeWidth={3} />
+          </div>
+        )}
+      </div>
+
+      {/* Set-Code + Nummer unten */}
+      <p className="text-[9px] text-white/55 text-center font-mono leading-tight truncate px-0.5 min-h-[12px]">
+        {card?.setCode ? `${card.setCode} ${card.number}` : ' '}
+      </p>
     </div>
   );
 }
