@@ -1,16 +1,16 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, Trash2, Loader2, AlertCircle, Check, Plus, LayoutGrid, Camera, Bug } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
-import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
+import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
          getCardsByDexNumberRest      as getCardsByDexNumber } from '@/lib/firestore/catalog-rest';
 import { getCardsByTcgId } from '@/lib/firestore/cards';
 import { catalogCardToInfo } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
-import type { CardCondition as PersistedCondition, CardLanguage, CardVariant } from '@/types';
+import type { CardCondition as PersistedCondition, CardDoc, CardLanguage, CardVariant } from '@/types';
 import { CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
 
 // Gemini liefert Condition in Kurzform (lowercase). Für Persistence wird in
@@ -106,6 +106,7 @@ export default function ScannerPage() {
   const router = useRouter();
   const [jobs, setJobs] = useState<ScanJob[]>([]);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [activeOwnedCopies, setActiveOwnedCopies] = useState<CardDoc[]>([]);
   const [debugJobId, setDebugJobId] = useState<string | null>(null);
   const [mode, setMode] = useState<'scanning' | 'review'>('scanning');
   // FIFO-Queue für Uploads: parallele Scans senden nacheinander statt
@@ -135,6 +136,19 @@ export default function ScannerPage() {
   const setJobCondition = useCallback((id: string, condition: PersistedCondition) => {
     setJobs(prev => prev.map(j => j.id === id ? { ...j, editedCondition: condition } : j));
   }, []);
+
+  // Owned-Copies frisch laden, wenn ein Job ausgewählt wird (für das CardDetailSheet).
+  useEffect(() => {
+    if (!activeJobId) { setActiveOwnedCopies([]); return; }
+    const job = jobs.find(j => j.id === activeJobId);
+    const card = job?.result?.card;
+    if (!card) { setActiveOwnedCopies([]); return; }
+    let cancelled = false;
+    getCardsByTcgId(card.id)
+      .then(copies => { if (!cancelled) setActiveOwnedCopies(copies); })
+      .catch(() => { if (!cancelled) setActiveOwnedCopies([]); });
+    return () => { cancelled = true; };
+  }, [activeJobId, jobs]);
 
   const handleCapture = useCallback(async (imageBase64: string, mimeType: string) => {
     const id = Math.random().toString(36).slice(2);
@@ -592,17 +606,15 @@ export default function ScannerPage() {
         </div>
       )}
 
-      {/* ── AddToCollectionModal ─────────────────────────────────── */}
-      {activeJob?.result?.card && (
-        <AddToCollectionModal
-          card={activeJob.result.card}
-          preVariant={activeJob.result.variant}
-          preLanguage={activeJob.result.language}
-          fromScanner
-          onClose={() => setActiveJobId(null)}
-          onSaved={() => markAdded(activeJob.id)}
-        />
-      )}
+      {/* ── CardDetailSheet (öffnet sich beim Tap auf eine erkannte Karte) ─ */}
+      <CardDetailSheet
+        card={activeJob?.result?.card ?? null}
+        ownedCopies={activeOwnedCopies}
+        onClose={() => setActiveJobId(null)}
+        onSaved={() => {
+          if (activeJob) markAdded(activeJob.id);
+        }}
+      />
     </div>
   );
 }
