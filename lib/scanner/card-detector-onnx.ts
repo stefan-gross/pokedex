@@ -30,8 +30,10 @@ export async function loadCardDetectorSession(): Promise<void> {
   if (loadPromise) return loadPromise;
   loadPromise = (async () => {
     ort.env.wasm.wasmPaths = '/';
+    // WebGPU zuerst (iOS 18+ / macOS Safari 18+ — 2-3× schneller), WASM-Fallback
+    // wenn nicht verfügbar. ORT-Web evaluiert die Liste sequentiell.
     session = await ort.InferenceSession.create(MODEL_PATH, {
-      executionProviders: ['wasm'],
+      executionProviders: ['webgpu', 'wasm'],
     });
     console.log('[CardDetector] ONNX session ready');
   })();
@@ -52,10 +54,16 @@ export interface CardBox {
 /**
  * Erkennt die beste Pokémon-Karte im Video/Canvas-Frame.
  * Gibt null zurück wenn keine Karte mit conf >= CONF_THRESHOLD gefunden.
- * Wenn verfügbar: berechnet 4 Eckpunkte aus der Segmentierungsmaske (rotiert korrekt).
+ *
+ * `includeCorners` steuert ob die teure Mask-Decode-Schleife (25 600
+ * Dot-Products mit 32 Koeffizienten) ausgeführt wird. Im Detection-Loop
+ * (alle 150 ms) brauchen wir nur die Box — Mask-Decode lohnt nur beim
+ * Snap selbst. Default `false` → Detection-Loop bekommt schnelle Path.
+ * Bei `true`: Corners werden berechnet (rotierte Eckpunkte).
  */
 export async function detectCardInFrame(
-  source: HTMLCanvasElement | HTMLVideoElement
+  source: HTMLCanvasElement | HTMLVideoElement,
+  includeCorners: boolean = false,
 ): Promise<CardBox | null> {
   if (!session) return null;
 
@@ -171,6 +179,9 @@ export async function detectCardInFrame(
   }
 
   // 4. Segmentierungsmaske dekodieren → 4 Eckpunkte berechnen
+  //    Nur ausführen wenn explizit angefordert (Snap-Pfad). Im Detection-
+  //    Loop (alle 150ms) ist die innere Schleife mit 25 600 Dot-Products
+  //    zu teuer — wir brauchen nur die Box für Snap-Trigger/Overlay.
   //    output1: [1, 32, 160, 160] — Masken-Prototypen
   //    output0 Features 6–37: 32 Masken-Koeffizienten der besten Detektion
   //
@@ -181,7 +192,7 @@ export async function detectCardInFrame(
   //      tl → min(x+y)   tr → max(x−y)   br → max(x+y)   bl → min(x−y)
   const proto = outputs['output1']?.data as Float32Array | undefined;
 
-  if (best && bestIdx >= 0 && proto) {
+  if (includeCorners && best && bestIdx >= 0 && proto) {
     const coeffs     = new Float32Array(32);
     for (let k = 0; k < 32; k++) coeffs[k] = getVal(6 + k, bestIdx);
 

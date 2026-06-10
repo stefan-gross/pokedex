@@ -63,7 +63,7 @@ const MOTION_RESET_THRESHOLD = 1200;  // grobe Bewegung → stable zurücksetzen
 const MOTION_SNAP_THRESHOLD  = 700;   // unter diesem MSE-Wert gilt es als "ruhig"
 const SNAP_STABLE_FRAMES     = 1;     // 1 ruhiger Frame reicht
 const BOX_SETTLED_THRESHOLD  = 35;   // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames
-const CONSECUTIVE_SNAP_FRAMES = 3;   // Fallback: nach N aufeinander folgenden Treffern immer auslösen
+const CONSECUTIVE_SNAP_FRAMES = 2;   // Fallback: nach N aufeinander folgenden Treffern immer auslösen (3→2 spart 150ms zum Snap)
 // Szenen-Änderungs-Cooldown: nach Snap warten bis MSE vs. Snapshot > Threshold.
 // Verhindert Duplikat-Scans wenn dieselbe Karte noch im Bild liegt.
 //
@@ -182,15 +182,15 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     catch { /* ignorieren */ }
   }, []);
 
-  // ONNX-Session NICHT mehr eager beim Mount laden — WASM-Compile-Spike
-  // konkurriert sonst mit Camera-Setup um Memory und kann iOS-PWA-Reload
-  // triggern. Erst nachdem der Stream live ist, das Modell laden.
+  // ONNX-Session eager beim Mount laden — parallel zum "Kamera starten"-
+  // Overlay (User tippt ~1s nach Mount, Stream-Setup nochmal ~1s; in der
+  // Zeit lädt das ~11 MB Modell). Reload-Mitigation (Lazy nach streamReady)
+  // ist nicht mehr nötig seit der iOS-PWA-Stack stabil läuft.
   useEffect(() => {
-    if (!streamReady) return;
     loadCardDetectorSession()
       .then(() => { sessionReadyRef.current = true; })
       .catch(console.warn);
-  }, [streamReady]);
+  }, []);
 
   // ── Overlay: ONNX-Box oder gestrichelter Hilfsrahmen ─────────────────────
   // Läuft im rAF-Loop (60fps) → Lerp macht den Rahmen flüssig
