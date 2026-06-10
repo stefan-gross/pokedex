@@ -55,8 +55,14 @@ const BOX_SETTLED_THRESHOLD  = 35;   // px — Box-Mittelpunkt-Drift zwischen ON
 const CONSECUTIVE_SNAP_FRAMES = 3;   // Fallback: nach N aufeinander folgenden Treffern immer auslösen
 // Szenen-Änderungs-Cooldown: nach Snap warten bis MSE vs. Snapshot > Threshold.
 // Verhindert Duplikat-Scans wenn dieselbe Karte noch im Bild liegt.
-const CHANGE_DETECT_THRESHOLD = 200; // MSE vs. Snap-Snapshot → Szene hat sich verändert
-const SNAP_COOLDOWN_MIN_MS    = 300; // Mindest-Wartezeit nach Snap (verhindert sofortigen Doppel-Snap)
+//
+// MSE-Skala (kalibriert in der Praxis):
+//   <100   = Karte ruht (Sensor-Rauschen, Autofokus-Mikro-Drift)
+//   100-800 = Karte minimal verschoben, Hand-Tremor, leichte Lichtänderung
+//   >1500  = neue Karte oder bewusste Bewegung
+// Bei 200 wurde fälschlich JEDE Sekunde Szenen-Änderung erkannt → Endlos-Snaps.
+const CHANGE_DETECT_THRESHOLD = 1500;
+const SNAP_COOLDOWN_MIN_MS    = 800;  // Mindest-Wartezeit nach Snap (verlängert von 300ms)
 
 // Rand um die ONNX-Box beim Zuschneiden für Gemini (Pixel in Video-Koordinaten)
 const CROP_PADDING = 24;
@@ -368,7 +374,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       crop.width  = cw;
       crop.height = ch;
       crop.getContext('2d')!.drawImage(canvas, cx, cy, cw, ch, 0, 0, cw, ch);
-      imageBase64 = crop.toDataURL('image/jpeg', 0.92).split(',')[1];
+      imageBase64 = crop.toDataURL('image/jpeg', 0.75).split(',')[1];
       cropInfo    = `${cw}×${ch} (corners)`;
 
     } else if (box && box.w > 50 && box.h > 50) {
@@ -383,10 +389,10 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
       crop.width  = cw;
       crop.height = ch;
       crop.getContext('2d')!.drawImage(canvas, cx, cy, cw, ch, 0, 0, cw, ch);
-      imageBase64 = crop.toDataURL('image/jpeg', 0.92).split(',')[1];
+      imageBase64 = crop.toDataURL('image/jpeg', 0.75).split(',')[1];
       cropInfo    = `${cw}×${ch} (aabb)`;
     } else {
-      imageBase64 = canvas.toDataURL('image/jpeg', 0.90).split(',')[1];
+      imageBase64 = canvas.toDataURL('image/jpeg', 0.75).split(',')[1];
     }
 
     cropSizeRef.current = cropInfo;

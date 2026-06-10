@@ -66,15 +66,15 @@ interface ScanJob {
   status: 'processing' | 'done' | 'error';
   result: ScanState | null;
   added?: boolean;
-  capturedImageBase64?: string; // Vorschau während Gemini lädt
   debugInfo?: string;           // Kurz-Status (z.B. unten am Thumbnail)
-  debug?: ScanDebug;            // Detail-Debug für Modal
+  debug?: ScanDebug;            // Detail-Debug für Modal (enthält imageBase64 als einzige Quelle)
 }
 
 function cardImgUrl(job: ScanJob): string | null {
   // Während Verarbeitung: aufgenommenes Bild als Vorschau zeigen
-  if (job.status === 'processing' && job.capturedImageBase64)
-    return `data:image/jpeg;base64,${job.capturedImageBase64}`;
+  // (Image base64 ist die einzige Quelle — kein Duplikat im State).
+  if (job.status === 'processing' && job.debug?.imageBase64)
+    return `data:${job.debug.mimeType ?? 'image/jpeg'};base64,${job.debug.imageBase64}`;
   const card = job.result?.card;
   if (!card) return null;
   const lang = job.result?.language ?? 'en';
@@ -113,9 +113,11 @@ export default function ScannerPage() {
     const imageSizeKb = Math.round((imageBase64.length * 3 / 4) / 1024);
     const debug: ScanDebug = { imageBase64, mimeType, imageSizeKb, lookupSteps: [] };
 
-    // Aufgenommenes Bild als Vorschau zeigen während Gemini lädt
+    // Bild wird nur EINMAL gespeichert (in debug.imageBase64) — verhindert
+    // doppelten Speicherverbrauch (vorher: capturedImageBase64 + debug.imageBase64
+    // hat iOS PWA bei vielen Scans gecrasht).
     setJobs(prev => [...prev, {
-      id, status: 'processing', result: null, capturedImageBase64: imageBase64, debug,
+      id, status: 'processing', result: null, debug,
     }]);
 
     try {
@@ -195,11 +197,18 @@ export default function ScannerPage() {
       } catch {
         // Firebase-Auth noch nicht initialisiert oder Security-Rules greifen → ownedCount = 0
       }
+      // Bei erfolgreicher Karten-Erkennung das base64-Bild aus dem Debug-Objekt
+      // entfernen → spart pro Scan ~200KB RAM (Katalog-Bild kommt von CDN).
+      // Fehler-Karten behalten das Bild für die Debug-Anzeige.
+      const finalDebug: ScanDebug = catalogCard
+        ? { ...debug, imageBase64: undefined }
+        : { ...debug };
+
       setJobs(prev => prev.map(j => j.id === id ? {
         ...j,
         status: catalogCard ? 'done' : 'error',
         debugInfo: `${geminiSummary} | ${catalogInfo}`,
-        debug: { ...debug },
+        debug: finalDebug,
         result: {
           card: catalogCard ? catalogCardToInfo(catalogCard) : null,
           language: (gemini.language ?? 'de') as CardLanguage,
