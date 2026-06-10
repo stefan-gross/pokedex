@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { X, Trash2, Loader2, AlertCircle, Check, Plus, LayoutGrid, Camera, Bug } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
-import { getCardBySetCodeAndNumber, getCardsByDexNumber } from '@/lib/firestore/catalog';
+import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
+         getCardsByDexNumberRest      as getCardsByDexNumber } from '@/lib/firestore/catalog-rest';
 import { getCardsByTcgId } from '@/lib/firestore/cards';
 import { catalogCardToInfo } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
