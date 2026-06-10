@@ -117,6 +117,15 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   const cropSizeRef     = useRef('–');
   const mountGenRef     = useRef(++_mountGeneration); // steigt bei jedem Remount
 
+  // Race-Schutz: blockt Visibility-Handler während getUserMedia in flight ist.
+  // Sonst sieht der Handler bei Dialog-Dismiss `_kameraStream === null` und
+  // setzt fälschlich 'interrupted' → Error-UI flackert → User-Tap → zweiter Dialog.
+  const startingRef     = useRef(false);
+  // True erst NACHDEM ein Stream erfolgreich angehängt wurde. Verhindert dass
+  // der Visibility-Handler beim allerersten Start „interrupted" feuert obwohl
+  // wir noch nie einen Stream hatten.
+  const streamHealthyRef = useRef(false);
+
   // Box-Settling: Drift zwischen zwei aufeinanderfolgenden ONNX-Ergebnissen
   const prevBoxRef    = useRef<CardBox | null>(null); // letztes ONNX-Ergebnis
   const boxDeltaRef   = useRef<number>(Infinity);     // Positions-/Größen-Drift in px
@@ -280,6 +289,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
             vid.play().catch(() => { /* iOS blockiert manchmal; kein fataler Fehler */ });
           }
         }
+        streamHealthyRef.current = true;
         return; // Kein neuer getUserMedia-Call
       }
     }
@@ -289,20 +299,15 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     _kameraStream = null;
     streamRef.current = null;
     setError(null); stableRef.current = 0; setProgress(0); setDetected(false);
+    startingRef.current = true; // Visibility-Handler blockiert ab hier
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        // Landscape-Auflösung: iPhone wählt damit die Hauptkamera (beste Qualität).
-        // Portrait-Request (1080×1920) aktiviert auf manchen iPhones die Ultra-Wide-Linse
-        // mit schlechterer Bildqualität und weiterem Blickwinkel.
         video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
       });
       _kameraStream = stream;
       streamRef.current = stream;
-      // Track-Ended explizit behandeln: iOS beendet Tracks bei Speicher-Druck,
-      // anderer Kameranutzung oder Background-Suspend. Statt blind neu zu
-      // acquiren (löst spontanen Permission-Dialog aus) zeigen wir eine
-      // Nutzer-Geste → Restart kommt nur bei explizitem Tap.
       stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+        streamHealthyRef.current = false;
         setError('interrupted');
       });
       const vid = videoRef.current;
@@ -310,11 +315,12 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
         if (vid.srcObject !== stream) vid.srcObject = stream;
         if (vid.paused) vid.play().catch(() => {});
       }
+      streamHealthyRef.current = true; // erst NACH erfolgreicher Anbindung
     } catch (err: unknown) {
       const name = (err as { name?: string })?.name;
-      // 'NotAllowedError' = User hat „Nicht erlauben" gedrückt oder iOS-Einstellung
-      // ist auf „Ablehnen". Spezielles UI mit Anleitung statt generischer Meldung.
       setError(name === 'NotAllowedError' ? 'blocked' : 'failed');
+    } finally {
+      startingRef.current = false;
     }
   }, [facingMode]);
 
@@ -343,12 +349,16 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
       if (!started) return; // Noch nicht gestartet → nichts zu prüfen
+      // iOS feuert visibilitychange wenn der Permission-Dialog erscheint/geht.
+      // Während getUserMedia in-flight ist → Handler ignorieren, sonst rennen wir
+      // gegen einen halb-acquireten Stream und feuern fälschlich 'interrupted'.
+      if (startingRef.current) return;
+      // Wenn wir nie einen Stream hatten → kein Anlass für 'interrupted'
+      // (Startflow läuft noch oder Error-UI ist bereits aktiv).
+      if (!streamHealthyRef.current) return;
       const track = _kameraStream?.getVideoTracks()[0];
       const vid   = videoRef.current;
-      // Alles läuft → nichts tun
       if (track && track.readyState === 'live' && vid && !vid.paused) return;
-      // Stream ist tot → Nutzer per Tippe-UI auffordern, statt selbst
-      // getUserMedia aufzurufen (würde sonst spontan Dialog triggern).
       setError('interrupted');
     };
     document.addEventListener('visibilitychange', onVisible);
@@ -653,7 +663,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
                 die Kamera kurzzeitig nutzte oder die PWA im Hintergrund war).
               </p>
               <button
-                onClick={() => { setError(null); setStarted(true); startCamera(); }}
+                onClick={() => { streamHealthyRef.current = false; setError(null); startCamera(); }}
                 className="mt-2 px-6 py-3 rounded-xl font-semibold text-white"
                 style={{ background: 'var(--pokedex-red)' }}
               >
@@ -675,7 +685,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
                 (gilt global für alle Websites)
               </p>
               <button
-                onClick={() => { setError(null); setStarted(true); startCamera(); }}
+                onClick={() => { streamHealthyRef.current = false; setError(null); startCamera(); }}
                 className="mt-2 px-6 py-3 rounded-xl font-semibold text-white"
                 style={{ background: 'var(--pokedex-red)' }}
               >
@@ -689,7 +699,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
                 Kamera konnte nicht gestartet werden.
               </p>
               <button
-                onClick={() => { setError(null); setStarted(true); startCamera(); }}
+                onClick={() => { streamHealthyRef.current = false; setError(null); startCamera(); }}
                 className="mt-2 px-6 py-3 rounded-xl font-semibold text-white"
                 style={{ background: 'var(--pokedex-red)' }}
               >
