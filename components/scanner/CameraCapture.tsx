@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Zap, ZapOff, RefreshCw, Loader2, Camera } from 'lucide-react';
+import { Zap, ZapOff, Loader2, Camera } from 'lucide-react';
 import { loadCardDetectorSession, detectCardInFrame, type CardBox } from '@/lib/scanner/card-detector-onnx';
 
 interface Props {
@@ -162,7 +162,8 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
 
   const [streamReady, setStreamReady] = useState(false);
-  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  // Front/Rück-Switch entfernt — Stream nutzt immer environment (Rückkamera).
+  const facingMode = 'environment' as const;
   const [torch,      setTorch]      = useState(false);
   const [error,      setError]      = useState<string | null>(null);
   const [progress,   setProgress]   = useState(0);
@@ -876,9 +877,6 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
           >
             <button onClick={toggleTorch} className="w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center">
               {torch ? <Zap size={17} color="#facc15" /> : <ZapOff size={17} color="#fff" />}
-            </button>
-            <button onClick={() => setFacingMode(m => m === 'environment' ? 'user' : 'environment')} className="w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center">
-              <RefreshCw size={17} color="#fff" />
             </button>
           </div>
 

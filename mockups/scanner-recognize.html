@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Mockup: Scanner — Erkennen-Modus</title>
+<style>
+  :root {
+    --pokedex-red: #e63946;
+    --bg: #0c0f14;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .stage {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 48px;
+    align-items: flex-start;
+    justify-content: center;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .legend {
+    flex: 0 0 280px;
+    color: rgba(255,255,255,0.85);
+  }
+  .legend h2 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.6);
+    margin-bottom: 12px;
+  }
+  .legend .icon-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .legend .opt {
+    flex: 1;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 14px 8px 10px;
+    text-align: center;
+  }
+  .legend .opt .preview {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--pokedex-red);
+    margin: 0 auto 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+  }
+  .legend .opt .label {
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.8);
+  }
+  .legend .opt.selected {
+    border-color: var(--pokedex-red);
+    background: rgba(230,57,70,0.10);
+  }
+  .legend .opt.selected .label {
+    color: #fff;
+    font-weight: 600;
+  }
+  .legend .note {
+    font-size: 12px;
+    color: rgba(255,255,255,0.5);
+    line-height: 1.5;
+    margin-top: -8px;
+    margin-bottom: 20px;
+  }
+
+  /* ───── iPhone-Frame ───── */
+  .frame {
+    width: 390px;
+    height: 844px;
+    background: #000;
+    border-radius: 56px;
+    padding: 12px;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 0 2px #1a1a1a;
+    position: relative;
+  }
+  .screen {
+    width: 100%;
+    height: 100%;
+    background: #000;
+    border-radius: 44px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ───── Notch ───── */
+  .island {
+    position: absolute;
+    top: 11px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 124px;
+    height: 36px;
+    background: #000;
+    border-radius: 20px;
+    z-index: 100;
+  }
+
+  /* ───── Status-Bar ───── */
+  .status-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 44px;
+    padding: 16px 32px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+    z-index: 50;
+  }
+  .status-bar .icons {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: 12px;
+  }
+
+  /* ───── Frozen Camera-Preview (gedimmt unter der Karte) ───── */
+  .camera-bg {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 40%, rgba(40,50,60,0.4), transparent 60%),
+      linear-gradient(135deg, #1a1d22 0%, #0a0c0f 100%);
+    filter: brightness(0.6);
+  }
+
+  /* ───── Header ───── */
+  .header {
+    position: absolute;
+    top: 56px;
+    right: 16px;
+    z-index: 30;
+  }
+  .header .close-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.10);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 14px;
+  }
+
+  /* ───── Zentrale große Karten-Anzeige ───── */
+  .center {
+    position: absolute;
+    top: 110px;
+    bottom: 132px;          /* über Toolbar (116px) + 16px Abstand */
+    left: 16px;
+    right: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 14px;
+  }
+  .owned-banner {
+    width: 100%;
+    padding: 12px 18px;
+    border-radius: 14px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    backdrop-filter: blur(8px);
+    /* Grün = bereits in Sammlung */
+    background: rgba(34,197,94,0.85);
+  }
+  .owned-banner.new {
+    background: rgba(239,68,68,0.85);
+  }
+
+  .card-name {
+    font-size: 19px;
+    font-weight: 600;
+    text-align: center;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-name .bug {
+    font-size: 12px;
+    color: #60a5fa;
+  }
+
+  .card-body {
+    position: relative;
+    aspect-ratio: 63/88;
+    flex: 1 1 auto;
+    max-width: 100%;
+    border-radius: 22px;
+    overflow: hidden;
+    background: #1a1a1a;
+    border: 3px solid rgba(72,187,120,0.7); /* low fake risk = grün */
+    box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+  }
+  .card-body img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .card-body .pill {
+    position: absolute;
+    bottom: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 8px;
+  }
+  .card-body .pill.variant {
+    left: 8px;
+    background: rgba(0,0,0,0.75);
+    color: #fff;
+  }
+  .card-body .pill.cond-nm {
+    right: 8px;
+    background: rgba(34,197,94,0.85);
+    color: #fff;
+  }
+
+  .card-code {
+    font-size: 14px;
+    color: rgba(255,255,255,0.7);
+    font-family: 'SF Mono', Menlo, monospace;
+    text-align: center;
+  }
+
+  /* ───── Toolbar ───── */
+  .toolbar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 116px;
+    padding: 12px 16px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.0));
+    backdrop-filter: blur(20px);
+  }
+  /* Im Erkennen-Modus: Grid-Slot ist leer aber reserviert (44px),
+     damit der Mode-Switch und FAB an identischer Position bleiben wie
+     im Hinzufügen-Modus. Visuell konsistente Toolbar zwischen Modi. */
+  .toolbar .spacer-left {
+    width: 44px;
+    flex-shrink: 0;
+  }
+  .mode-switch {
+    display: flex;
+    background: rgba(0,0,0,0.55);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 999px;
+    padding: 2px;
+  }
+  .mode-switch button {
+    flex: 1;
+    padding: 7px 14px;
+    border-radius: 999px;
+    border: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.65);
+    background: transparent;
+    cursor: pointer;
+  }
+  .mode-switch button.active {
+    background: var(--pokedex-red);
+    color: #fff;
+  }
+
+  .fab {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: var(--pokedex-red);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.4), 0 2px 6px rgba(230,57,70,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    border: 0;
+  }
+  .fab .play-triangle {
+    width: 0;
+    height: 0;
+    margin-left: 4px;
+    border-top: 14px solid transparent;
+    border-bottom: 14px solid transparent;
+    border-left: 22px solid #fff;
+  }
+
+  .home-indicator {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 134px;
+    height: 5px;
+    background: rgba(255,255,255,0.35);
+    border-radius: 3px;
+    z-index: 60;
+  }
+
+  .caption {
+    position: absolute;
+    bottom: -36px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.6);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+
+<div class="frame">
+  <div class="screen">
+
+    <!-- Gedimmter Camera-Preview-Hintergrund -->
+    <div class="camera-bg"></div>
+
+    <!-- Dynamic Island -->
+    <div class="island"></div>
+
+    <!-- Status-Bar -->
+    <div class="status-bar">
+      <span>9:41</span>
+      <div class="icons">
+        <span>📶</span><span>🛜</span><span>🔋</span>
+      </div>
+    </div>
+
+    <!-- Header: nur X -->
+    <div class="header">
+      <div class="close-btn">✕</div>
+    </div>
+
+    <!-- Zentrale große Karten-Anzeige -->
+    <div class="center">
+
+      <!-- Owned-Banner (grün = bereits in Sammlung) -->
+      <div class="owned-banner">Bereits in deiner Sammlung (×3)</div>
+
+      <!-- Name + Bug-Debug -->
+      <div class="card-name">
+        Erikas Ultrigaria
+        <span class="bug">🐞</span>
+      </div>
+
+      <!-- Karten-Body (großes Bild) -->
+      <div class="card-body">
+        <img src="https://assets.tcgdex.net/de/sv/sv09.5/5/high.webp"
+             alt="Erikas Ultrigaria"
+             onerror="this.style.display='none'">
+        <div class="pill variant">Holo</div>
+        <div class="pill cond-nm">NM</div>
+      </div>
+
+      <!-- SetCode + Number -->
+      <div class="card-code">ASC 005</div>
+
+    </div>
+
+    <!-- Toolbar: nur Mode-Switch + Play-FAB (Auto-Pause nach Snap) -->
+    <div class="toolbar">
+      <div class="spacer-left"></div>
+      <div class="mode-switch">
+        <button>Hinzufügen</button>
+        <button class="active">Erkennen</button>
+      </div>
+      <button class="fab">
+        <div class="play-triangle"></div>
+      </button>
+    </div>
+
+    <!-- Home Indicator -->
+    <div class="home-indicator"></div>
+
+  </div>
+  <div class="caption">Erkennen-Modus — Karte gerade gescannt, Stream pausiert</div>
+</div>
+
+<aside class="legend">
+  <h2>Toolbar-Konsistenz</h2>
+  <p class="note">Im Erkennen-Modus ist der Grid-Slot links <strong>reserviert aber leer</strong> (44 px) — so bleiben Mode-Switch und FAB an identischer Bildschirm-Position wie im Hinzufügen-Modus. Wechselt der User die Modi, springt nichts seitwärts.</p>
+
+  <h2>FAB-Toggle (zwei Zustände)</h2>
+  <p class="note"><strong>Vereinfacht:</strong> Start und Resume nutzen dasselbe Play-Icon — aus UX-Sicht ist „Stream nicht-scannend → Tap startet Erkennung" identisch, egal ob cold (Permission) oder warm (Resume). Camera-Icon entfällt komplett.</p>
+
+  <div class="icon-row">
+    <div class="opt selected">
+      <div class="preview">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><polygon points="6,4 20,12 6,20"/></svg>
+      </div>
+      <div class="label">Play ▶<br>(nicht-scannend)</div>
+    </div>
+    <div class="opt selected">
+      <div class="preview">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+      </div>
+      <div class="label">Pause ‖‖<br>(scannend)</div>
+    </div>
+  </div>
+  <p class="note">Klassisches Media-Player-Toggle. Zwei Zustände, ein Button.</p>
+
+  <h2>Grid-Button (Übersicht aller Karten)</h2>
+  <div class="icon-row">
+    <div class="opt">
+      <div class="preview" style="width:44px;height:44px;background:rgba(255,255,255,0.10);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      </div>
+      <div class="label">LayoutGrid<br>(2×2)</div>
+    </div>
+    <div class="opt">
+      <div class="preview" style="width:44px;height:44px;background:rgba(255,255,255,0.10);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+      </div>
+      <div class="label">Grid3×3<br>(klassisch)</div>
+    </div>
+    <div class="opt selected">
+      <div class="preview" style="width:44px;height:44px;background:rgba(255,255,255,0.10);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+      </div>
+      <div class="label">Layers<br>(Empfehlung)</div>
+    </div>
+  </div>
+  <p class="note">Empfehlung: <strong>Layers</strong> — Karten-Stapel-Assoziation passt zur Sammlung. Alternativ LayoutGrid wenn generischer gewünscht. Album/Masonry waren weitere Optionen (siehe Hinzufügen-Mockup).</p>
+</aside>
+
+</div><!-- /stage -->
+
+</body>
+</html>

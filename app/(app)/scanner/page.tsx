@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Trash2, Loader2, AlertCircle, Check, Plus, LayoutGrid, Camera, Bug, Play, Square } from 'lucide-react';
+import { X, Trash2, Loader2, AlertCircle, Check, Plus, LayoutGrid, Camera, Bug, ScanLine, Pause } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
@@ -102,6 +102,20 @@ function cardImgUrl(job: ScanJob): string | null {
   return card.imgSmall ?? null;
 }
 
+/** Wie cardImgUrl, aber bevorzugt imgLarge*-URLs für die zentrale
+ *  Erkennen-Anzeige (~600 px Höhe sonst sichtbar unscharf). */
+function cardImgUrlLarge(job: ScanJob): string | null {
+  if (job.status === 'processing' && job.debug?.imageBase64)
+    return `data:${job.debug.mimeType ?? 'image/jpeg'};base64,${job.debug.imageBase64}`;
+  const card = job.result?.card;
+  if (!card) return null;
+  const lang = job.result?.language ?? 'en';
+  if (lang === 'de' && card.imgLargeDe) return card.imgLargeDe;
+  if (card.imgLarge) return card.imgLarge;
+  if (lang === 'de' && card.imgSmallDe) return card.imgSmallDe;
+  return card.imgSmall ?? null;
+}
+
 export default function ScannerPage() {
   const router = useRouter();
   const [jobs, setJobs] = useState<ScanJob[]>([]);
@@ -120,6 +134,13 @@ export default function ScannerPage() {
     catch { return false; }
   });
   const [streamPaused, setStreamPaused] = useState(false);
+  // Im Erkennen-Modus: ID des aktuell zentral angezeigten Jobs. Wird beim
+  // erfolgreichen Recognize-Scan gesetzt; Resume-Tap räumt ihn zurück.
+  const [recognizedJobId, setRecognizedJobId] = useState<string | null>(null);
+  // Ref für scanMode — handleCapture hat empty-deps useCallback,
+  // ohne Ref wäre der Wert stale.
+  const scanModeRef = useRef(scanMode);
+  useEffect(() => { scanModeRef.current = scanMode; }, [scanMode]);
   // FIFO-Queue für Uploads: parallele Scans senden nacheinander statt
   // gleichzeitig — verhindert Bandbreiten-Konkurrenz auf schwachem Mobilnetz.
   const uploadChainRef = useRef<Promise<unknown>>(Promise.resolve());
@@ -291,6 +312,13 @@ export default function ScannerPage() {
         },
       } : j));
 
+      // Erkennen-Modus: nach erfolgreichem Catalog-Match Stream pausieren und
+      // den Job zentral anzeigen. Resume-Tap (FAB) räumt das wieder auf.
+      if (catalogCard && scanModeRef.current === 'recognize') {
+        setRecognizedJobId(id);
+        setStreamPaused(true);
+      }
+
       // ── Owned-Count non-blocking nachladen ────────────────────────────────
       if (catalogCard) {
         const tOwned = Date.now();
@@ -455,60 +483,15 @@ export default function ScannerPage() {
         </div>
       )}
 
-      {/* ── Header (schwebt über Kamera/Review) ─────────────────── */}
+      {/* ── Header (schwebt oben, nur X) ─────────────────────────── */}
       <div
-        className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 pb-3"
+        className="absolute top-0 right-0 z-20 px-4 pb-3"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
       >
-        {jobs.length > 0 ? (
-          <button
-            onClick={() => setMode(mode === 'scanning' ? 'review' : 'scanning')}
-            className="relative w-9 h-9 flex items-center justify-center rounded-full bg-white/10 backdrop-blur-sm"
-            aria-label={mode === 'scanning' ? 'Übersicht öffnen' : 'Zurück zum Scannen'}
-          >
-            {mode === 'scanning'
-              ? <LayoutGrid size={18} color="#fff" />
-              : <Camera size={18} color="#fff" />}
-            {mode === 'scanning' && (
-              <span
-                className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center"
-                style={{ background: 'var(--pokedex-red)', color: '#fff' }}
-              >
-                {jobs.length}
-              </span>
-            )}
-          </button>
-        ) : (
-          <div className="w-9" />
-        )}
-        {/* Mode-Switch [Hinzufügen | Erkennen] — verdrängt die "Karten gescannt"-Anzeige */}
-        <div
-          className="flex rounded-full p-0.5 bg-black/50 backdrop-blur-sm"
-          style={{ border: '1px solid rgba(255,255,255,0.12)' }}
-        >
-          {(['add', 'recognize'] as const).map(m => (
-            <button
-              key={m}
-              onClick={() => setScanMode(m)}
-              className="px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors"
-              style={{
-                background: scanMode === m ? 'var(--pokedex-red)' : 'transparent',
-                color:      scanMode === m ? '#fff' : 'rgba(255,255,255,0.65)',
-              }}
-            >
-              {m === 'add' ? 'Hinzufügen' : 'Erkennen'}
-            </button>
-          ))}
-        </div>
         <button
           onClick={() => {
-            // router.back() funktioniert nur wenn Browser-History existiert.
-            // Fallback: sofort zur Startseite navigieren.
-            if (window.history.length > 1) {
-              router.back();
-            } else {
-              router.replace('/');
-            }
+            if (window.history.length > 1) router.back();
+            else router.replace('/');
           }}
           className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10 backdrop-blur-sm"
           aria-label="Schließen"
@@ -522,7 +505,7 @@ export default function ScannerPage() {
       {mode === 'scanning' && scanMode === 'add' && jobs.length > 0 && (
         <div
           className="absolute left-0 right-0 z-10 px-4"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 104px)' }}
         >
           <div
             className="flex gap-2 overflow-x-auto pb-2 pt-1"
@@ -546,48 +529,100 @@ export default function ScannerPage() {
       {/* ── Erkennen-Modus: zentrale große Karten-Anzeige ──────────────
           Zeigt nur den zuletzt erfolgreich gescannten Job. Neuer Scan
           überschreibt visuell, aber alle Scans bleiben in `jobs`. */}
-      {mode === 'scanning' && scanMode === 'recognize' && (() => {
-        const latest = [...doneJobs].reverse()[0] ?? null;
-        if (!latest) return null;
+      {mode === 'scanning' && scanMode === 'recognize' && recognizedJobId && (() => {
+        const recognized = jobs.find(j => j.id === recognizedJobId) ?? null;
+        if (!recognized?.result?.card) return null;
         return (
           <RecognizedCardLarge
-            job={latest}
-            onCardTap={() => setActiveJobId(latest.id)}
-            onDebug={() => setDebugJobId(latest.id)}
-            onVariantChange={v => setJobVariant(latest.id, v)}
-            onConditionChange={c => setJobCondition(latest.id, c)}
+            job={recognized}
+            onCardTap={() => setActiveJobId(recognized.id)}
+            onDebug={() => setDebugJobId(recognized.id)}
+            onVariantChange={v => setJobVariant(recognized.id, v)}
+            onConditionChange={c => setJobCondition(recognized.id, c)}
           />
         );
       })()}
 
 
-      {/* ── Footer-FAB: Stream-Toggle (Start / Pause / Resume) ──────
-          Erscheint nur im Scan-Modus. Position + Größe wie BottomNav-FAB.
-          - cameraActive=false  → Camera-Icon  → Tap startet Stream (getUserMedia)
-          - cameraActive=true, !paused → Pause-Icon → Tap pausiert Detection
-          - cameraActive=true, paused  → Play-Icon  → Tap nimmt Detection wieder auf */}
+      {/* ── Footer-Toolbar: Grid + Mode-Switch + FAB ─────────────────
+          Erscheint im Scan-Modus. Drei Slots:
+          • Links (44 px immer reserviert): Grid-Toggle, sichtbar nur im
+            Hinzufügen-Modus mit >0 Karten — sonst leer (stabile Positionen)
+          • Mitte: Mode-Switch [Hinzufügen | Erkennen]
+          • Rechts (72 px): FAB-Toggle
+            - !cameraActive ODER paused → Scan-Icon → Stream startet/fortsetzt
+            - cameraActive && !paused   → Pause-Bars → Pausiert Detection */}
       {mode === 'scanning' && (
-        <button
-          onClick={() => {
-            if (!cameraActive) { setCameraActive(true); setStreamPaused(false); return; }
-            setStreamPaused(p => !p);
-          }}
-          className="absolute z-30 left-1/2 -translate-x-1/2 flex items-center justify-center rounded-full shadow-lg"
+        <div
+          className="absolute left-0 right-0 z-20 flex items-center justify-between gap-3 px-4"
           style={{
             bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
-            width: 72, height: 72,
-            background: 'var(--pokedex-red)',
+            height: 80,
           }}
-          aria-label={!cameraActive ? 'Kamera starten' : streamPaused ? 'Stream fortsetzen' : 'Stream pausieren'}
         >
-          {!cameraActive ? (
-            <Camera size={28} color="#fff" />
-          ) : streamPaused ? (
-            <Play size={28} color="#fff" />
-          ) : (
-            <Square size={26} color="#fff" fill="#fff" />
-          )}
-        </button>
+          {/* Grid-Slot (immer 44 px breit) */}
+          <div className="w-11 h-11 flex items-center justify-center">
+            {scanMode === 'add' && jobs.length > 0 && (
+              <button
+                onClick={() => setMode(mode === 'scanning' ? 'review' : 'scanning')}
+                className="relative w-11 h-11 flex items-center justify-center rounded-full bg-white/10 backdrop-blur-sm"
+                aria-label="Übersicht öffnen"
+              >
+                <LayoutGrid size={20} color="#fff" />
+                <span
+                  className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center"
+                  style={{ background: 'var(--pokedex-red)', color: '#fff' }}
+                >
+                  {jobs.length}
+                </span>
+              </button>
+            )}
+          </div>
+
+          {/* Mode-Switch (Mitte, schrumpft wenn nötig) */}
+          <div
+            className="flex rounded-full p-0.5 bg-black/55 backdrop-blur-sm"
+            style={{ border: '1px solid rgba(255,255,255,0.12)' }}
+          >
+            {(['add', 'recognize'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setScanMode(m)}
+                className="px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors"
+                style={{
+                  background: scanMode === m ? 'var(--pokedex-red)' : 'transparent',
+                  color:      scanMode === m ? '#fff' : 'rgba(255,255,255,0.65)',
+                }}
+              >
+                {m === 'add' ? 'Hinzufügen' : 'Erkennen'}
+              </button>
+            ))}
+          </div>
+
+          {/* FAB rechts: Scan-Icon ↔ Pause-Bars */}
+          <button
+            onClick={() => {
+              if (!cameraActive) { setCameraActive(true); setStreamPaused(false); return; }
+              if (streamPaused) {
+                setStreamPaused(false);
+                setRecognizedJobId(null); // im Erkennen-Modus räumt Resume die zentrale Karte auf
+              } else {
+                setStreamPaused(true);
+              }
+            }}
+            className="flex items-center justify-center rounded-full shadow-lg"
+            style={{ width: 72, height: 72, background: 'var(--pokedex-red)' }}
+            aria-label={
+              !cameraActive ? 'Kamera starten'
+              : streamPaused ? 'Stream fortsetzen'
+              : 'Stream pausieren'
+            }
+          >
+            {(!cameraActive || streamPaused)
+              ? <ScanLine size={30} color="#fff" />
+              : <Pause size={30} color="#fff" fill="#fff" />}
+          </button>
+        </div>
       )}
 
       {/* ── Debug-Modal ──────────────────────────────────────────── */}
@@ -872,7 +907,7 @@ interface RecognizedCardLargeProps {
 function RecognizedCardLarge({
   job, onCardTap, onDebug, onVariantChange, onConditionChange,
 }: RecognizedCardLargeProps) {
-  const img       = cardImgUrl(job);
+  const img       = cardImgUrlLarge(job);
   const card      = job.result?.card;
   const borderCol = job.result?.fakeRisk
     ? FAKE_RISK_BORDER[job.result.fakeRisk]
@@ -890,8 +925,8 @@ function RecognizedCardLarge({
     <div
       className="absolute inset-x-0 z-10 flex flex-col items-center px-6 gap-3"
       style={{
-        top: 'calc(env(safe-area-inset-top, 0px) + 64px)',
-        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)',
+        top: 'calc(env(safe-area-inset-top, 0px) + 56px)',
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 100px)',
       }}
     >
       {/* Owned-Banner */}
