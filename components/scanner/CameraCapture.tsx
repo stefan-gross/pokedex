@@ -53,7 +53,10 @@ const MOTION_SNAP_THRESHOLD  = 700;   // unter diesem MSE-Wert gilt es als "ruhi
 const SNAP_STABLE_FRAMES     = 1;     // 1 ruhiger Frame reicht
 const BOX_SETTLED_THRESHOLD  = 35;   // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames
 const CONSECUTIVE_SNAP_FRAMES = 3;   // Fallback: nach N aufeinander folgenden Treffern immer auslösen
-const SNAP_COOLDOWN_SAFETY   = 2500; // Fallback-Timeout falls Karte nie verschwindet (war 8 s)
+// Fester Cooldown nach Snap — kein Absence-Warten mehr.
+// Nach SNAP_COOLDOWN_MS ist der Scanner sofort bereit, auch wenn die Karte noch im Bild ist.
+// Stativ-Zyklus: 700ms Pause + ~450ms Neu-Erkennung = ~1.1s pro Karte.
+const SNAP_COOLDOWN_MS       = 700;
 
 // Rand um die ONNX-Box beim Zuschneiden für Gemini (Pixel in Video-Koordinaten)
 const CROP_PADDING = 24;
@@ -94,9 +97,6 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   // Box-Settling: Drift zwischen zwei aufeinanderfolgenden ONNX-Ergebnissen
   const prevBoxRef    = useRef<CardBox | null>(null); // letztes ONNX-Ergebnis
   const boxDeltaRef   = useRef<number>(Infinity);     // Positions-/Größen-Drift in px
-
-  // Absence-basierter Cooldown: nach Snap auf Verschwinden der Karte warten
-  const waitForAbsenceRef = useRef(false);
 
   // Aufeinanderfolgende ONNX-Treffer (Fallback-Trigger ohne Box-Settling)
   const consecutiveDetectRef = useRef(0);
@@ -377,20 +377,18 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
     stableRef.current = 0; setProgress(0); setDetected(false);
     prevBoxRef.current = null; boxDeltaRef.current = Infinity;
-    consecutiveDetectRef.current = 0;
 
-    // Absence-basierter Cooldown: blockiert bis Karte das Bild verlässt
+    // Fester Timer-Cooldown — kein Absence-Warten.
+    // Nach SNAP_COOLDOWN_MS bereit für nächste Karte, auch wenn sie noch im Bild ist.
     cooldownRef.current = true;
-    waitForAbsenceRef.current = true;
     setInCooldown(true);
-    // Sicherheits-Timeout: falls ONNX die Karte nie als "weg" erkennt (z.B. Dauerbeleuchtung)
     setTimeout(() => {
-      if (waitForAbsenceRef.current) {
-        waitForAbsenceRef.current = false;
-        cooldownRef.current = false;
-        setInCooldown(false);
-      }
-    }, SNAP_COOLDOWN_SAFETY);
+      cooldownRef.current          = false;
+      setInCooldown(false);
+      consecutiveDetectRef.current = 0; // Zähler neu starten → verhindert Doppel-Snap
+      stableRef.current            = 0;
+      setProgress(0);
+    }, SNAP_COOLDOWN_MS);
   }, [paused]);
 
   // ── Detection-Loop ────────────────────────────────────────────────────────
@@ -434,18 +432,12 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
             } else {
               onnxStickyRef.current = Math.max(0, onnxStickyRef.current - 1);
               if (onnxStickyRef.current === 0) {
+                // Karte aus dem Bild — Overlay + Zähler zurücksetzen
                 onnxBoxRef.current           = null;
                 prevBoxRef.current           = null;
                 boxDeltaRef.current          = Infinity;
-                consecutiveDetectRef.current = 0; // Reset: Karte weg
-                // Absence erkannt → Cooldown aufheben (nächste Karte darf gescannt werden)
-                if (waitForAbsenceRef.current) {
-                  waitForAbsenceRef.current = false;
-                  cooldownRef.current       = false;
-                  setInCooldown(false);
-                  stableRef.current = 0;
-                  setProgress(0);
-                }
+                consecutiveDetectRef.current = 0; // frische Erkennung für nächste Karte
+                // Cooldown läuft per Timer — hier kein Eingriff nötig
               }
             }
           }).catch(() => {
@@ -525,7 +517,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   };
 
   const hintText = paused             ? 'Scannen pausiert'
-    : inCooldown                      ? 'Karte aus dem Bild nehmen …'
+    : inCooldown                      ? 'Nächste Karte …'
     : detected && progress >= 1       ? 'Karte erkannt — wird aufgenommen …'
     : detected                        ? 'Karte erkannt'
     : progress > 0                    ? 'Fast …'
