@@ -76,8 +76,9 @@ Classic sets (only symbol, no printed code — identify visually):
   Large spiral/destiny → neo4 (Neo Destiny)
   Legend triangle/sun → ex series (exand, ex1–ex16)`;
 
-// Fallback-Kette: 2.5-flash zuerst, bei 503 auf 1.5-flash
-const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+// Fallback-Kette: 2.5-flash zuerst, bei 503/429 auf 2.0-flash
+// gemini-1.5-flash ist für API v1beta nicht mehr verfügbar (404)
+const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.0-flash'];
 
 export async function POST(req: NextRequest) {
   try {

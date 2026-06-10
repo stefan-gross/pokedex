@@ -127,6 +127,49 @@ export async function detectCardInFrame(
     }
   }
 
+  // 3b. Texturprüfung — leere Kartonkisten/Tischflächen herausfiltern
+  //     Echte Pokémon-Karten haben buntes Artwork → hohe Farbvarianz im Zentrum.
+  //     Gleichförmige Hintergründe (Karton, Tisch) haben sehr niedrige Varianz,
+  //     werden aber vom Modell trotzdem mit hoher Konfidenz erkannt (conf ≥ 0.9).
+  //     Threshold empirisch: Karton < 150, Karte mit Artwork > 400.
+  if (best) {
+    const MIN_TEXTURE_VARIANCE = 300;
+
+    // Erkannte Box zurück in Model-Koordinaten (640×640) umrechnen
+    const bxM = padX + best.x * scale;
+    const byM = padY + best.y * scale;
+    const bwM = best.w * scale;
+    const bhM = best.h * scale;
+
+    // Inneres 50% der Box analysieren (Rand weglassen, nur Artwork-Bereich)
+    const ix = Math.max(0, Math.round(bxM + bwM * 0.25));
+    const iy = Math.max(0, Math.round(byM + bhM * 0.25));
+    const iw = Math.max(4, Math.min(MODEL_INPUT_SIZE - ix, Math.round(bwM * 0.5)));
+    const ih = Math.max(4, Math.min(MODEL_INPUT_SIZE - iy, Math.round(bhM * 0.5)));
+
+    // Farbvarianz berechnen (jeden 2. Pixel samplen → Performance)
+    let sumR = 0, sumG = 0, sumB = 0, n = 0;
+    for (let row = iy; row < iy + ih; row += 2) {
+      for (let col = ix; col < ix + iw; col += 2) {
+        const j4 = (row * MODEL_INPUT_SIZE + col) * 4;
+        sumR += px[j4]; sumG += px[j4 + 1]; sumB += px[j4 + 2]; n++;
+      }
+    }
+    if (n > 0) {
+      const ar = sumR / n, ag = sumG / n, ab = sumB / n;
+      let variance = 0;
+      for (let row = iy; row < iy + ih; row += 2) {
+        for (let col = ix; col < ix + iw; col += 2) {
+          const j4 = (row * MODEL_INPUT_SIZE + col) * 4;
+          const dr = px[j4] - ar, dg = px[j4 + 1] - ag, db = px[j4 + 2] - ab;
+          variance += (dr * dr + dg * dg + db * db) / 3;
+        }
+      }
+      variance /= n;
+      if (variance < MIN_TEXTURE_VARIANCE) return null; // zu gleichförmig → kein echter Karteninhalt
+    }
+  }
+
   // 4. Segmentierungsmaske dekodieren → 4 Eckpunkte berechnen
   //    output1: [1, 32, 160, 160] — Masken-Prototypen
   //    output0 Features 6–37: 32 Masken-Koeffizienten der besten Detektion

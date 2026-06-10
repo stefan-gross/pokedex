@@ -295,6 +295,21 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
     };
   }, [startCamera]);
 
+  // ── App-Resume: Kamera nach iOS-Background-Suspend reaktivieren ──────────
+  // iOS beendet Camera-Tracks wenn die PWA in den Hintergrund geht.
+  // visibilitychange → visible: Stream prüfen und ggf. neu öffnen.
+  // startCamera() gibt den bestehenden Stream zurück wenn er noch lebt —
+  // kein neuer getUserMedia-Call → kein Permission-Dialog.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        startCamera();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [startCamera]);
+
   // ── Foto auslösen ─────────────────────────────────────────────────────────
   const doCapture = useCallback(() => {
     if (cooldownRef.current || paused) return;
