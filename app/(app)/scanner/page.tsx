@@ -109,6 +109,9 @@ export default function ScannerPage() {
   const [activeOwnedCopies, setActiveOwnedCopies] = useState<CardDoc[]>([]);
   const [debugJobId, setDebugJobId] = useState<string | null>(null);
   const [mode, setMode] = useState<'scanning' | 'review'>('scanning');
+  // Scanner-Workflow: Hinzufügen (Slider-Sammlung) vs. Erkennen (Lookup-Anzeige).
+  // In Stufe 3 nur Visual — Verhalten ändert sich in Stufe 4.
+  const [scanMode, setScanMode] = useState<'add' | 'recognize'>('add');
   // FIFO-Queue für Uploads: parallele Scans senden nacheinander statt
   // gleichzeitig — verhindert Bandbreiten-Konkurrenz auf schwachem Mobilnetz.
   const uploadChainRef = useRef<Promise<unknown>>(Promise.resolve());
@@ -465,9 +468,25 @@ export default function ScannerPage() {
         ) : (
           <div className="w-9" />
         )}
-        <h1 className="text-base font-semibold text-white drop-shadow">
-          {mode === 'scanning' ? 'Karten scannen' : `${doneJobs.length} Karte${doneJobs.length !== 1 ? 'n' : ''} gescannt`}
-        </h1>
+        {/* Mode-Switch [Hinzufügen | Erkennen] — verdrängt die "Karten gescannt"-Anzeige */}
+        <div
+          className="flex rounded-full p-0.5 bg-black/50 backdrop-blur-sm"
+          style={{ border: '1px solid rgba(255,255,255,0.12)' }}
+        >
+          {(['add', 'recognize'] as const).map(m => (
+            <button
+              key={m}
+              onClick={() => setScanMode(m)}
+              className="px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors"
+              style={{
+                background: scanMode === m ? 'var(--pokedex-red)' : 'transparent',
+                color:      scanMode === m ? '#fff' : 'rgba(255,255,255,0.65)',
+              }}
+            >
+              {m === 'add' ? 'Hinzufügen' : 'Erkennen'}
+            </button>
+          ))}
+        </div>
         <button
           onClick={() => {
             // router.back() funktioniert nur wenn Browser-History existiert.
