@@ -10,11 +10,11 @@ interface Props {
   paused?: boolean;
 }
 
-// ─── Modul-Level: Stream überlebt React-Remounts ─────────────────────────────
-// CameraCapture wird nach dem ersten Snap neu gemountet (Parent re-render).
-// Damit kein zweiter getUserMedia-Dialog erscheint, bleibt der Stream erhalten.
-let _kameraStream:   MediaStream | null                       = null;
-let _stopTimer:      ReturnType<typeof setTimeout> | null     = null;
+// ─── Modul-Level: Stream-Referenz für Visibility-Handler ─────────────────────
+// _kameraStream wird beim startCamera() gesetzt und beim Unmount sofort gestoppt.
+// Modul-Level (nicht Ref), damit der visibilitychange-Handler den aktuellen
+// Track-Status prüfen kann ohne via Closure den Ref-Stand zu kennen.
+let _kameraStream:   MediaStream | null = null;
 let _mountGeneration = 0; // steigt bei jedem Mount — für Debug sichtbar
 
 // ─── Gerundetes Polygon für rotierten Karten-Rahmen ──────────────────────────
@@ -237,10 +237,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
 
   // ── Kamera starten ────────────────────────────────────────────────────────
   const startCamera = useCallback(async () => {
-    // Laufenden Stop-Timer abbrechen (Remount hat stattgefunden)
-    if (_stopTimer) { clearTimeout(_stopTimer); _stopTimer = null; }
-
-    // Vorhandenen Stream wiederverwenden — verhindert Permission-Dialog bei Remount
+    // Vorhandenen Stream wiederverwenden — verhindert Permission-Dialog
+    // wenn z.B. der Nutzer nach Track-Ended das 'Tippe zum Neustart'-Overlay
+    // antippt, der Stream aber doch noch lebt.
     const existingTrack = _kameraStream?.getVideoTracks()[0];
     if (existingTrack && existingTrack.readyState !== 'ended') {
       const currentFacing = existingTrack.getSettings().facingMode;
@@ -299,38 +298,38 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false }: P
   useEffect(() => {
     startCamera();
     return () => {
-      // Verzögert stoppen — gibt Remounts Zeit, den Stream zu übernehmen.
-      // Generations-Check: nur stoppen wenn kein neuerer Mount aktiv ist.
-      const myGen = mountGenRef.current;
-      _stopTimer = setTimeout(() => {
-        if (_mountGeneration !== myGen) return; // Neuerer Mount hat Stream bereits übernommen
-        _kameraStream?.getTracks().forEach(t => t.stop());
-        _kameraStream = null;
-        streamRef.current = null;
-      }, 5000);
+      // Sofort stoppen — Unmount = explizite Nutzer-Aktion
+      // (Review-Toggle, Scanner-Schließen). Kein 5s-Grace, der Stream
+      // würde sonst noch laufen wenn der Nutzer im Review-Modus ist
+      // (grüner iOS-Indikator obwohl Kamera nicht sichtbar).
+      _kameraStream?.getTracks().forEach(t => t.stop());
+      _kameraStream = null;
+      streamRef.current = null;
     };
   }, [startCamera]);
 
-  // ── App-Resume: Kamera nach iOS-Background-Suspend reaktivieren ──────────
-  // iOS beendet Camera-Tracks wenn die PWA in den Hintergrund geht.
-  // visibilitychange → visible: Stream prüfen und ggf. neu öffnen.
-  // startCamera() gibt den bestehenden Stream zurück wenn er noch lebt —
-  // kein neuer getUserMedia-Call → kein Permission-Dialog.
+  // ── App-Resume nach iOS-Background-Suspend ───────────────────────────────
+  // iOS beendet Camera-Tracks wenn die PWA in den Hintergrund geht (Hardware
+  // wird freigegeben). Wir starten die Kamera NICHT automatisch neu —
+  // sonst poppt unerwartet ein Permission-Dialog auf während der Nutzer noch
+  // gar nicht wieder im Scanner ist. Stattdessen:
+  //   • Track-'ended'-Listener (in startCamera) zeigt 'Tippe zum Neustart'-UI
+  //   • Bei sichtbarer App ohne Stream: ebenfalls Tippe-UI zeigen
+  // So ist der Dialog immer eine direkte Reaktion auf einen Nutzer-Tap.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
-      // iOS feuert visibilitychange auch bei subtilen Vorgängen
-      // (Kontrollzentrum, Benachrichtigung, Permission-Dialog selbst).
-      // Nur startCamera aufrufen wenn der Stream wirklich tot ist —
-      // sonst löst jeder dieser Events einen erneuten getUserMedia-Dialog aus.
       const track = _kameraStream?.getVideoTracks()[0];
       const vid   = videoRef.current;
+      // Alles läuft → nichts tun
       if (track && track.readyState === 'live' && vid && !vid.paused) return;
-      startCamera();
+      // Stream ist tot → Nutzer per Tippe-UI auffordern, statt selbst
+      // getUserMedia aufzurufen (würde sonst spontan Dialog triggern).
+      setError('interrupted');
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [startCamera]);
+  }, []);
 
   // ── Foto auslösen ─────────────────────────────────────────────────────────
   const doCapture = useCallback(() => {
