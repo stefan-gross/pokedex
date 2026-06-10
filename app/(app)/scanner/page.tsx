@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Trash2, Loader2, AlertCircle, Check, Plus, Bug } from 'lucide-react';
+import { X, Trash2, Loader2, AlertCircle, Check, Plus, Bug, LayoutGrid, Camera } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { getCardBySetCodeAndNumber, getCardsByDexNumber } from '@/lib/firestore/catalog';
@@ -335,7 +335,27 @@ export default function ScannerPage() {
         className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 pb-3"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
       >
-        <div className="w-9" />
+        {jobs.length > 0 ? (
+          <button
+            onClick={() => setMode(mode === 'scanning' ? 'review' : 'scanning')}
+            className="relative w-9 h-9 flex items-center justify-center rounded-full bg-white/10 backdrop-blur-sm"
+            aria-label={mode === 'scanning' ? 'Übersicht öffnen' : 'Zurück zum Scannen'}
+          >
+            {mode === 'scanning'
+              ? <LayoutGrid size={18} color="#fff" />
+              : <Camera size={18} color="#fff" />}
+            {mode === 'scanning' && (
+              <span
+                className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center"
+                style={{ background: 'var(--pokedex-red)', color: '#fff' }}
+              >
+                {jobs.length}
+              </span>
+            )}
+          </button>
+        ) : (
+          <div className="w-9" />
+        )}
         <h1 className="text-base font-semibold text-white drop-shadow">
           {mode === 'scanning' ? 'Karten scannen' : `${doneJobs.length} Karte${doneJobs.length !== 1 ? 'n' : ''} gescannt`}
         </h1>

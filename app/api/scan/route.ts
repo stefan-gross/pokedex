@@ -44,9 +44,12 @@ fakeReasons: list specific issues, e.g. ["blurry text", "wrong font"]. Empty arr
 
 If no Pokémon card is visible: { "error": "No card detected" }`;
 
-// Fallback-Kette: 2.5-flash zuerst, bei 503/429 auf 2.0-flash
-// gemini-1.5-flash ist für API v1beta nicht mehr verfügbar (404)
-const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+// Fallback-Kette: schnellstes Modell zuerst, bei 503 weiterprobieren.
+// gemini-2.5-flash-lite ist deutlich schneller (~1-3s statt ~10-20s),
+// reicht für strukturierte JSON-Antworten dieses Prompts völlig aus.
+// gemini-flash-latest ist der Alias auf das aktuelle Flash-Modell — überlebt
+// EoL-Wechsel automatisch (gemini-2.0-flash wurde abgekündigt, 404).
+const MODEL_FALLBACKS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'];
 
 export async function POST(req: NextRequest) {
   try {
