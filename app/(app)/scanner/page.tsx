@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Trash2, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle } from 'lucide-react';
+import { X, Trash2, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle, EyeOff, SearchX } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
@@ -394,42 +394,82 @@ export default function ScannerPage() {
         ? `Gemini: ${gemini.error}`
         : `Gemini: ${gemini.setCode ?? '?'}/${gemini.number ?? '?'} ${gemini.language ?? '?'} (${gemini.confidence ?? '?'})${fakeTag}`;
 
-      if (gemini.error || !gemini.setCode || !gemini.number) {
-        debug.error = gemini.error ?? 'setCode oder number fehlt';
+      // Hard-Fail nur wenn Gemini explizit „kein Karte" sagt ODER alle Identifier
+      // fehlen. Mit dem neuen Prompt ist setCode=null bei Pre-S&V-Karten normal.
+      const hasUsefulInfo = !!(gemini.setCode || gemini.number || gemini.nationalDexNumber);
+      if (gemini.error || !hasUsefulInfo) {
+        debug.error = gemini.error ?? 'Kein lesbarer Karten-Text';
         debug.totalMs = Date.now() - t0;
         setJobs(prev => prev.map(j => j.id === id
-          ? { ...j, status: 'error', result: { card: null, language: 'de' }, debugInfo: geminiSummary, debug: { ...debug } }
+          ? { ...j, status: 'error', result: { card: null, language: (gemini.language ?? 'de') as CardLanguage }, debugInfo: geminiSummary, debug: { ...debug } }
           : j));
         return;
       }
 
-      const rawNumber = gemini.number.includes('/') ? gemini.number.split('/')[0] : gemini.number;
+      const rawNumber = typeof gemini.number === 'string' && gemini.number.includes('/')
+        ? gemini.number.split('/')[0]
+        : (gemini.number ?? '');
 
       // ── Catalog-Lookups (lookupMs misst diesen ganzen Block) ─────────────
       const tLookup = Date.now();
+      let catalogCard = null as Awaited<ReturnType<typeof getCardBySetCodeAndNumber>>;
+      let dexCandidateCount = 0;
 
-      debug.lookupSteps!.push(`getCardBySetCodeAndNumber("${gemini.setCode}", "${rawNumber}")`);
-      let catalogCard = await getCardBySetCodeAndNumber(gemini.setCode, rawNumber);
-      debug.lookupSteps![debug.lookupSteps!.length - 1] += catalogCard ? ` → ${catalogCard.id}` : ' → null';
+      // 1) Direkter SetCode+Number-Lookup (nur wenn beide vorhanden)
+      if (gemini.setCode && rawNumber) {
+        debug.lookupSteps!.push(`getCardBySetCodeAndNumber("${gemini.setCode}", "${rawNumber}")`);
+        catalogCard = await getCardBySetCodeAndNumber(gemini.setCode, rawNumber);
+        debug.lookupSteps![debug.lookupSteps!.length - 1] += catalogCard ? ` → ${catalogCard.id}` : ' → null';
 
-      // Nummernformat-Variante: "005" ↔ "5"
-      if (!catalogCard) {
-        const alt = /^\d+$/.test(rawNumber)
-          ? String(parseInt(rawNumber, 10))
-          : rawNumber.padStart(3, '0');
-        if (alt !== rawNumber) {
-          debug.lookupSteps!.push(`getCardBySetCodeAndNumber("${gemini.setCode}", "${alt}")`);
-          catalogCard = await getCardBySetCodeAndNumber(gemini.setCode, alt);
-          debug.lookupSteps![debug.lookupSteps!.length - 1] += catalogCard ? ` → ${catalogCard.id}` : ' → null';
+        // 2) Nummernformat-Variante: "005" ↔ "5"
+        if (!catalogCard) {
+          const alt = /^\d+$/.test(rawNumber)
+            ? String(parseInt(rawNumber, 10))
+            : rawNumber.padStart(3, '0');
+          if (alt !== rawNumber) {
+            debug.lookupSteps!.push(`getCardBySetCodeAndNumber("${gemini.setCode}", "${alt}")`);
+            catalogCard = await getCardBySetCodeAndNumber(gemini.setCode, alt);
+            debug.lookupSteps![debug.lookupSteps!.length - 1] += catalogCard ? ` → ${catalogCard.id}` : ' → null';
+          }
         }
       }
 
-      // Fallback: Pokédex-Nummer (wenn setCode nicht lesbar oder Katalog lückenhaft)
+      // 3) Fallback: Pokédex-Nummer mit Number-Filter — kein blindes [0]
       if (!catalogCard && gemini.nationalDexNumber) {
-        debug.lookupSteps!.push(`getCardsByDexNumber(${gemini.nationalDexNumber})`);
-        const dexCards = await getCardsByDexNumber(gemini.nationalDexNumber, 1);
-        debug.lookupSteps![debug.lookupSteps!.length - 1] += dexCards.length > 0 ? ` → ${dexCards[0].id}` : ' → null';
-        if (dexCards.length > 0) catalogCard = dexCards[0];
+        debug.lookupSteps!.push(`getCardsByDexNumber(${gemini.nationalDexNumber}, 100)`);
+        const dexCards = await getCardsByDexNumber(gemini.nationalDexNumber, 100);
+        dexCandidateCount = dexCards.length;
+        debug.lookupSteps![debug.lookupSteps!.length - 1] += ` → ${dexCards.length} Kandidaten`;
+
+        if (dexCards.length > 0) {
+          // Filtere auf number === rawNumber (oder Format-Variante)
+          let filtered = dexCards;
+          if (rawNumber) {
+            const altNumber = /^\d+$/.test(rawNumber)
+              ? String(parseInt(rawNumber, 10))
+              : rawNumber.padStart(3, '0');
+            filtered = dexCards.filter(c => c.number === rawNumber || c.number === altNumber);
+            debug.lookupSteps!.push(`filter by number=${rawNumber} → ${filtered.length} übrig`);
+          }
+          if (filtered.length === 0) filtered = dexCards;
+
+          // Falls Gemini einen Letter-Code lieferte (sollte zwar oben gematcht haben,
+          // aber falls Set noch nicht gesynct ist): bevorzuge Karten mit gleichem setCode
+          if (filtered.length > 1 && gemini.setCode) {
+            const byCode = filtered.filter(c => c.setCode === gemini.setCode);
+            if (byCode.length > 0) {
+              filtered = byCode;
+              debug.lookupSteps!.push(`filter by setCode=${gemini.setCode} → ${filtered.length} übrig`);
+            }
+          }
+
+          if (filtered.length > 0) {
+            catalogCard = filtered[0];
+            if (filtered.length > 1) {
+              debug.lookupSteps!.push(`mehrdeutig: ${filtered.length} Kandidaten — erster gewählt`);
+            }
+          }
+        }
       }
 
       debug.lookupMs = Date.now() - tLookup;
@@ -440,7 +480,7 @@ export default function ScannerPage() {
 
       const catalogInfo = catalogCard
         ? `Katalog: ${catalogCard.name} (${catalogCard.setId}/${catalogCard.number})`
-        : `Katalog: nicht gefunden (setCode=${gemini.setCode}/${rawNumber})`;
+        : `Katalog: nicht gefunden (setCode=${gemini.setCode ?? 'null'}/${rawNumber || 'null'}, dex=${gemini.nationalDexNumber ?? 'null'}, ${dexCandidateCount} Kandidaten)`;
 
       // Bild-Cleanup: bei erfolgreicher Erkennung base64 verwerfen (Katalog-CDN-Bild reicht).
       const finalDebug: ScanDebug = catalogCard
@@ -726,12 +766,46 @@ export default function ScannerPage() {
         );
       })()}
 
-      {/* ── Erkennen-Modus: Fehler-Anzeige wenn Gemini/Katalog fehlschlägt ──
-          Stream bleibt pausiert. Tap auf Erneut-Button räumt den Job auf
-          und resumed den Stream — wie der FAB-Resume-Pfad. */}
+      {/* ── Erkennen-Modus: Fehler-Anzeige mit differenzierter Diagnose ────
+          Drei Fälle:
+          - Gemini sah keine Karte (error="No card detected")
+          - Gemini erkannte zu wenig (kein setCode + number + nationalDexNumber)
+          - Catalog-Miss (Gemini-Werte ok, aber kein DB-Treffer)
+          Debug-Box zeigt die strukturierten Gemini-Felder. */}
       {mode === 'scanning' && scanMode === 'recognize' && !recognizedJobId && (() => {
         const errored = jobs.find(j => j.origin === 'recognize' && j.status === 'error');
         if (!errored) return null;
+        const gp = errored.debug?.geminiParsed as
+          | { error?: string; setCode?: string | null; number?: string | null;
+              language?: string; confidence?: string; nationalDexNumber?: number | null }
+          | undefined;
+
+        // Fehler klassifizieren
+        let kind: 'gemini-blind' | 'gemini-thin' | 'catalog-miss';
+        let HeaderIcon = AlertCircle;
+        let iconColor = '#f87171';
+        let title = 'Karte konnte nicht erkannt werden';
+        let hint = 'Halte die Karte deutlicher in den Rahmen oder versuche eine andere Belichtung.';
+        if (gp?.error || errored.debug?.error === 'No card detected') {
+          kind = 'gemini-blind';
+          HeaderIcon = EyeOff;
+          iconColor = '#facc15';
+          title = 'Keine Karte im Bild';
+          hint = 'Bitte Karte deutlicher in den Rahmen halten.';
+        } else if (!gp?.setCode && !gp?.number && !gp?.nationalDexNumber) {
+          kind = 'gemini-thin';
+          HeaderIcon = AlertTriangle;
+          iconColor = '#fb923c';
+          title = 'Karten-Text konnte nicht gelesen werden';
+          hint = 'Beleuchte die Karte stärker oder rücke näher heran.';
+        } else {
+          kind = 'catalog-miss';
+          HeaderIcon = SearchX;
+          iconColor = '#f87171';
+          title = 'Karte nicht im Katalog gefunden';
+          hint = 'Möglicherweise ein Set, das noch nicht synchronisiert ist.';
+        }
+
         const retry = () => {
           setJobs(prev => prev.filter(j => j.id !== errored.id));
           setStreamPaused(false);
@@ -739,14 +813,42 @@ export default function ScannerPage() {
         return (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 px-6">
             <div
-              className="flex flex-col items-center gap-3 px-6 py-5 rounded-2xl max-w-xs text-center"
-              style={{ background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(8px)' }}
+              className="flex flex-col items-center gap-3 px-5 py-5 rounded-2xl max-w-xs text-center"
+              style={{ background: 'rgba(0,0,0,0.80)', backdropFilter: 'blur(8px)' }}
             >
-              <AlertCircle size={36} color="#f87171" />
-              <p className="text-white text-sm font-medium">Karte konnte nicht erkannt werden</p>
-              <p className="text-white/65 text-xs leading-snug">
-                Halte die Karte deutlicher in den Rahmen oder versuche eine andere Belichtung.
-              </p>
+              <HeaderIcon size={36} color={iconColor} />
+              <p className="text-white text-sm font-semibold leading-tight">{title}</p>
+              <p className="text-white/65 text-xs leading-snug">{hint}</p>
+
+              {/* Debug-Box: zeigt was Gemini geliefert hat */}
+              {gp && kind !== 'gemini-blind' && (
+                <div
+                  className="w-full text-left rounded-lg px-3 py-2 mt-1"
+                  style={{ background: 'rgba(255,255,255,0.06)', fontFamily: 'monospace' }}
+                >
+                  <div className="text-[10px] font-semibold text-white/75 mb-1 uppercase tracking-wide">
+                    Gemini
+                  </div>
+                  <div className="grid grid-cols-[68px_1fr] gap-x-2 text-[11px] leading-snug">
+                    <span className="text-white/55">Set-Code</span>
+                    <span className="text-white/90">{gp.setCode ?? <span className="text-white/45">— (Symbol)</span>}</span>
+                    <span className="text-white/55">Nummer</span>
+                    <span className="text-white/90">{gp.number ?? <span className="text-white/45">—</span>}</span>
+                    <span className="text-white/55">Sprache</span>
+                    <span className="text-white/90">{gp.language ?? '—'}</span>
+                    <span className="text-white/55">Dex-Nr.</span>
+                    <span className="text-white/90">{gp.nationalDexNumber ?? <span className="text-white/45">—</span>}</span>
+                    <span className="text-white/55">Confidence</span>
+                    <span className="text-white/90">{gp.confidence ?? '—'}</span>
+                  </div>
+                  {kind === 'catalog-miss' && errored.debugInfo && (
+                    <div className="text-[10px] text-white/55 mt-1.5 break-words">
+                      {errored.debugInfo.split('|').slice(-1)[0].trim()}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <button
                 onClick={retry}
                 className="mt-1 px-4 h-9 rounded-full text-sm font-semibold text-white"
