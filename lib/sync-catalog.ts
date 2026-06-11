@@ -437,7 +437,11 @@ export async function enrichVariants(batchSize = 500, reset = false): Promise<En
     await Promise.all(setIds.slice(i, i + CONCURRENCY).map(id => fetchDeCardsForSet(toTcgdexId(id))));
   }
 
-  // Batch-Update: überschreibe variants nur wenn TCGdex die Karte kennt
+  // Batch-Update: rechne neue Variants für jede Karte
+  // TCGdex's /sets-Endpoint liefert keine `variants`-Stub-Daten pro Karte —
+  // diese gibt's nur im Detail-Endpoint. Daher nutzen wir hier den Fallback in
+  // tcgdexVariantsToCardVariants() (→ detectVariants(rarity)-Heuristik).
+  // Common/Uncommon/Rare bekommen damit ['standard', 'reverse'] als Default.
   let enriched = 0;
   for (let i = 0; i < batchDocs.length; i += 500) {
     const batch = db.batch();
@@ -445,19 +449,17 @@ export async function enrichVariants(batchSize = 500, reset = false): Promise<En
       const card = doc.data() as CatalogCard;
       const tcgdexId = toTcgdexId(card.setId);
       const cardMap = tcgdexSetCache.get(tcgdexId);
-      if (!cardMap) return;
       const rawNum    = card.number.split('/')[0];
       const normNum   = String(parseInt(rawNum) || 0) || rawNum;
-      const tcgdexCard = cardMap.get(rawNum) ?? cardMap.get(normNum);
-      if (tcgdexCard?.variants) {
-        const newVariants = tcgdexVariantsToCardVariants(tcgdexCard.variants, card.rarity ?? '');
-        // Nur schreiben wenn sich was ändert (vermeidet unnötige writes)
-        const current = (card.variants ?? []).slice().sort().join(',');
-        const next    = newVariants.slice().sort().join(',');
-        if (current !== next) {
-          batch.update(doc.ref, { variants: newVariants });
-          enriched++;
-        }
+      const tcgdexCard = cardMap?.get(rawNum) ?? cardMap?.get(normNum);
+      // Auch ohne TCGdex-Daten: Heuristik anwenden (Fallback in der Helper-Func)
+      const newVariants = tcgdexVariantsToCardVariants(tcgdexCard?.variants, card.rarity ?? '');
+      // Nur schreiben wenn sich was ändert (vermeidet unnötige writes)
+      const current = (card.variants ?? []).slice().sort().join(',');
+      const next    = newVariants.slice().sort().join(',');
+      if (current !== next) {
+        batch.update(doc.ref, { variants: newVariants });
+        enriched++;
       }
     });
     await batch.commit();
