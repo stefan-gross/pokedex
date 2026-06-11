@@ -10,6 +10,7 @@ import { markReviewed, deleteCard } from '@/lib/firestore/cards';
 import { getBinders, addCardToBinder, removeCardFromBinder, removeCardFromBinderAndCleanup, ensureDefaultBinder } from '@/lib/firestore/binders';
 import { getCardsByEvolutionFamily, getCardsByDexNumber } from '@/lib/firestore/catalog';
 import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
+import { CardPriceDetail } from '@/components/card/CardPriceDetail';
 import { fetchPokemonSpeciesDE, getEvolutionFamilyDexNumbers, type SpeciesDE } from '@/lib/pokeapi';
 import { getSetById } from '@/lib/firestore/sets';
 import { CardImage } from '@/components/card/CardImage';
@@ -518,9 +519,9 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                         </button>
                       </div>
 
-                      {/* Preis-Placeholder (wird mit Cardmarket befüllt wenn verfügbar) */}
-                      <div className="text-[12px] text-muted-foreground mb-2">
-                        — Cardmarket-Preis folgt
+                      {/* Cardmarket-Preise */}
+                      <div className="mb-3">
+                        <CardPriceDetail tcgId={card.id} />
                       </div>
 
                       {/* Eigene Kopien */}

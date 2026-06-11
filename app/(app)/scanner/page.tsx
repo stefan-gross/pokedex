@@ -11,6 +11,7 @@ import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
 import { addCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { addCardToBinder, ensureDefaultBinder, ensureInboxBinder } from '@/lib/firestore/binders';
 import { BulkAddToCollectionModal } from '@/components/scanner/BulkAddToCollectionModal';
+import { CardPrice } from '@/components/card/CardPrice';
 import { catalogCardToInfo } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition as PersistedCondition, CardDoc, CardLanguage, CardVariant } from '@/types';
@@ -1289,10 +1290,13 @@ function RecognizedCardLarge({
         )}
       </div>
 
-      {/* Set-Code + Nummer */}
-      <p className="text-sm text-white/70 text-center font-mono">
-        {card?.setCode ? `${card.setCode} ${card.number}` : '—'}
-      </p>
+      {/* Set-Code + Nummer + Cardmarket-Preis */}
+      <div className="flex items-center justify-center gap-2">
+        <p className="text-sm text-white/70 text-center font-mono">
+          {card?.setCode ? `${card.setCode} ${card.number}` : '—'}
+        </p>
+        {card && <CardPrice tcgId={card.id} />}
+      </div>
 
       {/* Status unter der Karte: bereits in Sammlung ODER Hinzufügen-Button */}
       {card && (job.added || isOwned) && (
