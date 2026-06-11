@@ -44,70 +44,13 @@ export default function SettingsPage() {
     }
   }
 
-  async function runSync(mode: 'auto' | 'update') {
-    setSyncing(true);
-    setSyncResult(null);
-    const poller = setInterval(() => loadSyncStatus(), 2000);
-    let retries = 0;
-    try {
-      while (true) {
-        let res: Response, text: string;
-        try {
-          res  = await fetch(`/api/admin/trigger-sync?mode=${mode}`, { method: 'POST' });
-          text = await res.text();
-        } catch {
-          if (++retries > 5) { setSyncResult(`Netzwerkfehler. Bitte erneut versuchen.`); break; }
-          await new Promise(r => setTimeout(r, 2000));
-          continue;
-        }
-        if (!res.ok) {
-          if (++retries > 5) { setSyncResult(`Server-Fehler (${res.status}). Bitte erneut versuchen.`); break; }
-          await new Promise(r => setTimeout(r, 3000));
-          continue;
-        }
-        retries = 0;
-        let data: { done?: boolean; status?: string; message?: string; error?: string } = {};
-        try { data = JSON.parse(text); } catch { /* ignore */ }
-        if (mode === 'update' || data.done || data.status === 'complete' || data.status === 'up-to-date') {
-          setSyncResult(data.message ?? '✅ Fertig');
-          break;
-        }
-        if (data.status === 'error' || data.error) { setSyncResult(data.error ?? data.message ?? 'Fehler'); break; }
-        await new Promise(r => setTimeout(r, 300));
-      }
-      await loadSyncStatus();
-    } finally {
-      clearInterval(poller);
-      setSyncing(false);
-    }
-  }
-
-  async function runReEnrichImages() {
-    if (!confirm('DE-Karten-Bilder neu anreichern (Cursor zurücksetzen)?\nAlle Karten werden erneut verarbeitet — auch bisher übersprungene Sets.')) return;
-    setSyncing(true);
-    setSyncResult(null);
-    try {
-      let total = 0;
-      while (true) {
-        const res  = await fetch('/api/admin/enrich-de-images', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reset: total === 0 }) });
-        const data = await res.json();
-        total += data.enriched ?? 0;
-        setSyncResult(`🖼️ ${total} DE-Bilder angereichert…`);
-        if (data.status === 'complete' || data.status === 'up-to-date') {
-          setSyncResult(`✅ DE-Bilder fertig (${total} Karten)`);
-          break;
-        }
-        if (data.status === 'error' || data.error) { setSyncResult(data.error ?? 'Fehler'); break; }
-      }
-    } finally { setSyncing(false); }
-  }
-
   async function runAllSteps(withReset: boolean) {
     if (withReset) {
       if (!confirm('Catalog zurücksetzen und alle Schritte komplett neu ausführen?\nDas kann mehrere Minuten dauern.')) return;
     }
     setRunningAll(true);
     setSyncing(true);
+    setSyncResult(null);
     const step = (msg: string) => setAllProgress(msg);
     step(withReset ? '↺ Catalog wird zurückgesetzt…' : '▶ Starte…');
 
@@ -117,7 +60,7 @@ export default function SettingsPage() {
         await fetch('/api/admin/trigger-sync?mode=reset', { method: 'POST' });
         await loadSyncStatus();
       }
-      step('📥 (1/6) Catalog wird synchronisiert…');
+      step('📥 (1/7) Catalog wird synchronisiert…');
       const poller = setInterval(loadSyncStatus, 2000);
       let retries = 0;
       while (true) {
@@ -141,37 +84,37 @@ export default function SettingsPage() {
       await loadSyncStatus();
 
       // 2. Evolutionsdaten
-      step('🧬 (2/6) Evolutionsdaten werden angereichert…');
+      step('🧬 (2/7) Evolutionsdaten werden angereichert…');
       let evoTotal = 0;
       while (true) {
         const res  = await fetch('/api/admin/enrich-evolution', { method: 'POST' });
         const data = await res.json();
         evoTotal += data.enriched ?? 0;
-        step(`🧬 (2/6) Evolutionsdaten: ${evoTotal} Karten…`);
+        step(`🧬 (2/7) Evolutionsdaten: ${evoTotal} Karten…`);
         if (data.status !== 'in-progress') break;
       }
 
       // 3. Deutsche Namen
-      step('🇩🇪 (3/6) Deutsche Namen werden angereichert…');
+      step('🇩🇪 (3/7) Deutsche Namen werden angereichert…');
       let deTotal = 0;
       while (true) {
         const res  = await fetch('/api/admin/enrich-german-names', { method: 'POST' });
         const data = await res.json();
         deTotal += data.enriched ?? 0;
-        step(`🇩🇪 (3/6) Deutsche Namen: ${deTotal} Karten…`);
+        step(`🇩🇪 (3/7) Deutsche Namen: ${deTotal} Karten…`);
         if (data.status !== 'in-progress') break;
       }
 
       // 4. Sets
-      step('🗂️ (4/6) Sets werden synchronisiert…');
+      step('🗂️ (4/7) Sets werden synchronisiert…');
       await fetch('/api/admin/sync-sets', { method: 'POST' });
 
       // 5. Set-Kürzel
-      step('🏷️ (5/6) Set-Kürzel werden geschrieben…');
+      step('🏷️ (5/7) Set-Kürzel werden geschrieben…');
       const bfRes  = await fetch('/api/admin/backfill-set-codes', { method: 'POST' });
       const bfData = await bfRes.json();
 
-      // 6. Deutsche Karten-Bilder (mit Reset: auch bisher übersprungene Sets neu prüfen)
+      // 6. Deutsche Karten-Bilder
       step('🖼️ (6/7) Deutsche Karten-Bilder werden angereichert…');
       let imgTotal = 0;
       let imgFirst = true;
@@ -211,14 +154,30 @@ export default function SettingsPage() {
     router.refresh();
   }
 
+  async function handleAppUpdate() {
+    // iOS-PWA cached den App-Shell aggressiv — normales reload() reicht nicht.
+    // Service-Worker-Caches leeren, dann Hard-Navigation mit Query-Parameter.
+    try {
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+      }
+    } catch { /* ignorieren */ }
+    window.location.href = '/?updated=' + Date.now();
+  }
+
   const pct        = syncStatus ? Math.round(((syncStatus.syncedTotal ?? 0) / (syncStatus.currentTotal || 1)) * 100) : 0;
   const isComplete = pct >= 100;
   const hasNew     = (syncStatus?.newCards ?? 0) > 0;
   const busy       = runningAll || syncing;
 
   return (
-    <div className="min-h-screen">
-      <div className="sticky top-safe z-20 bg-background border-b border-border px-4 pt-4 pb-3 flex items-center gap-3">
+    <div className="min-h-screen pb-16">
+      <div className="sticky top-safe z-20 bg-background shadow-header px-4 pt-4 pb-3 flex items-center gap-3">
         <Link href="/" className="text-muted-foreground">
           <ChevronLeft size={22} />
         </Link>
@@ -227,39 +186,27 @@ export default function SettingsPage() {
 
       <div className="px-4 py-5 space-y-6">
 
-        {/* Erscheinungsbild */}
+        {/* 1. App */}
         <section>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Erscheinungsbild</p>
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-border">
-              <p className="text-sm font-medium">Farbschema</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Hell, dunkel oder wie dein System</p>
-            </div>
-            {mounted && (
-              <div className="flex divide-x divide-border">
-                {THEMES.map(({ value, label, icon: Icon }) => (
-                  <button
-                    key={value}
-                    onClick={() => setTheme(value)}
-                    className="flex-1 flex flex-col items-center gap-1.5 py-4 text-xs font-medium transition-colors"
-                    style={{
-                      color: theme === value ? 'var(--pokedex-red)' : 'var(--muted-foreground)',
-                      background: theme === value ? 'color-mix(in srgb, var(--pokedex-red) 8%, transparent)' : undefined,
-                    }}
-                  >
-                    <Icon size={20} strokeWidth={theme === value ? 2.5 : 1.8} />
-                    {label}
-                  </button>
-                ))}
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">App</p>
+          <div className="bg-card shadow-card rounded-2xl overflow-hidden">
+            <button
+              onClick={handleAppUpdate}
+              className="w-full flex items-center gap-3 px-4 py-4 text-left active:bg-secondary transition-colors"
+            >
+              <RefreshCw size={18} className="text-muted-foreground shrink-0" />
+              <div>
+                <p className="text-sm font-medium">App aktualisieren</p>
+                <p className="text-xs text-muted-foreground">Lädt die neueste Version — Cache wird geleert</p>
               </div>
-            )}
+            </button>
           </div>
         </section>
 
-        {/* Karten-Catalog */}
+        {/* 2. Karten-Catalog */}
         <section>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Karten-Catalog</p>
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="bg-card shadow-card rounded-2xl overflow-hidden">
 
             {syncLoading ? (
               <div className="flex justify-center py-6">
@@ -268,7 +215,7 @@ export default function SettingsPage() {
             ) : (
               <>
                 {/* Status */}
-                <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                <div className="px-4 py-3 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Database size={16} className="text-muted-foreground shrink-0" />
                     <p className="text-sm font-medium">Sync-Status</p>
@@ -284,7 +231,7 @@ export default function SettingsPage() {
                 </div>
 
                 {/* Fortschrittsbalken */}
-                <div className="px-4 py-3 space-y-2 border-b border-border">
+                <div className="px-4 pb-3 space-y-2">
                   <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
                     <div className="h-full rounded-full transition-all"
                       style={{ width: `${pct}%`, background: isComplete ? '#48bb78' : 'var(--pokedex-red)' }} />
@@ -309,79 +256,55 @@ export default function SettingsPage() {
                 {/* Fortschritt kombinierter Lauf */}
                 {allProgress && (
                   <div
-                    className="px-4 py-2.5 border-b border-border text-xs font-medium"
-                    style={{ color: allProgress.startsWith('✅') ? '#48bb78' : allProgress.startsWith('Fehler') ? 'var(--pokedex-red)' : 'var(--foreground)' }}
+                    className="px-4 py-2.5 text-xs font-medium"
+                    style={{
+                      color: allProgress.startsWith('✅') ? '#48bb78' : allProgress.startsWith('Fehler') ? 'var(--pokedex-red)' : 'var(--foreground)',
+                      background: 'color-mix(in srgb, var(--foreground) 4%, transparent)',
+                    }}
                   >
                     {allProgress}
                   </div>
                 )}
 
-                {/* Ergebnis letzter Einzel-Sync */}
+                {/* Ergebnis letzter Sync */}
                 {syncResult && !runningAll && (
-                  <div className="px-4 py-2.5 border-b border-border text-xs text-muted-foreground">
+                  <div className="px-4 py-2.5 text-xs text-muted-foreground">
                     {syncResult}
                   </div>
                 )}
 
-                {/* Auf neue Karten prüfen */}
-                <button
-                  onClick={() => runSync('update')}
-                  disabled={busy || (isComplete && !hasNew)}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left border-b border-border transition-colors active:bg-secondary disabled:opacity-40"
-                >
-                  <RefreshCw size={18} className={`text-muted-foreground shrink-0 ${syncing && !runningAll ? 'animate-spin' : ''}`} />
-                  <div>
-                    <p className="text-sm font-medium">
-                      {hasNew ? `${syncStatus!.newCards.toLocaleString('de-DE')} neue Karten holen` : 'Auf neue Karten prüfen'}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Wöchentlich automatisch um Mo. 3:00 Uhr</p>
-                  </div>
-                </button>
-
-                {/* Alles auf einmal */}
+                {/* Daten aktualisieren */}
                 <button
                   onClick={() => runAllSteps(false)}
                   disabled={busy}
-                  className="w-full flex items-center gap-3 px-4 py-4 text-left border-b border-border transition-colors active:bg-secondary disabled:opacity-40"
+                  className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors active:bg-secondary disabled:opacity-40"
                   style={{ background: runningAll ? 'color-mix(in srgb, var(--pokedex-red) 6%, transparent)' : undefined }}
                 >
-                  {runningAll
-                    ? <RefreshCw size={20} className="shrink-0 animate-spin" style={{ color: 'var(--pokedex-red)' }} />
-                    : <span className="text-xl shrink-0">⚡</span>
-                  }
+                  <RefreshCw
+                    size={18}
+                    className={`shrink-0 ${runningAll ? 'animate-spin' : ''}`}
+                    style={{ color: 'var(--pokedex-red)' }}
+                  />
                   <div>
-                    <p className="text-[15px] font-bold" style={{ color: 'var(--pokedex-red)' }}>
-                      {runningAll ? 'Läuft…' : 'Alles auf einmal ausführen'}
+                    <p className="text-sm font-medium" style={{ color: 'var(--pokedex-red)' }}>
+                      {runningAll ? 'Läuft…' : 'Daten aktualisieren'}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Evo · DE-Namen · Sets · Kürzel · DE-Bilder (Reset) · Artdaten — alle 7 Schritte
+                      Neue Karten holen und alle Felder anreichern
                     </p>
                   </div>
                 </button>
 
-                {/* DE-Bilder neu anreichern */}
-                <button
-                  onClick={runReEnrichImages}
-                  disabled={busy}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left border-b border-border transition-colors active:bg-secondary disabled:opacity-40"
-                >
-                  <RotateCcw size={18} className="text-blue-400 shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium text-blue-400">DE-Karten-Bilder neu anreichern</p>
-                    <p className="text-xs text-muted-foreground">Reset + alle Sets erneut verarbeiten · behebt fehlende DE-Bilder</p>
-                  </div>
-                </button>
-
-                {/* Catalog neu aufbauen */}
+                {/* Daten neu aufbauen */}
                 <button
                   onClick={() => runAllSteps(true)}
                   disabled={busy}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-secondary disabled:opacity-40"
+                  className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors active:bg-secondary disabled:opacity-40"
                 >
                   <RotateCcw size={18} className="text-orange-500 shrink-0" />
                   <div>
-                    <p className="text-sm font-medium text-orange-500">Catalog komplett neu aufbauen</p>
-                    <p className="text-xs text-muted-foreground">Reset + alle 7 Schritte · z.B. nach Datenbank-Update</p>
+                    <p className="text-sm font-medium text-orange-500">Daten neu aufbauen</p>
+                    <p className="text-xs text-muted-foreground">Reset + alle Schritte komplett neu — z. B. nach Schema-Änderung</p>
                   </div>
                 </button>
               </>
@@ -389,46 +312,46 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* App */}
+        {/* 3. Erscheinungsbild */}
         <section>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">App</p>
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
-            <button
-              onClick={async () => {
-                // iOS-PWA cached den App-Shell aggressiv — normales reload() reicht nicht.
-                // Service-Worker-Caches leeren (falls vorhanden), dann Hard-Navigation
-                // mit einmaligem Query-Parameter, damit iOS frischen Content vom Server holt.
-                try {
-                  if ('caches' in window) {
-                    const keys = await caches.keys();
-                    await Promise.all(keys.map(k => caches.delete(k)));
-                  }
-                  if ('serviceWorker' in navigator) {
-                    const regs = await navigator.serviceWorker.getRegistrations();
-                    await Promise.all(regs.map(r => r.unregister()));
-                  }
-                } catch { /* ignorieren */ }
-                // Unique URL → iOS muss frischen HTML vom Server laden
-                window.location.href = '/?updated=' + Date.now();
-              }}
-              className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-secondary transition-colors"
-            >
-              <RefreshCw size={18} className="text-muted-foreground shrink-0" />
-              <div>
-                <p className="text-sm font-medium">App aktualisieren</p>
-                <p className="text-xs text-muted-foreground">Lädt die neueste Version — Cache wird geleert</p>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Erscheinungsbild</p>
+          <div className="bg-card shadow-card rounded-2xl px-4 py-3 flex items-center justify-between gap-3">
+            <p className="text-sm font-medium">Farbschema</p>
+            {mounted && (
+              <div
+                className="flex rounded-full p-0.5"
+                style={{ background: 'var(--secondary)' }}
+              >
+                {THEMES.map(({ value, label, icon: Icon }) => {
+                  const active = theme === value;
+                  return (
+                    <button
+                      key={value}
+                      onClick={() => setTheme(value)}
+                      aria-label={label}
+                      className="w-9 h-9 rounded-full flex items-center justify-center transition-colors"
+                      style={{
+                        background: active ? 'var(--background)' : 'transparent',
+                        color: active ? 'var(--pokedex-red)' : 'var(--muted-foreground)',
+                        boxShadow: active ? '0 1px 3px rgba(0,0,0,0.12)' : undefined,
+                      }}
+                    >
+                      <Icon size={18} strokeWidth={active ? 2.5 : 1.8} />
+                    </button>
+                  );
+                })}
               </div>
-            </button>
+            )}
           </div>
         </section>
 
-        {/* Account */}
+        {/* 4. Account */}
         <section>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Account</p>
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="bg-card shadow-card rounded-2xl overflow-hidden">
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-secondary transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-4 text-left active:bg-secondary transition-colors"
             >
               <div className="text-sm font-medium text-red-500">Abmelden</div>
             </button>
