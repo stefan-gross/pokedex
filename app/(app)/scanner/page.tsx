@@ -704,6 +704,26 @@ export default function ScannerPage() {
         </div>
       )}
 
+      {/* ── Erkennen-Modus: Processing-Spinner während Gemini lädt ──────
+          Zeigt sich sofort nach dem Snap (Stream ist pausiert, Karte wird
+          noch erkannt). Verschwindet, sobald `recognizedJobId` gesetzt ist
+          und die große Karten-Anzeige übernimmt. */}
+      {mode === 'scanning' && scanMode === 'recognize' && !recognizedJobId && (() => {
+        const processing = jobs.find(j => j.origin === 'recognize' && j.status === 'processing');
+        if (!processing) return null;
+        return (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 pointer-events-none">
+            <div
+              className="flex flex-col items-center gap-3 px-6 py-5 rounded-2xl"
+              style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
+            >
+              <Loader2 size={36} color="#fff" className="animate-spin" />
+              <p className="text-white text-sm font-medium">Karte wird erkannt …</p>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Erkennen-Modus: zentrale große Karten-Anzeige ──────────────
           Zeigt nur den zuletzt erfolgreich gescannten Job. Neuer Scan
           überschreibt visuell, aber alle Scans bleiben in `jobs`. */}
