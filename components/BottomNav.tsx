@@ -3,8 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, Search, BookOpen, Heart, Camera, Pause, ScanLine, LayoutGrid } from 'lucide-react';
-import { useEffect, useState, useCallback } from 'react';
-import { getReviewCount } from '@/lib/firestore/cards';
+import { useEffect, useState } from 'react';
 
 const FAB_SIZE = 72;
 
@@ -32,7 +31,6 @@ interface ScannerNavState {
 
 export function BottomNav() {
   const pathname = usePathname();
-  const [reviewCount, setReviewCount] = useState(0);
   const [scanState, setScanState] = useState<ScannerNavState>({
     paused: false,
     scanMode: 'recognize',
@@ -41,16 +39,6 @@ export function BottomNav() {
   });
 
   const isScanner = pathname === '/scanner';
-
-  const fetchCount = useCallback(() => {
-    getReviewCount().then(setReviewCount).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    fetchCount();
-    window.addEventListener('review-count-changed', fetchCount);
-    return () => window.removeEventListener('review-count-changed', fetchCount);
-  }, [fetchCount]);
 
   // Scanner-State-Sync — Scanner-Page postet ihren Status hierher
   useEffect(() => {
@@ -67,20 +55,20 @@ export function BottomNav() {
     return pathname.startsWith(href);
   };
 
-  // FAB-Style: rot, leicht angehoben
+  // FAB-Style: rot, ragt deutlich oben aus der Nav heraus
   const fabStyle: React.CSSProperties = {
     width: FAB_SIZE,
     height: FAB_SIZE,
-    marginTop: -10,
+    marginTop: -20,
     flexShrink: 0,
     background: 'var(--pokedex-red)',
     boxShadow: '0 4px 20px rgba(220,38,38,0.45)',
   };
 
-  // Hintergrund: dunkel-transparent auf /scanner, sonst hell wie bisher
+  // Kompaktere Höhe: 56 px Inhalt + Safe-Area
   const navStyle: React.CSSProperties = {
     gridTemplateColumns: 'repeat(5, 1fr)',
-    height: 'calc(68px + env(safe-area-inset-bottom, 0px))',
+    height: 'calc(56px + env(safe-area-inset-bottom, 0px))',
     paddingBottom: 'env(safe-area-inset-bottom, 0px)',
     boxShadow: '0 -4px 24px rgba(30,40,80,0.08), 0 -1px 0 rgba(30,40,80,0.05)',
     ...(isScanner ? {
@@ -90,9 +78,10 @@ export function BottomNav() {
     } : {}),
   };
 
+  // Items unten ausgerichtet; FAB (Slot 2) ragt durch marginTop:-20 oben raus
   const navClassName = isScanner
-    ? 'fixed bottom-0 left-0 right-0 z-50 grid items-center justify-items-center'
-    : 'fixed bottom-0 left-0 right-0 z-50 grid items-center justify-items-center bg-card/95 backdrop-blur-xl';
+    ? 'fixed bottom-0 left-0 right-0 z-50 grid items-end justify-items-center'
+    : 'fixed bottom-0 left-0 right-0 z-50 grid items-end justify-items-center bg-card/95 backdrop-blur-xl';
 
   // Klick-Handler für FAB
   const handleFabClick = () => {
@@ -133,14 +122,6 @@ export function BottomNav() {
                   <Camera size={28} color={fabIconColor} />
                 </Link>
               )}
-              {!isScanner && reviewCount > 0 && (
-                <span
-                  className="absolute min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-white text-[10px] font-bold px-1"
-                  style={{ background: '#f59e0b', pointerEvents: 'none', top: 0, right: -2 }}
-                >
-                  {reviewCount > 99 ? '99+' : reviewCount}
-                </span>
-              )}
             </div>
           );
         }
@@ -167,6 +148,10 @@ export function BottomNav() {
               )}
             </button>
           );
+        }
+        if (isScanner && (i === 0 || i === 4)) {
+          // Auf /scanner: Home und Wunschliste ausblenden — nur Scanner-Controls sichtbar
+          return <div key={`scan-empty-${i}`} />;
         }
         if (isScanner && i === 3) {
           // Mode-Switch [Einzeln | Mehrere]
@@ -206,8 +191,8 @@ export function BottomNav() {
           <Link
             key={item.href}
             href={item.href}
-            className="flex flex-col items-center gap-0.5 px-3 py-1 min-w-[56px]"
-            style={{ color: itemColor }}
+            className="flex flex-col items-center gap-0.5 px-3 min-w-[56px]"
+            style={{ color: itemColor, paddingBottom: 6, paddingTop: 4 }}
           >
             <Icon size={22} strokeWidth={active ? 2.5 : 1.8} />
             <span className="text-[10px] font-medium">{item.label}</span>

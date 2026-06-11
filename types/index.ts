@@ -38,6 +38,8 @@ export interface BinderDoc {
   collectionType?: 'binder' | 'box';
   size?: 9 | 12 | 16 | 18;   // nur bei collectionType === 'binder'
   isDefault?: boolean;
+  /** „Neue Karten"-Inbox: Auffang für ungespeicherte Scans beim Verlassen des Scanners. Wird ausgeblendet wenn leer. */
+  isInbox?: boolean;
   sortOrder: number;
   cardIds: string[];
   wishlistCardIds: string[];

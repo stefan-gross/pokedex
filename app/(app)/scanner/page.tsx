@@ -9,7 +9,8 @@ import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal'
 import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
          getCardsByDexNumberRest      as getCardsByDexNumber } from '@/lib/firestore/catalog-rest';
 import { addCard, getCardsByTcgId } from '@/lib/firestore/cards';
-import { addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
+import { addCardToBinder, ensureDefaultBinder, ensureInboxBinder } from '@/lib/firestore/binders';
+import { BulkAddToCollectionModal } from '@/components/scanner/BulkAddToCollectionModal';
 import { catalogCardToInfo } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition as PersistedCondition, CardDoc, CardLanguage, CardVariant } from '@/types';
@@ -254,16 +255,25 @@ export default function ScannerPage() {
     setJobs(prev => prev.map(j => j.id === id ? { ...j, editedCondition: condition } : j));
   }, []);
 
-  // Alle erkannten + nicht-already-added Jobs in einem Rutsch zur
-  // Default-Sammlung hinzufügen.
-  const [bulkAdding, setBulkAdding] = useState(false);
-  const addAllUnadded = useCallback(async () => {
-    if (bulkAdding) return;
+  // „Alle hinzufügen" öffnet jetzt ein Bulk-Modal zur Bestätigung der Werte.
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const openBulkAdd = useCallback(() => {
     const targets = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added);
     if (targets.length === 0) return;
-    setBulkAdding(true);
+    setBulkModalOpen(true);
+  }, [jobs]);
+
+  // Auto-Save beim Verlassen des Scanners → Inbox-Binder „Neue Karten"
+  const [closingSaving, setClosingSaving] = useState(false);
+  const handleClose = useCallback(async () => {
+    if (closingSaving) return;
+    const targets = jobs.filter(j =>
+      j.origin === 'add' && j.status === 'done' && !!j.result?.card && !j.added
+    );
+    if (targets.length === 0) { router.push('/'); return; }
+    setClosingSaving(true);
     try {
-      const defaultBinderId = await ensureDefaultBinder();
+      const inboxId = await ensureInboxBinder();
       for (const job of targets) {
         const card = job.result!.card!;
         const v = (job.editedVariant ?? card.variants?.[0] ?? 'standard') as CardVariant;
@@ -287,19 +297,16 @@ export default function ScannerPage() {
             isFirstEd: v === '1st-ed',
             quantity: 1,
             tcgImageUrl: card.imgLargeDe || card.imgLarge,
-            needsReview: true,
           });
-          await addCardToBinder(defaultBinderId, cardId);
-          markAdded(job.id);
+          await addCardToBinder(inboxId, cardId);
         } catch (err) {
-          console.error('[bulk-add] error for job', job.id, err);
+          console.error('[scanner-close] save error for job', job.id, err);
         }
       }
-      window.dispatchEvent(new Event('review-count-changed'));
     } finally {
-      setBulkAdding(false);
+      router.push('/');
     }
-  }, [bulkAdding, jobs, markAdded]);
+  }, [closingSaving, jobs, router]);
 
   const clearAllJobs = useCallback(() => {
     setJobs([]);
@@ -524,7 +531,7 @@ export default function ScannerPage() {
           className="absolute inset-0 overflow-y-auto bg-black px-4"
           style={{
             paddingTop: 'calc(env(safe-area-inset-top, 0px) + 64px)',
-            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 140px)',
+            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 130px)',
           }}
         >
           <div className="grid grid-cols-2 gap-3">
@@ -659,7 +666,7 @@ export default function ScannerPage() {
         ) : <span />}
         {mode === 'scanning' && (
           <button
-            onClick={() => router.push('/')}
+            onClick={handleClose}
             className="w-9 h-9 flex items-center justify-center rounded-full bg-black/55 backdrop-blur-sm"
             aria-label="Scanner schließen"
           >
@@ -673,7 +680,7 @@ export default function ScannerPage() {
       {mode === 'scanning' && scanMode === 'add' && jobs.length > 0 && (
         <div
           className="absolute left-0 right-0 z-10 px-4"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 100px)' }}
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)' }}
         >
           <div
             ref={sliderRef}
@@ -726,8 +733,8 @@ export default function ScannerPage() {
           <div
             className="absolute left-0 right-0 z-40 flex gap-2 px-4"
             style={{
-              // Über der globalen BottomNav (68px + safe-area)
-              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 68px)',
+              // Über der globalen BottomNav (56px + safe-area)
+              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 56px)',
               paddingTop: 8,
               paddingBottom: 8,
               background: 'rgba(0,0,0,0.75)',
@@ -748,17 +755,13 @@ export default function ScannerPage() {
               Alle löschen
             </button>
             <button
-              onClick={addAllUnadded}
-              disabled={unaddedCount === 0 || bulkAdding}
+              onClick={openBulkAdd}
+              disabled={unaddedCount === 0}
               className="flex-1 h-11 rounded-full text-sm font-semibold text-white flex items-center justify-center gap-1.5 disabled:opacity-50"
               style={{ background: 'var(--pokedex-red)' }}
             >
-              {bulkAdding ? (
-                <Loader2 size={15} className="animate-spin" />
-              ) : (
-                <Plus size={16} strokeWidth={3} />
-              )}
-              {bulkAdding ? 'Speichern …' : `Alle hinzufügen${unaddedCount > 0 ? ` (${unaddedCount})` : ''}`}
+              <Plus size={16} strokeWidth={3} />
+              {`Alle hinzufügen${unaddedCount > 0 ? ` (${unaddedCount})` : ''}`}
             </button>
           </div>
         );
@@ -768,6 +771,34 @@ export default function ScannerPage() {
       {/* Footer wird jetzt von der globalen BottomNav übernommen.
           Stream-Pause, Mode-Switch und Grid-Button laufen über Custom-Events
           (siehe useEffect am Anfang der Component). */}
+
+      {/* ── Bulk-Add-Modal: „Alle hinzufügen" fragt Werte ab ─────────── */}
+      {bulkModalOpen && (() => {
+        const targets = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added);
+        const bulkJobs = targets.map(j => ({
+          id: j.id,
+          card: j.result!.card!,
+          language: j.result!.language,
+          editedVariant: j.editedVariant,
+          editedCondition: j.editedCondition,
+        }));
+        return (
+          <BulkAddToCollectionModal
+            jobs={bulkJobs}
+            onClose={() => setBulkModalOpen(false)}
+            onJobSaved={(id) => markAdded(id)}
+            onAllSaved={() => setBulkModalOpen(false)}
+          />
+        );
+      })()}
+
+      {/* ── Closing-Overlay: Karten werden in Inbox gespeichert ──────── */}
+      {closingSaving && (
+        <div className="fixed inset-0 z-[70] bg-black/85 flex flex-col items-center justify-center gap-3">
+          <Loader2 size={32} color="#fff" className="animate-spin" />
+          <p className="text-white text-sm">Karten werden gespeichert …</p>
+        </div>
+      )}
 
       {/* ── Debug-Modal ──────────────────────────────────────────── */}
       {debugJob?.debug && (
@@ -1127,7 +1158,7 @@ function RecognizedCardLarge({
       className="absolute inset-x-0 z-10 flex flex-col items-center px-6 gap-3"
       style={{
         top: 'calc(env(safe-area-inset-top, 0px) + 56px)',
-        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 100px)',
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)',
       }}
     >
       {/* Pokemon-Name */}

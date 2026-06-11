@@ -60,6 +60,20 @@ export async function ensureDefaultBinder(): Promise<string> {
   return addBinder({ name: 'Meine Sammlung', isDefault: true, sortOrder: -1, collectionType: 'box' });
 }
 
+/** „Neue Karten"-Inbox: Sammelt ungespeicherte Karten beim Verlassen des Scanners.
+ *  Persistent — wird NICHT auto-gelöscht wenn leer (UI blendet ihn dann aus). */
+export async function ensureInboxBinder(): Promise<string> {
+  const binders = await getBinders();
+  const byFlag = binders.find(b => b.isInbox);
+  if (byFlag) return byFlag.id;
+  const byName = binders.find(b => b.name === 'Neue Karten');
+  if (byName) {
+    await updateBinder(byName.id, { isInbox: true, sortOrder: -2, collectionType: 'box' });
+    return byName.id;
+  }
+  return addBinder({ name: 'Neue Karten', isInbox: true, sortOrder: -2, collectionType: 'box' });
+}
+
 /** Entfernt eine Karte aus einem Binder und löscht den Default-Binder automatisch wenn er danach leer ist. */
 export async function removeCardFromBinderAndCleanup(binderId: string, cardId: string): Promise<void> {
   await removeCardFromBinder(binderId, cardId);

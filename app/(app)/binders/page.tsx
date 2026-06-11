@@ -16,7 +16,8 @@ export default function BindersPage() {
   const load = async () => {
     try {
       const data = await getBinders();
-      setBinders(data);
+      // Inbox-Binder „Neue Karten" nur anzeigen, wenn Karten drin sind
+      setBinders(data.filter(b => !(b.isInbox && b.cardIds.length === 0)));
     } finally {
       setLoading(false);
     }

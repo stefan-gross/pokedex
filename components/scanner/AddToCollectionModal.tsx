@@ -56,9 +56,7 @@ export function AddToCollectionModal({ card, preVariant, preCondition, preLangua
         isFirstEd: variant === '1st-ed',
         quantity: 1,
         tcgImageUrl: card.imgLargeDe || card.imgLarge,
-        ...(fromScanner ? { needsReview: true } : {}),
       });
-      if (fromScanner) window.dispatchEvent(new Event('review-count-changed'));
       if (selectedBinder === DEFAULT_ID) {
         const defaultId = await ensureDefaultBinder();
         await addCardToBinder(defaultId, cardId);
