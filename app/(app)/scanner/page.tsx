@@ -79,6 +79,7 @@ interface ScanDebug {
 
 interface ScanJob {
   id: string;
+  origin: 'add' | 'recognize';   // aus welchem Modus stammt der Snap — steuert Slider/Review-Sichtbarkeit
   status: 'processing' | 'done' | 'error';
   result: ScanState | null;
   added?: boolean;
@@ -267,9 +268,19 @@ export default function ScannerPage() {
     // Bild wird nur EINMAL gespeichert (in debug.imageBase64) — verhindert
     // doppelten Speicherverbrauch (vorher: capturedImageBase64 + debug.imageBase64
     // hat iOS PWA bei vielen Scans gecrasht).
-    setJobs(prev => [...prev, {
-      id, status: 'processing', result: null, debug,
-    }]);
+    const origin = scanModeRef.current;
+    setJobs(prev => {
+      // Im Einzeln-Modus immer nur EIN Recognize-Job gleichzeitig: alte raus.
+      const base = origin === 'recognize'
+        ? prev.filter(j => j.origin !== 'recognize')
+        : prev;
+      return [...base, { id, origin, status: 'processing', result: null, debug }];
+    });
+    // Im Einzeln-Modus Stream SOFORT pausieren — verhindert Folge-Snaps während
+    // Gemini noch arbeitet. User tippt Scan-FAB für nächste Karte.
+    if (origin === 'recognize') {
+      setStreamPaused(true);
+    }
 
     try {
       // ── FIFO-Upload-Queue: warten bis vorheriger Upload fertig ist ────────
@@ -388,11 +399,10 @@ export default function ScannerPage() {
         },
       } : j));
 
-      // Erkennen-Modus: nach erfolgreichem Catalog-Match Stream pausieren und
-      // den Job zentral anzeigen. Resume-Tap (FAB) räumt das wieder auf.
+      // Erkennen-Modus: nach erfolgreichem Catalog-Match Job zentral anzeigen.
+      // Stream wurde bereits beim Snap pausiert (handleCapture oben).
       if (catalogCard && scanModeRef.current === 'recognize') {
         setRecognizedJobId(id);
-        setStreamPaused(true);
       }
 
       // ── Owned-Count non-blocking nachladen ────────────────────────────────
@@ -738,7 +748,15 @@ export default function ScannerPage() {
             {(['recognize', 'add'] as const).map(m => (
               <button
                 key={m}
-                onClick={() => setScanMode(m)}
+                onClick={() => {
+                  if (m === scanMode) return;
+                  // Recognize-Jobs sind temporär — beim Modus-Wechsel verwerfen.
+                  // Add-Jobs bleiben über Wechsel hinweg erhalten.
+                  setJobs(prev => prev.filter(j => j.origin !== 'recognize'));
+                  setRecognizedJobId(null);
+                  setStreamPaused(false);
+                  setScanMode(m);
+                }}
                 className="px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors"
                 style={{
                   background: scanMode === m ? 'var(--pokedex-red)' : 'transparent',
@@ -757,6 +775,8 @@ export default function ScannerPage() {
               if (streamPaused) {
                 setStreamPaused(false);
                 setRecognizedJobId(null); // im Erkennen-Modus räumt Resume die zentrale Karte auf
+                // Alten Recognize-Job entfernen — Tap = „neue Karte scannen".
+                setJobs(prev => prev.filter(j => j.origin !== 'recognize'));
               } else {
                 setStreamPaused(true);
               }
@@ -888,7 +908,7 @@ export default function ScannerPage() {
           preVariant={quickAddJob.editedVariant ?? quickAddJob.result.variant}
           preCondition={quickAddJob.editedCondition}
           preLanguage={quickAddJob.result.language}
-          fromScanner
+          fromScanner={quickAddJob.origin === 'add'}
           onClose={() => setQuickAddJobId(null)}
           onSaved={() => {
             markAdded(quickAddJob.id);
