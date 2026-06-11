@@ -448,8 +448,11 @@ export default function ScannerPage() {
       {/* ── Review-Modus: schwarzer Hintergrund, scrollbar ──────── */}
       {mode === 'review' && (
         <div
-          className="absolute inset-0 overflow-y-auto bg-black px-4 pb-6"
-          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 64px)' }}
+          className="absolute inset-0 overflow-y-auto bg-black px-4"
+          style={{
+            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 64px)',
+            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)',
+          }}
         >
           <div className="grid grid-cols-2 gap-3">
             {jobs.map(job => {
@@ -493,56 +496,66 @@ export default function ScannerPage() {
                         </div>
                       </div>
                     )}
-                    {/* Quick-Add (+) oben links */}
-                    {canOpen && !job.added && (
-                      <button
-                        onClick={e => { e.stopPropagation(); setQuickAddJobId(job.id); }}
-                        className="absolute top-2 left-2 w-9 h-9 rounded-full flex items-center justify-center shadow-md"
-                        style={{ background: 'var(--pokedex-red)' }}
-                        aria-label="Zur Sammlung hinzufügen"
-                      >
-                        <Plus size={20} color="#fff" strokeWidth={3} />
-                      </button>
-                    )}
-                    {/* Trash oben rechts */}
-                    <button
-                      onClick={e => { e.stopPropagation(); removeJob(job.id); }}
-                      className="absolute top-2 right-2 w-9 h-9 rounded-full flex items-center justify-center"
-                      style={{ background: 'rgba(0,0,0,0.7)' }}
-                      aria-label="Entfernen"
-                    >
-                      <Trash2 size={16} color="#ef4444" />
-                    </button>
-                    {/* Fake-Warnung */}
+                    {/* Fake-Warnung oben links */}
                     {(job.result?.fakeRisk === 'medium' || job.result?.fakeRisk === 'high') && (
                       <button
                         onClick={e => { e.stopPropagation(); setFakeReasonsJobId(job.id); }}
-                        className="absolute top-12 left-2 w-9 h-9 rounded-full flex items-center justify-center"
+                        className="absolute top-2 left-2 w-9 h-9 rounded-full flex items-center justify-center"
                         style={{ background: 'rgba(0,0,0,0.7)' }}
                         aria-label="Fake-Verdacht"
                       >
                         <AlertTriangle size={16} color={job.result.fakeRisk === 'high' ? '#ef4444' : '#facc15'} fill={job.result.fakeRisk === 'high' ? '#ef4444' : '#facc15'} />
                       </button>
                     )}
+                    {/* Trash + Quick-Add unten rechts */}
+                    <div
+                      className="absolute flex gap-1"
+                      style={{ right: 2, bottom: 2 }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <button
+                        onClick={e => { e.stopPropagation(); removeJob(job.id); }}
+                        className="w-9 h-9 rounded-full flex items-center justify-center shadow-md"
+                        style={{ background: 'rgba(0,0,0,0.7)' }}
+                        aria-label="Entfernen"
+                      >
+                        <Trash2 size={16} color="#ef4444" />
+                      </button>
+                      {canOpen && !job.added && (
+                        <button
+                          onClick={e => { e.stopPropagation(); setQuickAddJobId(job.id); }}
+                          className="w-9 h-9 rounded-full flex items-center justify-center shadow-md"
+                          style={{ background: 'var(--pokedex-red)' }}
+                          aria-label="Zur Sammlung hinzufügen"
+                        >
+                          <Plus size={20} color="#fff" strokeWidth={3} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-white/80 mt-2 truncate px-1">
+                    {card?.name ?? (job.status === 'processing' ? '…' : 'Fehler')}
+                  </p>
+                  <div className="flex items-center justify-between gap-2 mt-1 px-1 min-h-[20px]">
+                    {card?.setCode ? (
+                      <span
+                        className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border shrink-0"
+                        style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}
+                      >
+                        {card.setCode} {card.number}
+                      </span>
+                    ) : <span />}
                     {job.result?.condition && (() => {
                       const p = GEMINI_TO_PERSISTED[job.result.condition];
                       const c = PERSISTED_CONDITION_COLOR[p];
                       return (
-                        <span className="absolute bottom-1 right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md"
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md shrink-0"
                           style={{ background: c.bg, color: c.text }}>
                           {p}
                         </span>
                       );
                     })()}
                   </div>
-                  <p className="text-xs text-white/80 text-center mt-2 truncate px-1">
-                    {card?.name ?? (job.status === 'processing' ? '…' : 'Fehler')}
-                  </p>
-                  {card?.setCode && (
-                    <p className="text-[10px] text-white/55 text-center font-mono">
-                      {card.setCode} {card.number}
-                    </p>
-                  )}
                 </div>
               );
             })}
@@ -574,7 +587,7 @@ export default function ScannerPage() {
       {mode === 'scanning' && scanMode === 'add' && jobs.length > 0 && (
         <div
           className="absolute left-0 right-0 z-10 px-4"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 156px)' }}
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 110px)' }}
         >
           <div
             ref={sliderRef}
@@ -619,18 +632,26 @@ export default function ScannerPage() {
           Im Add-Modus zwischen Slider und Toolbar.
           Im Review-Modus direkt über der Safe-Area (Toolbar ist dort weg). */}
       {(() => {
-        const visible =
-          (mode === 'scanning' && scanMode === 'add' && jobs.length > 0) ||
-          (mode === 'review' && jobs.length > 0);
+        const visible = mode === 'review' && jobs.length > 0;
         if (!visible) return null;
         const unaddedCount = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added).length;
         const bottomOffset = mode === 'review'
           ? 'calc(env(safe-area-inset-bottom, 0px) + 12px)'
           : 'calc(env(safe-area-inset-bottom, 0px) + 104px)';
+        const rowStyle: React.CSSProperties = mode === 'review'
+          ? {
+              bottom: bottomOffset,
+              background: 'rgba(0,0,0,0.75)',
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+              paddingTop: 8,
+              paddingBottom: 8,
+            }
+          : { bottom: bottomOffset };
         return (
           <div
-            className="absolute left-0 right-0 z-15 flex gap-2 px-4"
-            style={{ bottom: bottomOffset }}
+            className="absolute left-0 right-0 z-20 flex gap-2 px-4"
+            style={rowStyle}
           >
             <button
               onClick={clearAllJobs}
@@ -674,8 +695,8 @@ export default function ScannerPage() {
         <div
           className="absolute left-0 right-0 z-20 flex items-center justify-between gap-3 px-4"
           style={{
-            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
-            height: 80,
+            bottom: 'env(safe-area-inset-bottom, 0px)',
+            height: 72,
           }}
         >
           {/* Grid-Slot (immer 44 px breit) */}
@@ -932,7 +953,7 @@ interface ScannedCardTileProps {
 }
 
 function ScannedCardTile({
-  job, isLatest, onCardTap, onRemove, onQuickAdd, onFakeReasons,
+  job, isLatest, onCardTap, onRemove, onFakeReasons,
   onVariantChange, onConditionChange,
 }: ScannedCardTileProps) {
   const img       = cardImgUrl(job);
@@ -982,27 +1003,31 @@ function ScannedCardTile({
           <img src={img} alt={card?.name ?? ''} className="w-full h-full object-cover" />
         )}
 
-        {/* + und Trash nebeneinander unten rechts (~2 px Abstand zum Rand) */}
-        <div className="absolute bottom-0.5 right-0.5 flex gap-1">
-          {canOpen && !job.added && (
-            <button
-              onClick={e => { e.stopPropagation(); onQuickAdd(); }}
-              className="w-7 h-7 rounded-full flex items-center justify-center shadow-md"
-              style={{ background: 'var(--pokedex-red)' }}
-              aria-label="Zur Sammlung hinzufügen"
-            >
-              <Plus size={16} color="#fff" strokeWidth={3} />
-            </button>
-          )}
+        {/* Trash unten rechts (~2 px Abstand zum Rand) */}
+        <button
+          onClick={e => { e.stopPropagation(); onRemove(); }}
+          className="absolute bottom-0.5 right-0.5 w-7 h-7 rounded-full flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.75)' }}
+          aria-label="Entfernen"
+        >
+          <Trash2 size={14} color="#ef4444" />
+        </button>
+
+        {/* Fake-Warnung (Mitte oben, über Variant/Condition-Pills) */}
+        {(job.result?.fakeRisk === 'medium' || job.result?.fakeRisk === 'high') && (
           <button
-            onClick={e => { e.stopPropagation(); onRemove(); }}
-            className="w-7 h-7 rounded-full flex items-center justify-center"
-            style={{ background: 'rgba(0,0,0,0.75)' }}
-            aria-label="Entfernen"
+            onClick={e => { e.stopPropagation(); onFakeReasons(); }}
+            className="absolute left-1/2 -translate-x-1/2 w-7 h-7 rounded-full flex items-center justify-center"
+            style={{ top: 2, background: 'rgba(0,0,0,0.75)' }}
+            aria-label="Fake-Verdacht-Gründe"
           >
-            <Trash2 size={14} color="#ef4444" />
+            <AlertTriangle
+              size={14}
+              color={job.result?.fakeRisk === 'high' ? '#ef4444' : '#facc15'}
+              fill={job.result?.fakeRisk === 'high' ? '#ef4444' : '#facc15'}
+            />
           </button>
-        </div>
+        )}
 
         {/* Variant-Pill (top-left) */}
         {card && (
@@ -1058,40 +1083,6 @@ function ScannedCardTile({
         )}
       </div>
 
-      {/* Unter der Karte: SetCode-Badge links + Pokemon-Name horizontal zentriert */}
-      <div className="flex items-center gap-1.5 px-0.5 min-h-[18px]">
-        {card?.setCode && (
-          <span
-            className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded font-mono leading-none"
-            style={{
-              background: 'rgba(255,255,255,0.08)',
-              color: 'rgba(255,255,255,0.85)',
-              border: '1px solid rgba(255,255,255,0.18)',
-            }}
-          >
-            {card.setCode}
-          </span>
-        )}
-        <p className="flex-1 text-[10px] text-white font-medium text-center truncate leading-tight">
-          {card?.name ?? (job.status === 'processing' ? '…' : 'Fehler')}
-          {(job.result?.ownedCount ?? 0) > 0 && !job.added && (
-            <span className="ml-1 text-[9px] font-bold text-green-400">×{job.result!.ownedCount}</span>
-          )}
-          {(job.result?.fakeRisk === 'medium' || job.result?.fakeRisk === 'high') && (
-            <button
-              onClick={(e: React.MouseEvent) => { e.stopPropagation(); onFakeReasons(); }}
-              className="inline-flex align-middle ml-1"
-              aria-label="Fake-Verdacht-Gründe"
-            >
-              <AlertTriangle
-                size={11}
-                color={job.result?.fakeRisk === 'high' ? '#ef4444' : '#facc15'}
-                fill={job.result?.fakeRisk === 'high' ? '#ef4444' : '#facc15'}
-              />
-            </button>
-          )}
-        </p>
-      </div>
     </div>
   );
 }

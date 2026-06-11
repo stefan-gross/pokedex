@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Zap, ZapOff, Loader2, Camera } from 'lucide-react';
+import { Zap, ZapOff, Camera } from 'lucide-react';
 import { loadCardDetectorSession, detectCardInFrame, type CardBox } from '@/lib/scanner/card-detector-onnx';
 
 interface Props {
@@ -649,16 +649,6 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     catch { /* nicht unterstützt */ }
   };
 
-  const hintText = paused             ? 'Scannen pausiert'
-    : inCooldown                      ? 'Karte wechseln …'
-    : detected && progress >= 1       ? 'Karte erkannt — wird aufgenommen …'
-    : detected                        ? 'Karte erkannt'
-    : progress > 0                    ? 'Fast …'
-    :                                   'Karte in den Rahmen halten';
-
-  const hintColor = (detected || progress > 0) && !inCooldown && !paused
-    ? '#48bb78' : 'rgba(255,255,255,0.55)';
-
   return (
     <div
       className="relative w-full h-full bg-black overflow-hidden"
@@ -750,77 +740,6 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
             style={{ zIndex: 2 }}
           />
 
-          {/* ── DEBUG-Panel (z-50 > Scanner-Header z-20, unterhalb des Headers) ── */}
-          <div
-            className="absolute left-0 right-0 pointer-events-none"
-            style={{
-              top: 'calc(env(safe-area-inset-top, 0px) + 120px)',
-              zIndex: 50,
-              display: 'flex',
-              justifyContent: 'center',
-            }}
-          >
-            <div
-              style={{
-                background: 'rgba(0,0,0,0.72)',
-                borderRadius: 10,
-                padding: '6px 12px',
-                fontFamily: 'monospace',
-                fontSize: 12,
-                color: '#fff',
-                lineHeight: 1.6,
-                minWidth: 220,
-              }}
-            >
-              <div style={{ color: mountGenRef.current > 1 ? '#f87171' : '#aaa' }}>
-                Mount #{mountGenRef.current}{mountGenRef.current > 1 ? ' ⚠ Remount!' : ''}
-              </div>
-              <div style={{ color: initialReloadCount > 0 ? '#f87171' : '#aaa' }}>
-                Reloads: {initialReloadCount}{initialReloadCount > 0 ? ' ⚠ iOS-Reload!' : ''}
-              </div>
-              <div>
-                Session:{' '}
-                <span style={{ color: debug.sessionReady ? '#48bb78' : '#f87171' }}>
-                  {debug.sessionReady ? 'bereit' : 'lädt …'}
-                </span>
-              </div>
-              <div>
-                Karte:{' '}
-                <span style={{ color: debug.detected ? '#48bb78' : '#f87171' }}>
-                  {debug.detected ? `erkannt (conf ${debug.conf.toFixed(2)})` : 'nicht erkannt'}
-                </span>
-              </div>
-              <div>Bewegung (MSE): <span style={{ color: debug.mse > MOTION_RESET_THRESHOLD ? '#facc15' : '#fff' }}>{debug.mse}</span></div>
-              <div>Stabil: {debug.stable} / {SNAP_STABLE_FRAMES}</div>
-              <div>
-                Box-Delta:{' '}
-                <span style={{ color: debug.boxDelta < BOX_SETTLED_THRESHOLD ? '#48bb78' : debug.boxDelta < 80 ? '#facc15' : '#f87171' }}>
-                  {debug.boxDelta === 999 ? '∞' : `${debug.boxDelta} px`}
-                  {debug.boxDelta < BOX_SETTLED_THRESHOLD ? ' ✓' : ''}
-                </span>
-              </div>
-              <div>
-                Aufeinander:{' '}
-                <span style={{ color: debug.consecutiveFrames >= CONSECUTIVE_SNAP_FRAMES ? '#48bb78' : '#facc15' }}>
-                  {debug.consecutiveFrames} / {CONSECUTIVE_SNAP_FRAMES}
-                  {debug.consecutiveFrames >= CONSECUTIVE_SNAP_FRAMES ? ' ✓' : ''}
-                </span>
-              </div>
-              {debug.triggerReason !== '–' && (
-                <div style={{ color: '#48bb78' }}>Trigger: {debug.triggerReason}</div>
-              )}
-              {inCooldown && (
-                <div>
-                  Änderung:{' '}
-                  <span style={{ color: debug.changeMse > CHANGE_DETECT_THRESHOLD ? '#48bb78' : '#f87171' }}>
-                    {debug.changeMse} {debug.changeMse > CHANGE_DETECT_THRESHOLD ? '✓' : `/ ${CHANGE_DETECT_THRESHOLD}`}
-                  </span>
-                </div>
-              )}
-              {debug.cropSize && <div style={{ color: '#60a5fa' }}>Crop: {debug.cropSize}</div>}
-            </div>
-          </div>
-
           {/* Weißer Blitz beim Snap */}
           {flashing && (
             <div className="absolute inset-0 bg-white/70 pointer-events-none" style={{ zIndex: 3 }} />
@@ -861,32 +780,16 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
             </div>
           )}
 
-          {/* Pending-Badge */}
-          {pendingCount > 0 && (
-            <div className="absolute top-4 left-4 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-sm" style={{ zIndex: 4 }}>
-              <Loader2 size={12} color="#fff" className="animate-spin" />
-              <span className="text-white text-xs font-medium">{pendingCount} Erkennend …</span>
-            </div>
-          )}
-
-          {/* Torch + Kamerawechsel */}
+          {/* Taschenlampen-Switch oben links */}
           <div
-            className="absolute left-4 flex flex-col gap-2 pointer-events-auto"
-            style={{ top: 'calc(env(safe-area-inset-top, 0px) + 68px)', zIndex: 4 }}
+            className="absolute left-3 flex flex-col gap-2 pointer-events-auto"
+            style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)', zIndex: 4 }}
             onClick={e => e.stopPropagation()}
           >
             <button onClick={toggleTorch} className="w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center">
               {torch ? <Zap size={17} color="#facc15" /> : <ZapOff size={17} color="#fff" />}
             </button>
           </div>
-
-          {/* Hint-Text unten */}
-          <p
-            className="absolute left-0 right-0 text-center text-sm font-medium pointer-events-none"
-            style={{ bottom: 100, color: hintColor, zIndex: 4, textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}
-          >
-            {hintText}
-          </p>
         </>
       )}
     </div>
