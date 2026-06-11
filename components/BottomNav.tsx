@@ -96,6 +96,78 @@ export function BottomNav() {
   // Off-Scanner: Kamera-Icon. Auf /scanner: Pause wenn laufend, ScanLine wenn pausiert.
   const FabIcon = !isScanner ? Camera : (scanState.paused ? ScanLine : Pause);
 
+  // ── Scanner-Modus: Flex-Layout (links Grid, Mitte FAB, rechts Switch) ──
+  // Vorteil ggü. 5-col-Grid: FAB ist garantiert horizontal zentriert
+  // (zwischen zwei flex-1-Zonen), Switch kollidiert auf Mobile nicht mit der FAB.
+  if (isScanner) {
+    return (
+      <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-end" style={navStyle}>
+        {/* Links: Grid-Button (nur Mehrere-Modus mit Karten) */}
+        <div
+          className="flex-1 flex justify-start items-end"
+          style={{ paddingLeft: 16, paddingBottom: 10 }}
+        >
+          {scanState.gridVisible && (
+            <button
+              onClick={() => window.dispatchEvent(new Event(SCAN_GRID_TOGGLE_EVENT))}
+              className="relative w-11 h-11 flex items-center justify-center rounded-full bg-white/10 backdrop-blur-sm"
+              aria-label="Übersicht öffnen"
+            >
+              <LayoutGrid size={20} color="#fff" />
+              {scanState.jobsCount > 0 && (
+                <span
+                  className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center"
+                  style={{ background: 'var(--pokedex-red)', color: '#fff' }}
+                >
+                  {scanState.jobsCount}
+                </span>
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* Mitte: FAB (ragt durch marginTop:-20 oben heraus) */}
+        <button
+          onClick={handleFabClick}
+          className="flex items-center justify-center rounded-full shadow-xl"
+          style={fabStyle}
+          aria-label={scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren'}
+        >
+          <FabIcon size={28} color={fabIconColor} fill={!scanState.paused ? '#fff' : 'none'} />
+        </button>
+
+        {/* Rechts: Mode-Switch */}
+        <div
+          className="flex-1 flex justify-end items-end"
+          style={{ paddingRight: 16, paddingBottom: 10 }}
+        >
+          <div
+            className="flex rounded-full p-0.5 bg-black/55 backdrop-blur-sm"
+            style={{ border: '1px solid rgba(255,255,255,0.12)' }}
+          >
+            {(['recognize', 'add'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => {
+                  if (m === scanState.scanMode) return;
+                  window.dispatchEvent(new CustomEvent(SCAN_MODE_TOGGLE_EVENT, { detail: m }));
+                }}
+                className="px-3 py-1.5 rounded-full text-xs font-semibold transition-colors"
+                style={{
+                  background: scanState.scanMode === m ? 'var(--pokedex-red)' : 'transparent',
+                  color:      scanState.scanMode === m ? '#fff' : 'rgba(255,255,255,0.65)',
+                }}
+              >
+                {m === 'add' ? 'Mehrere' : 'Einzeln'}
+              </button>
+            ))}
+          </div>
+        </div>
+      </nav>
+    );
+  }
+
+  // ── Off-Scanner: Original 5-col-Grid mit Nav-Items + zentriertem FAB ──
   return (
     <nav className={navClassName} style={navStyle}>
       {navItems.map((item, i) => {
