@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, Plus, Heart, CheckCircle2, ChevronDown, ChevronRight, Trash2, Info, Repeat2, LayoutGrid } from 'lucide-react';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
@@ -91,6 +91,9 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
   const router = useRouter();
   const [visible,      setVisible]      = useState(false);
   const [zoomed,       setZoomed]       = useState(false);
+  // Swipe-Down-State: Y-Offset während des Drags (px, nur positiv)
+  const [dragY,        setDragY]        = useState(0);
+  const dragStartYRef                   = useRef<number | null>(null);
   const [openSec,      setOpenSec]      = useState<Set<Section>>(new Set(['cards']));
   const [imgSrcDe,     setImgSrcDe]     = useState<string | undefined>(undefined);
   const [addVariant,   setAddVariant]   = useState<CardVariant | null>(null);
@@ -247,14 +250,47 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
 
       {/* Sheet */}
       <div
-        className="relative w-full rounded-t-2xl bg-card max-h-[93dvh] flex flex-col transition-transform duration-[250ms] ease-out"
+        className="relative w-full rounded-t-2xl bg-card max-h-[93dvh] flex flex-col"
         style={{
-          transform: visible ? 'translateY(0)' : 'translateY(100%)',
+          transform: visible
+            ? `translateY(${dragY}px)`
+            : 'translateY(100%)',
+          transition: dragStartYRef.current != null
+            ? 'none'
+            : 'transform 250ms ease-out',
           boxShadow: '0 -8px 32px rgba(30,40,80,0.14), 0 -2px 8px rgba(30,40,80,0.07)',
         }}
       >
-        {/* Handle */}
-        <div className="flex items-center justify-center pt-3 pb-1 shrink-0">
+        {/* Handle — swipe-down zum Schließen + größeres Touch-Target */}
+        <div
+          className="flex items-center justify-center pt-3 pb-2 shrink-0 cursor-grab touch-none"
+          style={{ touchAction: 'none' }}
+          onPointerDown={e => {
+            dragStartYRef.current = e.clientY;
+            setDragY(0);
+            (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+          }}
+          onPointerMove={e => {
+            if (dragStartYRef.current == null) return;
+            const dy = e.clientY - dragStartYRef.current;
+            setDragY(Math.max(0, dy)); // nur nach unten
+          }}
+          onPointerUp={e => {
+            if (dragStartYRef.current == null) return;
+            const dy = e.clientY - dragStartYRef.current;
+            dragStartYRef.current = null;
+            try { (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+            if (dy > 80) {
+              handleClose();
+            } else {
+              setDragY(0);
+            }
+          }}
+          onPointerCancel={() => {
+            dragStartYRef.current = null;
+            setDragY(0);
+          }}
+        >
           <div className="w-10 h-1 rounded-full bg-border" />
         </div>
 
