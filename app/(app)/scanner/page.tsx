@@ -725,6 +725,39 @@ export default function ScannerPage() {
         );
       })()}
 
+      {/* ── Erkennen-Modus: Fehler-Anzeige wenn Gemini/Katalog fehlschlägt ──
+          Stream bleibt pausiert. Tap auf Erneut-Button räumt den Job auf
+          und resumed den Stream — wie der FAB-Resume-Pfad. */}
+      {mode === 'scanning' && scanMode === 'recognize' && !recognizedJobId && (() => {
+        const errored = jobs.find(j => j.origin === 'recognize' && j.status === 'error');
+        if (!errored) return null;
+        const retry = () => {
+          setJobs(prev => prev.filter(j => j.id !== errored.id));
+          setStreamPaused(false);
+        };
+        return (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 px-6">
+            <div
+              className="flex flex-col items-center gap-3 px-6 py-5 rounded-2xl max-w-xs text-center"
+              style={{ background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(8px)' }}
+            >
+              <AlertCircle size={36} color="#f87171" />
+              <p className="text-white text-sm font-medium">Karte konnte nicht erkannt werden</p>
+              <p className="text-white/65 text-xs leading-snug">
+                Halte die Karte deutlicher in den Rahmen oder versuche eine andere Belichtung.
+              </p>
+              <button
+                onClick={retry}
+                className="mt-1 px-4 h-9 rounded-full text-sm font-semibold text-white"
+                style={{ background: 'var(--pokedex-red)' }}
+              >
+                Erneut scannen
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Erkennen-Modus: zentrale große Karten-Anzeige ──────────────
           Zeigt nur den zuletzt erfolgreich gescannten Job. Neuer Scan
           überschreibt visuell, aber alle Scans bleiben in `jobs`. */}
