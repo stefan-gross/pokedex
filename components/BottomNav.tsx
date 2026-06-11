@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, BookOpen, Heart, Camera } from 'lucide-react';
+import { Home, Search, BookOpen, Heart, Camera, Pause, ScanLine, LayoutGrid } from 'lucide-react';
 import { useEffect, useState, useCallback } from 'react';
 import { getReviewCount } from '@/lib/firestore/cards';
 
@@ -16,9 +16,31 @@ const navItems = [
   { href: '/wishlist', icon: Heart, label: 'Wunschliste' },
 ];
 
+// Auf /scanner werden Slot 2 + 4 mit Scanner-Controls überschrieben.
+// Diese Events werden von app/(app)/scanner/page.tsx behandelt.
+const SCAN_TOGGLE_EVENT       = 'scanner-toggle-pause';
+const SCAN_GRID_TOGGLE_EVENT  = 'scanner-toggle-grid';
+const SCAN_MODE_TOGGLE_EVENT  = 'scanner-toggle-mode';
+const SCAN_STATE_EVENT        = 'scanner-state-changed';
+
+interface ScannerNavState {
+  paused: boolean;        // Stream pausiert?
+  scanMode: 'add' | 'recognize';
+  jobsCount: number;      // Anzahl Add-Jobs (für Grid-Badge)
+  gridVisible: boolean;   // Grid-Button anzeigen?
+}
+
 export function BottomNav() {
   const pathname = usePathname();
   const [reviewCount, setReviewCount] = useState(0);
+  const [scanState, setScanState] = useState<ScannerNavState>({
+    paused: false,
+    scanMode: 'recognize',
+    jobsCount: 0,
+    gridVisible: false,
+  });
+
+  const isScanner = pathname === '/scanner';
 
   const fetchCount = useCallback(() => {
     getReviewCount().then(setReviewCount).catch(() => {});
@@ -30,14 +52,22 @@ export function BottomNav() {
     return () => window.removeEventListener('review-count-changed', fetchCount);
   }, [fetchCount]);
 
-  if (pathname === '/scanner') return null;
+  // Scanner-State-Sync — Scanner-Page postet ihren Status hierher
+  useEffect(() => {
+    const onState = (e: Event) => {
+      const detail = (e as CustomEvent<ScannerNavState>).detail;
+      if (detail) setScanState(detail);
+    };
+    window.addEventListener(SCAN_STATE_EVENT, onState as EventListener);
+    return () => window.removeEventListener(SCAN_STATE_EVENT, onState as EventListener);
+  }, []);
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
     return pathname.startsWith(href);
   };
 
-  // Leicht nach oben versetzt: nur minimal über den Nav-Rand ragen
+  // FAB-Style: rot, leicht angehoben
   const fabStyle: React.CSSProperties = {
     width: FAB_SIZE,
     height: FAB_SIZE,
@@ -47,24 +77,63 @@ export function BottomNav() {
     boxShadow: '0 4px 20px rgba(220,38,38,0.45)',
   };
 
+  // Hintergrund: dunkel-transparent auf /scanner, sonst hell wie bisher
+  const navStyle: React.CSSProperties = {
+    gridTemplateColumns: 'repeat(5, 1fr)',
+    height: 'calc(68px + env(safe-area-inset-bottom, 0px))',
+    paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+    boxShadow: '0 -4px 24px rgba(30,40,80,0.08), 0 -1px 0 rgba(30,40,80,0.05)',
+    ...(isScanner ? {
+      background: 'rgba(0,0,0,0.72)',
+      backdropFilter: 'blur(12px)',
+      WebkitBackdropFilter: 'blur(12px)',
+    } : {}),
+  };
+
+  const navClassName = isScanner
+    ? 'fixed bottom-0 left-0 right-0 z-50 grid items-center justify-items-center'
+    : 'fixed bottom-0 left-0 right-0 z-50 grid items-center justify-items-center bg-card/95 backdrop-blur-xl';
+
+  // Klick-Handler für FAB
+  const handleFabClick = () => {
+    // Auf /scanner: Toggle Stream-Pause via Event
+    if (isScanner) {
+      window.dispatchEvent(new Event(SCAN_TOGGLE_EVENT));
+    }
+    // Off-Scanner: Link-Navigation, kein Handler nötig (Next.js Link)
+  };
+
+  const fabIconColor = '#fff';
+  // Off-Scanner: Kamera-Icon. Auf /scanner: Pause wenn laufend, ScanLine wenn pausiert.
+  const FabIcon = !isScanner ? Camera : (scanState.paused ? ScanLine : Pause);
+
   return (
-    <nav
-      className="fixed bottom-0 left-0 right-0 z-50 grid items-center justify-items-center bg-card/95 backdrop-blur-xl"
-      style={{ gridTemplateColumns: 'repeat(5, 1fr)', height: 'calc(68px + env(safe-area-inset-bottom, 0px))', paddingBottom: 'env(safe-area-inset-bottom, 0px)', boxShadow: '0 -4px 24px rgba(30,40,80,0.08), 0 -1px 0 rgba(30,40,80,0.05)' }}
-    >
+    <nav className={navClassName} style={navStyle}>
       {navItems.map((item, i) => {
+        // ── Mittlerer Slot (Index 2): FAB ──────────────────────────────
         if (item === null) {
           return (
             <div key="fab" className="relative flex items-center justify-center" style={{ width: FAB_SIZE }}>
-              <Link
-                href="/scanner"
-                className="flex items-center justify-center rounded-full shadow-xl"
-                style={fabStyle}
-                aria-label="Karte scannen"
-              >
-                <Camera size={28} color="#fff" />
-              </Link>
-              {reviewCount > 0 && (
+              {isScanner ? (
+                <button
+                  onClick={handleFabClick}
+                  className="flex items-center justify-center rounded-full shadow-xl"
+                  style={fabStyle}
+                  aria-label={scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren'}
+                >
+                  <FabIcon size={28} color={fabIconColor} fill={!scanState.paused && isScanner ? '#fff' : 'none'} />
+                </button>
+              ) : (
+                <Link
+                  href="/scanner"
+                  className="flex items-center justify-center rounded-full shadow-xl"
+                  style={fabStyle}
+                  aria-label="Karte scannen"
+                >
+                  <Camera size={28} color={fabIconColor} />
+                </Link>
+              )}
+              {!isScanner && reviewCount > 0 && (
                 <span
                   className="absolute min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-white text-[10px] font-bold px-1"
                   style={{ background: '#f59e0b', pointerEvents: 'none', top: 0, right: -2 }}
@@ -75,14 +144,70 @@ export function BottomNav() {
             </div>
           );
         }
+
+        // ── Auf /scanner: Slot 1 (Suchen) → Grid-Button, Slot 3 (Sammlungen) → Mode-Switch
+        if (isScanner && i === 1) {
+          // Grid-Button — nur sichtbar im Mehrere-Modus mit Karten
+          if (!scanState.gridVisible) return <div key={`scan-${i}`} />;
+          return (
+            <button
+              key={`scan-${i}`}
+              onClick={() => window.dispatchEvent(new Event(SCAN_GRID_TOGGLE_EVENT))}
+              className="relative w-11 h-11 flex items-center justify-center rounded-full bg-white/10 backdrop-blur-sm"
+              aria-label="Übersicht öffnen"
+            >
+              <LayoutGrid size={20} color="#fff" />
+              {scanState.jobsCount > 0 && (
+                <span
+                  className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center"
+                  style={{ background: 'var(--pokedex-red)', color: '#fff' }}
+                >
+                  {scanState.jobsCount}
+                </span>
+              )}
+            </button>
+          );
+        }
+        if (isScanner && i === 3) {
+          // Mode-Switch [Einzeln | Mehrere]
+          return (
+            <div
+              key={`scan-${i}`}
+              className="flex rounded-full p-0.5 bg-black/55 backdrop-blur-sm"
+              style={{ border: '1px solid rgba(255,255,255,0.12)' }}
+            >
+              {(['recognize', 'add'] as const).map(m => (
+                <button
+                  key={m}
+                  onClick={() => {
+                    if (m === scanState.scanMode) return;
+                    window.dispatchEvent(new CustomEvent(SCAN_MODE_TOGGLE_EVENT, { detail: m }));
+                  }}
+                  className="px-3 py-1.5 rounded-full text-xs font-semibold transition-colors"
+                  style={{
+                    background: scanState.scanMode === m ? 'var(--pokedex-red)' : 'transparent',
+                    color:      scanState.scanMode === m ? '#fff' : 'rgba(255,255,255,0.65)',
+                  }}
+                >
+                  {m === 'add' ? 'Mehrere' : 'Einzeln'}
+                </button>
+              ))}
+            </div>
+          );
+        }
+
+        // Normale Nav-Items
         const Icon = item.icon;
         const active = isActive(item.href);
+        const itemColor = isScanner
+          ? (active ? '#fff' : 'rgba(255,255,255,0.65)')
+          : (active ? 'var(--pokedex-red)' : 'var(--muted-foreground)');
         return (
           <Link
             key={item.href}
             href={item.href}
             className="flex flex-col items-center gap-0.5 px-3 py-1 min-w-[56px]"
-            style={{ color: active ? 'var(--pokedex-red)' : 'var(--muted-foreground)' }}
+            style={{ color: itemColor }}
           >
             <Icon size={22} strokeWidth={active ? 2.5 : 1.8} />
             <span className="text-[10px] font-medium">{item.label}</span>
@@ -92,3 +217,12 @@ export function BottomNav() {
     </nav>
   );
 }
+
+// Exportiert für Scanner-Page, um State zu posten
+export const SCANNER_NAV_EVENTS = {
+  TOGGLE_PAUSE: SCAN_TOGGLE_EVENT,
+  TOGGLE_GRID:  SCAN_GRID_TOGGLE_EVENT,
+  TOGGLE_MODE:  SCAN_MODE_TOGGLE_EVENT,
+  STATE:        SCAN_STATE_EVENT,
+};
+export type { ScannerNavState };

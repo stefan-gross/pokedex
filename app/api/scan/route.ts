@@ -15,32 +15,14 @@ WHAT TO READ:
 - Language: German cards say "KP" (not HP) and "Fähigkeit" (Ability)
 - National Pokédex number: "Nr. XXXX" on German, "#XXX" on English cards. null if not a Pokémon.
 
-CARD CONDITION — examine corners, edges, and surface at close range (~12–15 cm):
-  "nm": near mint — no visible wear, sharp corners, clean surface
-  "lp": lightly played — minor corner/edge whitening, tiny surface marks, still looks good
-  "mp": moderately played — noticeable edge wear, corner whitening, visible scratches
-  "hp": heavily played — heavy corner/edge damage, deep scratches, significant marks
-  "d":  damaged — visible creases, bends, tears, or major surface damage
-  Default to "nm" if nothing is clearly visible.
-
-FAKE DETECTION — examine print quality carefully:
-  "low": fonts sharp and correct, colors accurate, set symbol matches known design → genuine
-  "medium": minor issues (slightly off colors, fonts look close but not exact)
-  "high": obvious problems (blurry text, wrong fonts, incorrect energy symbols, wrong layout)
-
 Return ONLY this JSON — no markdown, no explanation:
 {
   "setCode": "printed set abbreviation as-is, or null",
   "number": "card number digits only, no slash",
   "language": "de | en | ja | fr | es | it | pt | ko | zh-hant",
   "confidence": "high | medium | low",
-  "nationalDexNumber": null,
-  "condition": "nm | lp | mp | hp | d",
-  "fakeRisk": "low | medium | high",
-  "fakeReasons": []
+  "nationalDexNumber": null
 }
-
-fakeReasons: list specific issues, e.g. ["blurry text", "wrong font"]. Empty array [] if genuine.
 
 If no Pokémon card is visible: { "error": "No card detected" }`;
 

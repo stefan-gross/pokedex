@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Trash2, Loader2, AlertCircle, Check, Plus, LayoutGrid, ScanLine, Pause, ChevronLeft, AlertTriangle } from 'lucide-react';
+import { X, Trash2, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
@@ -128,14 +128,9 @@ export default function ScannerPage() {
   const [mode, setMode] = useState<'scanning' | 'review'>('scanning');
   // Scanner-Workflow: Hinzufügen (Slider-Sammlung) vs. Erkennen (Lookup-Anzeige).
   const [scanMode, setScanMode] = useState<'add' | 'recognize'>('recognize');
-  // Stream-Lifecycle wird vom Footer-FAB gesteuert. Initial false → kein
-  // getUserMedia ohne expliziten Tap. Nach iOS-PWA-Reload (cam-mounts > 0
-  // im sessionStorage) starten wir auto, um den Re-Tap zu sparen.
-  const [cameraActive, setCameraActive] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    try { return Number(sessionStorage.getItem('cam-mounts') ?? '0') > 0; }
-    catch { return false; }
-  });
+  // Stream-Lifecycle: Auto-Start beim Mount — der BottomNav-FAB navigiert
+  // direkt hierher, der User erwartet sofort Kamera. Kein Re-Tap nötig.
+  const [cameraActive, setCameraActive] = useState<boolean>(true);
   const [streamPaused, setStreamPaused] = useState(false);
   // Im Erkennen-Modus: ID des aktuell zentral angezeigten Jobs. Wird beim
   // erfolgreichen Recognize-Scan gesetzt; Resume-Tap räumt ihn zurück.
@@ -166,6 +161,74 @@ export default function ScannerPage() {
       sliderRef.current.scrollTo({ left: sliderRef.current.scrollWidth, behavior: 'smooth' });
     }
   }, [jobs.length]);
+
+  // ── BottomNav-Bridge ────────────────────────────────────────────────────
+  // Stream-Pause-Toggle vom BottomNav-FAB
+  const toggleStreamPaused = useCallback(() => {
+    if (!cameraActive) { setCameraActive(true); setStreamPaused(false); return; }
+    setStreamPaused(prev => {
+      if (prev) {
+        // Resume: alten Recognize-Job aufräumen
+        setRecognizedJobId(null);
+        setJobs(p => p.filter(j => j.origin !== 'recognize'));
+        return false;
+      }
+      return true;
+    });
+  }, [cameraActive]);
+
+  // Mode-Switch vom BottomNav
+  const switchScanMode = useCallback((m: 'add' | 'recognize') => {
+    setJobs(prev => prev.filter(j => j.origin !== 'recognize'));
+    setRecognizedJobId(null);
+    setStreamPaused(false);
+    setScanMode(m);
+  }, []);
+
+  // Grid-Toggle vom BottomNav
+  const toggleGridMode = useCallback(() => {
+    setMode(m => m === 'scanning' ? 'review' : 'scanning');
+  }, []);
+
+  // Events vom BottomNav abonnieren
+  useEffect(() => {
+    const onTogglePause = () => toggleStreamPaused();
+    const onToggleMode  = (e: Event) => {
+      const m = (e as CustomEvent<'add' | 'recognize'>).detail;
+      if (m) switchScanMode(m);
+    };
+    const onToggleGrid  = () => toggleGridMode();
+    window.addEventListener('scanner-toggle-pause', onTogglePause);
+    window.addEventListener('scanner-toggle-mode',  onToggleMode as EventListener);
+    window.addEventListener('scanner-toggle-grid',  onToggleGrid);
+    return () => {
+      window.removeEventListener('scanner-toggle-pause', onTogglePause);
+      window.removeEventListener('scanner-toggle-mode',  onToggleMode as EventListener);
+      window.removeEventListener('scanner-toggle-grid',  onToggleGrid);
+    };
+  }, [toggleStreamPaused, switchScanMode, toggleGridMode]);
+
+  // State an BottomNav schicken — sie braucht paused/scanMode/jobsCount/gridVisible
+  const addJobsCount = jobs.filter(j => j.origin === 'add').length;
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('scanner-state-changed', {
+      detail: {
+        paused: streamPaused,
+        scanMode,
+        jobsCount: addJobsCount,
+        gridVisible: scanMode === 'add' && addJobsCount > 0,
+      },
+    }));
+  }, [streamPaused, scanMode, addJobsCount]);
+
+  // Beim Unmount: Reset, damit andere Seiten nicht den Scan-Pause-FAB sehen
+  useEffect(() => {
+    return () => {
+      window.dispatchEvent(new CustomEvent('scanner-state-changed', {
+        detail: { paused: false, scanMode: 'recognize', jobsCount: 0, gridVisible: false },
+      }));
+    };
+  }, []);
 
   const debugJob = jobs.find(j => j.id === debugJobId) ?? null;
 
@@ -461,7 +524,7 @@ export default function ScannerPage() {
           className="absolute inset-0 overflow-y-auto bg-black px-4"
           style={{
             paddingTop: 'calc(env(safe-area-inset-top, 0px) + 64px)',
-            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 100px)',
+            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 140px)',
           }}
         >
           <div className="grid grid-cols-2 gap-3">
@@ -661,11 +724,12 @@ export default function ScannerPage() {
         const unaddedCount = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added).length;
         return (
           <div
-            className="absolute left-0 right-0 z-20 flex gap-2 px-4"
+            className="absolute left-0 right-0 z-40 flex gap-2 px-4"
             style={{
-              bottom: 0,
+              // Über der globalen BottomNav (68px + safe-area)
+              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 68px)',
               paddingTop: 8,
-              paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 4px)',
+              paddingBottom: 8,
               background: 'rgba(0,0,0,0.75)',
               backdropFilter: 'blur(8px)',
               WebkitBackdropFilter: 'blur(8px)',
@@ -701,100 +765,9 @@ export default function ScannerPage() {
       })()}
 
 
-      {/* ── Footer-Toolbar: Grid + Mode-Switch + FAB ─────────────────
-          Erscheint im Scan-Modus. Drei Slots:
-          • Links (44 px immer reserviert): Grid-Toggle, sichtbar nur im
-            Hinzufügen-Modus mit >0 Karten — sonst leer (stabile Positionen)
-          • Mitte: Mode-Switch [Hinzufügen | Erkennen]
-          • Rechts (72 px): FAB-Toggle
-            - !cameraActive ODER paused → Scan-Icon → Stream startet/fortsetzt
-            - cameraActive && !paused   → Pause-Bars → Pausiert Detection */}
-      {mode === 'scanning' && (
-        <div
-          className="absolute left-0 right-0 z-20 flex items-center justify-between gap-3 px-4"
-          style={{
-            bottom: 0,
-            paddingTop: 10,
-            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 10px)',
-            background: 'rgba(0,0,0,0.75)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-          }}
-        >
-          {/* Grid-Slot (immer 44 px breit) */}
-          <div className="w-11 h-11 flex items-center justify-center">
-            {scanMode === 'add' && jobs.length > 0 && (
-              <button
-                onClick={() => setMode(mode === 'scanning' ? 'review' : 'scanning')}
-                className="relative w-11 h-11 flex items-center justify-center rounded-full bg-white/10 backdrop-blur-sm"
-                aria-label="Übersicht öffnen"
-              >
-                <LayoutGrid size={20} color="#fff" />
-                <span
-                  className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center"
-                  style={{ background: 'var(--pokedex-red)', color: '#fff' }}
-                >
-                  {jobs.length}
-                </span>
-              </button>
-            )}
-          </div>
-
-          {/* Mode-Switch (Mitte, schrumpft wenn nötig) */}
-          <div
-            className="flex rounded-full p-0.5 bg-black/55 backdrop-blur-sm"
-            style={{ border: '1px solid rgba(255,255,255,0.12)' }}
-          >
-            {(['recognize', 'add'] as const).map(m => (
-              <button
-                key={m}
-                onClick={() => {
-                  if (m === scanMode) return;
-                  // Recognize-Jobs sind temporär — beim Modus-Wechsel verwerfen.
-                  // Add-Jobs bleiben über Wechsel hinweg erhalten.
-                  setJobs(prev => prev.filter(j => j.origin !== 'recognize'));
-                  setRecognizedJobId(null);
-                  setStreamPaused(false);
-                  setScanMode(m);
-                }}
-                className="px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors"
-                style={{
-                  background: scanMode === m ? 'var(--pokedex-red)' : 'transparent',
-                  color:      scanMode === m ? '#fff' : 'rgba(255,255,255,0.65)',
-                }}
-              >
-                {m === 'add' ? 'Mehrere' : 'Einzeln'}
-              </button>
-            ))}
-          </div>
-
-          {/* FAB rechts: Scan-Icon ↔ Pause-Bars */}
-          <button
-            onClick={() => {
-              if (!cameraActive) { setCameraActive(true); setStreamPaused(false); return; }
-              if (streamPaused) {
-                setStreamPaused(false);
-                setRecognizedJobId(null); // im Erkennen-Modus räumt Resume die zentrale Karte auf
-                // Alten Recognize-Job entfernen — Tap = „neue Karte scannen".
-                setJobs(prev => prev.filter(j => j.origin !== 'recognize'));
-              } else {
-                setStreamPaused(true);
-              }
-            }}
-            className="flex items-center justify-center rounded-full shadow-lg"
-            style={{ width: 72, height: 72, background: 'var(--pokedex-red)' }}
-            aria-label={
-              !cameraActive ? 'Kamera starten'
-              : streamPaused ? 'Stream fortsetzen'
-              : 'Stream pausieren'
-            }
-          >
-            {(!cameraActive || streamPaused)
-              ? <ScanLine size={30} color="#fff" />
-              : <Pause size={30} color="#fff" fill="#fff" />}
-          </button>
-        </div>
-      )}
+      {/* Footer wird jetzt von der globalen BottomNav übernommen.
+          Stream-Pause, Mode-Switch und Grid-Button laufen über Custom-Events
+          (siehe useEffect am Anfang der Component). */}
 
       {/* ── Debug-Modal ──────────────────────────────────────────── */}
       {debugJob?.debug && (
