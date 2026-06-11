@@ -126,7 +126,7 @@ export default function ScannerPage() {
   const [debugJobId, setDebugJobId] = useState<string | null>(null);
   const [mode, setMode] = useState<'scanning' | 'review'>('scanning');
   // Scanner-Workflow: Hinzufügen (Slider-Sammlung) vs. Erkennen (Lookup-Anzeige).
-  const [scanMode, setScanMode] = useState<'add' | 'recognize'>('add');
+  const [scanMode, setScanMode] = useState<'add' | 'recognize'>('recognize');
   // Stream-Lifecycle wird vom Footer-FAB gesteuert. Initial false → kein
   // getUserMedia ohne expliziten Tap. Nach iOS-PWA-Reload (cam-mounts > 0
   // im sessionStorage) starten wir auto, um den Re-Tap zu sparen.
@@ -520,26 +520,26 @@ export default function ScannerPage() {
                     })()}
                     {/* Trash + Quick-Add unten rechts */}
                     <div
-                      className="absolute flex gap-1"
+                      className="absolute flex items-end gap-1"
                       style={{ right: 2, bottom: 2 }}
                       onClick={e => e.stopPropagation()}
                     >
                       <button
                         onClick={e => { e.stopPropagation(); removeJob(job.id); }}
-                        className="w-9 h-9 rounded-full flex items-center justify-center shadow-md"
+                        className="w-8 h-8 rounded-full flex items-center justify-center shadow-md"
                         style={{ background: 'rgba(0,0,0,0.7)' }}
                         aria-label="Entfernen"
                       >
-                        <Trash2 size={16} color="#ef4444" />
+                        <Trash2 size={14} color="#ef4444" />
                       </button>
                       {canOpen && !job.added && (
                         <button
                           onClick={e => { e.stopPropagation(); setQuickAddJobId(job.id); }}
-                          className="w-9 h-9 rounded-full flex items-center justify-center shadow-md"
+                          className="w-11 h-11 rounded-full flex items-center justify-center shadow-md"
                           style={{ background: 'var(--pokedex-red)' }}
                           aria-label="Zur Sammlung hinzufügen"
                         >
-                          <Plus size={20} color="#fff" strokeWidth={3} />
+                          <Plus size={22} color="#fff" strokeWidth={3} />
                         </button>
                       )}
                     </div>
@@ -654,8 +654,8 @@ export default function ScannerPage() {
             className="absolute left-0 right-0 z-20 flex gap-2 px-4"
             style={{
               bottom: 0,
-              paddingTop: 10,
-              paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 10px)',
+              paddingTop: 8,
+              paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 4px)',
               background: 'rgba(0,0,0,0.75)',
               backdropFilter: 'blur(8px)',
               WebkitBackdropFilter: 'blur(8px)',
@@ -735,7 +735,7 @@ export default function ScannerPage() {
             className="flex rounded-full p-0.5 bg-black/55 backdrop-blur-sm"
             style={{ border: '1px solid rgba(255,255,255,0.12)' }}
           >
-            {(['add', 'recognize'] as const).map(m => (
+            {(['recognize', 'add'] as const).map(m => (
               <button
                 key={m}
                 onClick={() => setScanMode(m)}
@@ -1137,22 +1137,6 @@ function RecognizedCardLarge({
         bottom: 'calc(env(safe-area-inset-bottom, 0px) + 100px)',
       }}
     >
-      {/* Owned-Banner */}
-      <div
-        className="w-full px-4 py-2.5 rounded-xl text-center text-sm font-semibold"
-        style={{
-          background: !ownedKnown
-            ? 'rgba(0,0,0,0.55)'
-            : isOwned ? 'rgba(34,197,94,0.85)' : 'rgba(239,68,68,0.85)',
-          color: '#fff',
-          backdropFilter: 'blur(6px)',
-        }}
-      >
-        {!ownedKnown ? 'Sammlung wird geprüft …'
-          : isOwned ? `Bereits in deiner Sammlung (×${ownedCount})`
-          : 'Noch nicht in deiner Sammlung'}
-      </div>
-
       {/* Pokemon-Name */}
       <h2 className="text-white font-semibold text-lg truncate text-center max-w-full">
         {card?.name ?? 'Karte'}
@@ -1232,8 +1216,19 @@ function RecognizedCardLarge({
         {card?.setCode ? `${card.setCode} ${card.number}` : '—'}
       </p>
 
-      {/* Hinzufügen-CTA */}
-      {card && !job.added && (
+      {/* Status unter der Karte: bereits in Sammlung ODER Hinzufügen-Button */}
+      {card && (job.added || isOwned) && (
+        <div
+          className="w-full h-12 rounded-full text-white font-semibold flex items-center justify-center gap-2"
+          style={{ background: 'rgba(34,197,94,0.85)' }}
+        >
+          <Check size={20} strokeWidth={3} />
+          {job.added
+            ? 'Hinzugefügt'
+            : `Bereits in deiner Sammlung${ownedCount && ownedCount > 1 ? ` (×${ownedCount})` : ''}`}
+        </div>
+      )}
+      {card && !job.added && !isOwned && ownedKnown && (
         <button
           onClick={onAdd}
           className="w-full h-12 rounded-full text-white font-semibold flex items-center justify-center gap-2 shadow-lg"
@@ -1242,15 +1237,6 @@ function RecognizedCardLarge({
           <Plus size={20} strokeWidth={3} />
           Zur Sammlung hinzufügen
         </button>
-      )}
-      {card && job.added && (
-        <div
-          className="w-full h-12 rounded-full text-white font-semibold flex items-center justify-center gap-2"
-          style={{ background: 'rgba(72,187,120,0.85)' }}
-        >
-          <Check size={20} strokeWidth={3} />
-          Hinzugefügt
-        </div>
       )}
     </div>
   );
