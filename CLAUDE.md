@@ -44,6 +44,7 @@ Pokémon-Kartensammlung PWA für Stefan Gross.
 - ✅ Phase 3: Suche (pokemontcg.io, Live-Wildcard, Karten-Grid)
 - ✅ Phase 4 (teilw.): Mappen Übersicht + Detail
 - ✅ Catalog-Sync: Firestore `tcg_catalog`, Admin SDK, wöch. Cron
+- ✅ Scanner-Polish (Stufe 1–8): Pause/Resume-FAB, Erkennen-Modus mit Owned-Banner, Quick-Add `+` auf Tiles, Bulk-Actions, REST-Catalog-Lookup, Detection-Speedups (WebGPU + Mask-Lazy), Auto-Pause nach Recognize, Slider-Reihenfolge-Polish
 - 🔲 Phase 4 Rest: Drag & Drop
 - 🔲 Phase 5: Wunschlisten
 - 🔲 Phase 6: Marktpreise (Cardmarket)
