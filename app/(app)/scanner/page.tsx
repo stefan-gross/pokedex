@@ -451,7 +451,7 @@ export default function ScannerPage() {
           className="absolute inset-0 overflow-y-auto bg-black px-4"
           style={{
             paddingTop: 'calc(env(safe-area-inset-top, 0px) + 64px)',
-            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)',
+            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 100px)',
           }}
         >
           <div className="grid grid-cols-2 gap-3">
@@ -507,6 +507,17 @@ export default function ScannerPage() {
                         <AlertTriangle size={16} color={job.result.fakeRisk === 'high' ? '#ef4444' : '#facc15'} fill={job.result.fakeRisk === 'high' ? '#ef4444' : '#facc15'} />
                       </button>
                     )}
+                    {/* Condition-Pill unten links auf der Karte */}
+                    {job.result?.condition && (() => {
+                      const p = GEMINI_TO_PERSISTED[job.result.condition];
+                      const c = PERSISTED_CONDITION_COLOR[p];
+                      return (
+                        <span className="absolute bottom-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-md"
+                          style={{ background: c.bg, color: c.text }}>
+                          {p}
+                        </span>
+                      );
+                    })()}
                     {/* Trash + Quick-Add unten rechts */}
                     <div
                       className="absolute flex gap-1"
@@ -533,28 +544,21 @@ export default function ScannerPage() {
                       )}
                     </div>
                   </div>
-                  <p className="text-xs text-white/80 mt-2 truncate px-1">
-                    {card?.name ?? (job.status === 'processing' ? '…' : 'Fehler')}
-                  </p>
-                  <div className="flex items-center justify-between gap-2 mt-1 px-1 min-h-[20px]">
-                    {card?.setCode ? (
-                      <span
-                        className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border shrink-0"
+                  <div className="flex items-center justify-center gap-2 mt-2 px-1">
+                    {card?.setCode && (
+                      <div
+                        className="shrink-0 flex flex-col items-center leading-tight rounded-md border px-1.5 py-0.5 font-mono"
                         style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}
                       >
-                        {card.setCode} {card.number}
-                      </span>
-                    ) : <span />}
-                    {job.result?.condition && (() => {
-                      const p = GEMINI_TO_PERSISTED[job.result.condition];
-                      const c = PERSISTED_CONDITION_COLOR[p];
-                      return (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md shrink-0"
-                          style={{ background: c.bg, color: c.text }}>
-                          {p}
-                        </span>
-                      );
-                    })()}
+                        <span className="text-[10px] font-bold">{card.setCode}</span>
+                        {card.number && (
+                          <span className="text-[9px] text-white/75">{card.number}</span>
+                        )}
+                      </div>
+                    )}
+                    <p className="text-xs text-white/90 truncate">
+                      {card?.name ?? (job.status === 'processing' ? '…' : 'Fehler')}
+                    </p>
                   </div>
                 </div>
               );
@@ -570,7 +574,7 @@ export default function ScannerPage() {
         className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 pb-3"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
       >
-        {mode === 'review' && (
+        {mode === 'review' ? (
           <button
             onClick={() => setMode('scanning')}
             className="flex items-center gap-1 h-9 px-3 rounded-full bg-white/10 backdrop-blur-sm text-white text-sm font-medium"
@@ -578,6 +582,15 @@ export default function ScannerPage() {
           >
             <ChevronLeft size={18} color="#fff" />
             Scannen
+          </button>
+        ) : <span />}
+        {mode === 'scanning' && (
+          <button
+            onClick={() => router.push('/')}
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-black/55 backdrop-blur-sm"
+            aria-label="Scanner schließen"
+          >
+            <X size={18} color="#fff" />
           </button>
         )}
       </div>
@@ -587,7 +600,7 @@ export default function ScannerPage() {
       {mode === 'scanning' && scanMode === 'add' && jobs.length > 0 && (
         <div
           className="absolute left-0 right-0 z-10 px-4"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 110px)' }}
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 100px)' }}
         >
           <div
             ref={sliderRef}
@@ -621,6 +634,7 @@ export default function ScannerPage() {
           <RecognizedCardLarge
             job={recognized}
             onCardTap={() => setActiveJobId(recognized.id)}
+            onAdd={() => setQuickAddJobId(recognized.id)}
             onVariantChange={v => setJobVariant(recognized.id, v)}
             onConditionChange={c => setJobCondition(recognized.id, c)}
           />
@@ -635,23 +649,17 @@ export default function ScannerPage() {
         const visible = mode === 'review' && jobs.length > 0;
         if (!visible) return null;
         const unaddedCount = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added).length;
-        const bottomOffset = mode === 'review'
-          ? 'calc(env(safe-area-inset-bottom, 0px) + 12px)'
-          : 'calc(env(safe-area-inset-bottom, 0px) + 104px)';
-        const rowStyle: React.CSSProperties = mode === 'review'
-          ? {
-              bottom: bottomOffset,
-              background: 'rgba(0,0,0,0.75)',
-              backdropFilter: 'blur(8px)',
-              WebkitBackdropFilter: 'blur(8px)',
-              paddingTop: 8,
-              paddingBottom: 8,
-            }
-          : { bottom: bottomOffset };
         return (
           <div
             className="absolute left-0 right-0 z-20 flex gap-2 px-4"
-            style={rowStyle}
+            style={{
+              bottom: 0,
+              paddingTop: 10,
+              paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 10px)',
+              background: 'rgba(0,0,0,0.75)',
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+            }}
           >
             <button
               onClick={clearAllJobs}
@@ -695,8 +703,12 @@ export default function ScannerPage() {
         <div
           className="absolute left-0 right-0 z-20 flex items-center justify-between gap-3 px-4"
           style={{
-            bottom: 'env(safe-area-inset-bottom, 0px)',
-            height: 72,
+            bottom: 0,
+            paddingTop: 10,
+            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 10px)',
+            background: 'rgba(0,0,0,0.75)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
           }}
         >
           {/* Grid-Slot (immer 44 px breit) */}
@@ -733,7 +745,7 @@ export default function ScannerPage() {
                   color:      scanMode === m ? '#fff' : 'rgba(255,255,255,0.65)',
                 }}
               >
-                {m === 'add' ? 'Hinzufügen' : 'Erkennen'}
+                {m === 'add' ? 'Mehrere' : 'Einzeln'}
               </button>
             ))}
           </div>
@@ -1095,12 +1107,13 @@ function ScannedCardTile({
 interface RecognizedCardLargeProps {
   job: ScanJob;
   onCardTap:         () => void;
+  onAdd:             () => void;
   onVariantChange:   (v: CardVariant) => void;
   onConditionChange: (c: PersistedCondition) => void;
 }
 
 function RecognizedCardLarge({
-  job, onCardTap, onVariantChange, onConditionChange,
+  job, onCardTap, onAdd, onVariantChange, onConditionChange,
 }: RecognizedCardLargeProps) {
   const img       = cardImgUrlLarge(job);
   const card      = job.result?.card;
@@ -1218,6 +1231,27 @@ function RecognizedCardLarge({
       <p className="text-sm text-white/70 text-center font-mono">
         {card?.setCode ? `${card.setCode} ${card.number}` : '—'}
       </p>
+
+      {/* Hinzufügen-CTA */}
+      {card && !job.added && (
+        <button
+          onClick={onAdd}
+          className="w-full h-12 rounded-full text-white font-semibold flex items-center justify-center gap-2 shadow-lg"
+          style={{ background: 'var(--pokedex-red)' }}
+        >
+          <Plus size={20} strokeWidth={3} />
+          Zur Sammlung hinzufügen
+        </button>
+      )}
+      {card && job.added && (
+        <div
+          className="w-full h-12 rounded-full text-white font-semibold flex items-center justify-center gap-2"
+          style={{ background: 'rgba(72,187,120,0.85)' }}
+        >
+          <Check size={20} strokeWidth={3} />
+          Hinzugefügt
+        </div>
+      )}
     </div>
   );
 }
