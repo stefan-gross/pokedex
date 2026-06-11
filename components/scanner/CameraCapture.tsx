@@ -84,6 +84,45 @@ const SNAP_COOLDOWN_MIN_MS    = 800;  // Mindest-Wartezeit nach Snap (verlänger
 // Rand um die ONNX-Box beim Zuschneiden für Gemini (Pixel in Video-Koordinaten)
 const CROP_PADDING = 24;
 
+/** Median über N Zahlen (kleines N, naiv per Sort). */
+function median(values: number[]): number {
+  const a = values.slice().sort((x, y) => x - y);
+  const m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+
+/** Median über die letzten Roh-Detektionen — glättet Hand-Zittern + Maske-Jitter.
+ *  - x/y/w/h/conf: numerische Mediane der Box-Felder
+ *  - corners: pro der 4 Ecken Median in x und y (sofern alle Boxen Corners haben) */
+function medianCardBox(history: CardBox[]): CardBox {
+  const xs    = history.map(b => b.x);
+  const ys    = history.map(b => b.y);
+  const ws    = history.map(b => b.w);
+  const hs    = history.map(b => b.h);
+  const confs = history.map(b => b.conf);
+
+  let corners: [number, number][] | null | undefined;
+  const allHaveCorners = history.every(
+    b => b.corners != null && b.corners.length === 4
+  );
+  if (allHaveCorners) {
+    corners = [0, 1, 2, 3].map(ci => {
+      const cx = history.map(b => (b.corners as [number, number][])[ci][0]);
+      const cy = history.map(b => (b.corners as [number, number][])[ci][1]);
+      return [median(cx), median(cy)] as [number, number];
+    });
+  }
+
+  return {
+    x: median(xs),
+    y: median(ys),
+    w: median(ws),
+    h: median(hs),
+    conf: median(confs),
+    corners,
+  };
+}
+
 // Upload-Optimierung: lange Kante auf 1024px begrenzen + JPEG-Quality 0.60.
 // Vorher 0.75 ohne Resize → ~300-500KB Base64 → 20-40s Upload auf schwachem LTE.
 // Gemini-OCR liest Schriften zuverlässig auch bei 0.60 / 1024px.
@@ -125,8 +164,10 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   const cooldownRef  = useRef(false);
   const onCaptureRef = useRef(onCapture);
 
-  // Letztes ONNX-Ergebnis in Video-Koordinaten (für Overlay + Snap-Trigger + Crop)
+  // Letztes (geglättetes) ONNX-Ergebnis in Video-Koordinaten (Overlay + Snap-Crop)
   const onnxBoxRef    = useRef<CardBox | null>(null);
+  // Ring-Buffer der letzten 3 Roh-Detektionen für Median-Glättung
+  const cornerHistoryRef = useRef<CardBox[]>([]);
   const onnxStickyRef   = useRef(0);
   const ONNX_STICKY     = 2; // 2 × 150ms = 300ms bis Absence erkannt (war 4 = 600ms)
   const inferringRef    = useRef(false);
@@ -526,7 +567,12 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
                 boxDeltaRef.current = Infinity; // erster Treffer → noch nicht settled
               }
               prevBoxRef.current    = box;
-              onnxBoxRef.current    = box;
+              // ── Ecken-/Box-Glättung: Median über die letzten 3 Roh-Detektionen ─
+              // Reduziert Jitter durch Maske-Rauschen und Hand-Zittern.
+              const hist = cornerHistoryRef.current;
+              hist.push(box);
+              if (hist.length > 3) hist.shift();
+              onnxBoxRef.current    = hist.length === 3 ? medianCardBox(hist) : box;
               onnxStickyRef.current = ONNX_STICKY;
               consecutiveDetectRef.current += 1; // Zähler für Fallback-Trigger
             } else {
@@ -535,6 +581,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
                 // Karte aus dem Bild — Overlay + Zähler zurücksetzen
                 onnxBoxRef.current           = null;
                 prevBoxRef.current           = null;
+                cornerHistoryRef.current     = [];
                 boxDeltaRef.current          = Infinity;
                 consecutiveDetectRef.current = 0; // frische Erkennung für nächste Karte
                 // Cooldown läuft per Timer — hier kein Eingriff nötig
@@ -544,6 +591,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
             onnxBoxRef.current           = null;
             onnxStickyRef.current        = 0;
             prevBoxRef.current           = null;
+            cornerHistoryRef.current     = [];
             boxDeltaRef.current          = Infinity;
             consecutiveDetectRef.current = 0;
           }).finally(() => {

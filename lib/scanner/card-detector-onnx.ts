@@ -85,11 +85,51 @@ export async function detectCardInFrame(
   ctx.drawImage(source, padX, padY, drawW, drawH);
   const px = ctx.getImageData(0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE).data;
   const N  = MODEL_INPUT_SIZE * MODEL_INPUT_SIZE;
+
+  // ─── Contrast-Stretch via Luminanz-Histogramm ─────────────────────────────
+  // Verbessert Recall bei dunklen/glänzenden Karten und schlechtem Licht.
+  // 64-Bucket-Luminanz-Histogramm (Rec. 601: 0.299R + 0.587G + 0.114B), dann
+  // 2./98.-Perzentile bestimmen. Stretch wird auf alle drei RGB-Channels
+  // gleichermaßen angewendet, damit kein Color-Cast entsteht.
+  const HIST_BUCKETS = 64;
+  const hist = new Uint32Array(HIST_BUCKETS);
+  for (let i = 0; i < N; i++) {
+    const r = px[i * 4], g = px[i * 4 + 1], b = px[i * 4 + 2];
+    const lum = (r * 77 + g * 150 + b * 29) >> 8;            // ≈ Rec.601, /256
+    const bucket = (lum * HIST_BUCKETS) >> 8;                 // 0..255 → 0..63
+    hist[bucket < HIST_BUCKETS ? bucket : HIST_BUCKETS - 1]++;
+  }
+  const lowCount  = N * 0.02;   // 2.-Perzentil
+  const highCount = N * 0.98;   // 98.-Perzentil
+  let cum = 0, p2bucket = 0, p98bucket = HIST_BUCKETS - 1;
+  for (let b = 0; b < HIST_BUCKETS; b++) {
+    cum += hist[b];
+    if (cum >= lowCount) { p2bucket = b; break; }
+  }
+  cum = 0;
+  for (let b = 0; b < HIST_BUCKETS; b++) {
+    cum += hist[b];
+    if (cum >= highCount) { p98bucket = b; break; }
+  }
+  const p2  = (p2bucket  * 255) / HIST_BUCKETS;
+  const p98 = (p98bucket * 255) / HIST_BUCKETS + 255 / HIST_BUCKETS;
+  // Kein Stretch wenn Dynamikbereich zu klein (Rauschen / Schwarz-Frame)
+  const useStretch = (p98 - p2) >= 30;
+  const stretchScale = useStretch ? 1 / (p98 - p2) : 1 / 255;
+  const stretchOffset = useStretch ? -p2 / (p98 - p2) : 0;
+
   const t  = new Float32Array(3 * N);
   for (let i = 0; i < N; i++) {
-    t[i]         = px[i * 4]     / 255;
-    t[N + i]     = px[i * 4 + 1] / 255;
-    t[2 * N + i] = px[i * 4 + 2] / 255;
+    let r = px[i * 4]     * stretchScale + stretchOffset;
+    let g = px[i * 4 + 1] * stretchScale + stretchOffset;
+    let b = px[i * 4 + 2] * stretchScale + stretchOffset;
+    // Clamp [0, 1]
+    if (r < 0) r = 0; else if (r > 1) r = 1;
+    if (g < 0) g = 0; else if (g > 1) g = 1;
+    if (b < 0) b = 0; else if (b > 1) b = 1;
+    t[i]         = r;
+    t[N + i]     = g;
+    t[2 * N + i] = b;
   }
 
   // 2. Inferenz
