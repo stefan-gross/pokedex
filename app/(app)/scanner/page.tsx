@@ -147,6 +147,10 @@ export default function ScannerPage() {
   const [quickAddJobId, setQuickAddJobId] = useState<string | null>(null);
   const quickAddJob = jobs.find(j => j.id === quickAddJobId) ?? null;
 
+  // Fehler-Diagnose-Modal (tappbar im Slider + Review-Grid)
+  const [errorDetailJobId, setErrorDetailJobId] = useState<string | null>(null);
+  const errorDetailJob = jobs.find(j => j.id === errorDetailJobId) ?? null;
+
   // Fake-Reasons-Popup: zeigt Gemini-Begründungen warum die Karte als
   // medium/high fake-risk eingestuft wurde.
   const [fakeReasonsJobId, setFakeReasonsJobId] = useState<string | null>(null);
@@ -581,8 +585,10 @@ export default function ScannerPage() {
               const img = cardImgUrl(job);
               const card = job.result?.card;
               const canOpen = job.status === 'done' && !!card;
+              const isError = job.status === 'error';
               const onCardClick = () => {
                 if (canOpen) setActiveJobId(job.id);
+                else if (isError) setErrorDetailJobId(job.id);
               };
               const reviewBorder = job.result?.fakeRisk
                 ? FAKE_RISK_BORDER[job.result.fakeRisk]
@@ -595,7 +601,7 @@ export default function ScannerPage() {
                       background: '#1a1a1a',
                       aspectRatio: '63/88',
                       border: `2.5px solid ${reviewBorder}`,
-                      cursor: canOpen ? 'pointer' : 'default',
+                      cursor: (canOpen || isError) ? 'pointer' : 'default',
                     }}
                     onClick={onCardClick}
                   >
@@ -737,6 +743,7 @@ export default function ScannerPage() {
                 onCardTap={() => setActiveJobId(job.id)}
                 onRemove={() => removeJob(job.id)}
                 onQuickAdd={() => setQuickAddJobId(job.id)}
+                onErrorTap={() => setErrorDetailJobId(job.id)}
                 onFakeReasons={() => setFakeReasonsJobId(job.id)}
                 onVariantChange={v => setJobVariant(job.id, v)}
                 onConditionChange={c => setJobCondition(job.id, c)}
@@ -949,6 +956,116 @@ export default function ScannerPage() {
         );
       })()}
 
+      {/* ── Fehler-Diagnose-Modal — tappbar von jeder Error-Tile ──────── */}
+      {errorDetailJob && (() => {
+        const job = errorDetailJob;
+        const gp = job.debug?.geminiParsed as
+          | { error?: string; setCode?: string | null; number?: string | null;
+              language?: string; confidence?: string; nationalDexNumber?: number | null }
+          | undefined;
+
+        let HeaderIcon = AlertCircle;
+        let iconColor = '#f87171';
+        let title = 'Karte konnte nicht erkannt werden';
+        let hint = 'Halte die Karte deutlicher in den Rahmen oder versuche eine andere Belichtung.';
+        let kind: 'gemini-blind' | 'gemini-thin' | 'catalog-miss' = 'catalog-miss';
+        if (gp?.error || job.debug?.error === 'No card detected') {
+          kind = 'gemini-blind';
+          HeaderIcon = EyeOff;
+          iconColor = '#facc15';
+          title = 'Keine Karte im Bild';
+          hint = 'Bitte Karte deutlicher in den Rahmen halten.';
+        } else if (!gp?.setCode && !gp?.number && !gp?.nationalDexNumber) {
+          kind = 'gemini-thin';
+          HeaderIcon = AlertTriangle;
+          iconColor = '#fb923c';
+          title = 'Karten-Text konnte nicht gelesen werden';
+          hint = 'Beleuchte die Karte stärker oder rücke näher heran.';
+        } else {
+          kind = 'catalog-miss';
+          HeaderIcon = SearchX;
+          iconColor = '#f87171';
+          title = 'Karte nicht im Katalog gefunden';
+          hint = 'Möglicherweise ein Set, das noch nicht synchronisiert ist.';
+        }
+
+        const close = () => setErrorDetailJobId(null);
+        const removeAndClose = () => {
+          setJobs(prev => prev.filter(j => j.id !== job.id));
+          close();
+        };
+
+        return (
+          <div
+            className="fixed inset-0 z-[70] flex items-end"
+            onClick={close}
+          >
+            <div className="absolute inset-0 bg-black/60" />
+            <div
+              className="relative w-full rounded-t-2xl bg-card border-t border-border p-5 pb-safe flex flex-col gap-3"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="w-10 h-1 rounded-full bg-border mx-auto" />
+              <div className="flex flex-col items-center gap-2 text-center">
+                <HeaderIcon size={36} color={iconColor} />
+                <p className="text-base font-semibold leading-tight">{title}</p>
+                <p className="text-sm text-muted-foreground leading-snug max-w-xs">{hint}</p>
+              </div>
+
+              {gp && kind !== 'gemini-blind' && (
+                <div
+                  className="rounded-lg px-3 py-2.5"
+                  style={{ background: 'var(--secondary)', fontFamily: 'monospace' }}
+                >
+                  <div className="text-[10px] font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">
+                    Gemini
+                  </div>
+                  <div className="grid grid-cols-[80px_1fr] gap-x-2 text-[12px] leading-snug">
+                    <span className="text-muted-foreground">Set-Code</span>
+                    <span>{gp.setCode ?? <span className="text-muted-foreground">— (Symbol)</span>}</span>
+                    <span className="text-muted-foreground">Nummer</span>
+                    <span>{gp.number ?? <span className="text-muted-foreground">—</span>}</span>
+                    <span className="text-muted-foreground">Sprache</span>
+                    <span>{gp.language ?? '—'}</span>
+                    <span className="text-muted-foreground">Dex-Nr.</span>
+                    <span>{gp.nationalDexNumber ?? <span className="text-muted-foreground">—</span>}</span>
+                    <span className="text-muted-foreground">Confidence</span>
+                    <span>{gp.confidence ?? '—'}</span>
+                  </div>
+                  {kind === 'catalog-miss' && job.debugInfo && (
+                    <div className="text-[11px] text-muted-foreground mt-1.5 break-words">
+                      {job.debugInfo.split('|').slice(-1)[0].trim()}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={removeAndClose}
+                  className="flex-1 h-11 rounded-full font-semibold text-sm flex items-center justify-center gap-1.5"
+                  style={{
+                    background: 'rgba(255,255,255,0.08)',
+                    color: 'var(--foreground)',
+                    border: '1px solid var(--border)',
+                  }}
+                >
+                  <Trash2 size={15} color="#ef4444" />
+                  Entfernen
+                </button>
+                <button
+                  onClick={close}
+                  className="flex-1 h-11 rounded-full font-semibold text-sm text-white"
+                  style={{ background: 'var(--pokedex-red)' }}
+                >
+                  Schließen
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Closing-Overlay: Karten werden in Inbox gespeichert ──────── */}
       {closingSaving && (
         <div className="fixed inset-0 z-[70] bg-black/85 flex flex-col items-center justify-center gap-3">
@@ -1140,18 +1257,20 @@ interface ScannedCardTileProps {
   onCardTap:         () => void;
   onRemove:          () => void;
   onQuickAdd:        () => void;
+  onErrorTap:        () => void;
   onFakeReasons:     () => void;
   onVariantChange:   (v: CardVariant) => void;
   onConditionChange: (c: PersistedCondition) => void;
 }
 
 function ScannedCardTile({
-  job, isLatest, onCardTap, onRemove, onFakeReasons,
+  job, isLatest, onCardTap, onRemove, onErrorTap, onFakeReasons,
   onVariantChange, onConditionChange,
 }: ScannedCardTileProps) {
   const img       = cardImgUrl(job);
   const card      = job.result?.card;
   const canOpen   = job.status === 'done' && !!card;
+  const isError   = job.status === 'error';
   const borderCol = job.result?.fakeRisk
     ? FAKE_RISK_BORDER[job.result.fakeRisk]
     : 'rgba(255,255,255,0.15)';
@@ -1179,9 +1298,9 @@ function ScannedCardTile({
           aspectRatio: '63 / 88',
           border: `2.5px solid ${borderCol}`,
           background: '#1a1a1a',
-          cursor: canOpen ? 'pointer' : 'default',
+          cursor: (canOpen || isError) ? 'pointer' : 'default',
         }}
-        onClick={canOpen ? onCardTap : undefined}
+        onClick={canOpen ? onCardTap : (isError ? onErrorTap : undefined)}
       >
         {job.status === 'processing' ? (
           <div className="w-full h-full flex items-center justify-center">
