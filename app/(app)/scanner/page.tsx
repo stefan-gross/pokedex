@@ -521,6 +521,7 @@ export default function ScannerPage() {
             pendingCount={pendingCount}
             active={cameraActive}
             paused={streamPaused}
+            hideFrame={scanMode === 'recognize' && streamPaused}
           />
         </div>
       )}

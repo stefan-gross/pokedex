@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, BookOpen, Heart, Camera, Pause, ScanLine, LayoutGrid } from 'lucide-react';
+import { Home, Search, BookOpen, Heart, Camera, Pause, LayoutGrid, IdCard, Layers } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 const FAB_SIZE = 72;
@@ -93,8 +93,8 @@ export function BottomNav() {
   };
 
   const fabIconColor = '#fff';
-  // Off-Scanner: Kamera-Icon. Auf /scanner: Pause wenn laufend, ScanLine wenn pausiert.
-  const FabIcon = !isScanner ? Camera : (scanState.paused ? ScanLine : Pause);
+  // Off-Scanner: Kamera-Icon. Auf /scanner: Pause wenn laufend, Kamera wenn pausiert.
+  const FabIcon = !isScanner ? Camera : (scanState.paused ? Camera : Pause);
 
   // ── Scanner-Modus: Flex-Layout (links Grid, Mitte FAB, rechts Switch) ──
   // Vorteil ggü. 5-col-Grid: FAB ist garantiert horizontal zentriert
@@ -145,22 +145,27 @@ export function BottomNav() {
             className="flex rounded-full p-0.5 bg-black/55 backdrop-blur-sm"
             style={{ border: '1px solid rgba(255,255,255,0.12)' }}
           >
-            {(['recognize', 'add'] as const).map(m => (
-              <button
-                key={m}
-                onClick={() => {
-                  if (m === scanState.scanMode) return;
-                  window.dispatchEvent(new CustomEvent(SCAN_MODE_TOGGLE_EVENT, { detail: m }));
-                }}
-                className="px-3 py-1.5 rounded-full text-xs font-semibold transition-colors"
-                style={{
-                  background: scanState.scanMode === m ? 'var(--pokedex-red)' : 'transparent',
-                  color:      scanState.scanMode === m ? '#fff' : 'rgba(255,255,255,0.65)',
-                }}
-              >
-                {m === 'add' ? 'Mehrere' : 'Einzeln'}
-              </button>
-            ))}
+            {(['recognize', 'add'] as const).map(m => {
+              const Icon = m === 'add' ? Layers : IdCard;
+              const isActive = scanState.scanMode === m;
+              return (
+                <button
+                  key={m}
+                  onClick={() => {
+                    if (isActive) return;
+                    window.dispatchEvent(new CustomEvent(SCAN_MODE_TOGGLE_EVENT, { detail: m }));
+                  }}
+                  className="w-9 h-9 rounded-full flex items-center justify-center transition-colors"
+                  aria-label={m === 'add' ? 'Mehrere' : 'Einzeln'}
+                  style={{
+                    background: isActive ? 'var(--pokedex-red)' : 'transparent',
+                    color:      isActive ? '#fff' : 'rgba(255,255,255,0.65)',
+                  }}
+                >
+                  <Icon size={18} />
+                </button>
+              );
+            })}
           </div>
         </div>
       </nav>

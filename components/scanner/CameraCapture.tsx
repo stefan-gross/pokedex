@@ -12,6 +12,8 @@ interface Props {
   /** Hard-Active: false → kein Stream (kein getUserMedia). Parent kontrolliert
    *  Lifecycle via Footer-FAB. Aufnahme erfolgt nur per direkter Nutzer-Geste. */
   active: boolean;
+  /** Detection-Rahmen-Overlay ausblenden — z. B. im Einzeln-Modus nach Snap. */
+  hideFrame?: boolean;
 }
 
 // ─── Modul-Level: Stream-Referenz für Visibility-Handler ─────────────────────
@@ -111,7 +113,7 @@ interface DebugInfo {
   changeMse: number;     // MSE vs. Snap-Snapshot (Kalibrierung CHANGE_DETECT_THRESHOLD)
 }
 
-export function CameraCapture({ onCapture, pendingCount = 0, paused = false, active }: Props) {
+export function CameraCapture({ onCapture, pendingCount = 0, paused = false, active, hideFrame = false }: Props) {
   const videoRef   = useRef<HTMLVideoElement>(null);
   const canvasRef  = useRef<HTMLCanvasElement>(null);
   const sampleRef  = useRef<HTMLCanvasElement>(null);
@@ -733,11 +735,11 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
             className="absolute inset-0 w-full h-full object-cover"
           />
 
-          {/* Erkennungs-Overlay */}
+          {/* Erkennungs-Overlay — ausgeblendet wenn hideFrame (Einzeln nach Snap) */}
           <canvas
             ref={overlayRef}
             className="absolute inset-0 w-full h-full pointer-events-none"
-            style={{ zIndex: 2 }}
+            style={{ zIndex: 2, opacity: hideFrame ? 0 : 1, transition: 'opacity 150ms ease-out' }}
           />
 
           {/* Weißer Blitz beim Snap */}
