@@ -60,7 +60,7 @@ export default function SettingsPage() {
         await fetch('/api/admin/trigger-sync?mode=reset', { method: 'POST' });
         await loadSyncStatus();
       }
-      step('📥 (1/7) Catalog wird synchronisiert…');
+      step('📥 (1/8) Catalog wird synchronisiert…');
       const poller = setInterval(loadSyncStatus, 2000);
       let retries = 0;
       while (true) {
@@ -84,38 +84,38 @@ export default function SettingsPage() {
       await loadSyncStatus();
 
       // 2. Evolutionsdaten
-      step('🧬 (2/7) Evolutionsdaten werden angereichert…');
+      step('🧬 (2/8) Evolutionsdaten werden angereichert…');
       let evoTotal = 0;
       while (true) {
         const res  = await fetch('/api/admin/enrich-evolution', { method: 'POST' });
         const data = await res.json();
         evoTotal += data.enriched ?? 0;
-        step(`🧬 (2/7) Evolutionsdaten: ${evoTotal} Karten…`);
+        step(`🧬 (2/8) Evolutionsdaten: ${evoTotal} Karten…`);
         if (data.status !== 'in-progress') break;
       }
 
       // 3. Deutsche Namen
-      step('🇩🇪 (3/7) Deutsche Namen werden angereichert…');
+      step('🇩🇪 (3/8) Deutsche Namen werden angereichert…');
       let deTotal = 0;
       while (true) {
         const res  = await fetch('/api/admin/enrich-german-names', { method: 'POST' });
         const data = await res.json();
         deTotal += data.enriched ?? 0;
-        step(`🇩🇪 (3/7) Deutsche Namen: ${deTotal} Karten…`);
+        step(`🇩🇪 (3/8) Deutsche Namen: ${deTotal} Karten…`);
         if (data.status !== 'in-progress') break;
       }
 
       // 4. Sets
-      step('🗂️ (4/7) Sets werden synchronisiert…');
+      step('🗂️ (4/8) Sets werden synchronisiert…');
       await fetch('/api/admin/sync-sets', { method: 'POST' });
 
       // 5. Set-Kürzel
-      step('🏷️ (5/7) Set-Kürzel werden geschrieben…');
+      step('🏷️ (5/8) Set-Kürzel werden geschrieben…');
       const bfRes  = await fetch('/api/admin/backfill-set-codes', { method: 'POST' });
       const bfData = await bfRes.json();
 
       // 6. Deutsche Karten-Bilder
-      step('🖼️ (6/7) Deutsche Karten-Bilder werden angereichert…');
+      step('🖼️ (6/8) Deutsche Karten-Bilder werden angereichert…');
       let imgTotal = 0;
       let imgFirst = true;
       while (true) {
@@ -123,22 +123,39 @@ export default function SettingsPage() {
         imgFirst = false;
         const data = await res.json();
         imgTotal += data.enriched ?? 0;
-        step(`🖼️ (6/7) DE-Bilder: ${imgTotal} Karten…`);
+        step(`🖼️ (6/8) DE-Bilder: ${imgTotal} Karten…`);
         if (data.status !== 'in-progress') break;
       }
 
       // 7. Pokémon-Artdaten
-      step('🧬 (7/7) Pokémon-Artdaten werden angereichert…');
+      step('🧬 (7/8) Pokémon-Artdaten werden angereichert…');
       let speciesTotal = 0;
       while (true) {
         const res  = await fetch('/api/admin/enrich-species', { method: 'POST' });
         const data = await res.json();
         speciesTotal += data.enriched ?? 0;
-        step(`🧬 (7/7) Artdaten: ${speciesTotal} Karten…`);
+        step(`🧬 (7/8) Artdaten: ${speciesTotal} Karten…`);
         if (data.status !== 'in-progress') break;
       }
 
-      step(`✅ Fertig — ${deTotal} DE-Namen · ${evoTotal} Evo-Daten · ${bfData.updated ?? 0} Set-Kürzel · ${imgTotal} DE-Bilder · ${speciesTotal} Artdaten`);
+      // 8. Varianten aus TCGdex (überschreibt Heuristik-Defaults für Common/Uncommon/Rare etc.)
+      step('🃏 (8/8) Varianten werden angereichert…');
+      let variantsTotal = 0;
+      let variantsFirst = true;
+      while (true) {
+        const res  = await fetch('/api/admin/enrich-variants', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reset: variantsFirst }),
+        });
+        variantsFirst = false;
+        const data = await res.json();
+        variantsTotal += data.enriched ?? 0;
+        step(`🃏 (8/8) Varianten: ${variantsTotal} Karten…`);
+        if (data.status !== 'in-progress') break;
+      }
+
+      step(`✅ Fertig — ${deTotal} DE-Namen · ${evoTotal} Evo-Daten · ${bfData.updated ?? 0} Set-Kürzel · ${imgTotal} DE-Bilder · ${speciesTotal} Artdaten · ${variantsTotal} Varianten`);
     } catch (e) {
       step(`Fehler: ${e}`);
     } finally {

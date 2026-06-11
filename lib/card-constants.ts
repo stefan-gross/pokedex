@@ -250,13 +250,20 @@ export function getRarityGroup(rarity: string): RarityGroup | undefined {
   return RARITY_GROUPS.find(g => g.keys.some(k => lower === k));
 }
 
-/** Leitet mögliche Varianten aus dem rarity-String der pokemontcg.io API ab */
+/** Leitet mögliche Varianten aus dem rarity-String der pokemontcg.io API ab.
+ *  Für Common/Uncommon/Rare wird Reverse-Holo als Default angenommen — moderne
+ *  Sets (Wizards-Era ab Legendary Collection + EX-Ära aufwärts) haben für
+ *  jede Common/Uncommon/Rare auch eine Reverse-Holo-Variante.
+ *  TCGdex-Enrichment kann diese Heuristik später präzise überschreiben. */
 export function detectVariants(rarity: string): CardVariant[] {
   const r = rarity.toLowerCase();
   const variants: CardVariant[] = ['standard'];
+  if (r === 'common' || r === 'uncommon' || r === 'rare') {
+    variants.push('reverse');
+  }
   if (r.includes('holo') && !r.includes('reverse')) variants.push('holo');
   if (r.includes('reverse')) variants.push('reverse');
   if (r.includes('illustration rare') || r.includes('special illustration')) variants.push('alt-art');
   if (r.includes('promo') || r.includes('classic collection')) variants.push('promo');
-  return variants;
+  return Array.from(new Set(variants));
 }

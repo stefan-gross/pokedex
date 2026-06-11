@@ -388,6 +388,98 @@ export async function enrichGermanNames(batchSize = 500): Promise<EnrichDeNamesR
   };
 }
 
+// ── Variants-Anreicherung ────────────────────────────────────────────────
+// Eigener Schritt: iteriert über ALLE Karten (im Gegensatz zu enrichGermanNames,
+// das nur Karten ohne nameDe anpackt), holt TCGdex-Variants und überschreibt
+// das variants-Array. Behebt das Problem, dass Karten mit schon-angereichertem
+// nameDe nie ein Variants-Update bekommen haben.
+
+export interface EnrichVariantsResult {
+  status: 'complete' | 'in-progress' | 'up-to-date';
+  message: string;
+  enriched: number;
+  remaining: number;
+}
+
+export async function enrichVariants(batchSize = 500, reset = false): Promise<EnrichVariantsResult> {
+  const db = getAdminDb();
+
+  const cursorRef = db.doc('tcg_catalog_meta/variants_enrichment_cursor');
+  if (reset) await cursorRef.delete();
+  const cursorSnap = await cursorRef.get();
+  const lastDocId: string = cursorSnap.exists ? (cursorSnap.data()?.lastDocId ?? '') : '';
+
+  let q = db.collection(COL)
+    .orderBy(FieldPath.documentId())
+    .limit(batchSize + 1);
+
+  if (lastDocId) {
+    const lastDoc = await db.doc(`${COL}/${lastDocId}`).get();
+    if (lastDoc.exists) q = q.startAfter(lastDoc) as typeof q;
+  }
+
+  const snap = await q.get();
+
+  if (snap.empty) {
+    await cursorRef.delete();
+    return { status: 'complete', message: 'Alle Karten haben aktuelle Variants', enriched: 0, remaining: 0 };
+  }
+
+  const hasMore = snap.docs.length > batchSize;
+  const batchDocs = snap.docs.slice(0, batchSize);
+
+  // Distinct setIds dieser Batch
+  const setIds = [...new Set(batchDocs.map(d => (d.data() as CatalogCard).setId))];
+
+  // TCGdex set-weise holen (max 8 parallel, nutzt vorhandenen Cache von enrichGermanNames)
+  const CONCURRENCY = 8;
+  for (let i = 0; i < setIds.length; i += CONCURRENCY) {
+    await Promise.all(setIds.slice(i, i + CONCURRENCY).map(id => fetchDeCardsForSet(toTcgdexId(id))));
+  }
+
+  // Batch-Update: überschreibe variants nur wenn TCGdex die Karte kennt
+  let enriched = 0;
+  for (let i = 0; i < batchDocs.length; i += 500) {
+    const batch = db.batch();
+    batchDocs.slice(i, i + 500).forEach(doc => {
+      const card = doc.data() as CatalogCard;
+      const tcgdexId = toTcgdexId(card.setId);
+      const cardMap = tcgdexSetCache.get(tcgdexId);
+      if (!cardMap) return;
+      const rawNum    = card.number.split('/')[0];
+      const normNum   = String(parseInt(rawNum) || 0) || rawNum;
+      const tcgdexCard = cardMap.get(rawNum) ?? cardMap.get(normNum);
+      if (tcgdexCard?.variants) {
+        const newVariants = tcgdexVariantsToCardVariants(tcgdexCard.variants, card.rarity ?? '');
+        // Nur schreiben wenn sich was ändert (vermeidet unnötige writes)
+        const current = (card.variants ?? []).slice().sort().join(',');
+        const next    = newVariants.slice().sort().join(',');
+        if (current !== next) {
+          batch.update(doc.ref, { variants: newVariants });
+          enriched++;
+        }
+      }
+    });
+    await batch.commit();
+  }
+
+  const lastDoc = batchDocs[batchDocs.length - 1];
+  if (hasMore) {
+    await cursorRef.set({ lastDocId: lastDoc.id });
+  } else {
+    await cursorRef.delete();
+  }
+
+  return {
+    status: hasMore ? 'in-progress' : 'complete',
+    message: hasMore
+      ? `🃏 ${enriched} Varianten angereichert — weitere vorhanden`
+      : `✅ Varianten vollständig (${enriched} Karten aktualisiert)`,
+    enriched,
+    remaining: hasMore ? -1 : 0,
+  };
+}
+
 // ── Sets-Sync ──────────────────────────────────────────────────────────────
 // Holt alle Sets von pokemontcg.io + DE-Namen von TCGdex → schreibt in tcg_sets.
 
