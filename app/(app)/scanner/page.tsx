@@ -295,6 +295,9 @@ export default function ScannerPage() {
   const singlePanelRef = useCallback((node: HTMLDivElement | null) => {
     if (node) setSinglePanelWidth(node.offsetWidth);
   }, []);
+  // Long-Press für Markieren (>= 500ms ohne signifikante Bewegung)
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFiredRef = useRef<boolean>(false);
   // Scanner-Workflow: Hinzufügen (Slider-Sammlung) vs. Erkennen (Lookup-Anzeige).
   const [scanMode, setScanMode] = useState<'add' | 'recognize'>('recognize');
   // Stream-Lifecycle: Auto-Start beim Mount — der BottomNav-FAB navigiert
@@ -1148,10 +1151,9 @@ export default function ScannerPage() {
               );
             };
 
-            // Ein vollständiges Panel:
-            //  - Karte sitzt bündig oben im Panel mit rounded-2xl
-            //  - Trash + Plus bottom-right (Plus deutlich größer)
-            //  - Unter der Karte: 3-Spalten-Reihe — Set-Frame links, Name zentriert, Dropdowns rechts
+            // Ein vollständiges Panel — Karte + Meta in einem Rahmen.
+            // Karte sitzt bündig am oberen Panel-Rand, darunter Set/Name/Dropdowns.
+            // Der Border (Manual-Yellow / Auto-Yellow / Error) umschließt das ganze Panel.
             const renderPanel = (j: typeof job, interactive: boolean) => {
               const jCard = j.result?.card;
               const jIsError = j.status === 'error';
@@ -1162,17 +1164,15 @@ export default function ScannerPage() {
               const jCondColor = PERSISTED_CONDITION_COLOR[jCurCondition];
               return (
                 <div
-                  className="absolute inset-0 flex flex-col gap-2"
-                  style={{ pointerEvents: interactive ? undefined : 'none' }}
+                  className="absolute inset-0 flex flex-col rounded-2xl overflow-hidden"
+                  style={{
+                    ...borderStyleFor(computeBorderStatus(j), j.result?.fakeRisk),
+                    background: '#1a1a1a',
+                    pointerEvents: interactive ? undefined : 'none',
+                  }}
                 >
-                  {/* Karte — bündig oben, rounded-2xl */}
-                  <div
-                    className="flex-1 min-h-0 relative rounded-2xl overflow-hidden flex items-center justify-center"
-                    style={{
-                      ...borderStyleFor(computeBorderStatus(j), j.result?.fakeRisk),
-                      background: '#1a1a1a',
-                    }}
-                  >
+                  {/* Karten-Bild — bündig oben im Panel */}
+                  <div className="flex-1 min-h-0 relative flex items-center justify-center">
                     {renderFace(j)}
 
                     {/* Trash + Plus unten rechts auf der Karte */}
@@ -1216,9 +1216,8 @@ export default function ScannerPage() {
                     )}
                   </div>
 
-                  {/* Meta-Zeile unter der Karte: Set-Frame · Name (zentriert) · Dropdowns */}
-                  <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 shrink-0 px-1">
-                    {/* Set-Frame links */}
+                  {/* Meta-Zeile im selben Panel: Set-Frame · Name (zentriert) · Dropdowns */}
+                  <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 shrink-0 px-2 py-2 border-t border-white/10">
                     {jCard?.setCode ? (
                       <div
                         className="flex flex-col items-center leading-tight rounded-md border px-2 py-1 font-mono"
@@ -1231,15 +1230,12 @@ export default function ScannerPage() {
                       </div>
                     ) : <div />}
 
-                    {/* Name zentriert */}
                     <p className="text-sm font-semibold text-white text-center truncate">
                       {jCard?.name ?? (jIsError ? classifyJobError(j).cardName : '…')}
                     </p>
 
-                    {/* Dropdowns rechts */}
                     {jCard ? (
                       <div className="flex items-center gap-1.5">
-                        {/* Variant-Dropdown */}
                         <div className="relative">
                           <span
                             className="text-xs font-bold px-2 py-1.5 rounded inline-block border"
@@ -1266,7 +1262,6 @@ export default function ScannerPage() {
                             </select>
                           )}
                         </div>
-                        {/* Condition-Dropdown */}
                         <div className="relative">
                           <span
                             className="text-xs font-bold px-2 py-1.5 rounded inline-block"
@@ -1294,20 +1289,33 @@ export default function ScannerPage() {
               );
             };
 
+            const clearLongPress = () => {
+              if (longPressTimerRef.current) {
+                clearTimeout(longPressTimerRef.current);
+                longPressTimerRef.current = null;
+              }
+            };
+
             const handlePointerUp = (e: React.PointerEvent) => {
               const start = swipeStartXRef.current;
               swipeStartXRef.current = null;
+              clearLongPress();
+              if (longPressFiredRef.current) {
+                // Long-Press hat schon getoggelt — Drag/Tap-Logik unterdrücken
+                longPressFiredRef.current = false;
+                setSingleDragX(0);
+                return;
+              }
               if (start == null) return;
               const dx = e.clientX - start;
               if (Math.abs(dx) < 40) {
                 setSingleDragX(0);
-                // Tap auf die Karte → Markierung toggeln (wie im Slider)
-                if (canOpen) toggleManualFlag(job.id);
+                // Kurzer Tap → Detail-Sheet (Markieren erfolgt jetzt per Long-Press)
+                if (canOpen) setActiveJobId(job.id);
                 else if (isError) setErrorDetailJobId(job.id);
                 return;
               }
               if (dx > 0) {
-                // Right swipe → Top fliegt raus, idx + 1
                 if (nextJob) {
                   singleCommitDeltaRef.current = +1;
                   setSingleAnim('commit-next');
@@ -1315,12 +1323,10 @@ export default function ScannerPage() {
                   setSingleAnim('snap-out');
                 }
               } else {
-                // Left swipe → Prev gleitet rein, idx - 1
                 if (prevJob) {
                   singleCommitDeltaRef.current = -1;
                   setSingleAnim('commit-prev');
                 } else {
-                  // Kein prevJob → der Top-Drag wird einfach zurückgesnappt
                   setSingleAnim('snap-out');
                 }
               }
@@ -1331,6 +1337,14 @@ export default function ScannerPage() {
             const canOpen = job.status === 'done' && !!job.result?.card;
             const isError = job.status === 'error';
 
+            // Dim-Faktor für Below/Incoming Panels — bei 0 (kein Drag) maximal
+            // abgedunkelt, bei voller Drag-Strecke wieder original-hell.
+            const dimProgress = singlePanelWidth > 0
+              ? Math.min(1, Math.abs(singleDragX) / singlePanelWidth)
+              : (singleAnim === 'commit-next' || singleAnim === 'commit-prev' ? 1 : 0);
+            const dimOverlayOpacity = 0.55 * (1 - dimProgress);
+            const dimTransition = singleAnim ? 'opacity 200ms ease-out' : undefined;
+
             return (
               <div
                 ref={singlePanelRef}
@@ -1339,25 +1353,48 @@ export default function ScannerPage() {
                 onPointerDown={e => {
                   if (singleAnim) return;
                   swipeStartXRef.current = e.clientX;
+                  longPressFiredRef.current = false;
                   try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
+                  // Long-Press-Timer: nach 500ms ohne signifikante Bewegung → Markierung togglen
+                  clearLongPress();
+                  if (canOpen) {
+                    longPressTimerRef.current = setTimeout(() => {
+                      longPressFiredRef.current = true;
+                      toggleManualFlag(job.id);
+                      longPressTimerRef.current = null;
+                    }, 500);
+                  }
                 }}
                 onPointerMove={e => {
                   const start = swipeStartXRef.current;
                   if (start == null || singleAnim) return;
-                  setSingleDragX(e.clientX - start);
+                  const dx = e.clientX - start;
+                  // Bei signifikanter Bewegung Long-Press abbrechen — der Nutzer swiped
+                  if (Math.abs(dx) > 8) clearLongPress();
+                  setSingleDragX(dx);
                 }}
                 onPointerUp={handlePointerUp}
                 onPointerCancel={() => {
                   swipeStartXRef.current = null;
+                  clearLongPress();
+                  longPressFiredRef.current = false;
                   if (singleDragX > 0)      setSingleAnim('snap-out');
                   else if (singleDragX < 0 && prevJob) setSingleAnim('snap-in');
                   else if (singleDragX < 0) setSingleAnim('snap-out');
                 }}
               >
-                {/* Below-Layer (nächste Karte, statisch — wird bei Right-Drag sichtbar) */}
+                {/* Below-Layer (nächste Karte) — startet dunkel, hellt bei Right-Drag auf */}
                 {showBelow && nextJob && (
                   <div className="absolute inset-0">
                     {renderPanel(nextJob, false)}
+                    <div
+                      className="absolute inset-0 pointer-events-none rounded-2xl"
+                      style={{
+                        background: '#000',
+                        opacity: dimOverlayOpacity,
+                        transition: dimTransition,
+                      }}
+                    />
                   </div>
                 )}
 
@@ -1408,6 +1445,14 @@ export default function ScannerPage() {
                     }}
                   >
                     {renderPanel(prevJob, false)}
+                    <div
+                      className="absolute inset-0 pointer-events-none rounded-2xl"
+                      style={{
+                        background: '#000',
+                        opacity: dimOverlayOpacity,
+                        transition: dimTransition,
+                      }}
+                    />
                   </div>
                 )}
               </div>
