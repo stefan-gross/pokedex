@@ -802,7 +802,9 @@ export default function ScannerPage() {
           className="absolute inset-0 overflow-y-auto bg-black px-4"
           style={{
             paddingTop: 'calc(env(safe-area-inset-top, 0px) + 130px)',
-            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 130px)',
+            paddingBottom: viewMode === 'single'
+              ? 'calc(env(safe-area-inset-bottom, 0px) + 20px)'
+              : 'calc(env(safe-area-inset-bottom, 0px) + 130px)',
           }}
         >
           {/* View-Toggle + Status-Filter — direkt unter dem Header */}
@@ -856,7 +858,7 @@ export default function ScannerPage() {
             </div>
             <span className="text-base text-white/75 font-mono ml-auto px-2">
               {viewMode === 'single' && filteredReversed.length > 0
-                ? `${Math.min(singleIdx, filteredReversed.length - 1) + 1}/${filteredReversed.length}`
+                ? `${filteredReversed.length - Math.min(singleIdx, filteredReversed.length - 1)}/${filteredReversed.length}`
                 : `${filtered.length}/${addJobs.length}`}
             </span>
           </div>
@@ -1146,8 +1148,9 @@ export default function ScannerPage() {
               );
             };
 
-            // Ein vollständiges Panel: Karten-Bild + Name + Chips + Buttons,
-            // verteilt auf die zur Verfügung stehende Höhe (kein internes Scrolling).
+            // Ein vollständiges Panel — Karten-Bild füllt den ganzen Raum,
+            // Dropdowns für Variante/Zustand und Buttons liegen overlay auf der Karte
+            // (wie in den Slider-Tiles). Name + Set unten als kleine Unterschrift.
             const renderPanel = (j: typeof job, interactive: boolean) => {
               const jCard = j.result?.card;
               const jIsError = j.status === 'error';
@@ -1155,12 +1158,13 @@ export default function ScannerPage() {
               const jVariants = jCard?.variants?.length ? jCard.variants : (['standard'] as CardVariant[]);
               const jCurVariant   = j.editedVariant   ?? jVariants[0];
               const jCurCondition = j.editedCondition ?? 'NM';
+              const jCondColor = PERSISTED_CONDITION_COLOR[jCurCondition];
               return (
                 <div
                   className="absolute inset-0 flex flex-col gap-2"
                   style={{ pointerEvents: interactive ? undefined : 'none' }}
                 >
-                  {/* Karten-Bild — wächst auf den verfügbaren Platz */}
+                  {/* Ein Panel — Karte mit allen Overlays */}
                   <div
                     className="flex-1 min-h-0 relative rounded-lg overflow-hidden flex items-center justify-center"
                     style={{
@@ -1169,102 +1173,104 @@ export default function ScannerPage() {
                     }}
                   >
                     {renderFace(j)}
-                  </div>
 
-                  {/* Name + Set */}
-                  <div className="text-center shrink-0">
-                    <p className="text-base font-semibold text-white leading-tight">
-                      {jCard?.name ?? (jIsError ? classifyJobError(j).cardName : '…')}
-                    </p>
-                    {jCard?.setCode && (
-                      <p className="text-xs text-white/55 font-mono">
-                        {jCard.setCode} · {jCard.number}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Chips: Zustand + Variante */}
-                  {jCard && (
-                    <div className="flex flex-col gap-1.5 shrink-0">
-                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                        {CONDITIONS.map(c => {
-                          const active = jCurCondition === c.value;
-                          const col = PERSISTED_CONDITION_COLOR[c.value];
-                          return (
-                            <button
-                              key={c.value}
-                              onClick={() => setJobCondition(j.id, c.value)}
-                              className="px-2.5 py-1 rounded-full text-xs font-bold border transition-colors"
-                              style={{
-                                background: active ? col.bg : 'rgba(255,255,255,0.06)',
-                                color:      active ? col.text : '#fff',
-                                borderColor: active ? col.bg : 'rgba(255,255,255,0.15)',
-                              }}
-                            >
-                              {c.short}
-                            </button>
-                          );
-                        })}
+                    {/* Variant-Dropdown oben links */}
+                    {jCard && (
+                      <div className="absolute top-2 left-2">
+                        <span
+                          className="text-xs font-bold px-2 py-1 rounded inline-block"
+                          style={{ background: 'rgba(0,0,0,0.78)', color: '#fff' }}
+                        >
+                          {VARIANT_LABELS[jCurVariant]}
+                        </span>
+                        {jVariants.length > 1 && (
+                          <select
+                            value={jCurVariant}
+                            onPointerDown={e => e.stopPropagation()}
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => setJobVariant(j.id, e.target.value as CardVariant)}
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                            aria-label="Variante ändern"
+                          >
+                            {jVariants.map(v => (
+                              <option key={v} value={v}>{VARIANT_LABELS[v]}</option>
+                            ))}
+                          </select>
+                        )}
                       </div>
-                      {jVariants.length > 1 && (
-                        <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                          {jVariants.map(v => {
-                            const active = jCurVariant === v;
-                            return (
-                              <button
-                                key={v}
-                                onClick={() => setJobVariant(j.id, v)}
-                                className="px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors"
-                                style={{
-                                  background: active ? 'var(--pokedex-red)' : 'rgba(255,255,255,0.06)',
-                                  color: '#fff',
-                                  borderColor: active ? 'var(--pokedex-red)' : 'rgba(255,255,255,0.15)',
-                                }}
-                              >
-                                {VARIANT_LABELS[v]}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                    )}
 
-                  {/* Aktion-Buttons */}
-                  <div className="flex items-center gap-2 shrink-0">
+                    {/* Condition-Dropdown oben rechts */}
+                    {jCard && (
+                      <div className="absolute top-2 right-2">
+                        <span
+                          className="text-xs font-bold px-2 py-1 rounded inline-block"
+                          style={{ background: jCondColor.bg, color: jCondColor.text }}
+                        >
+                          {jCurCondition}
+                        </span>
+                        <select
+                          value={jCurCondition}
+                          onPointerDown={e => e.stopPropagation()}
+                          onClick={e => e.stopPropagation()}
+                          onChange={e => setJobCondition(j.id, e.target.value as PersistedCondition)}
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                          aria-label="Zustand ändern"
+                        >
+                          {CONDITIONS.map(c => (
+                            <option key={c.value} value={c.value}>{c.short}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Trash-Button unten rechts */}
                     <button
-                      onClick={() => toggleManualFlag(j.id)}
-                      className="w-11 h-11 rounded-full flex items-center justify-center"
-                      style={{
-                        background: j.flaggedManual ? '#facc15' : 'rgba(255,255,255,0.10)',
-                        color: j.flaggedManual ? '#1a1a1a' : '#fff',
-                      }}
-                      aria-label="Markieren"
-                    >
-                      <Flag size={18} />
-                    </button>
-                    <button
-                      onClick={() => {
+                      onPointerDown={e => e.stopPropagation()}
+                      onClick={e => {
+                        e.stopPropagation();
                         removeJob(j.id);
                         if (safeIdx >= filteredReversed.length - 1 && safeIdx > 0) {
                           setSingleIdx(safeIdx - 1);
                         }
                       }}
-                      className="w-11 h-11 rounded-full flex items-center justify-center"
-                      style={{ background: 'rgba(255,255,255,0.10)' }}
+                      className="absolute bottom-2 right-2 w-10 h-10 rounded-full flex items-center justify-center"
+                      style={{ background: 'rgba(0,0,0,0.75)' }}
                       aria-label="Entfernen"
                     >
                       <Trash2 size={18} color="#ef4444" />
                     </button>
+
+                    {/* Quick-Add-Button unten links */}
                     {jCanOpen && !j.added && (
                       <button
-                        onClick={() => setQuickAddJobId(j.id)}
-                        className="flex-1 h-11 px-5 rounded-full text-white font-semibold flex items-center justify-center gap-1.5"
+                        onPointerDown={e => e.stopPropagation()}
+                        onClick={e => { e.stopPropagation(); setQuickAddJobId(j.id); }}
+                        className="absolute bottom-2 left-2 w-10 h-10 rounded-full flex items-center justify-center"
                         style={{ background: 'var(--pokedex-red)' }}
+                        aria-label="Hinzufügen"
                       >
-                        <Plus size={18} strokeWidth={3} />
-                        Hinzufügen
+                        <Plus size={18} color="#fff" strokeWidth={3} />
                       </button>
+                    )}
+
+                    {/* Added-Overlay */}
+                    {j.added && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none">
+                        <Check size={48} color="#48bb78" strokeWidth={3} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Name + Set als kompakte Unterschrift */}
+                  <div className="text-center shrink-0">
+                    <p className="text-sm font-semibold text-white leading-tight">
+                      {jCard?.name ?? (jIsError ? classifyJobError(j).cardName : '…')}
+                    </p>
+                    {jCard?.setCode && (
+                      <p className="text-[11px] text-white/55 font-mono">
+                        {jCard.setCode} · {jCard.number}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -1278,7 +1284,8 @@ export default function ScannerPage() {
               const dx = e.clientX - start;
               if (Math.abs(dx) < 40) {
                 setSingleDragX(0);
-                if (canOpen) setActiveJobId(job.id);
+                // Tap auf die Karte → Markierung toggeln (wie im Slider)
+                if (canOpen) toggleManualFlag(job.id);
                 else if (isError) setErrorDetailJobId(job.id);
                 return;
               }
@@ -1303,7 +1310,7 @@ export default function ScannerPage() {
             };
 
             // Outer container — feste Höhe, alles passt rein, keine Scroll
-            const containerHeight = 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 280px)';
+            const containerHeight = 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 170px)';
             const canOpen = job.status === 'done' && !!job.result?.card;
             const isError = job.status === 'error';
 
@@ -1627,7 +1634,7 @@ export default function ScannerPage() {
           Im Add-Modus zwischen Slider und Toolbar.
           Im Review-Modus direkt über der Safe-Area (Toolbar ist dort weg). */}
       {(() => {
-        const visible = mode === 'review' && jobs.length > 0;
+        const visible = mode === 'review' && jobs.length > 0 && viewMode !== 'single';
         if (!visible) return null;
         const unaddedCount = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added).length;
         return (
