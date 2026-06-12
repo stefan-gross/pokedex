@@ -7,7 +7,8 @@ import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
-         getCardsByDexNumberRest      as getCardsByDexNumber } from '@/lib/firestore/catalog-rest';
+         getCardsByDexNumberRest      as getCardsByDexNumber,
+         getCardsByNameAndNumberRest  as getCardsByNameAndNumber } from '@/lib/firestore/catalog-rest';
 import { addCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { addCardToBinder, ensureDefaultBinder, ensureInboxBinder } from '@/lib/firestore/binders';
 import { BulkAddToCollectionModal } from '@/components/scanner/BulkAddToCollectionModal';
@@ -43,6 +44,7 @@ const PERSISTED_CONDITION_COLOR: Record<PersistedCondition, { bg: string; text: 
 interface GeminiResponse {
   setCode?: string;                      // gedrucktes Set-Kürzel (z.B. "ASC", "SSP")
   number?: string;
+  name?: string;                         // gedruckter Karten-Name (Pokémon/Trainer/Energy)
   language?: string;
   confidence?: string;
   nationalDexNumber?: number | null;
@@ -181,6 +183,54 @@ function classifyJobError(job: ScanJob): ErrorClass {
     attackTitle: 'Im Katalog nicht gefunden',
     attackText: 'Möglicherweise ein Set, das noch nicht synchronisiert wurde. Versuche es nochmal oder synchronisiere die Daten.',
   };
+}
+
+/** Inline-SVG-Artwork „MissingNo." — pixelated Glitch-Pokémon-Silhouette als
+ *  Error-Karten-Artwork. Skaliert via `size`. */
+function MissingNoArtwork({ size = 96, color = '#1a1a1a', tint = '#ef4444' }: { size?: number; color?: string; tint?: string }) {
+  // 16×16 Pixel-Grid — Pokémon-artige Form mit Glitch-Streifen.
+  // 0 = leer, 1 = Hauptkörper, 2 = Glitch-Akzent (rot)
+  const grid: number[][] = [
+    [0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0],
+    [0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0],
+    [0,0,1,1,2,2,1,1,1,2,2,1,1,1,0,0],
+    [0,1,1,1,2,2,1,1,1,2,2,1,1,1,1,0],
+    [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,1,1,1,1,1,2,2,2,2,1,1,1,1,1,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,1,2,2,2,2,2,2,2,2,2,2,2,2,1,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,1,1,1,2,2,2,2,2,2,2,2,1,1,1,1],
+    [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0],
+    [0,0,1,1,1,0,0,0,0,0,0,1,1,1,0,0],
+    [0,0,1,1,0,0,0,0,0,0,0,0,1,1,0,0],
+    [0,1,1,1,0,0,0,0,0,0,0,0,1,1,1,0],
+  ];
+  const cells: React.ReactElement[] = [];
+  const cell = size / 16;
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const v = grid[y][x];
+      if (v === 0) continue;
+      cells.push(
+        <rect
+          key={`${x}-${y}`}
+          x={x * cell}
+          y={y * cell}
+          width={cell}
+          height={cell}
+          fill={v === 2 ? tint : color}
+        />
+      );
+    }
+  }
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
+      {cells}
+    </svg>
+  );
 }
 
 export default function ScannerPage() {
@@ -471,7 +521,7 @@ export default function ScannerPage() {
 
       // Hard-Fail nur wenn Gemini explizit „kein Karte" sagt ODER alle Identifier
       // fehlen. Mit dem neuen Prompt ist setCode=null bei Pre-S&V-Karten normal.
-      const hasUsefulInfo = !!(gemini.setCode || gemini.number || gemini.nationalDexNumber);
+      const hasUsefulInfo = !!(gemini.setCode || gemini.number || gemini.nationalDexNumber || gemini.name);
       if (gemini.error || !hasUsefulInfo) {
         debug.error = gemini.error ?? 'Kein lesbarer Karten-Text';
         debug.totalMs = Date.now() - t0;
@@ -509,7 +559,34 @@ export default function ScannerPage() {
         }
       }
 
-      // 3) Fallback: Pokédex-Nummer mit Number-Filter — kein blindes [0]
+      // 3) Name+Number-Fallback — bestes Identifier-Paar wenn setCode fehlt
+      //    (Trainer haben keinen Dex; bei Karten ohne Letter-Code ist der
+      //    gedruckte Karten-Name eindeutig pro Number).
+      if (!catalogCard && gemini.name && rawNumber) {
+        debug.lookupSteps!.push(`getCardsByNameAndNumber("${gemini.name}", "${rawNumber}")`);
+        const nameCards = await getCardsByNameAndNumber(gemini.name, rawNumber);
+        debug.lookupSteps![debug.lookupSteps!.length - 1] += ` → ${nameCards.length} Kandidaten`;
+
+        if (nameCards.length === 0) {
+          // Format-Variante probieren
+          const alt = /^\d+$/.test(rawNumber)
+            ? String(parseInt(rawNumber, 10))
+            : rawNumber.padStart(3, '0');
+          if (alt !== rawNumber) {
+            debug.lookupSteps!.push(`getCardsByNameAndNumber("${gemini.name}", "${alt}")`);
+            const altCards = await getCardsByNameAndNumber(gemini.name, alt);
+            debug.lookupSteps![debug.lookupSteps!.length - 1] += ` → ${altCards.length} Kandidaten`;
+            if (altCards.length > 0) catalogCard = altCards[0];
+          }
+        } else {
+          catalogCard = nameCards[0];
+          if (nameCards.length > 1) {
+            debug.lookupSteps!.push(`name+number mehrdeutig: ${nameCards.length} — erster gewählt`);
+          }
+        }
+      }
+
+      // 4) Fallback: Pokédex-Nummer mit Number-Filter — kein blindes [0]
       if (!catalogCard && gemini.nationalDexNumber) {
         debug.lookupSteps!.push(`getCardsByDexNumber(${gemini.nationalDexNumber}, 100)`);
         const dexCards = await getCardsByDexNumber(gemini.nationalDexNumber, 100);
@@ -719,16 +796,20 @@ export default function ScannerPage() {
                                 404
                               </span>
                             </div>
-                            {/* Mini-Artwork */}
+                            {/* Mini-Artwork: MissingNo-Pokémon */}
                             <div
-                              className="flex-1 mx-1 my-1 flex items-center justify-center"
+                              className="flex-1 mx-1 my-1 flex items-center justify-center relative"
                               style={{
                                 background: 'linear-gradient(135deg, rgba(220,38,38,0.18) 0%, rgba(220,38,38,0.05) 100%)',
                                 border: '2px solid rgba(0,0,0,0.55)',
                                 borderRadius: 2,
                               }}
                             >
-                              <ErrIcon size={32} color={ec.iconColor} strokeWidth={1.5} />
+                              <MissingNoArtwork size={72} color="#1a1a1a" tint={ec.iconColor} />
+                              {/* Klein-Icon oben rechts als sekundärer Hint zum Fehler-Typ */}
+                              <div className="absolute top-0.5 right-0.5">
+                                <ErrIcon size={14} color={ec.iconColor} strokeWidth={2} />
+                              </div>
                             </div>
                             {/* Mini-Footer */}
                             <div
@@ -973,7 +1054,7 @@ export default function ScannerPage() {
                   </div>
                 </div>
 
-                {/* Artwork-Bereich mit Icon */}
+                {/* Artwork-Bereich: MissingNo-Pokémon + Fehlertyp-Icon */}
                 <div
                   className="flex-1 mx-3 my-2 relative flex items-center justify-center"
                   style={{
@@ -983,7 +1064,11 @@ export default function ScannerPage() {
                     minHeight: 100,
                   }}
                 >
-                  <HeaderIcon size={96} color={iconColor} strokeWidth={1.5} />
+                  <MissingNoArtwork size={144} color="#1a1a1a" tint={iconColor} />
+                  {/* Sekundäres Fehler-Icon oben rechts (klein) */}
+                  <div className="absolute top-2 right-2">
+                    <HeaderIcon size={24} color={iconColor} strokeWidth={2} />
+                  </div>
                 </div>
 
                 {/* Beschreibungs-Banner — Stufe + Pokédex-Nr.-Stil */}
@@ -1488,7 +1573,56 @@ function ScannedCardTile({
           <div className="w-full h-full flex items-center justify-center">
             <Loader2 size={24} color="rgba(255,255,255,0.4)" className="animate-spin" />
           </div>
-        ) : !img ? (
+        ) : isError ? (() => {
+          const ec = classifyJobError(job);
+          return (
+            <div
+              className="w-full h-full flex flex-col"
+              style={{
+                background: 'linear-gradient(180deg, #f5d97c 0%, #e8b942 100%)',
+                padding: 3,
+              }}
+            >
+              <div
+                className="flex-1 flex flex-col"
+                style={{
+                  background: 'linear-gradient(180deg, #fef5d2 0%, #fce8a8 100%)',
+                  borderRadius: 3,
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  className="flex items-center justify-between px-1 py-0.5 gap-0.5"
+                  style={{ background: 'rgba(220,38,38,0.12)' }}
+                >
+                  <span className="text-[8px] font-extrabold truncate" style={{ color: '#1a1a1a' }}>
+                    {ec.cardName}
+                  </span>
+                  <span className="text-[8px] font-extrabold shrink-0" style={{ color: 'var(--pokedex-red)' }}>
+                    404
+                  </span>
+                </div>
+                <div
+                  className="flex-1 mx-0.5 my-0.5 flex items-center justify-center"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(220,38,38,0.18) 0%, rgba(220,38,38,0.05) 100%)',
+                    border: '1.5px solid rgba(0,0,0,0.55)',
+                    borderRadius: 2,
+                  }}
+                >
+                  <MissingNoArtwork size={48} color="#1a1a1a" tint={ec.iconColor} />
+                </div>
+                <div
+                  className="px-1 py-0.5 text-[7px] font-mono flex items-center justify-between"
+                  style={{ background: 'rgba(0,0,0,0.06)', color: '#1a1a1a' }}
+                >
+                  <span className="font-bold" style={{ color: 'var(--pokedex-red)' }}>ERR</span>
+                  <span>404</span>
+                </div>
+              </div>
+            </div>
+          );
+        })() : !img ? (
           <div className="w-full h-full flex items-center justify-center bg-red-500/10">
             <AlertCircle size={22} color="#f87171" />
           </div>

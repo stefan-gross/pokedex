@@ -123,3 +123,38 @@ export async function getCardsByDexNumberRest(
     limit: maxResults,
   });
 }
+
+/** Lookup über (Name × Number) — Fallback wenn setCode UND dex fehlen.
+ *  Sucht parallel auf nameLower (EN) und nameDeLower (DE), dedupliziert per id. */
+export async function getCardsByNameAndNumberRest(
+  name: string,
+  number: string,
+  maxResults = 20,
+): Promise<CatalogCard[]> {
+  const nameLower = name.trim().toLowerCase();
+  if (!nameLower || !number) return [];
+
+  const queryFor = (field: 'nameLower' | 'nameDeLower') => runQuery({
+    from: [{ collectionId: 'tcg_catalog' }],
+    where: {
+      compositeFilter: {
+        op: 'AND',
+        filters: [
+          { fieldFilter: { field: { fieldPath: field    }, op: 'EQUAL', value: { stringValue: nameLower } } },
+          { fieldFilter: { field: { fieldPath: 'number' }, op: 'EQUAL', value: { stringValue: number    } } },
+        ],
+      },
+    },
+    limit: maxResults,
+  });
+
+  const [a, b] = await Promise.all([queryFor('nameLower'), queryFor('nameDeLower')]);
+  const seen = new Set<string>();
+  const merged: CatalogCard[] = [];
+  for (const c of [...a, ...b]) {
+    if (seen.has(c.id)) continue;
+    seen.add(c.id);
+    merged.push(c);
+  }
+  return merged;
+}

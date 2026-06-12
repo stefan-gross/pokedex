@@ -80,8 +80,20 @@ F) Base Set Pikachu — small set icon in bottom-right, no slash-number
 G) Lombrero card with banner "Nr. 0271 Frohmut-Pokémon Größe 1,2 m Gewicht 12,5 kg",
    bottom-LEFT stamp "006/094" + set symbol (sun-with-E), no letter code
    → { setCode: null, number: "006", language: "de", confidence: "high",
-       nationalDexNumber: 271 }
+       nationalDexNumber: 271, name: "Lombrero" }
    (CRITICAL: read Dex from the banner text, parse "0271" as integer 271)
+
+H) HGSS Trainer "Doppelball" — top of card shows "TRAINER" sideways on the
+   left edge, large name "Doppelball" centered, no Pokédex number (Trainer
+   cards have no Pokémon dex), stamp "72/95" + set symbol bottom-RIGHT
+   → { setCode: null, number: "072", language: "de", confidence: "high",
+       nationalDexNumber: null, name: "Doppelball" }
+
+ALSO read the printed card name (large text at the top — Pokémon name, Trainer
+card name, or Energy card name). Return it verbatim including hyphens and
+language-specific spelling: "Galar-Flunschlik", "Doppelball", "Charizard ex",
+"Glurak ex", "Boss's Orders". This name is critical as a fallback identifier
+when the set code is hidden by a symbol.
 
 If no Pokémon card is visible at all: set "error" to "No card detected" and
 leave the other fields null.`;
@@ -103,6 +115,11 @@ const SCHEMA = {
       type: SchemaType.STRING,
       nullable: true,
       description: 'Card number digits only, no slash',
+    },
+    name: {
+      type: SchemaType.STRING,
+      nullable: true,
+      description: 'Printed card name (Pokémon/Trainer/Energy) verbatim, including hyphens — e.g. "Galar-Flunschlik", "Doppelball"',
     },
     language: {
       type: SchemaType.STRING,
