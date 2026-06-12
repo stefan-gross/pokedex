@@ -654,8 +654,6 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
         const consecutiveOk   = consFrames >= CONSECUTIVE_SNAP_FRAMES;
         // Karte muss komplett im Bild sein (alle 4 Box-Kanten mit Mindestabstand zum Frame-Rand)
         const box = onnxBoxRef.current;
-        const vw  = videoRef.current?.videoWidth  ?? 0;
-        const vh  = videoRef.current?.videoHeight ?? 0;
         const EDGE_MARGIN_PX = 8; // erlaubte Toleranz zum Frame-Rand
         const boxFullyInside = !!box && vw > 0 && vh > 0
           && box.x >= EDGE_MARGIN_PX
