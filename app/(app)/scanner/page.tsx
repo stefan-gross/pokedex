@@ -1148,9 +1148,10 @@ export default function ScannerPage() {
               );
             };
 
-            // Ein vollständiges Panel — Karten-Bild füllt den ganzen Raum,
-            // Dropdowns für Variante/Zustand und Buttons liegen overlay auf der Karte
-            // (wie in den Slider-Tiles). Name + Set unten als kleine Unterschrift.
+            // Ein vollständiges Panel:
+            //  - Karte sitzt bündig oben im Panel mit rounded-2xl
+            //  - Trash + Plus bottom-right (Plus deutlich größer)
+            //  - Unter der Karte: 3-Spalten-Reihe — Set-Frame links, Name zentriert, Dropdowns rechts
             const renderPanel = (j: typeof job, interactive: boolean) => {
               const jCard = j.result?.card;
               const jIsError = j.status === 'error';
@@ -1164,9 +1165,9 @@ export default function ScannerPage() {
                   className="absolute inset-0 flex flex-col gap-2"
                   style={{ pointerEvents: interactive ? undefined : 'none' }}
                 >
-                  {/* Ein Panel — Karte mit allen Overlays */}
+                  {/* Karte — bündig oben, rounded-2xl */}
                   <div
-                    className="flex-1 min-h-0 relative rounded-lg overflow-hidden flex items-center justify-center"
+                    className="flex-1 min-h-0 relative rounded-2xl overflow-hidden flex items-center justify-center"
                     style={{
                       ...borderStyleFor(computeBorderStatus(j), j.result?.fakeRisk),
                       background: '#1a1a1a',
@@ -1174,85 +1175,38 @@ export default function ScannerPage() {
                   >
                     {renderFace(j)}
 
-                    {/* Variant-Dropdown oben links */}
-                    {jCard && (
-                      <div className="absolute top-2 left-2">
-                        <span
-                          className="text-xs font-bold px-2 py-1 rounded inline-block"
-                          style={{ background: 'rgba(0,0,0,0.78)', color: '#fff' }}
-                        >
-                          {VARIANT_LABELS[jCurVariant]}
-                        </span>
-                        {jVariants.length > 1 && (
-                          <select
-                            value={jCurVariant}
-                            onPointerDown={e => e.stopPropagation()}
-                            onClick={e => e.stopPropagation()}
-                            onChange={e => setJobVariant(j.id, e.target.value as CardVariant)}
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                            aria-label="Variante ändern"
-                          >
-                            {jVariants.map(v => (
-                              <option key={v} value={v}>{VARIANT_LABELS[v]}</option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Condition-Dropdown oben rechts */}
-                    {jCard && (
-                      <div className="absolute top-2 right-2">
-                        <span
-                          className="text-xs font-bold px-2 py-1 rounded inline-block"
-                          style={{ background: jCondColor.bg, color: jCondColor.text }}
-                        >
-                          {jCurCondition}
-                        </span>
-                        <select
-                          value={jCurCondition}
-                          onPointerDown={e => e.stopPropagation()}
-                          onClick={e => e.stopPropagation()}
-                          onChange={e => setJobCondition(j.id, e.target.value as PersistedCondition)}
-                          className="absolute inset-0 opacity-0 cursor-pointer"
-                          aria-label="Zustand ändern"
-                        >
-                          {CONDITIONS.map(c => (
-                            <option key={c.value} value={c.value}>{c.short}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {/* Trash-Button unten rechts */}
-                    <button
+                    {/* Trash + Plus unten rechts auf der Karte */}
+                    <div
+                      className="absolute flex items-end gap-2"
+                      style={{ right: 10, bottom: 10 }}
                       onPointerDown={e => e.stopPropagation()}
-                      onClick={e => {
-                        e.stopPropagation();
-                        removeJob(j.id);
-                        if (safeIdx >= filteredReversed.length - 1 && safeIdx > 0) {
-                          setSingleIdx(safeIdx - 1);
-                        }
-                      }}
-                      className="absolute bottom-2 right-2 w-10 h-10 rounded-full flex items-center justify-center"
-                      style={{ background: 'rgba(0,0,0,0.75)' }}
-                      aria-label="Entfernen"
+                      onClick={e => e.stopPropagation()}
                     >
-                      <Trash2 size={18} color="#ef4444" />
-                    </button>
-
-                    {/* Quick-Add-Button unten links */}
-                    {jCanOpen && !j.added && (
                       <button
-                        onPointerDown={e => e.stopPropagation()}
-                        onClick={e => { e.stopPropagation(); setQuickAddJobId(j.id); }}
-                        className="absolute bottom-2 left-2 w-10 h-10 rounded-full flex items-center justify-center"
-                        style={{ background: 'var(--pokedex-red)' }}
-                        aria-label="Hinzufügen"
+                        onClick={e => {
+                          e.stopPropagation();
+                          removeJob(j.id);
+                          if (safeIdx >= filteredReversed.length - 1 && safeIdx > 0) {
+                            setSingleIdx(safeIdx - 1);
+                          }
+                        }}
+                        className="w-11 h-11 rounded-full flex items-center justify-center shadow-md"
+                        style={{ background: 'rgba(0,0,0,0.75)' }}
+                        aria-label="Entfernen"
                       >
-                        <Plus size={18} color="#fff" strokeWidth={3} />
+                        <Trash2 size={18} color="#ef4444" />
                       </button>
-                    )}
+                      {jCanOpen && !j.added && (
+                        <button
+                          onClick={e => { e.stopPropagation(); setQuickAddJobId(j.id); }}
+                          className="w-16 h-16 rounded-full flex items-center justify-center shadow-lg"
+                          style={{ background: 'var(--pokedex-red)' }}
+                          aria-label="Zur Sammlung hinzufügen"
+                        >
+                          <Plus size={32} color="#fff" strokeWidth={3} />
+                        </button>
+                      )}
+                    </div>
 
                     {/* Added-Overlay */}
                     {j.added && (
@@ -1262,16 +1216,79 @@ export default function ScannerPage() {
                     )}
                   </div>
 
-                  {/* Name + Set als kompakte Unterschrift */}
-                  <div className="text-center shrink-0">
-                    <p className="text-sm font-semibold text-white leading-tight">
+                  {/* Meta-Zeile unter der Karte: Set-Frame · Name (zentriert) · Dropdowns */}
+                  <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 shrink-0 px-1">
+                    {/* Set-Frame links */}
+                    {jCard?.setCode ? (
+                      <div
+                        className="flex flex-col items-center leading-tight rounded-md border px-2 py-1 font-mono"
+                        style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}
+                      >
+                        <span className="text-[11px] font-bold">{jCard.setCode}</span>
+                        {jCard.number && (
+                          <span className="text-[10px] text-white/75">{jCard.number}</span>
+                        )}
+                      </div>
+                    ) : <div />}
+
+                    {/* Name zentriert */}
+                    <p className="text-sm font-semibold text-white text-center truncate">
                       {jCard?.name ?? (jIsError ? classifyJobError(j).cardName : '…')}
                     </p>
-                    {jCard?.setCode && (
-                      <p className="text-[11px] text-white/55 font-mono">
-                        {jCard.setCode} · {jCard.number}
-                      </p>
-                    )}
+
+                    {/* Dropdowns rechts */}
+                    {jCard ? (
+                      <div className="flex items-center gap-1.5">
+                        {/* Variant-Dropdown */}
+                        <div className="relative">
+                          <span
+                            className="text-xs font-bold px-2 py-1.5 rounded inline-block border"
+                            style={{
+                              background: 'rgba(255,255,255,0.10)',
+                              color: '#fff',
+                              borderColor: 'rgba(255,255,255,0.20)',
+                            }}
+                          >
+                            {VARIANT_LABELS[jCurVariant]}
+                          </span>
+                          {jVariants.length > 1 && (
+                            <select
+                              value={jCurVariant}
+                              onPointerDown={e => e.stopPropagation()}
+                              onClick={e => e.stopPropagation()}
+                              onChange={e => setJobVariant(j.id, e.target.value as CardVariant)}
+                              className="absolute inset-0 opacity-0 cursor-pointer"
+                              aria-label="Variante ändern"
+                            >
+                              {jVariants.map(v => (
+                                <option key={v} value={v}>{VARIANT_LABELS[v]}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                        {/* Condition-Dropdown */}
+                        <div className="relative">
+                          <span
+                            className="text-xs font-bold px-2 py-1.5 rounded inline-block"
+                            style={{ background: jCondColor.bg, color: jCondColor.text }}
+                          >
+                            {jCurCondition}
+                          </span>
+                          <select
+                            value={jCurCondition}
+                            onPointerDown={e => e.stopPropagation()}
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => setJobCondition(j.id, e.target.value as PersistedCondition)}
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                            aria-label="Zustand ändern"
+                          >
+                            {CONDITIONS.map(c => (
+                              <option key={c.value} value={c.value}>{c.short}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    ) : <div />}
                   </div>
                 </div>
               );
