@@ -92,6 +92,36 @@ interface ScanJob {
   // User-bearbeitbare Felder (initialisiert aus Gemini-Result, danach Pill-Editierbar)
   editedVariant?:   CardVariant;
   editedCondition?: PersistedCondition;
+  // Slider-Markierung (User-Tap im Stapel-Scan = "bitte später nochmal prüfen")
+  flaggedManual?: boolean;
+  // Bild-Verifikation per pHash (kommt mit Phase 5) — niedrig=match, hoch=mismatch
+  pHashDistance?: number;
+}
+
+type BorderStatus = 'none' | 'manual-yellow' | 'auto-yellow' | 'auto-red' | 'error';
+
+/** Berechnet den visuellen Status (Rahmenfarbe) eines Jobs.
+ *  Reihenfolge der Priorität: error > pHash-mismatch > pHash-unsure > manual-flag > none. */
+function computeBorderStatus(job: ScanJob): BorderStatus {
+  if (job.status === 'error') return 'error';
+  const dist = job.pHashDistance;
+  if (typeof dist === 'number') {
+    if (dist >= 20) return 'auto-red';
+    if (dist >= 12) return 'auto-yellow';
+  }
+  if (job.flaggedManual) return 'manual-yellow';
+  return 'none';
+}
+
+/** Rahmen-Farbe und -Breite für ein Tile abhängig vom BorderStatus. */
+function borderStyleFor(status: BorderStatus, fakeRisk?: string): { border: string } {
+  if (status === 'auto-red')                     return { border: '2.5px solid #ef4444' };
+  if (status === 'auto-yellow' || status === 'manual-yellow') return { border: '2.5px solid #facc15' };
+  if (fakeRisk) {
+    const c = (fakeRisk in FAKE_RISK_BORDER) ? FAKE_RISK_BORDER[fakeRisk as keyof typeof FAKE_RISK_BORDER] : 'rgba(255,255,255,0.15)';
+    return { border: `2.5px solid ${c}` };
+  }
+  return { border: '2.5px solid rgba(255,255,255,0.15)' };
 }
 
 function cardImgUrl(job: ScanJob): string | null {
@@ -363,6 +393,11 @@ export default function ScannerPage() {
   const markAdded = useCallback((id: string) => {
     setJobs(prev => prev.map(j => j.id === id ? { ...j, added: true } : j));
     setActiveJobId(null);
+  }, []);
+
+  /** Toggle manueller Gelb-Markierung — Slider-Tap-Toggle. */
+  const toggleManualFlag = useCallback((id: string) => {
+    setJobs(prev => prev.map(j => j.id === id ? { ...j, flaggedManual: !j.flaggedManual } : j));
   }, []);
 
   const setJobVariant = useCallback((id: string, variant: CardVariant) => {
@@ -729,18 +764,19 @@ export default function ScannerPage() {
           }}
         >
           <div className="grid grid-cols-2 gap-3">
-            {jobs.map(job => {
-              const img = cardImgUrl(job);
-              const card = job.result?.card;
-              const canOpen = job.status === 'done' && !!card;
-              const isError = job.status === 'error';
-              const onCardClick = () => {
-                if (canOpen) setActiveJobId(job.id);
-                else if (isError) setErrorDetailJobId(job.id);
-              };
-              const reviewBorder = job.result?.fakeRisk
-                ? FAKE_RISK_BORDER[job.result.fakeRisk]
-                : 'rgba(255,255,255,0.15)';
+            {(() => {
+              const addJobs = jobs.filter(j => j.origin === 'add');
+              return addJobs.map((job, idx) => {
+                const img = cardImgUrl(job);
+                const card = job.result?.card;
+                const canOpen = job.status === 'done' && !!card;
+                const isError = job.status === 'error';
+                const borderStatus = computeBorderStatus(job);
+                const depthFromTop = addJobs.length - idx;
+                const onCardClick = () => {
+                  if (canOpen) setActiveJobId(job.id);
+                  else if (isError) setErrorDetailJobId(job.id);
+                };
               return (
                 <div key={job.id} className="relative flex flex-col">
                   <div
@@ -748,11 +784,23 @@ export default function ScannerPage() {
                     style={{
                       background: '#1a1a1a',
                       aspectRatio: '63/88',
-                      border: `2.5px solid ${reviewBorder}`,
+                      ...borderStyleFor(borderStatus, job.result?.fakeRisk),
                       cursor: (canOpen || isError) ? 'pointer' : 'default',
                     }}
                     onClick={onCardClick}
                   >
+                    {/* Depth-Badge im Review-Grid */}
+                    {(borderStatus === 'manual-yellow' || borderStatus === 'auto-yellow' || borderStatus === 'auto-red') && (
+                      <div
+                        className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold z-10"
+                        style={{
+                          background: borderStatus === 'auto-red' ? 'rgba(239,68,68,0.92)' : 'rgba(250,204,21,0.92)',
+                          color: borderStatus === 'auto-red' ? '#fff' : '#1a1a1a',
+                        }}
+                      >
+                        #{depthFromTop}
+                      </div>
+                    )}
                     {job.status === 'processing' ? (
                       <div className="w-full h-full flex items-center justify-center">
                         <Loader2 size={24} color="rgba(255,255,255,0.4)" className="animate-spin" />
@@ -796,18 +844,32 @@ export default function ScannerPage() {
                                 404
                               </span>
                             </div>
-                            {/* Mini-Artwork: MissingNo-Pokémon */}
+                            {/* Mini-Artwork: Snap-Foto wenn da, sonst MissingNo */}
                             <div
-                              className="flex-1 mx-1 my-1 flex items-center justify-center relative"
+                              className="flex-1 mx-1 my-1 relative overflow-hidden"
                               style={{
                                 background: 'linear-gradient(135deg, rgba(220,38,38,0.18) 0%, rgba(220,38,38,0.05) 100%)',
                                 border: '2px solid rgba(0,0,0,0.55)',
                                 borderRadius: 2,
                               }}
                             >
-                              <MissingNoArtwork size={72} color="#1a1a1a" tint={ec.iconColor} />
+                              {job.debug?.imageBase64 ? (
+                                /* eslint-disable-next-line @next/next/no-img-element */
+                                <img
+                                  src={`data:${job.debug.mimeType ?? 'image/jpeg'};base64,${job.debug.imageBase64}`}
+                                  alt="Scan"
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <MissingNoArtwork size={72} color="#1a1a1a" tint={ec.iconColor} />
+                                </div>
+                              )}
                               {/* Klein-Icon oben rechts als sekundärer Hint zum Fehler-Typ */}
-                              <div className="absolute top-0.5 right-0.5">
+                              <div
+                                className="absolute top-0.5 right-0.5 w-6 h-6 rounded-full flex items-center justify-center"
+                                style={{ background: 'rgba(0,0,0,0.65)' }}
+                              >
                                 <ErrIcon size={14} color={ec.iconColor} strokeWidth={2} />
                               </div>
                             </div>
@@ -903,7 +965,8 @@ export default function ScannerPage() {
                   </div>
                 </div>
               );
-            })}
+            });
+            })()}
           </div>
         </div>
       )}
@@ -948,20 +1011,23 @@ export default function ScannerPage() {
             className="flex gap-2 overflow-x-auto pb-3 pt-3"
             style={{ scrollbarWidth: 'none', scrollSnapType: 'x mandatory' }}
           >
-            {jobs.map((job, idx) => (
-              <ScannedCardTile
-                key={job.id}
-                job={job}
-                isLatest={idx === jobs.length - 1}
-                onCardTap={() => setActiveJobId(job.id)}
-                onRemove={() => removeJob(job.id)}
-                onQuickAdd={() => setQuickAddJobId(job.id)}
-                onErrorTap={() => setErrorDetailJobId(job.id)}
-                onFakeReasons={() => setFakeReasonsJobId(job.id)}
-                onVariantChange={v => setJobVariant(job.id, v)}
-                onConditionChange={c => setJobCondition(job.id, c)}
-              />
-            ))}
+            {(() => {
+              // Nur Add-Origin-Jobs im Slider (recognize sind temporär + werden gepurged)
+              const addJobs = jobs.filter(j => j.origin === 'add');
+              return addJobs.map((job, idx) => (
+                <ScannedCardTile
+                  key={job.id}
+                  job={job}
+                  isLatest={idx === addJobs.length - 1}
+                  onToggleFlag={() => toggleManualFlag(job.id)}
+                  onRemove={() => removeJob(job.id)}
+                  depthFromTop={addJobs.length - idx}
+                  onFakeReasons={() => setFakeReasonsJobId(job.id)}
+                  onVariantChange={v => setJobVariant(job.id, v)}
+                  onConditionChange={c => setJobCondition(job.id, c)}
+                />
+              ));
+            })()}
           </div>
         </div>
       )}
@@ -1521,26 +1587,25 @@ const TILE_WIDTH_CSS = 'calc((100vw - 56px) / 4)';
 interface ScannedCardTileProps {
   job: ScanJob;
   isLatest:          boolean;
-  onCardTap:         () => void;
+  /** Tap im Slider — nur für none / manual-yellow aktiv (toggelt Flag). */
+  onToggleFlag:      () => void;
   onRemove:          () => void;
-  onQuickAdd:        () => void;
-  onErrorTap:        () => void;
+  /** Aktuelle Position des Jobs „von oben" in der Auffang-Box (für Badge). */
+  depthFromTop:      number;
   onFakeReasons:     () => void;
   onVariantChange:   (v: CardVariant) => void;
   onConditionChange: (c: PersistedCondition) => void;
 }
 
 function ScannedCardTile({
-  job, isLatest, onCardTap, onRemove, onErrorTap, onFakeReasons,
+  job, isLatest, onToggleFlag, onRemove, depthFromTop, onFakeReasons,
   onVariantChange, onConditionChange,
 }: ScannedCardTileProps) {
   const img       = cardImgUrl(job);
   const card      = job.result?.card;
-  const canOpen   = job.status === 'done' && !!card;
   const isError   = job.status === 'error';
-  const borderCol = job.result?.fakeRisk
-    ? FAKE_RISK_BORDER[job.result.fakeRisk]
-    : 'rgba(255,255,255,0.15)';
+  const borderStatus = computeBorderStatus(job);
+  const tappable  = borderStatus === 'none' || borderStatus === 'manual-yellow';
   const cardVariants = card?.variants?.length ? card.variants : (['standard'] as CardVariant[]);
   const variant   = job.editedVariant   ?? cardVariants[0];
   const condition = job.editedCondition ?? 'NM';
@@ -1563,11 +1628,11 @@ function ScannedCardTile({
         className="relative w-full rounded-md overflow-hidden"
         style={{
           aspectRatio: '63 / 88',
-          border: `2.5px solid ${borderCol}`,
+          ...borderStyleFor(borderStatus, job.result?.fakeRisk),
           background: '#1a1a1a',
-          cursor: (canOpen || isError) ? 'pointer' : 'default',
+          cursor: tappable ? 'pointer' : 'default',
         }}
-        onClick={canOpen ? onCardTap : (isError ? onErrorTap : undefined)}
+        onClick={tappable ? onToggleFlag : undefined}
       >
         {job.status === 'processing' ? (
           <div className="w-full h-full flex items-center justify-center">
@@ -1575,6 +1640,10 @@ function ScannedCardTile({
           </div>
         ) : isError ? (() => {
           const ec = classifyJobError(job);
+          const snap = job.debug?.imageBase64;
+          const snapSrc = snap
+            ? `data:${job.debug?.mimeType ?? 'image/jpeg'};base64,${snap}`
+            : null;
           return (
             <div
               className="w-full h-full flex flex-col"
@@ -1603,14 +1672,21 @@ function ScannedCardTile({
                   </span>
                 </div>
                 <div
-                  className="flex-1 mx-0.5 my-0.5 flex items-center justify-center"
+                  className="flex-1 mx-0.5 my-0.5 relative overflow-hidden"
                   style={{
                     background: 'linear-gradient(135deg, rgba(220,38,38,0.18) 0%, rgba(220,38,38,0.05) 100%)',
                     border: '1.5px solid rgba(0,0,0,0.55)',
                     borderRadius: 2,
                   }}
                 >
-                  <MissingNoArtwork size={48} color="#1a1a1a" tint={ec.iconColor} />
+                  {snapSrc ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={snapSrc} alt="Scan" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <MissingNoArtwork size={48} color="#1a1a1a" tint={ec.iconColor} />
+                    </div>
+                  )}
                 </div>
                 <div
                   className="px-1 py-0.5 text-[7px] font-mono flex items-center justify-between"
@@ -1629,6 +1705,19 @@ function ScannedCardTile({
         ) : (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img src={img} alt={card?.name ?? ''} className="w-full h-full object-cover" />
+        )}
+
+        {/* Depth-Badge — Position in der Auffang-Box (nur für markierte/problem Tiles) */}
+        {(borderStatus === 'manual-yellow' || borderStatus === 'auto-yellow' || borderStatus === 'auto-red') && (
+          <div
+            className="absolute top-0.5 left-0.5 px-1 py-0 rounded text-[8px] font-mono font-bold"
+            style={{
+              background: borderStatus === 'auto-red' ? 'rgba(239,68,68,0.92)' : 'rgba(250,204,21,0.92)',
+              color: borderStatus === 'auto-red' ? '#fff' : '#1a1a1a',
+            }}
+          >
+            #{depthFromTop}
+          </div>
         )}
 
         {/* Trash unten rechts (~2 px Abstand zum Rand) */}
