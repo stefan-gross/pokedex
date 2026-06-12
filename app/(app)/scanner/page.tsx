@@ -276,8 +276,15 @@ export default function ScannerPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'success' | 'yellow' | 'red'>('all');
   // Single-View-Index — welche Karte gerade angezeigt wird (0 = neueste, N-1 = älteste)
   const [singleIdx, setSingleIdx] = useState<number>(0);
-  // Ref für Horizontal-Swipe-Geste im Single-View
+  // Ref für Horizontal-Swipe-Geste im Single-View (Pointer-Start-X)
   const swipeStartXRef = useRef<number | null>(null);
+  // Live-Drag-Offset während der Geste (Karte folgt dem Finger)
+  const [singleDragX, setSingleDragX] = useState<number>(0);
+  // Fly-Out-Animationsphase: nach Loslassen über Threshold fliegt die Karte raus,
+  // bevor der Index gewechselt wird. Während Snap-Back ebenfalls aktiv.
+  const [singleFly, setSingleFly] = useState<'left' | 'right' | 'back' | null>(null);
+  // Nächster Index nach Fly-Out — wird in onTransitionEnd übernommen
+  const singleNextIdxRef = useRef<number | null>(null);
   // Scanner-Workflow: Hinzufügen (Slider-Sammlung) vs. Erkennen (Lookup-Anzeige).
   const [scanMode, setScanMode] = useState<'add' | 'recognize'>('recognize');
   // Stream-Lifecycle: Auto-Start beim Mount — der BottomNav-FAB navigiert
@@ -1067,6 +1074,22 @@ export default function ScannerPage() {
             const img = isError
               ? (job.debug?.imageBase64 ? `data:${job.debug.mimeType ?? 'image/jpeg'};base64,${job.debug.imageBase64}` : null)
               : cardImgUrlLarge(job);
+            const cardVariants = card?.variants?.length ? card.variants : (['standard'] as CardVariant[]);
+            const currentVariant   = job.editedVariant   ?? cardVariants[0];
+            const currentCondition = job.editedCondition ?? 'NM';
+
+            // Transform für Stapel-Animation:
+            //  - Drag aktiv → folgt Finger + leichte Rotation
+            //  - Fly-Out → fliegt komplett raus (rechts/links)
+            //  - Snap-Back → animiert zurück auf 0
+            const cardTransform =
+              singleFly === 'right' ? 'translateX(120vw) rotate(20deg)' :
+              singleFly === 'left'  ? 'translateX(-120vw) rotate(-20deg)' :
+              singleFly === 'back'  ? 'translateX(0px) rotate(0deg)' :
+              singleDragX !== 0     ? `translateX(${singleDragX}px) rotate(${singleDragX * 0.05}deg)` :
+              undefined;
+            const cardTransition = singleFly ? 'transform 200ms ease-out, opacity 200ms ease-out' : undefined;
+            const cardOpacity = Math.max(0.6, 1 - Math.abs(singleDragX) / 600);
 
             return (
               <div className="flex flex-col items-center gap-3 mt-2">
@@ -1077,37 +1100,74 @@ export default function ScannerPage() {
                   </span>
                 </div>
 
-                {/* Große Karte mit Horizontal-Swipe-Geste */}
+                {/* Große Karte — folgt Finger, fliegt beim Loslassen raus (Stapel-Optik) */}
                 <div
-                  className="relative rounded-lg overflow-hidden touch-pan-y"
+                  className="relative rounded-lg overflow-hidden touch-pan-y select-none"
                   style={{
                     aspectRatio: '63 / 88',
                     height: 'min(60vh, 100%)',
                     maxWidth: '100%',
                     ...borderStyleFor(computeBorderStatus(job), job.result?.fakeRisk),
                     background: '#1a1a1a',
+                    transform: cardTransform,
+                    transition: cardTransition,
+                    opacity: cardOpacity,
+                    willChange: 'transform',
                   }}
-                  onPointerDown={e => { swipeStartXRef.current = e.clientX; }}
+                  onPointerDown={e => {
+                    if (singleFly) return;
+                    swipeStartXRef.current = e.clientX;
+                    try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
+                  }}
+                  onPointerMove={e => {
+                    const start = swipeStartXRef.current;
+                    if (start == null || singleFly) return;
+                    setSingleDragX(e.clientX - start);
+                  }}
                   onPointerUp={e => {
                     const start = swipeStartXRef.current;
                     swipeStartXRef.current = null;
                     if (start == null) return;
                     const dx = e.clientX - start;
                     if (Math.abs(dx) < 40) {
-                      // Kein Swipe — als Tap behandeln (öffnet Detail-Sheet)
+                      // Tap — Detail-Sheet öffnen, Drag zurücksetzen
+                      setSingleDragX(0);
                       if (canOpen) setActiveJobId(job.id);
                       else if (isError) setErrorDetailJobId(job.id);
                       return;
                     }
                     if (dx > 0) {
-                      // Swipe rechts → ältere Karte (höherer Index)
-                      setSingleIdx(Math.min(filteredReversed.length - 1, safeIdx + 1));
+                      // Swipe rechts → nächste (ältere) Karte
+                      if (safeIdx < filteredReversed.length - 1) {
+                        singleNextIdxRef.current = safeIdx + 1;
+                        setSingleFly('right');
+                      } else {
+                        setSingleFly('back');
+                      }
                     } else {
-                      // Swipe links → neuere Karte (niedrigerer Index)
-                      setSingleIdx(Math.max(0, safeIdx - 1));
+                      // Swipe links → vorherige (neuere) Karte zurück auf den Stapel
+                      if (safeIdx > 0) {
+                        singleNextIdxRef.current = safeIdx - 1;
+                        setSingleFly('left');
+                      } else {
+                        setSingleFly('back');
+                      }
                     }
                   }}
-                  onPointerCancel={() => { swipeStartXRef.current = null; }}
+                  onPointerCancel={() => {
+                    swipeStartXRef.current = null;
+                    if (singleDragX !== 0) setSingleFly('back');
+                  }}
+                  onTransitionEnd={ev => {
+                    if (ev.propertyName !== 'transform' || !singleFly) return;
+                    if (singleFly === 'right' || singleFly === 'left') {
+                      const next = singleNextIdxRef.current;
+                      singleNextIdxRef.current = null;
+                      if (next != null) setSingleIdx(next);
+                    }
+                    setSingleDragX(0);
+                    setSingleFly(null);
+                  }}
                 >
                   {isError ? (() => {
                     const ec = classifyJobError(job);
@@ -1115,7 +1175,7 @@ export default function ScannerPage() {
                     return img ? (
                       <>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={img} alt="Scan" className="w-full h-full object-cover" />
+                        <img src={img} alt="Scan" className="w-full h-full object-cover pointer-events-none" draggable={false} />
                         <div className="absolute top-2 right-2 w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.75)' }}>
                           <ErrIcon size={18} color={ec.iconColor} strokeWidth={2} />
                         </div>
@@ -1130,7 +1190,7 @@ export default function ScannerPage() {
                     );
                   })() : img ? (
                     /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={img} alt={card?.name ?? ''} className="w-full h-full object-cover" />
+                    <img src={img} alt={card?.name ?? ''} className="w-full h-full object-cover pointer-events-none" draggable={false} />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <Loader2 size={28} color="rgba(255,255,255,0.4)" className="animate-spin" />
@@ -1149,6 +1209,56 @@ export default function ScannerPage() {
                     </p>
                   )}
                 </div>
+
+                {/* Inline-Editoren: Zustand + Variante (statisch unter der Karte —
+                    bleiben am Platz während die Karte wegfliegt = Stapel-Optik) */}
+                {card && (
+                  <div className="w-full flex flex-col gap-1.5 mt-1">
+                    {/* Zustand-Chips */}
+                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                      {CONDITIONS.map(c => {
+                        const active = currentCondition === c.value;
+                        const col = PERSISTED_CONDITION_COLOR[c.value];
+                        return (
+                          <button
+                            key={c.value}
+                            onClick={() => setJobCondition(job.id, c.value)}
+                            className="px-2.5 py-1 rounded-full text-xs font-bold border transition-colors"
+                            style={{
+                              background: active ? col.bg : 'rgba(255,255,255,0.06)',
+                              color:      active ? col.text : '#fff',
+                              borderColor: active ? col.bg : 'rgba(255,255,255,0.15)',
+                            }}
+                          >
+                            {c.short}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {/* Varianten-Chips (nur wenn mehr als 1 verfügbar) */}
+                    {cardVariants.length > 1 && (
+                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                        {cardVariants.map(v => {
+                          const active = currentVariant === v;
+                          return (
+                            <button
+                              key={v}
+                              onClick={() => setJobVariant(job.id, v)}
+                              className="px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors"
+                              style={{
+                                background: active ? 'var(--pokedex-red)' : 'rgba(255,255,255,0.06)',
+                                color:      active ? '#fff' : '#fff',
+                                borderColor: active ? 'var(--pokedex-red)' : 'rgba(255,255,255,0.15)',
+                              }}
+                            >
+                              {VARIANT_LABELS[v]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Aktion-Buttons */}
                 <div className="flex items-center gap-2 mt-1">

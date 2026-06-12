@@ -8,7 +8,7 @@ import { addCard } from '@/lib/firestore/cards';
 import { getBinders, addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
 
 const DEFAULT_ID = '__default__';
-import { LANGUAGES, CONDITIONS } from '@/lib/card-constants';
+import { LANGUAGES, CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
 import type { BinderDoc } from '@/types';
 
 interface Props {
@@ -22,7 +22,8 @@ interface Props {
 }
 
 export function AddToCollectionModal({ card, preVariant, preCondition, preLanguage, fromScanner = false, onClose, onSaved }: Props) {
-  const [variant] = useState<CardVariant>(preVariant ?? (card.variants?.[0] as CardVariant) ?? 'standard');
+  const [variant, setVariant] = useState<CardVariant>(preVariant ?? (card.variants?.[0] as CardVariant) ?? 'standard');
+  const variantOptions: CardVariant[] = (card.variants && card.variants.length > 0 ? card.variants : ['standard']) as CardVariant[];
   const [condition, setCondition] = useState<CardCondition>(preCondition ?? 'NM');
   const [language, setLanguage] = useState<CardLanguage>(preLanguage ?? 'de');
   const [selectedBinder, setSelectedBinder] = useState<string>(DEFAULT_ID);
@@ -78,8 +79,19 @@ export function AddToCollectionModal({ card, preVariant, preCondition, preLangua
       <div className="relative w-full rounded-t-2xl bg-card border-t border-border p-4 pb-safe">
         <div className="w-10 h-1 rounded-full bg-border mx-auto mb-4" />
 
-        {/* Zustand + Sprache */}
-        <div className="grid grid-cols-2 gap-2 mb-3">
+        {/* Variante + Zustand + Sprache */}
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">Variante</span>
+            <select
+              value={variant}
+              onChange={e => setVariant(e.target.value as CardVariant)}
+              className="h-9 rounded-lg border border-border bg-secondary px-2 text-sm"
+              disabled={variantOptions.length <= 1}
+            >
+              {variantOptions.map(v => <option key={v} value={v}>{VARIANT_LABELS[v]}</option>)}
+            </select>
+          </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">Zustand</span>
             <select
@@ -87,7 +99,7 @@ export function AddToCollectionModal({ card, preVariant, preCondition, preLangua
               onChange={e => setCondition(e.target.value as CardCondition)}
               className="h-9 rounded-lg border border-border bg-secondary px-2 text-sm"
             >
-              {CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              {CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.short}</option>)}
             </select>
           </label>
           <label className="flex flex-col gap-1">
