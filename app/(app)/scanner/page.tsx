@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Trash2, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle, EyeOff, SearchX, List as ListIcon, LayoutGrid, Square, Flag } from 'lucide-react';
+import { X, Trash2, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle, EyeOff, SearchX, LayoutGrid, Square, Flag } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
@@ -270,12 +270,14 @@ export default function ScannerPage() {
   const [activeOwnedCopies, setActiveOwnedCopies] = useState<CardDoc[]>([]);
   const [debugJobId, setDebugJobId] = useState<string | null>(null);
   const [mode, setMode] = useState<'scanning' | 'review'>('scanning');
-  // Review-Modus-Ansichten: list (Default) / grid (2-Spalten) / single (eine Karte groß + Swipe)
-  const [viewMode, setViewMode] = useState<'list' | 'grid' | 'single'>('list');
+  // Review-Modus-Ansichten: grid (Default, 2-Spalten) / single (eine Karte groß + Swipe)
+  const [viewMode, setViewMode] = useState<'grid' | 'single'>('grid');
   // Status-Filter im Review: alle / erfolgreich (kein Rahmen) / gelb / rot+error
   const [statusFilter, setStatusFilter] = useState<'all' | 'success' | 'yellow' | 'red'>('all');
   // Single-View-Index — welche Karte gerade angezeigt wird (0 = neueste, N-1 = älteste)
   const [singleIdx, setSingleIdx] = useState<number>(0);
+  // Ref für Horizontal-Swipe-Geste im Single-View
+  const swipeStartXRef = useRef<number | null>(null);
   // Scanner-Workflow: Hinzufügen (Slider-Sammlung) vs. Erkennen (Lookup-Anzeige).
   const [scanMode, setScanMode] = useState<'add' | 'recognize'>('recognize');
   // Stream-Lifecycle: Auto-Start beim Mount — der BottomNav-FAB navigiert
@@ -782,7 +784,7 @@ export default function ScannerPage() {
         <div
           className="absolute inset-0 overflow-y-auto bg-black px-4"
           style={{
-            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 110px)',
+            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 130px)',
             paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 130px)',
           }}
         >
@@ -791,29 +793,28 @@ export default function ScannerPage() {
             className="fixed left-0 right-0 z-20 px-4 flex items-center gap-2 flex-wrap"
             style={{ top: 'calc(env(safe-area-inset-top, 0px) + 56px)' }}
           >
-            {/* View-Mode-Toggle */}
-            <div className="flex rounded-full p-0.5 bg-black/65 backdrop-blur-sm border border-white/10">
+            {/* View-Mode-Toggle (Grid / Single) */}
+            <div className="flex rounded-full p-1 bg-black/65 backdrop-blur-sm border border-white/10">
               {([
-                ['list', ListIcon, 'Liste'],
                 ['grid', LayoutGrid, 'Grid'],
                 ['single', Square, 'Einzeln'],
               ] as const).map(([mode, Icon, label]) => (
                 <button
                   key={mode}
                   onClick={() => { setViewMode(mode); if (mode === 'single') setSingleIdx(0); }}
-                  className="w-8 h-8 flex items-center justify-center rounded-full"
+                  className="w-11 h-11 flex items-center justify-center rounded-full"
                   aria-label={label}
                   style={{
                     background: viewMode === mode ? 'var(--pokedex-red)' : 'transparent',
                     color: viewMode === mode ? '#fff' : 'rgba(255,255,255,0.65)',
                   }}
                 >
-                  <Icon size={15} />
+                  <Icon size={20} />
                 </button>
               ))}
             </div>
             {/* Filter-Chips */}
-            <div className="flex rounded-full p-0.5 bg-black/65 backdrop-blur-sm border border-white/10">
+            <div className="flex rounded-full p-1 bg-black/65 backdrop-blur-sm border border-white/10">
               {([
                 ['all', 'Alle'],
                 ['success', '✓'],
@@ -823,7 +824,7 @@ export default function ScannerPage() {
                 <button
                   key={f}
                   onClick={() => setStatusFilter(f)}
-                  className="px-2.5 h-8 text-xs font-semibold rounded-full"
+                  className="min-w-[44px] px-3.5 h-11 text-sm font-semibold rounded-full"
                   style={{
                     background:
                       statusFilter === f
@@ -836,7 +837,7 @@ export default function ScannerPage() {
                 </button>
               ))}
             </div>
-            <span className="text-xs text-white/55 ml-auto">{filtered.length}/{addJobs.length}</span>
+            <span className="text-base text-white/75 font-mono ml-auto px-2">{filtered.length}/{addJobs.length}</span>
           </div>
 
           {viewMode === 'grid' && (
@@ -1048,90 +1049,6 @@ export default function ScannerPage() {
           </div>
           )}
 
-          {viewMode === 'list' && (
-            <div className="flex flex-col gap-1.5">
-              {filteredReversed.map((job) => {
-                const origIdx = addJobs.indexOf(job);
-                const depthFromTop = addJobs.length - origIdx;
-                const card = job.result?.card;
-                const isError = job.status === 'error';
-                const canOpen = job.status === 'done' && !!card;
-                const borderStatus = computeBorderStatus(job);
-                const thumb = isError
-                  ? (job.debug?.imageBase64 ? `data:${job.debug.mimeType ?? 'image/jpeg'};base64,${job.debug.imageBase64}` : null)
-                  : cardImgUrl(job);
-                const stripeColor =
-                  borderStatus === 'auto-red'   ? '#ef4444' :
-                  borderStatus === 'auto-yellow' || borderStatus === 'manual-yellow' ? '#facc15' :
-                  borderStatus === 'error'      ? '#ef4444' :
-                  'transparent';
-                return (
-                  <div
-                    key={job.id}
-                    className="flex items-stretch rounded-lg overflow-hidden"
-                    style={{ background: 'rgba(255,255,255,0.05)' }}
-                    onClick={() => {
-                      if (canOpen) setActiveJobId(job.id);
-                      else if (isError) setErrorDetailJobId(job.id);
-                    }}
-                  >
-                    {/* Status-Streifen links */}
-                    <div style={{ width: 4, background: stripeColor, flexShrink: 0 }} />
-                    {/* Mini-Thumbnail */}
-                    <div className="shrink-0 my-1.5 ml-2" style={{ width: 50, height: 70 }}>
-                      {thumb ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img src={thumb} alt={card?.name ?? ''} className="w-full h-full object-cover rounded" />
-                      ) : (
-                        <div className="w-full h-full rounded flex items-center justify-center" style={{ background: '#1a1a1a' }}>
-                          {job.status === 'processing'
-                            ? <Loader2 size={16} color="rgba(255,255,255,0.4)" className="animate-spin" />
-                            : <AlertCircle size={16} color="#f87171" />}
-                        </div>
-                      )}
-                    </div>
-                    {/* Mitte: Pos + Name + Set */}
-                    <div className="flex-1 min-w-0 px-2 py-2 flex flex-col justify-center gap-0.5">
-                      <div className="flex items-center gap-2 text-[10px] font-mono text-white/55">
-                        <span>#{depthFromTop}</span>
-                        {card?.setCode && <span>{card.setCode} · {card.number}</span>}
-                      </div>
-                      <p className="text-sm text-white font-medium truncate">
-                        {isError ? classifyJobError(job).cardName : (card?.name ?? '…')}
-                      </p>
-                    </div>
-                    {/* Actions rechts */}
-                    <div className="flex items-center gap-1 pr-2" onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={e => { e.stopPropagation(); removeJob(job.id); }}
-                        className="w-8 h-8 rounded-full flex items-center justify-center"
-                        style={{ background: 'rgba(0,0,0,0.4)' }}
-                        aria-label="Entfernen"
-                      >
-                        <Trash2 size={14} color="#ef4444" />
-                      </button>
-                      {canOpen && !job.added && (
-                        <button
-                          onClick={e => { e.stopPropagation(); setQuickAddJobId(job.id); }}
-                          className="w-8 h-8 rounded-full flex items-center justify-center"
-                          style={{ background: 'var(--pokedex-red)' }}
-                          aria-label="Hinzufügen"
-                        >
-                          <Plus size={16} color="#fff" strokeWidth={3} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-              {filteredReversed.length === 0 && (
-                <p className="text-center text-white/55 text-sm py-8">
-                  Keine Karten in dieser Auswahl.
-                </p>
-              )}
-            </div>
-          )}
-
           {viewMode === 'single' && (() => {
             if (filteredReversed.length === 0) {
               return (
@@ -1153,30 +1070,16 @@ export default function ScannerPage() {
 
             return (
               <div className="flex flex-col items-center gap-3 mt-2">
-                {/* Position-Indikator */}
-                <div className="flex items-center justify-between w-full px-2 text-sm">
-                  <button
-                    onClick={() => setSingleIdx(Math.max(0, safeIdx - 1))}
-                    disabled={safeIdx === 0}
-                    className="px-3 py-1.5 rounded-full bg-white/10 text-white disabled:opacity-30 text-xs font-semibold"
-                  >
-                    ← neuer
-                  </button>
-                  <span className="text-white/80 font-mono">
+                {/* Position-Indikator (zentriert, ohne Pfeil-Buttons — Swipe übernimmt) */}
+                <div className="w-full px-2 text-center">
+                  <span className="text-base text-white/85 font-mono">
                     #{depthFromTop} von oben · {safeIdx + 1}/{filteredReversed.length}
                   </span>
-                  <button
-                    onClick={() => setSingleIdx(Math.min(filteredReversed.length - 1, safeIdx + 1))}
-                    disabled={safeIdx >= filteredReversed.length - 1}
-                    className="px-3 py-1.5 rounded-full bg-white/10 text-white disabled:opacity-30 text-xs font-semibold"
-                  >
-                    älter →
-                  </button>
                 </div>
 
-                {/* Große Karte */}
+                {/* Große Karte mit Horizontal-Swipe-Geste */}
                 <div
-                  className="relative rounded-lg overflow-hidden"
+                  className="relative rounded-lg overflow-hidden touch-pan-y"
                   style={{
                     aspectRatio: '63 / 88',
                     height: 'min(60vh, 100%)',
@@ -1184,10 +1087,27 @@ export default function ScannerPage() {
                     ...borderStyleFor(computeBorderStatus(job), job.result?.fakeRisk),
                     background: '#1a1a1a',
                   }}
-                  onClick={() => {
-                    if (canOpen) setActiveJobId(job.id);
-                    else if (isError) setErrorDetailJobId(job.id);
+                  onPointerDown={e => { swipeStartXRef.current = e.clientX; }}
+                  onPointerUp={e => {
+                    const start = swipeStartXRef.current;
+                    swipeStartXRef.current = null;
+                    if (start == null) return;
+                    const dx = e.clientX - start;
+                    if (Math.abs(dx) < 40) {
+                      // Kein Swipe — als Tap behandeln (öffnet Detail-Sheet)
+                      if (canOpen) setActiveJobId(job.id);
+                      else if (isError) setErrorDetailJobId(job.id);
+                      return;
+                    }
+                    if (dx > 0) {
+                      // Swipe rechts → ältere Karte (höherer Index)
+                      setSingleIdx(Math.min(filteredReversed.length - 1, safeIdx + 1));
+                    } else {
+                      // Swipe links → neuere Karte (niedrigerer Index)
+                      setSingleIdx(Math.max(0, safeIdx - 1));
+                    }
                   }}
+                  onPointerCancel={() => { swipeStartXRef.current = null; }}
                 >
                   {isError ? (() => {
                     const ec = classifyJobError(job);

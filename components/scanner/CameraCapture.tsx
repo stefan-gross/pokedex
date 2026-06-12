@@ -652,8 +652,18 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
         const consFrames      = consecutiveDetectRef.current;
         const boxSettled      = boxDeltaRef.current < BOX_SETTLED_THRESHOLD;
         const consecutiveOk   = consFrames >= CONSECUTIVE_SNAP_FRAMES;
+        // Karte muss komplett im Bild sein (alle 4 Box-Kanten mit Mindestabstand zum Frame-Rand)
+        const box = onnxBoxRef.current;
+        const vw  = videoRef.current?.videoWidth  ?? 0;
+        const vh  = videoRef.current?.videoHeight ?? 0;
+        const EDGE_MARGIN_PX = 8; // erlaubte Toleranz zum Frame-Rand
+        const boxFullyInside = !!box && vw > 0 && vh > 0
+          && box.x >= EDGE_MARGIN_PX
+          && box.y >= EDGE_MARGIN_PX
+          && box.x + box.w <= vw - EDGE_MARGIN_PX
+          && box.y + box.h <= vh - EDGE_MARGIN_PX;
         // changeDetectedThisTick: Snap erst im nächsten Tick möglich (Race-Condition-Schutz)
-        const snapCondition   = !cooldownRef.current && !changeDetectedThisTick && cardDetected && mse < MOTION_SNAP_THRESHOLD;
+        const snapCondition   = !cooldownRef.current && !changeDetectedThisTick && cardDetected && boxFullyInside && mse < MOTION_SNAP_THRESHOLD;
         const triggerReason   = boxSettled ? 'delta' : consecutiveOk ? 'consecutive' : '–';
 
         // 7. Debug-State aktualisieren
