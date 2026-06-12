@@ -795,83 +795,159 @@ export default function ScannerPage() {
               language?: string; confidence?: string; nationalDexNumber?: number | null }
           | undefined;
 
-        // Fehler klassifizieren
-        let kind: 'gemini-blind' | 'gemini-thin' | 'catalog-miss';
+        // Fehler klassifizieren + Sprach-Sonderfall (nicht-Western)
+        const lang = gp?.language;
+        const isNonWestern = lang && !['de', 'en', 'fr', 'es', 'it', 'pt'].includes(lang);
+        let kind: 'gemini-blind' | 'gemini-thin' | 'catalog-miss' | 'non-western';
         let HeaderIcon = AlertCircle;
         let iconColor = '#f87171';
-        let title = 'Karte konnte nicht erkannt werden';
-        let hint = 'Halte die Karte deutlicher in den Rahmen oder versuche eine andere Belichtung.';
+        let cardName = 'Error';
+        let attackTitle = 'Im Katalog nicht gefunden';
+        let attackText = 'Bitte versuche es erneut oder prüfe, ob das Set bereits synchronisiert ist.';
         if (gp?.error || errored.debug?.error === 'No card detected') {
           kind = 'gemini-blind';
           HeaderIcon = EyeOff;
           iconColor = '#facc15';
-          title = 'Keine Karte im Bild';
-          hint = 'Bitte Karte deutlicher in den Rahmen halten.';
+          cardName = 'Blindfish';
+          attackTitle = 'Keine Karte im Bild';
+          attackText = 'Halte die Karte deutlicher in den Rahmen.';
         } else if (!gp?.setCode && !gp?.number && !gp?.nationalDexNumber) {
           kind = 'gemini-thin';
           HeaderIcon = AlertTriangle;
           iconColor = '#fb923c';
-          title = 'Karten-Text konnte nicht gelesen werden';
-          hint = 'Beleuchte die Karte stärker oder rücke näher heran.';
+          cardName = 'Glitchmander';
+          attackTitle = 'Karten-Text unlesbar';
+          attackText = 'Beleuchte die Karte stärker oder rücke näher heran.';
+        } else if (isNonWestern) {
+          kind = 'non-western';
+          HeaderIcon = AlertTriangle;
+          iconColor = '#fb923c';
+          cardName = 'Errorchu';
+          attackTitle = `Nicht-Western-Karte (${lang?.toUpperCase()})`;
+          attackText = lang === 'ja'
+            ? 'Japanische Karten nutzen ein eigenes Code-System und sind im Katalog nicht enthalten.'
+            : 'Der Katalog enthält aktuell nur Western-Sets (DE/EN/FR/ES/IT/PT).';
         } else {
           kind = 'catalog-miss';
           HeaderIcon = SearchX;
           iconColor = '#f87171';
-          title = 'Karte nicht im Katalog gefunden';
-          hint = 'Möglicherweise ein Set, das noch nicht synchronisiert ist.';
+          cardName = 'Errorchu';
+          attackTitle = 'Im Katalog nicht gefunden';
+          attackText = 'Möglicherweise ein Set, das noch nicht synchronisiert wurde. Versuche es nochmal oder synchronisiere die Daten.';
         }
 
         const retry = () => {
           setJobs(prev => prev.filter(j => j.id !== errored.id));
           setStreamPaused(false);
         };
+
         return (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 px-6">
+          <div
+            className="absolute inset-x-0 z-10 flex flex-col items-center px-6 gap-3 pointer-events-none"
+            style={{
+              top: 'calc(env(safe-area-inset-top, 0px) + 56px)',
+              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)',
+            }}
+          >
+            {/* Pokémon-Karten-Look: Error-Edition */}
             <div
-              className="flex flex-col items-center gap-3 px-5 py-5 rounded-2xl max-w-xs text-center"
-              style={{ background: 'rgba(0,0,0,0.80)', backdropFilter: 'blur(8px)' }}
+              className="relative pointer-events-auto"
+              style={{
+                aspectRatio: '63 / 88',
+                height: 'min(70vh, 100%)',
+                maxWidth: '100%',
+                borderRadius: 14,
+                background: 'linear-gradient(180deg, #f5d97c 0%, #e8b942 100%)',
+                padding: 8,
+                boxShadow: '0 10px 40px rgba(0,0,0,0.55)',
+              }}
             >
-              <HeaderIcon size={36} color={iconColor} />
-              <p className="text-white text-sm font-semibold leading-tight">{title}</p>
-              <p className="text-white/65 text-xs leading-snug">{hint}</p>
-
-              {/* Debug-Box: zeigt was Gemini geliefert hat */}
-              {gp && kind !== 'gemini-blind' && (
-                <div
-                  className="w-full text-left rounded-lg px-3 py-2 mt-1"
-                  style={{ background: 'rgba(255,255,255,0.06)', fontFamily: 'monospace' }}
-                >
-                  <div className="text-[10px] font-semibold text-white/75 mb-1 uppercase tracking-wide">
-                    Gemini
-                  </div>
-                  <div className="grid grid-cols-[68px_1fr] gap-x-2 text-[11px] leading-snug">
-                    <span className="text-white/55">Set-Code</span>
-                    <span className="text-white/90">{gp.setCode ?? <span className="text-white/45">— (Symbol)</span>}</span>
-                    <span className="text-white/55">Nummer</span>
-                    <span className="text-white/90">{gp.number ?? <span className="text-white/45">—</span>}</span>
-                    <span className="text-white/55">Sprache</span>
-                    <span className="text-white/90">{gp.language ?? '—'}</span>
-                    <span className="text-white/55">Dex-Nr.</span>
-                    <span className="text-white/90">{gp.nationalDexNumber ?? <span className="text-white/45">—</span>}</span>
-                    <span className="text-white/55">Confidence</span>
-                    <span className="text-white/90">{gp.confidence ?? '—'}</span>
-                  </div>
-                  {kind === 'catalog-miss' && errored.debugInfo && (
-                    <div className="text-[10px] text-white/55 mt-1.5 break-words">
-                      {errored.debugInfo.split('|').slice(-1)[0].trim()}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <button
-                onClick={retry}
-                className="mt-1 px-4 h-9 rounded-full text-sm font-semibold text-white"
-                style={{ background: 'var(--pokedex-red)' }}
+              {/* Innerer Kartenrahmen */}
+              <div
+                className="w-full h-full flex flex-col"
+                style={{
+                  borderRadius: 8,
+                  background: 'linear-gradient(180deg, #fef5d2 0%, #fce8a8 100%)',
+                  overflow: 'hidden',
+                }}
               >
-                Erneut scannen
-              </button>
+                {/* Header: Name + HP + Nummer */}
+                <div
+                  className="flex items-center justify-between px-3 py-2 gap-2"
+                  style={{ background: 'rgba(220,38,38,0.12)' }}
+                >
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      className="text-[10px] font-bold px-1.5 py-0.5 rounded text-white shrink-0"
+                      style={{ background: 'var(--pokedex-red)' }}
+                    >
+                      ERR
+                    </span>
+                    <span className="text-base font-extrabold leading-none truncate" style={{ color: '#1a1a1a' }}>
+                      {cardName}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-0.5 shrink-0">
+                    <span className="text-[10px] font-bold" style={{ color: '#1a1a1a' }}>KP</span>
+                    <span className="text-base font-extrabold" style={{ color: 'var(--pokedex-red)' }}>404</span>
+                  </div>
+                </div>
+
+                {/* Artwork-Bereich mit Icon */}
+                <div
+                  className="flex-1 mx-3 my-2 relative flex items-center justify-center"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(220,38,38,0.18) 0%, rgba(220,38,38,0.05) 100%)',
+                    border: '3px solid rgba(0,0,0,0.55)',
+                    borderRadius: 4,
+                    minHeight: 100,
+                  }}
+                >
+                  <HeaderIcon size={96} color={iconColor} strokeWidth={1.5} />
+                </div>
+
+                {/* Beschreibungs-Banner — Stufe + Pokédex-Nr.-Stil */}
+                <div className="px-3 py-1 text-[10px] italic flex items-center gap-1.5" style={{ color: '#1a1a1a' }}>
+                  <span className="font-mono">Nr. 0404</span>
+                  <span>·</span>
+                  <span>Fehler-Pokémon</span>
+                  <span>·</span>
+                  <span>Größe ?,? m</span>
+                </div>
+
+                {/* Attacken-Box */}
+                <div className="px-3 py-2 flex-grow-0">
+                  <div className="flex items-baseline justify-between gap-2 mb-1">
+                    <span className="text-sm font-bold" style={{ color: '#1a1a1a' }}>{attackTitle}</span>
+                    <span className="text-xs font-extrabold" style={{ color: 'var(--pokedex-red)' }}>HTTP</span>
+                  </div>
+                  <p className="text-[11px] leading-snug" style={{ color: '#3a3a3a' }}>
+                    {attackText}
+                  </p>
+                </div>
+
+                {/* Footer: Set-Code + Nummer (echtes Pokémon-Layout) */}
+                <div
+                  className="flex items-center justify-between px-3 py-1 text-[10px] font-mono"
+                  style={{ background: 'rgba(0,0,0,0.06)', color: '#1a1a1a' }}
+                >
+                  <span className="flex items-center gap-1">
+                    <span className="font-bold" style={{ color: 'var(--pokedex-red)' }}>ERR</span>
+                    <span>404/404</span>
+                  </span>
+                  <span className="text-[9px]">©Pokédex Error-Edition</span>
+                </div>
+              </div>
             </div>
+
+            {/* Erneut-scannen-Button */}
+            <button
+              onClick={retry}
+              className="pointer-events-auto w-full h-12 rounded-full text-white font-semibold flex items-center justify-center gap-2 shadow-lg"
+              style={{ background: 'var(--pokedex-red)' }}
+            >
+              Erneut scannen
+            </button>
           </div>
         );
       })()}
