@@ -398,6 +398,14 @@ export default function ScannerPage() {
         ? `Gemini: ${gemini.error}`
         : `Gemini: ${gemini.setCode ?? '?'}/${gemini.number ?? '?'} ${gemini.language ?? '?'} (${gemini.confidence ?? '?'})${fakeTag}`;
 
+      // Im Mehrere-Modus: "No card detected" stillschweigend verwerfen, statt
+      // den Slider mit nutzlosen Error-Tiles zu fluten. Im Einzeln-Modus zeigen
+      // wir den Fehler weiterhin (User will Feedback).
+      if (gemini.error === 'No card detected' && scanModeRef.current === 'add') {
+        setJobs(prev => prev.filter(j => j.id !== id));
+        return;
+      }
+
       // Hard-Fail nur wenn Gemini explizit „kein Karte" sagt ODER alle Identifier
       // fehlen. Mit dem neuen Prompt ist setCode=null bei Pre-S&V-Karten normal.
       const hasUsefulInfo = !!(gemini.setCode || gemini.number || gemini.nationalDexNumber);

@@ -30,8 +30,21 @@ number — 1–3 digits before the slash in the "NNN/TTT" group. Stamp position
 language — German cards have "KP" (HP) and "Fähigkeit" (Ability).
   English cards have "HP" and "Ability". French has "PV" and "Talent" etc.
 
-nationalDexNumber — top-right on DE cards ("Nr. 0025") or top-left on EN
-  ("#025"). null for non-Pokémon (Trainer, Energy).
+nationalDexNumber — VERY IMPORTANT: this is the fallback identifier when there
+  is no letter set code. Always check carefully and parse as integer (drop leading
+  zeros: "0271" → 271).
+  - DE format: "Nr." or "Nr" followed by 3–4 digits, e.g. "Nr. 0271" (Lombrero).
+    Typically printed in SMALL italic text in the BANNER between the Pokémon name
+    and the artwork frame, often together with the genus, height, weight (e.g.
+    "Nr. 0271 Frohmut-Pokémon Größe 1,2 m Gewicht 12,5 kg"). Sometimes also in
+    the description area at the bottom of the card.
+  - EN format: "NO." or "#" followed by 3–4 digits, e.g. "NO. 271" or "#271".
+  - The digit length varies: 1–4 digits ("25", "025", "0271", "1025").
+  - Position varies by era: name-banner area on modern cards (most common!),
+    sometimes top-right (HGSS), sometimes inside the description block. SEARCH
+    the WHOLE card text — do NOT only check the top corner.
+  - null ONLY for Trainer cards, Energy cards, or if no "Nr."/"NO."/"#" prefix
+    is visible anywhere. Do NOT invent a number from the collector-number stamp.
 
 confidence — your own confidence in the result: "high" if everything is
   clearly readable, "medium" if some uncertainty, "low" if guessed.
@@ -63,6 +76,12 @@ E) Trainer card "Doppelball" (HGSS-era, "TRAINER" printed sideways on
 
 F) Base Set Pikachu — small set icon in bottom-right, no slash-number
    → { setCode: null, number: null, language: "en", confidence: "medium" }
+
+G) Lombrero card with banner "Nr. 0271 Frohmut-Pokémon Größe 1,2 m Gewicht 12,5 kg",
+   bottom-LEFT stamp "006/094" + set symbol (sun-with-E), no letter code
+   → { setCode: null, number: "006", language: "de", confidence: "high",
+       nationalDexNumber: 271 }
+   (CRITICAL: read Dex from the banner text, parse "0271" as integer 271)
 
 If no Pokémon card is visible at all: set "error" to "No card detected" and
 leave the other fields null.`;

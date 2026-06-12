@@ -66,10 +66,10 @@ const SAMPLE_H = 266;
 
 const CHECK_MS               = 150;   // ONNX-Inferenz ~80ms → etwas mehr Budget
 const MOTION_RESET_THRESHOLD = 1200;  // grobe Bewegung → stable zurücksetzen
-const MOTION_SNAP_THRESHOLD  = 700;   // unter diesem MSE-Wert gilt es als "ruhig"
-const SNAP_STABLE_FRAMES     = 1;     // 1 ruhiger Frame reicht
-const BOX_SETTLED_THRESHOLD  = 35;   // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames
-const CONSECUTIVE_SNAP_FRAMES = 2;   // Fallback: nach N aufeinander folgenden Treffern immer auslösen (3→2 spart 150ms zum Snap)
+const MOTION_SNAP_THRESHOLD  = 500;   // unter diesem MSE-Wert gilt es als "ruhig" (vorher 700 → zu schnell auf Bewegungsframes)
+const SNAP_STABLE_FRAMES     = 2;     // 2 ruhige Frames (vorher 1 → fehlausgelöst auf einzelnen Ruheframes)
+const BOX_SETTLED_THRESHOLD  = 25;   // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames (vorher 35)
+const CONSECUTIVE_SNAP_FRAMES = 3;   // Fallback: 3 aufeinanderfolgende Treffer (vorher 2 → fängt schiefe Übergangsframes)
 // Szenen-Änderungs-Cooldown: nach Snap warten bis MSE vs. Snapshot > Threshold.
 // Verhindert Duplikat-Scans wenn dieselbe Karte noch im Bild liegt.
 //
@@ -78,7 +78,8 @@ const CONSECUTIVE_SNAP_FRAMES = 2;   // Fallback: nach N aufeinander folgenden T
 //   100-800 = Karte minimal verschoben, Hand-Tremor, leichte Lichtänderung
 //   >1500  = neue Karte oder bewusste Bewegung
 // Bei 200 wurde fälschlich JEDE Sekunde Szenen-Änderung erkannt → Endlos-Snaps.
-const CHANGE_DETECT_THRESHOLD = 1500;
+// 2500 schärfer (vorher 1500 → endete Cooldown schon bei Handbewegung ohne neue Karte).
+const CHANGE_DETECT_THRESHOLD = 2500;
 const SNAP_COOLDOWN_MIN_MS    = 800;  // Mindest-Wartezeit nach Snap (verlängert von 300ms)
 
 // Rand um die ONNX-Box beim Zuschneiden für Gemini (Pixel in Video-Koordinaten)
