@@ -1133,10 +1133,13 @@ export default function ScannerPage() {
               );
             };
 
+            // Explizite Maße — die absolut positionierten Kind-Layer geben
+            // dem Wrapper sonst keine intrinsische Größe (Box kollabiert auf 0).
             const cardFaceStyle = {
+              height: '60vh',
+              width: 'calc(60vh * 63 / 88)',
+              maxWidth: '90vw',
               aspectRatio: '63 / 88',
-              height: 'min(60vh, 100%)',
-              maxWidth: '100%',
               background: '#1a1a1a',
             } as const;
 
