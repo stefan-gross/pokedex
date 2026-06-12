@@ -1066,54 +1066,86 @@ export default function ScannerPage() {
             }
             const safeIdx = Math.min(singleIdx, filteredReversed.length - 1);
             const job = filteredReversed[safeIdx];
-            const origIdx = addJobs.indexOf(job);
-            const depthFromTop = addJobs.length - origIdx;
             const card = job.result?.card;
             const isError = job.status === 'error';
             const canOpen = job.status === 'done' && !!card;
-            const img = isError
-              ? (job.debug?.imageBase64 ? `data:${job.debug.mimeType ?? 'image/jpeg'};base64,${job.debug.imageBase64}` : null)
-              : cardImgUrlLarge(job);
             const cardVariants = card?.variants?.length ? card.variants : (['standard'] as CardVariant[]);
             const currentVariant   = job.editedVariant   ?? cardVariants[0];
             const currentCondition = job.editedCondition ?? 'NM';
 
-            // Transform für Stapel-Animation:
-            //  - Drag aktiv → folgt Finger + leichte Rotation
-            //  - Fly-Out → fliegt komplett raus (rechts/links)
-            //  - Snap-Back → animiert zurück auf 0
+            // Transform für Stapel-Animation — nur horizontaler Translate, keine Rotation:
+            //  - Drag aktiv → folgt Finger 1:1
+            //  - Fly-Out → translateX ±120vw
+            //  - Snap-Back → translateX 0
             const cardTransform =
-              singleFly === 'right' ? 'translateX(120vw) rotate(20deg)' :
-              singleFly === 'left'  ? 'translateX(-120vw) rotate(-20deg)' :
-              singleFly === 'back'  ? 'translateX(0px) rotate(0deg)' :
-              singleDragX !== 0     ? `translateX(${singleDragX}px) rotate(${singleDragX * 0.05}deg)` :
+              singleFly === 'right' ? 'translateX(120vw)' :
+              singleFly === 'left'  ? 'translateX(-120vw)' :
+              singleFly === 'back'  ? 'translateX(0px)' :
+              singleDragX !== 0     ? `translateX(${singleDragX}px)` :
               undefined;
-            const cardTransition = singleFly ? 'transform 200ms ease-out, opacity 200ms ease-out' : undefined;
-            const cardOpacity = Math.max(0.6, 1 - Math.abs(singleDragX) / 600);
+            const cardTransition = singleFly ? 'transform 200ms ease-out' : undefined;
+
+            // Karte, die unter der Top-Karte sichtbar werden soll — abhängig
+            // von der Drag-Richtung. Bei Drag nach rechts kommt die nächste
+            // Karte zum Vorschein, bei Drag nach links die vorherige.
+            const directionIdx =
+              singleFly === 'right' ? safeIdx + 1 :
+              singleFly === 'left'  ? safeIdx - 1 :
+              singleDragX > 0       ? safeIdx + 1 :
+              singleDragX < 0       ? safeIdx - 1 :
+              safeIdx + 1; // Default-Vorschau: nächste Karte unter Top liegen lassen
+            const belowJob = filteredReversed[directionIdx] ?? null;
+
+            // Inneres Karten-Bild für beide Layer (Top + darunterliegende Karte)
+            const renderFace = (j: typeof job) => {
+              const jCard = j.result?.card;
+              const jIsError = j.status === 'error';
+              const jImg = jIsError
+                ? (j.debug?.imageBase64 ? `data:${j.debug.mimeType ?? 'image/jpeg'};base64,${j.debug.imageBase64}` : null)
+                : cardImgUrlLarge(j);
+              if (jIsError) {
+                const ec = classifyJobError(j);
+                const ErrIcon = ec.Icon;
+                return jImg ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={jImg} alt="Scan" className="w-full h-full object-cover pointer-events-none" draggable={false} />
+                    <div className="absolute top-2 right-2 w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.75)' }}>
+                      <ErrIcon size={18} color={ec.iconColor} strokeWidth={2} />
+                    </div>
+                    <div className="absolute top-2 left-2 px-2 py-1 rounded text-xs font-extrabold text-white" style={{ background: 'var(--pokedex-red)' }}>
+                      {ec.cardName}
+                    </div>
+                  </>
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <MissingNoArtwork size={144} color="#1a1a1a" tint={ec.iconColor} />
+                  </div>
+                );
+              }
+              return jImg ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={jImg} alt={jCard?.name ?? ''} className="w-full h-full object-cover pointer-events-none" draggable={false} />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <Loader2 size={28} color="rgba(255,255,255,0.4)" className="animate-spin" />
+                </div>
+              );
+            };
+
+            const cardFaceStyle = {
+              aspectRatio: '63 / 88',
+              height: 'min(60vh, 100%)',
+              maxWidth: '100%',
+              background: '#1a1a1a',
+            } as const;
 
             return (
               <div className="flex flex-col items-center gap-3 mt-2">
-                {/* Position-Indikator (zentriert, ohne Pfeil-Buttons — Swipe übernimmt) */}
-                <div className="w-full px-2 text-center">
-                  <span className="text-base text-white/85 font-mono">
-                    #{depthFromTop} von oben · {safeIdx + 1}/{filteredReversed.length}
-                  </span>
-                </div>
-
-                {/* Große Karte — folgt Finger, fliegt beim Loslassen raus (Stapel-Optik) */}
+                {/* Stapel-Wrapper — Top-Karte über Below-Karte gestapelt */}
                 <div
-                  className="relative rounded-lg overflow-hidden touch-pan-y select-none"
-                  style={{
-                    aspectRatio: '63 / 88',
-                    height: 'min(60vh, 100%)',
-                    maxWidth: '100%',
-                    ...borderStyleFor(computeBorderStatus(job), job.result?.fakeRisk),
-                    background: '#1a1a1a',
-                    transform: cardTransform,
-                    transition: cardTransition,
-                    opacity: cardOpacity,
-                    willChange: 'transform',
-                  }}
+                  className="relative touch-pan-y select-none"
+                  style={cardFaceStyle}
                   onPointerDown={e => {
                     if (singleFly) return;
                     swipeStartXRef.current = e.clientX;
@@ -1130,14 +1162,12 @@ export default function ScannerPage() {
                     if (start == null) return;
                     const dx = e.clientX - start;
                     if (Math.abs(dx) < 40) {
-                      // Tap — Detail-Sheet öffnen, Drag zurücksetzen
                       setSingleDragX(0);
                       if (canOpen) setActiveJobId(job.id);
                       else if (isError) setErrorDetailJobId(job.id);
                       return;
                     }
                     if (dx > 0) {
-                      // Swipe rechts → nächste (ältere) Karte
                       if (safeIdx < filteredReversed.length - 1) {
                         singleNextIdxRef.current = safeIdx + 1;
                         setSingleFly('right');
@@ -1145,7 +1175,6 @@ export default function ScannerPage() {
                         setSingleFly('back');
                       }
                     } else {
-                      // Swipe links → vorherige (neuere) Karte zurück auf den Stapel
                       if (safeIdx > 0) {
                         singleNextIdxRef.current = safeIdx - 1;
                         setSingleFly('left');
@@ -1158,44 +1187,50 @@ export default function ScannerPage() {
                     swipeStartXRef.current = null;
                     if (singleDragX !== 0) setSingleFly('back');
                   }}
-                  onTransitionEnd={ev => {
-                    if (ev.propertyName !== 'transform' || !singleFly) return;
-                    if (singleFly === 'right' || singleFly === 'left') {
-                      const next = singleNextIdxRef.current;
-                      singleNextIdxRef.current = null;
-                      if (next != null) setSingleIdx(next);
-                    }
-                    setSingleDragX(0);
-                    setSingleFly(null);
-                  }}
                 >
-                  {isError ? (() => {
-                    const ec = classifyJobError(job);
-                    const ErrIcon = ec.Icon;
-                    return img ? (
-                      <>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={img} alt="Scan" className="w-full h-full object-cover pointer-events-none" draggable={false} />
-                        <div className="absolute top-2 right-2 w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.75)' }}>
-                          <ErrIcon size={18} color={ec.iconColor} strokeWidth={2} />
-                        </div>
-                        <div className="absolute top-2 left-2 px-2 py-1 rounded text-xs font-extrabold text-white" style={{ background: 'var(--pokedex-red)' }}>
-                          {ec.cardName}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <MissingNoArtwork size={144} color="#1a1a1a" tint={ec.iconColor} />
-                      </div>
-                    );
-                  })() : img ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={img} alt={card?.name ?? ''} className="w-full h-full object-cover pointer-events-none" draggable={false} />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <Loader2 size={28} color="rgba(255,255,255,0.4)" className="animate-spin" />
+                  {/* Below-Layer — nächste/vorherige Karte, statisch */}
+                  {belowJob && (
+                    <div
+                      className="absolute inset-0 rounded-lg overflow-hidden"
+                      style={{
+                        ...borderStyleFor(computeBorderStatus(belowJob), belowJob.result?.fakeRisk),
+                        background: '#1a1a1a',
+                      }}
+                    >
+                      {renderFace(belowJob)}
                     </div>
                   )}
+
+                  {/* Top-Layer — die Karte, die der Finger bewegt */}
+                  <div
+                    className="absolute inset-0 rounded-lg overflow-hidden"
+                    style={{
+                      ...borderStyleFor(computeBorderStatus(job), job.result?.fakeRisk),
+                      background: '#1a1a1a',
+                      transform: cardTransform,
+                      transition: cardTransition,
+                      willChange: 'transform',
+                    }}
+                    onTransitionEnd={ev => {
+                      if (ev.propertyName !== 'transform' || !singleFly) return;
+                      if (singleFly === 'right' || singleFly === 'left') {
+                        const next = singleNextIdxRef.current;
+                        singleNextIdxRef.current = null;
+                        if (next != null) setSingleIdx(next);
+                      }
+                      setSingleDragX(0);
+                      setSingleFly(null);
+                    }}
+                  >
+                    {renderFace(job)}
+                    {/* Index-Badge oben rechts */}
+                    <div
+                      className="absolute top-2 right-2 px-2 py-1 rounded text-xs font-mono font-bold text-white pointer-events-none"
+                      style={{ background: 'rgba(0,0,0,0.75)' }}
+                    >
+                      {safeIdx + 1}/{filteredReversed.length}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Karten-Name + Set */}
