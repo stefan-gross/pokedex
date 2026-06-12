@@ -66,10 +66,10 @@ const SAMPLE_H = 266;
 
 const CHECK_MS               = 150;   // ONNX-Inferenz ~80ms → etwas mehr Budget
 const MOTION_RESET_THRESHOLD = 1200;  // grobe Bewegung → stable zurücksetzen
-const MOTION_SNAP_THRESHOLD  = 500;   // unter diesem MSE-Wert gilt es als "ruhig" (vorher 700 → zu schnell auf Bewegungsframes)
-const SNAP_STABLE_FRAMES     = 2;     // 2 ruhige Frames (vorher 1 → fehlausgelöst auf einzelnen Ruheframes)
-const BOX_SETTLED_THRESHOLD  = 25;   // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames (vorher 35)
-const CONSECUTIVE_SNAP_FRAMES = 3;   // Fallback: 3 aufeinanderfolgende Treffer (vorher 2 → fängt schiefe Übergangsframes)
+const MOTION_SNAP_THRESHOLD  = 700;   // unter diesem MSE-Wert gilt es als "ruhig"
+const SNAP_STABLE_FRAMES     = 1;     // 1 ruhiger Frame reicht
+const BOX_SETTLED_THRESHOLD  = 35;    // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames
+const CONSECUTIVE_SNAP_FRAMES = 2;    // Fallback: 2 aufeinanderfolgende Treffer
 // Szenen-Änderungs-Cooldown: nach Snap warten bis MSE vs. Snapshot > Threshold.
 // Verhindert Duplikat-Scans wenn dieselbe Karte noch im Bild liegt.
 //
@@ -77,9 +77,7 @@ const CONSECUTIVE_SNAP_FRAMES = 3;   // Fallback: 3 aufeinanderfolgende Treffer 
 //   <100   = Karte ruht (Sensor-Rauschen, Autofokus-Mikro-Drift)
 //   100-800 = Karte minimal verschoben, Hand-Tremor, leichte Lichtänderung
 //   >1500  = neue Karte oder bewusste Bewegung
-// Bei 200 wurde fälschlich JEDE Sekunde Szenen-Änderung erkannt → Endlos-Snaps.
-// 2500 schärfer (vorher 1500 → endete Cooldown schon bei Handbewegung ohne neue Karte).
-const CHANGE_DETECT_THRESHOLD = 2500;
+const CHANGE_DETECT_THRESHOLD = 1500;
 const SNAP_COOLDOWN_MIN_MS    = 800;  // Mindest-Wartezeit nach Snap (verlängert von 300ms)
 
 // Rand um die ONNX-Box beim Zuschneiden für Gemini (Pixel in Video-Koordinaten)
@@ -445,8 +443,11 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   }, [active]);
 
   // ── Foto auslösen ─────────────────────────────────────────────────────────
-  const doCapture = useCallback(() => {
-    if (cooldownRef.current || paused) return;
+  // `force=true` ignoriert den Cooldown — wird vom manuellen Tap aufs Kamera-
+  // bild genutzt, damit der User auch ohne abgewartete Stille snappen kann.
+  const doCapture = useCallback((force = false) => {
+    if (paused) return;
+    if (!force && cooldownRef.current) return;
     const video = videoRef.current, canvas = canvasRef.current;
     if (!video || !canvas || video.readyState < 2) return;
 
@@ -703,7 +704,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   return (
     <div
       className="relative w-full h-full bg-black overflow-hidden"
-      onClick={!inCooldown && !paused ? doCapture : undefined}
+      onClick={!paused && active ? () => doCapture(true) : undefined}
     >
       {/* Versteckte Canvases */}
       <canvas ref={canvasRef} className="hidden" />
