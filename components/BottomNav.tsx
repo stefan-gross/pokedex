@@ -27,6 +27,7 @@ interface ScannerNavState {
   scanMode: 'add' | 'recognize';
   jobsCount: number;      // Anzahl Add-Jobs (für Grid-Badge)
   gridVisible: boolean;   // Grid-Button anzeigen?
+  reviewMode?: boolean;   // Scanner ist im Review-Grid → BottomNav komplett ausblenden
 }
 
 export function BottomNav() {
@@ -36,11 +37,13 @@ export function BottomNav() {
     scanMode: 'recognize',
     jobsCount: 0,
     gridVisible: false,
+    reviewMode: false,
   });
 
   const isScanner = pathname === '/scanner';
 
-  // Scanner-State-Sync — Scanner-Page postet ihren Status hierher
+  // Scanner-State-Sync — Scanner-Page postet ihren Status hierher (muss VOR dem
+  // early-return stehen, damit Hook-Reihenfolge konsistent bleibt)
   useEffect(() => {
     const onState = (e: Event) => {
       const detail = (e as CustomEvent<ScannerNavState>).detail;
@@ -49,6 +52,10 @@ export function BottomNav() {
     window.addEventListener(SCAN_STATE_EVENT, onState as EventListener);
     return () => window.removeEventListener(SCAN_STATE_EVENT, onState as EventListener);
   }, []);
+
+  // Im Scanner-Review-Grid übernimmt die Bulk-Action-Row die Footer-Rolle.
+  // BottomNav komplett verstecken, damit kein Konflikt mit der Bulk-Row entsteht.
+  if (isScanner && scanState.reviewMode) return null;
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';

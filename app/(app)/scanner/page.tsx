@@ -121,6 +121,68 @@ function cardImgUrlLarge(job: ScanJob): string | null {
   return card.imgSmall ?? null;
 }
 
+/** Klassifiziert einen Error-Job und gibt thematische Karten-Daten zurück.
+ *  Wird sowohl vom großen Error-Sheet (Einzelmodus) als auch von der
+ *  Mini-Error-Karte im Review-Grid genutzt. */
+type ErrorKind = 'gemini-blind' | 'gemini-thin' | 'catalog-miss' | 'non-western';
+interface ErrorClass {
+  kind: ErrorKind;
+  Icon: typeof EyeOff;
+  iconColor: string;
+  cardName: string;
+  attackTitle: string;
+  attackText: string;
+}
+function classifyJobError(job: ScanJob): ErrorClass {
+  const gp = job.debug?.geminiParsed as
+    | { error?: string; setCode?: string | null; number?: string | null;
+        language?: string; nationalDexNumber?: number | null }
+    | undefined;
+  const lang = gp?.language;
+  const isNonWestern = lang && !['de', 'en', 'fr', 'es', 'it', 'pt'].includes(lang);
+
+  if (gp?.error || job.debug?.error === 'No card detected') {
+    return {
+      kind: 'gemini-blind',
+      Icon: EyeOff,
+      iconColor: '#facc15',
+      cardName: 'Blindfish',
+      attackTitle: 'Keine Karte im Bild',
+      attackText: 'Halte die Karte deutlicher in den Rahmen.',
+    };
+  }
+  if (!gp?.setCode && !gp?.number && !gp?.nationalDexNumber) {
+    return {
+      kind: 'gemini-thin',
+      Icon: AlertTriangle,
+      iconColor: '#fb923c',
+      cardName: 'Glitchmander',
+      attackTitle: 'Karten-Text unlesbar',
+      attackText: 'Beleuchte die Karte stärker oder rücke näher heran.',
+    };
+  }
+  if (isNonWestern) {
+    return {
+      kind: 'non-western',
+      Icon: AlertTriangle,
+      iconColor: '#fb923c',
+      cardName: 'Errorchu',
+      attackTitle: `Nicht-Western-Karte (${lang?.toUpperCase()})`,
+      attackText: lang === 'ja'
+        ? 'Japanische Karten nutzen ein eigenes Code-System und sind im Katalog nicht enthalten.'
+        : 'Der Katalog enthält aktuell nur Western-Sets (DE/EN/FR/ES/IT/PT).',
+    };
+  }
+  return {
+    kind: 'catalog-miss',
+    Icon: SearchX,
+    iconColor: '#f87171',
+    cardName: 'Errorchu',
+    attackTitle: 'Im Katalog nicht gefunden',
+    attackText: 'Möglicherweise ein Set, das noch nicht synchronisiert wurde. Versuche es nochmal oder synchronisiere die Daten.',
+  };
+}
+
 export default function ScannerPage() {
   const router = useRouter();
   const [jobs, setJobs] = useState<ScanJob[]>([]);
@@ -214,7 +276,7 @@ export default function ScannerPage() {
     };
   }, [toggleStreamPaused, switchScanMode, toggleGridMode]);
 
-  // State an BottomNav schicken — sie braucht paused/scanMode/jobsCount/gridVisible
+  // State an BottomNav schicken — paused/scanMode/jobsCount/gridVisible/reviewMode
   const addJobsCount = jobs.filter(j => j.origin === 'add').length;
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('scanner-state-changed', {
@@ -223,15 +285,16 @@ export default function ScannerPage() {
         scanMode,
         jobsCount: addJobsCount,
         gridVisible: scanMode === 'add' && addJobsCount > 0,
+        reviewMode: mode === 'review',
       },
     }));
-  }, [streamPaused, scanMode, addJobsCount]);
+  }, [streamPaused, scanMode, addJobsCount, mode]);
 
   // Beim Unmount: Reset, damit andere Seiten nicht den Scan-Pause-FAB sehen
   useEffect(() => {
     return () => {
       window.dispatchEvent(new CustomEvent('scanner-state-changed', {
-        detail: { paused: false, scanMode: 'recognize', jobsCount: 0, gridVisible: false },
+        detail: { paused: false, scanMode: 'recognize', jobsCount: 0, gridVisible: false, reviewMode: false },
       }));
     };
   }, []);
@@ -617,7 +680,68 @@ export default function ScannerPage() {
                       <div className="w-full h-full flex items-center justify-center">
                         <Loader2 size={24} color="rgba(255,255,255,0.4)" className="animate-spin" />
                       </div>
-                    ) : !img ? (
+                    ) : isError ? (() => {
+                      const ec = classifyJobError(job);
+                      const ErrIcon = ec.Icon;
+                      return (
+                        <div
+                          className="w-full h-full flex flex-col"
+                          style={{
+                            background: 'linear-gradient(180deg, #f5d97c 0%, #e8b942 100%)',
+                            padding: 4,
+                          }}
+                        >
+                          <div
+                            className="flex-1 flex flex-col"
+                            style={{
+                              background: 'linear-gradient(180deg, #fef5d2 0%, #fce8a8 100%)',
+                              borderRadius: 4,
+                              overflow: 'hidden',
+                            }}
+                          >
+                            {/* Mini-Header */}
+                            <div
+                              className="flex items-center justify-between px-1.5 py-1 gap-1"
+                              style={{ background: 'rgba(220,38,38,0.12)' }}
+                            >
+                              <div className="flex items-center gap-1 min-w-0">
+                                <span
+                                  className="text-[7px] font-bold px-1 rounded text-white shrink-0"
+                                  style={{ background: 'var(--pokedex-red)' }}
+                                >
+                                  ERR
+                                </span>
+                                <span className="text-[10px] font-extrabold leading-none truncate" style={{ color: '#1a1a1a' }}>
+                                  {ec.cardName}
+                                </span>
+                              </div>
+                              <span className="text-[9px] font-extrabold shrink-0" style={{ color: 'var(--pokedex-red)' }}>
+                                404
+                              </span>
+                            </div>
+                            {/* Mini-Artwork */}
+                            <div
+                              className="flex-1 mx-1 my-1 flex items-center justify-center"
+                              style={{
+                                background: 'linear-gradient(135deg, rgba(220,38,38,0.18) 0%, rgba(220,38,38,0.05) 100%)',
+                                border: '2px solid rgba(0,0,0,0.55)',
+                                borderRadius: 2,
+                              }}
+                            >
+                              <ErrIcon size={32} color={ec.iconColor} strokeWidth={1.5} />
+                            </div>
+                            {/* Mini-Footer */}
+                            <div
+                              className="px-1.5 py-0.5 text-[8px] font-mono flex items-center justify-between"
+                              style={{ background: 'rgba(0,0,0,0.06)', color: '#1a1a1a' }}
+                            >
+                              <span className="font-bold" style={{ color: 'var(--pokedex-red)' }}>ERR</span>
+                              <span>404/404</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })() : !img ? (
                       <div className="w-full h-full flex items-center justify-center bg-red-500/10">
                         <AlertCircle size={24} color="#f87171" />
                       </div>
@@ -790,51 +914,7 @@ export default function ScannerPage() {
       {mode === 'scanning' && scanMode === 'recognize' && !recognizedJobId && (() => {
         const errored = jobs.find(j => j.origin === 'recognize' && j.status === 'error');
         if (!errored) return null;
-        const gp = errored.debug?.geminiParsed as
-          | { error?: string; setCode?: string | null; number?: string | null;
-              language?: string; confidence?: string; nationalDexNumber?: number | null }
-          | undefined;
-
-        // Fehler klassifizieren + Sprach-Sonderfall (nicht-Western)
-        const lang = gp?.language;
-        const isNonWestern = lang && !['de', 'en', 'fr', 'es', 'it', 'pt'].includes(lang);
-        let kind: 'gemini-blind' | 'gemini-thin' | 'catalog-miss' | 'non-western';
-        let HeaderIcon = AlertCircle;
-        let iconColor = '#f87171';
-        let cardName = 'Error';
-        let attackTitle = 'Im Katalog nicht gefunden';
-        let attackText = 'Bitte versuche es erneut oder prüfe, ob das Set bereits synchronisiert ist.';
-        if (gp?.error || errored.debug?.error === 'No card detected') {
-          kind = 'gemini-blind';
-          HeaderIcon = EyeOff;
-          iconColor = '#facc15';
-          cardName = 'Blindfish';
-          attackTitle = 'Keine Karte im Bild';
-          attackText = 'Halte die Karte deutlicher in den Rahmen.';
-        } else if (!gp?.setCode && !gp?.number && !gp?.nationalDexNumber) {
-          kind = 'gemini-thin';
-          HeaderIcon = AlertTriangle;
-          iconColor = '#fb923c';
-          cardName = 'Glitchmander';
-          attackTitle = 'Karten-Text unlesbar';
-          attackText = 'Beleuchte die Karte stärker oder rücke näher heran.';
-        } else if (isNonWestern) {
-          kind = 'non-western';
-          HeaderIcon = AlertTriangle;
-          iconColor = '#fb923c';
-          cardName = 'Errorchu';
-          attackTitle = `Nicht-Western-Karte (${lang?.toUpperCase()})`;
-          attackText = lang === 'ja'
-            ? 'Japanische Karten nutzen ein eigenes Code-System und sind im Katalog nicht enthalten.'
-            : 'Der Katalog enthält aktuell nur Western-Sets (DE/EN/FR/ES/IT/PT).';
-        } else {
-          kind = 'catalog-miss';
-          HeaderIcon = SearchX;
-          iconColor = '#f87171';
-          cardName = 'Errorchu';
-          attackTitle = 'Im Katalog nicht gefunden';
-          attackText = 'Möglicherweise ein Set, das noch nicht synchronisiert wurde. Versuche es nochmal oder synchronisiere die Daten.';
-        }
+        const { Icon: HeaderIcon, iconColor, cardName, attackTitle, attackText } = classifyJobError(errored);
 
         const retry = () => {
           setJobs(prev => prev.filter(j => j.id !== errored.id));
@@ -981,13 +1061,14 @@ export default function ScannerPage() {
           <div
             className="absolute left-0 right-0 z-40 flex gap-2 px-4"
             style={{
-              // Über der globalen BottomNav (56px + safe-area)
-              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 56px)',
-              paddingTop: 8,
-              paddingBottom: 8,
-              background: 'rgba(0,0,0,0.75)',
-              backdropFilter: 'blur(8px)',
-              WebkitBackdropFilter: 'blur(8px)',
+              // BottomNav ist im Review-Modus ausgeblendet → Bulk-Row übernimmt
+              // die Footer-Rolle, sitzt direkt am unteren Rand + Safe-Area.
+              bottom: 0,
+              paddingTop: 10,
+              paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 10px)',
+              background: 'rgba(0,0,0,0.85)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
             }}
           >
             <button
