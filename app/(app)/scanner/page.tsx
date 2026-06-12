@@ -280,11 +280,21 @@ export default function ScannerPage() {
   const swipeStartXRef = useRef<number | null>(null);
   // Live-Drag-Offset während der Geste (Karte folgt dem Finger)
   const [singleDragX, setSingleDragX] = useState<number>(0);
-  // Fly-Out-Animationsphase: nach Loslassen über Threshold fliegt die Karte raus,
-  // bevor der Index gewechselt wird. Während Snap-Back ebenfalls aktiv.
-  const [singleFly, setSingleFly] = useState<'left' | 'right' | 'back' | null>(null);
-  // Nächster Index nach Fly-Out — wird in onTransitionEnd übernommen
-  const singleNextIdxRef = useRef<number | null>(null);
+  // Animationsphase nach Pointer-Up:
+  //  'commit-next'  → Top-Panel fliegt nach rechts raus, danach idx+1
+  //  'commit-prev'  → Eingehendes Prev-Panel gleitet auf 0, danach idx-1
+  //  'snap-out'     → Top-Panel snappt zurück auf 0 (Right-Drag abgebrochen)
+  //  'snap-in'      → Eingehendes Prev-Panel snappt zurück auf width  (Left-Drag abgebrochen)
+  const [singleAnim, setSingleAnim] = useState<
+    'commit-next' | 'commit-prev' | 'snap-out' | 'snap-in' | null
+  >(null);
+  // Index-Delta für Commit (1 = nächste, -1 = vorherige)
+  const singleCommitDeltaRef = useRef<number>(0);
+  // Gemessene Panel-Breite für px-genaue Translate-Berechnung der eingehenden Karte
+  const [singlePanelWidth, setSinglePanelWidth] = useState<number>(0);
+  const singlePanelRef = useCallback((node: HTMLDivElement | null) => {
+    if (node) setSinglePanelWidth(node.offsetWidth);
+  }, []);
   // Scanner-Workflow: Hinzufügen (Slider-Sammlung) vs. Erkennen (Lookup-Anzeige).
   const [scanMode, setScanMode] = useState<'add' | 'recognize'>('recognize');
   // Stream-Lifecycle: Auto-Start beim Mount — der BottomNav-FAB navigiert
@@ -844,7 +854,11 @@ export default function ScannerPage() {
                 </button>
               ))}
             </div>
-            <span className="text-base text-white/75 font-mono ml-auto px-2">{filtered.length}/{addJobs.length}</span>
+            <span className="text-base text-white/75 font-mono ml-auto px-2">
+              {viewMode === 'single' && filteredReversed.length > 0
+                ? `${Math.min(singleIdx, filteredReversed.length - 1) + 1}/${filteredReversed.length}`
+                : `${filtered.length}/${addJobs.length}`}
+            </span>
           </div>
 
           {viewMode === 'grid' && (
@@ -1066,37 +1080,36 @@ export default function ScannerPage() {
             }
             const safeIdx = Math.min(singleIdx, filteredReversed.length - 1);
             const job = filteredReversed[safeIdx];
-            const card = job.result?.card;
-            const isError = job.status === 'error';
-            const canOpen = job.status === 'done' && !!card;
-            const cardVariants = card?.variants?.length ? card.variants : (['standard'] as CardVariant[]);
-            const currentVariant   = job.editedVariant   ?? cardVariants[0];
-            const currentCondition = job.editedCondition ?? 'NM';
+            const prevJob = safeIdx > 0 ? filteredReversed[safeIdx - 1] : null;
+            const nextJob = safeIdx < filteredReversed.length - 1 ? filteredReversed[safeIdx + 1] : null;
 
-            // Transform für Stapel-Animation — nur horizontaler Translate, keine Rotation:
-            //  - Drag aktiv → folgt Finger 1:1
-            //  - Fly-Out → translateX ±120vw
-            //  - Snap-Back → translateX 0
-            const cardTransform =
-              singleFly === 'right' ? 'translateX(120vw)' :
-              singleFly === 'left'  ? 'translateX(-120vw)' :
-              singleFly === 'back'  ? 'translateX(0px)' :
-              singleDragX !== 0     ? `translateX(${singleDragX}px)` :
+            // Drag-Richtung bestimmt, welche Schicht sichtbar/animiert ist:
+            //  - Rechts (dx > 0): Top-Panel folgt Finger, fliegt raus → idx+1
+            //  - Links  (dx < 0): Prev-Panel gleitet von rechts ein → idx-1
+            const isRightDrag = singleDragX > 0 || singleAnim === 'commit-next' || singleAnim === 'snap-out';
+            const isLeftDrag  = singleDragX < 0 || singleAnim === 'commit-prev' || singleAnim === 'snap-in';
+            const showBelow   = isRightDrag && !!nextJob;
+            const showIncoming = isLeftDrag && !!prevJob && singlePanelWidth > 0;
+
+            // Top-Panel-Transform: bewegt sich nur bei Right-Drag/Commit/Snap-Out
+            const topTransform =
+              singleAnim === 'commit-next' ? `translateX(${singlePanelWidth + 50}px)` :
+              singleAnim === 'snap-out'    ? 'translateX(0px)' :
+              isRightDrag && singleDragX > 0 ? `translateX(${singleDragX}px)` :
               undefined;
-            const cardTransition = singleFly ? 'transform 200ms ease-out' : undefined;
+            const topTransition = (singleAnim === 'commit-next' || singleAnim === 'snap-out')
+              ? 'transform 200ms ease-out' : undefined;
 
-            // Karte, die unter der Top-Karte sichtbar werden soll — abhängig
-            // von der Drag-Richtung. Bei Drag nach rechts kommt die nächste
-            // Karte zum Vorschein, bei Drag nach links die vorherige.
-            const directionIdx =
-              singleFly === 'right' ? safeIdx + 1 :
-              singleFly === 'left'  ? safeIdx - 1 :
-              singleDragX > 0       ? safeIdx + 1 :
-              singleDragX < 0       ? safeIdx - 1 :
-              safeIdx + 1; // Default-Vorschau: nächste Karte unter Top liegen lassen
-            const belowJob = filteredReversed[directionIdx] ?? null;
+            // Incoming-Panel-Transform: nur bei Left-Drag/Commit-Prev/Snap-In
+            const incomingTransform =
+              singleAnim === 'commit-prev' ? 'translateX(0px)' :
+              singleAnim === 'snap-in'     ? `translateX(${singlePanelWidth}px)` :
+              showIncoming                 ? `translateX(${singlePanelWidth + singleDragX}px)` :
+              `translateX(${singlePanelWidth}px)`;
+            const incomingTransition = (singleAnim === 'commit-prev' || singleAnim === 'snap-in')
+              ? 'transform 200ms ease-out' : undefined;
 
-            // Inneres Karten-Bild für beide Layer (Top + darunterliegende Karte)
+            // Inneres Karten-Bild — geteilt von allen Panels
             const renderFace = (j: typeof job) => {
               const jCard = j.result?.card;
               const jIsError = j.status === 'error';
@@ -1109,7 +1122,7 @@ export default function ScannerPage() {
                 return jImg ? (
                   <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={jImg} alt="Scan" className="w-full h-full object-cover pointer-events-none" draggable={false} />
+                    <img src={jImg} alt="Scan" className="w-full h-full object-contain pointer-events-none" draggable={false} />
                     <div className="absolute top-2 right-2 w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.75)' }}>
                       <ErrIcon size={18} color={ec.iconColor} strokeWidth={2} />
                     </div>
@@ -1125,7 +1138,7 @@ export default function ScannerPage() {
               }
               return jImg ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={jImg} alt={jCard?.name ?? ''} className="w-full h-full object-cover pointer-events-none" draggable={false} />
+                <img src={jImg} alt={jCard?.name ?? ''} className="w-full h-full object-contain pointer-events-none" draggable={false} />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <Loader2 size={28} color="rgba(255,255,255,0.4)" className="animate-spin" />
@@ -1133,209 +1146,246 @@ export default function ScannerPage() {
               );
             };
 
-            // Explizite Maße — die absolut positionierten Kind-Layer geben
-            // dem Wrapper sonst keine intrinsische Größe (Box kollabiert auf 0).
-            const cardFaceStyle = {
-              height: '60vh',
-              width: 'calc(60vh * 63 / 88)',
-              maxWidth: '90vw',
-              aspectRatio: '63 / 88',
-              background: '#1a1a1a',
-            } as const;
-
-            return (
-              <div className="flex flex-col items-center gap-3 mt-2">
-                {/* Stapel-Wrapper — Top-Karte über Below-Karte gestapelt */}
+            // Ein vollständiges Panel: Karten-Bild + Name + Chips + Buttons,
+            // verteilt auf die zur Verfügung stehende Höhe (kein internes Scrolling).
+            const renderPanel = (j: typeof job, interactive: boolean) => {
+              const jCard = j.result?.card;
+              const jIsError = j.status === 'error';
+              const jCanOpen = j.status === 'done' && !!jCard;
+              const jVariants = jCard?.variants?.length ? jCard.variants : (['standard'] as CardVariant[]);
+              const jCurVariant   = j.editedVariant   ?? jVariants[0];
+              const jCurCondition = j.editedCondition ?? 'NM';
+              return (
                 <div
-                  className="relative touch-pan-y select-none"
-                  style={cardFaceStyle}
-                  onPointerDown={e => {
-                    if (singleFly) return;
-                    swipeStartXRef.current = e.clientX;
-                    try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
-                  }}
-                  onPointerMove={e => {
-                    const start = swipeStartXRef.current;
-                    if (start == null || singleFly) return;
-                    setSingleDragX(e.clientX - start);
-                  }}
-                  onPointerUp={e => {
-                    const start = swipeStartXRef.current;
-                    swipeStartXRef.current = null;
-                    if (start == null) return;
-                    const dx = e.clientX - start;
-                    if (Math.abs(dx) < 40) {
-                      setSingleDragX(0);
-                      if (canOpen) setActiveJobId(job.id);
-                      else if (isError) setErrorDetailJobId(job.id);
-                      return;
-                    }
-                    if (dx > 0) {
-                      if (safeIdx < filteredReversed.length - 1) {
-                        singleNextIdxRef.current = safeIdx + 1;
-                        setSingleFly('right');
-                      } else {
-                        setSingleFly('back');
-                      }
-                    } else {
-                      if (safeIdx > 0) {
-                        singleNextIdxRef.current = safeIdx - 1;
-                        setSingleFly('left');
-                      } else {
-                        setSingleFly('back');
-                      }
-                    }
-                  }}
-                  onPointerCancel={() => {
-                    swipeStartXRef.current = null;
-                    if (singleDragX !== 0) setSingleFly('back');
-                  }}
+                  className="absolute inset-0 flex flex-col gap-2"
+                  style={{ pointerEvents: interactive ? undefined : 'none' }}
                 >
-                  {/* Below-Layer — nächste/vorherige Karte, statisch */}
-                  {belowJob && (
-                    <div
-                      className="absolute inset-0 rounded-lg overflow-hidden"
-                      style={{
-                        ...borderStyleFor(computeBorderStatus(belowJob), belowJob.result?.fakeRisk),
-                        background: '#1a1a1a',
-                      }}
-                    >
-                      {renderFace(belowJob)}
-                    </div>
-                  )}
-
-                  {/* Top-Layer — die Karte, die der Finger bewegt */}
+                  {/* Karten-Bild — wächst auf den verfügbaren Platz */}
                   <div
-                    className="absolute inset-0 rounded-lg overflow-hidden"
+                    className="flex-1 min-h-0 relative rounded-lg overflow-hidden flex items-center justify-center"
                     style={{
-                      ...borderStyleFor(computeBorderStatus(job), job.result?.fakeRisk),
+                      ...borderStyleFor(computeBorderStatus(j), j.result?.fakeRisk),
                       background: '#1a1a1a',
-                      transform: cardTransform,
-                      transition: cardTransition,
-                      willChange: 'transform',
-                    }}
-                    onTransitionEnd={ev => {
-                      if (ev.propertyName !== 'transform' || !singleFly) return;
-                      if (singleFly === 'right' || singleFly === 'left') {
-                        const next = singleNextIdxRef.current;
-                        singleNextIdxRef.current = null;
-                        if (next != null) setSingleIdx(next);
-                      }
-                      setSingleDragX(0);
-                      setSingleFly(null);
                     }}
                   >
-                    {renderFace(job)}
-                    {/* Index-Badge oben rechts */}
-                    <div
-                      className="absolute top-2 right-2 px-2 py-1 rounded text-xs font-mono font-bold text-white pointer-events-none"
-                      style={{ background: 'rgba(0,0,0,0.75)' }}
-                    >
-                      {safeIdx + 1}/{filteredReversed.length}
-                    </div>
+                    {renderFace(j)}
                   </div>
-                </div>
 
-                {/* Karten-Name + Set */}
-                <div className="text-center">
-                  <p className="text-base font-semibold text-white">
-                    {card?.name ?? (isError ? classifyJobError(job).cardName : '…')}
-                  </p>
-                  {card?.setCode && (
-                    <p className="text-xs text-white/55 font-mono">
-                      {card.setCode} · {card.number}
+                  {/* Name + Set */}
+                  <div className="text-center shrink-0">
+                    <p className="text-base font-semibold text-white leading-tight">
+                      {jCard?.name ?? (jIsError ? classifyJobError(j).cardName : '…')}
                     </p>
-                  )}
-                </div>
+                    {jCard?.setCode && (
+                      <p className="text-xs text-white/55 font-mono">
+                        {jCard.setCode} · {jCard.number}
+                      </p>
+                    )}
+                  </div>
 
-                {/* Inline-Editoren: Zustand + Variante (statisch unter der Karte —
-                    bleiben am Platz während die Karte wegfliegt = Stapel-Optik) */}
-                {card && (
-                  <div className="w-full flex flex-col gap-1.5 mt-1">
-                    {/* Zustand-Chips */}
-                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                      {CONDITIONS.map(c => {
-                        const active = currentCondition === c.value;
-                        const col = PERSISTED_CONDITION_COLOR[c.value];
-                        return (
-                          <button
-                            key={c.value}
-                            onClick={() => setJobCondition(job.id, c.value)}
-                            className="px-2.5 py-1 rounded-full text-xs font-bold border transition-colors"
-                            style={{
-                              background: active ? col.bg : 'rgba(255,255,255,0.06)',
-                              color:      active ? col.text : '#fff',
-                              borderColor: active ? col.bg : 'rgba(255,255,255,0.15)',
-                            }}
-                          >
-                            {c.short}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {/* Varianten-Chips (nur wenn mehr als 1 verfügbar) */}
-                    {cardVariants.length > 1 && (
+                  {/* Chips: Zustand + Variante */}
+                  {jCard && (
+                    <div className="flex flex-col gap-1.5 shrink-0">
                       <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                        {cardVariants.map(v => {
-                          const active = currentVariant === v;
+                        {CONDITIONS.map(c => {
+                          const active = jCurCondition === c.value;
+                          const col = PERSISTED_CONDITION_COLOR[c.value];
                           return (
                             <button
-                              key={v}
-                              onClick={() => setJobVariant(job.id, v)}
-                              className="px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors"
+                              key={c.value}
+                              onClick={() => setJobCondition(j.id, c.value)}
+                              className="px-2.5 py-1 rounded-full text-xs font-bold border transition-colors"
                               style={{
-                                background: active ? 'var(--pokedex-red)' : 'rgba(255,255,255,0.06)',
-                                color:      active ? '#fff' : '#fff',
-                                borderColor: active ? 'var(--pokedex-red)' : 'rgba(255,255,255,0.15)',
+                                background: active ? col.bg : 'rgba(255,255,255,0.06)',
+                                color:      active ? col.text : '#fff',
+                                borderColor: active ? col.bg : 'rgba(255,255,255,0.15)',
                               }}
                             >
-                              {VARIANT_LABELS[v]}
+                              {c.short}
                             </button>
                           );
                         })}
                       </div>
+                      {jVariants.length > 1 && (
+                        <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                          {jVariants.map(v => {
+                            const active = jCurVariant === v;
+                            return (
+                              <button
+                                key={v}
+                                onClick={() => setJobVariant(j.id, v)}
+                                className="px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors"
+                                style={{
+                                  background: active ? 'var(--pokedex-red)' : 'rgba(255,255,255,0.06)',
+                                  color: '#fff',
+                                  borderColor: active ? 'var(--pokedex-red)' : 'rgba(255,255,255,0.15)',
+                                }}
+                              >
+                                {VARIANT_LABELS[v]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Aktion-Buttons */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => toggleManualFlag(j.id)}
+                      className="w-11 h-11 rounded-full flex items-center justify-center"
+                      style={{
+                        background: j.flaggedManual ? '#facc15' : 'rgba(255,255,255,0.10)',
+                        color: j.flaggedManual ? '#1a1a1a' : '#fff',
+                      }}
+                      aria-label="Markieren"
+                    >
+                      <Flag size={18} />
+                    </button>
+                    <button
+                      onClick={() => {
+                        removeJob(j.id);
+                        if (safeIdx >= filteredReversed.length - 1 && safeIdx > 0) {
+                          setSingleIdx(safeIdx - 1);
+                        }
+                      }}
+                      className="w-11 h-11 rounded-full flex items-center justify-center"
+                      style={{ background: 'rgba(255,255,255,0.10)' }}
+                      aria-label="Entfernen"
+                    >
+                      <Trash2 size={18} color="#ef4444" />
+                    </button>
+                    {jCanOpen && !j.added && (
+                      <button
+                        onClick={() => setQuickAddJobId(j.id)}
+                        className="flex-1 h-11 px-5 rounded-full text-white font-semibold flex items-center justify-center gap-1.5"
+                        style={{ background: 'var(--pokedex-red)' }}
+                      >
+                        <Plus size={18} strokeWidth={3} />
+                        Hinzufügen
+                      </button>
                     )}
+                  </div>
+                </div>
+              );
+            };
+
+            const handlePointerUp = (e: React.PointerEvent) => {
+              const start = swipeStartXRef.current;
+              swipeStartXRef.current = null;
+              if (start == null) return;
+              const dx = e.clientX - start;
+              if (Math.abs(dx) < 40) {
+                setSingleDragX(0);
+                if (canOpen) setActiveJobId(job.id);
+                else if (isError) setErrorDetailJobId(job.id);
+                return;
+              }
+              if (dx > 0) {
+                // Right swipe → Top fliegt raus, idx + 1
+                if (nextJob) {
+                  singleCommitDeltaRef.current = +1;
+                  setSingleAnim('commit-next');
+                } else {
+                  setSingleAnim('snap-out');
+                }
+              } else {
+                // Left swipe → Prev gleitet rein, idx - 1
+                if (prevJob) {
+                  singleCommitDeltaRef.current = -1;
+                  setSingleAnim('commit-prev');
+                } else {
+                  // Kein prevJob → der Top-Drag wird einfach zurückgesnappt
+                  setSingleAnim('snap-out');
+                }
+              }
+            };
+
+            // Outer container — feste Höhe, alles passt rein, keine Scroll
+            const containerHeight = 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 280px)';
+            const canOpen = job.status === 'done' && !!job.result?.card;
+            const isError = job.status === 'error';
+
+            return (
+              <div
+                ref={singlePanelRef}
+                className="relative w-full touch-pan-y select-none overflow-hidden"
+                style={{ height: containerHeight, minHeight: '320px' }}
+                onPointerDown={e => {
+                  if (singleAnim) return;
+                  swipeStartXRef.current = e.clientX;
+                  try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
+                }}
+                onPointerMove={e => {
+                  const start = swipeStartXRef.current;
+                  if (start == null || singleAnim) return;
+                  setSingleDragX(e.clientX - start);
+                }}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={() => {
+                  swipeStartXRef.current = null;
+                  if (singleDragX > 0)      setSingleAnim('snap-out');
+                  else if (singleDragX < 0 && prevJob) setSingleAnim('snap-in');
+                  else if (singleDragX < 0) setSingleAnim('snap-out');
+                }}
+              >
+                {/* Below-Layer (nächste Karte, statisch — wird bei Right-Drag sichtbar) */}
+                {showBelow && nextJob && (
+                  <div className="absolute inset-0">
+                    {renderPanel(nextJob, false)}
                   </div>
                 )}
 
-                {/* Aktion-Buttons */}
-                <div className="flex items-center gap-2 mt-1">
-                  <button
-                    onClick={() => toggleManualFlag(job.id)}
-                    className="w-11 h-11 rounded-full flex items-center justify-center"
+                {/* Top-Layer (aktuelle Karte) */}
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    transform: topTransform,
+                    transition: topTransition,
+                    willChange: 'transform',
+                    zIndex: 2,
+                  }}
+                  onTransitionEnd={ev => {
+                    if (ev.propertyName !== 'transform') return;
+                    if (singleAnim === 'commit-next') {
+                      setSingleIdx(idx => idx + 1);
+                      setSingleDragX(0);
+                      setSingleAnim(null);
+                    } else if (singleAnim === 'snap-out') {
+                      setSingleDragX(0);
+                      setSingleAnim(null);
+                    }
+                  }}
+                >
+                  {renderPanel(job, !singleAnim && singleDragX === 0)}
+                </div>
+
+                {/* Incoming-Layer (vorherige Karte gleitet bei Left-Drag von rechts rein) */}
+                {showIncoming && prevJob && (
+                  <div
+                    className="absolute inset-0"
                     style={{
-                      background: job.flaggedManual ? '#facc15' : 'rgba(255,255,255,0.10)',
-                      color: job.flaggedManual ? '#1a1a1a' : '#fff',
+                      transform: incomingTransform,
+                      transition: incomingTransition,
+                      willChange: 'transform',
+                      zIndex: 3,
                     }}
-                    aria-label="Markieren"
-                  >
-                    <Flag size={18} />
-                  </button>
-                  <button
-                    onClick={() => {
-                      removeJob(job.id);
-                      // Index ggf. anpassen falls letztes Element gelöscht
-                      if (safeIdx >= filteredReversed.length - 1 && safeIdx > 0) {
-                        setSingleIdx(safeIdx - 1);
+                    onTransitionEnd={ev => {
+                      if (ev.propertyName !== 'transform') return;
+                      if (singleAnim === 'commit-prev') {
+                        setSingleIdx(idx => Math.max(0, idx - 1));
+                        setSingleDragX(0);
+                        setSingleAnim(null);
+                      } else if (singleAnim === 'snap-in') {
+                        setSingleDragX(0);
+                        setSingleAnim(null);
                       }
                     }}
-                    className="w-11 h-11 rounded-full flex items-center justify-center"
-                    style={{ background: 'rgba(255,255,255,0.10)' }}
-                    aria-label="Entfernen"
                   >
-                    <Trash2 size={18} color="#ef4444" />
-                  </button>
-                  {canOpen && !job.added && (
-                    <button
-                      onClick={() => setQuickAddJobId(job.id)}
-                      className="flex-1 h-11 px-5 rounded-full text-white font-semibold flex items-center justify-center gap-1.5"
-                      style={{ background: 'var(--pokedex-red)' }}
-                    >
-                      <Plus size={18} strokeWidth={3} />
-                      Hinzufügen
-                    </button>
-                  )}
-                </div>
+                    {renderPanel(prevJob, false)}
+                  </div>
+                )}
               </div>
             );
           })()}
