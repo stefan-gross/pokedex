@@ -1040,6 +1040,23 @@ export default function ScannerPage() {
                 </div>
               )}
 
+              {/* An Gemini hochgeladenes Bild — zeigt, was tatsächlich gesnappt wurde
+                  (Karte sauber / abgeschnitten / leerer Frame mit Hand?) */}
+              {job.debug?.imageBase64 && (
+                <div className="rounded-lg overflow-hidden" style={{ background: 'var(--secondary)' }}>
+                  <p className="text-[10px] text-muted-foreground px-2 py-1 uppercase tracking-wide font-mono">
+                    An Gemini gesendet{job.debug.imageSizeKb ? ` · ${job.debug.imageSizeKb} KB` : ''}
+                  </p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`data:${job.debug.mimeType ?? 'image/jpeg'};base64,${job.debug.imageBase64}`}
+                    alt="Scan-Crop"
+                    className="w-full object-contain bg-black"
+                    style={{ maxHeight: 280 }}
+                  />
+                </div>
+              )}
+
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={removeAndClose}
