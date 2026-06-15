@@ -371,7 +371,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     startingRef.current = true; // Visibility-Handler blockiert ab hier
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        // 1280×720 reicht für Gemini-OCR und ONNX-Box-Detection — halbiert
+        // den Speicherbedarf pro Frame gegenüber 1920×1080 (Memory-Schutz auf iOS).
+        video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
       });
       _kameraStream = stream;
       streamRef.current = stream;

@@ -413,6 +413,29 @@ export default function ScannerPage() {
   const doneJobs = jobs.filter(j => j.status === 'done' && j.result?.card);
   const activeJob = jobs.find(j => j.id === activeJobId) ?? null;
 
+  // ── Memory-Wächter ─────────────────────────────────────────────────────────
+  // Zählt unerledigte Add-Jobs (noch nicht in Sammlung übernommen). Ab 30 →
+  // Warn-Banner; ab 40 → kritisch + Auto-Pause des Streams. Hysterese: erst
+  // wenn < 25 wieder unten → Stream darf wieder laufen.
+  const unaddedCount = jobs.filter(j =>
+    j.origin === 'add' && (j.status !== 'done' || !j.added)
+  ).length;
+  const memoryLevel: 'ok' | 'warn' | 'critical' =
+    unaddedCount >= 40 ? 'critical' :
+    unaddedCount >= 30 ? 'warn' : 'ok';
+
+  // Auto-Pause bei critical, Auto-Resume erst bei < 25 Jobs (Hysterese).
+  const autoPausedRef = useRef(false);
+  useEffect(() => {
+    if (memoryLevel === 'critical' && !streamPaused) {
+      autoPausedRef.current = true;
+      setStreamPaused(true);
+    } else if (autoPausedRef.current && unaddedCount < 25 && streamPaused) {
+      autoPausedRef.current = false;
+      setStreamPaused(false);
+    }
+  }, [memoryLevel, streamPaused, unaddedCount]);
+
   const removeJob = useCallback((id: string) => {
     setJobs(prev => prev.filter(j => j.id !== id));
     setActiveJobId(prev => (prev === id ? null : prev));
@@ -421,6 +444,25 @@ export default function ScannerPage() {
   const markAdded = useCallback((id: string) => {
     setJobs(prev => prev.map(j => j.id === id ? { ...j, added: true } : j));
     setActiveJobId(null);
+    // Memory-Cleanup: 3s nach dem Hinzufügen wird das Job-Tile aus dem In-Memory-
+    // State entfernt. Die Karte selbst ist persistent in Firestore — nur das Slider/
+    // Review-Thumbnail verschwindet. Verhindert Heap-Anstieg in langen Sessions.
+    setTimeout(() => {
+      setJobs(prev => prev.filter(j => j.id !== id));
+    }, 3000);
+  }, []);
+
+  /** Memory-Cleanup: nach 60s wird das Base64-Bild aus einem Error-Job entfernt.
+   *  Das Bild hatte nur als Diagnose-Hilfe Sinn — der User hat genug Zeit, ins
+   *  Detail-Sheet zu schauen. Verhindert, dass 50 Error-Snaps × 250 KB im Heap bleiben. */
+  const scheduleErrorImageCleanup = useCallback((id: string) => {
+    setTimeout(() => {
+      setJobs(prev => prev.map(j =>
+        j.id === id && j.debug?.imageBase64
+          ? { ...j, debug: { ...j.debug, imageBase64: undefined } }
+          : j
+      ));
+    }, 60_000);
   }, []);
 
   /** Toggle manueller Gelb-Markierung — Slider-Tap-Toggle. */
@@ -588,9 +630,11 @@ export default function ScannerPage() {
       if (gemini.error || !hasUsefulInfo) {
         debug.error = gemini.error ?? 'Kein lesbarer Karten-Text';
         debug.totalMs = Date.now() - t0;
+        const errDebug: ScanDebug = { ...debug, geminiParsed: undefined, lookupSteps: undefined };
         setJobs(prev => prev.map(j => j.id === id
-          ? { ...j, status: 'error', result: { card: null, language: (gemini.language ?? 'de') as CardLanguage }, debugInfo: geminiSummary, debug: { ...debug } }
+          ? { ...j, status: 'error', result: { card: null, language: (gemini.language ?? 'de') as CardLanguage }, debugInfo: geminiSummary, debug: errDebug }
           : j));
+        scheduleErrorImageCleanup(id);
         return;
       }
 
@@ -697,10 +741,17 @@ export default function ScannerPage() {
         ? `Katalog: ${catalogCard.name} (${catalogCard.setId}/${catalogCard.number})`
         : `Katalog: nicht gefunden (setCode=${gemini.setCode ?? 'null'}/${rawNumber || 'null'}, dex=${gemini.nationalDexNumber ?? 'null'}, ${dexCandidateCount} Kandidaten)`;
 
-      // Bild-Cleanup: bei erfolgreicher Erkennung base64 verwerfen (Katalog-CDN-Bild reicht).
-      const finalDebug: ScanDebug = catalogCard
-        ? { ...debug, imageBase64: undefined }
-        : { ...debug };
+      // Memory-Cleanup beim Finalisieren:
+      //  - geminiParsed + lookupSteps werden nur fürs Debug-Modal gebraucht → raus
+      //  - imageBase64: bei Erfolg sofort weg (Katalog-CDN-Bild reicht); bei Error
+      //    bleibt es zunächst stehen und wird per setTimeout (siehe weiter unten)
+      //    nach 60s gestrippt.
+      const finalDebug: ScanDebug = {
+        ...debug,
+        geminiParsed: undefined,
+        lookupSteps: undefined,
+        imageBase64: catalogCard ? undefined : debug.imageBase64,
+      };
 
       // Karte SOFORT rendern, ownedCount kommt asynchron nach.
       // Spart 5-15s Render-Verzögerung auf schwacher Firebase-Verbindung.
@@ -757,11 +808,13 @@ export default function ScannerPage() {
       const msg = isAbort ? 'Upload-Timeout 90s' : err instanceof Error ? err.message : String(err);
       debug.error = msg;
       debug.totalMs = Date.now() - t0;
+      const errDebug: ScanDebug = { ...debug, geminiParsed: undefined, lookupSteps: undefined };
       setJobs(prev => prev.map(j => j.id === id
-        ? { ...j, status: 'error', result: { card: null, language: 'de' }, debugInfo: `Netzwerkfehler: ${msg}`, debug: { ...debug } }
+        ? { ...j, status: 'error', result: { card: null, language: 'de' }, debugInfo: `Netzwerkfehler: ${msg}`, debug: errDebug }
         : j));
+      scheduleErrorImageCleanup(id);
     }
-  }, []);
+  }, [scheduleErrorImageCleanup]);
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden">
@@ -1489,6 +1542,38 @@ export default function ScannerPage() {
           </button>
         )}
       </div>
+
+      {/* Memory-Wächter-Banner — sichtbar wenn der Stapel zu groß wird */}
+      {memoryLevel !== 'ok' && (
+        <div
+          className="absolute left-0 right-0 z-30 px-4 flex justify-center pointer-events-none"
+          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 60px)' }}
+        >
+          <div
+            className="pointer-events-auto rounded-lg px-3 py-2 text-sm font-semibold shadow-lg max-w-md text-center"
+            style={{
+              background: memoryLevel === 'critical' ? '#ef4444' : '#facc15',
+              color: memoryLevel === 'critical' ? '#fff' : '#1a1a1a',
+            }}
+          >
+            {memoryLevel === 'critical' ? (
+              <>
+                <div className="font-bold mb-0.5">Speicher fast voll ({unaddedCount} Karten)</div>
+                <div className="text-xs font-normal opacity-90">
+                  Bitte „Alle hinzufügen" oder „Alle löschen", dann kann der Scan weitergehen.
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="font-bold mb-0.5">{unaddedCount} Karten im Stapel</div>
+                <div className="text-xs font-normal opacity-80">
+                  Bitte zur Sammlung übernehmen oder löschen, bevor du weiterscannst.
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Hinzufügen-Modus: Thumbnail-Slider unten ──────────────────
           4 Tiles immer sichtbar, Rest per Swipe mit scroll-snap. */}
