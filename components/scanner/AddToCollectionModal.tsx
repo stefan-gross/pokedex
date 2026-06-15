@@ -302,8 +302,8 @@ export function AddToCollectionModal({
         <button
           onClick={save}
           disabled={saving}
-          className="w-full h-11 rounded-xl font-semibold text-sm text-white disabled:opacity-50 transition-opacity"
-          style={{ background: 'var(--pokedex-red)' }}
+          className="w-full h-11 rounded-md font-semibold text-sm text-white disabled:opacity-50 transition-opacity"
+          style={{ background: 'var(--action-add)' }}
         >
           {saving ? 'Wird gespeichert…' : 'Zur Sammlung hinzufügen'}
         </button>

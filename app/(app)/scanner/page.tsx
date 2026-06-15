@@ -1094,20 +1094,20 @@ export default function ScannerPage() {
                     >
                       <button
                         onClick={e => { e.stopPropagation(); removeJob(job.id); }}
-                        className="w-8 h-8 rounded-full flex items-center justify-center shadow-md"
-                        style={{ background: 'rgba(0,0,0,0.7)' }}
+                        className="w-8 h-8 rounded-md flex items-center justify-center shadow-md text-white"
+                        style={{ background: 'var(--action-delete)' }}
                         aria-label="Entfernen"
                       >
-                        <Trash2 size={14} color="#ef4444" />
+                        <Trash2 size={14} />
                       </button>
                       {canOpen && !job.added && (
                         <button
                           onClick={e => { e.stopPropagation(); setQuickAddJobId(job.id); }}
-                          className="w-11 h-11 rounded-full flex items-center justify-center shadow-md"
-                          style={{ background: 'var(--pokedex-red)' }}
+                          className="w-11 h-11 rounded-md flex items-center justify-center shadow-md text-white"
+                          style={{ background: 'var(--action-add)' }}
                           aria-label="Zur Sammlung hinzufügen"
                         >
-                          <Plus size={22} color="#fff" strokeWidth={3} />
+                          <Plus size={22} strokeWidth={3} />
                         </button>
                       )}
                     </div>
@@ -1257,20 +1257,20 @@ export default function ScannerPage() {
                             setSingleIdx(safeIdx - 1);
                           }
                         }}
-                        className="w-11 h-11 rounded-full flex items-center justify-center shadow-md"
-                        style={{ background: 'rgba(0,0,0,0.75)' }}
+                        className="w-11 h-11 rounded-md flex items-center justify-center shadow-md text-white"
+                        style={{ background: 'var(--action-delete)' }}
                         aria-label="Entfernen"
                       >
-                        <Trash2 size={18} color="#ef4444" />
+                        <Trash2 size={18} />
                       </button>
                       {jCanOpen && !j.added && (
                         <button
                           onClick={e => { e.stopPropagation(); setQuickAddJobId(j.id); }}
-                          className="w-16 h-16 rounded-full flex items-center justify-center shadow-lg"
-                          style={{ background: 'var(--pokedex-red)' }}
+                          className="w-16 h-16 rounded-md flex items-center justify-center shadow-lg text-white"
+                          style={{ background: 'var(--action-add)' }}
                           aria-label="Zur Sammlung hinzufügen"
                         >
-                          <Plus size={32} color="#fff" strokeWidth={3} />
+                          <Plus size={32} strokeWidth={3} />
                         </button>
                       )}
                     </div>
@@ -1814,21 +1814,17 @@ export default function ScannerPage() {
           >
             <button
               onClick={clearAllJobs}
-              className="flex-1 h-11 rounded-full text-sm font-semibold flex items-center justify-center gap-1.5"
-              style={{
-                background: 'rgba(255,255,255,0.08)',
-                color: 'rgba(255,255,255,0.9)',
-                border: '1px solid rgba(255,255,255,0.15)',
-              }}
+              className="flex-1 h-11 rounded-md text-sm font-semibold text-white flex items-center justify-center gap-1.5"
+              style={{ background: 'var(--action-delete)' }}
             >
-              <Trash2 size={15} color="#ef4444" />
+              <Trash2 size={15} color="#fff" />
               Alle löschen
             </button>
             <button
               onClick={openBulkAdd}
               disabled={unaddedCount === 0}
-              className="flex-1 h-11 rounded-full text-sm font-semibold text-white flex items-center justify-center gap-1.5 disabled:opacity-50"
-              style={{ background: 'var(--pokedex-red)' }}
+              className="flex-1 h-11 rounded-md text-sm font-semibold text-white flex items-center justify-center gap-1.5 disabled:opacity-50"
+              style={{ background: 'var(--action-add)' }}
             >
               <Plus size={16} strokeWidth={3} />
               {`Alle hinzufügen${unaddedCount > 0 ? ` (${unaddedCount})` : ''}`}
@@ -2313,11 +2309,11 @@ function ScannedCardTile({
         {/* Trash unten rechts (~2 px Abstand zum Rand) */}
         <button
           onClick={e => { e.stopPropagation(); onRemove(); }}
-          className="absolute bottom-0.5 right-0.5 w-7 h-7 rounded-full flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.75)' }}
+          className="absolute bottom-0.5 right-0.5 w-7 h-7 rounded-md flex items-center justify-center text-white"
+          style={{ background: 'var(--action-delete)' }}
           aria-label="Entfernen"
         >
-          <Trash2 size={14} color="#ef4444" />
+          <Trash2 size={14} />
         </button>
 
         {/* Wert-Badge unten links — sichtbar nur ab Tier 'wertvoll' */}
@@ -2536,8 +2532,8 @@ function RecognizedCardLarge({
       {card && !job.added && !isOwned && ownedKnown && (
         <button
           onClick={onAdd}
-          className="w-full h-12 rounded-full text-white font-semibold flex items-center justify-center gap-2 shadow-lg"
-          style={{ background: 'var(--pokedex-red)' }}
+          className="w-full h-12 rounded-md text-white font-semibold flex items-center justify-center gap-2 shadow-lg"
+          style={{ background: 'var(--action-add)' }}
         >
           <Plus size={20} strokeWidth={3} />
           Zur Sammlung hinzufügen

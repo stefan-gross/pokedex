@@ -90,6 +90,12 @@
 
   --pokedex-red: #e53e3e;
   --pokedex-red-hover: #c53030;
+  /* Semantische Action-Farben: Add = dunkles Grün, Delete/Destroy = dunkles Rot.
+     White text/icon auf beiden, app-weit konsistent. */
+  --action-add: #2f855a;
+  --action-add-hover: #276749;
+  --action-delete: #c53030;
+  --action-delete-hover: #9b2c2c;
 }
 
 /* Dark Mode (class — next-themes) */

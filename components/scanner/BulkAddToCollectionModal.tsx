@@ -205,8 +205,8 @@ export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved
         <button
           onClick={save}
           disabled={saving || jobs.length === 0}
-          className="w-full h-11 rounded-xl font-semibold text-sm text-white disabled:opacity-50 transition-opacity flex items-center justify-center gap-2"
-          style={{ background: 'var(--pokedex-red)' }}
+          className="w-full h-11 rounded-md font-semibold text-sm text-white disabled:opacity-50 transition-opacity flex items-center justify-center gap-2"
+          style={{ background: 'var(--action-add)' }}
         >
           {saving ? (
             <>

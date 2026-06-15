@@ -45,8 +45,8 @@ export default function BindersPage() {
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
-          style={{ background: 'var(--pokedex-red)' }}
+          className="w-9 h-9 rounded-md flex items-center justify-center text-white"
+          style={{ background: 'var(--action-add)' }}
         >
           <Plus size={20} />
         </button>
@@ -66,8 +66,8 @@ export default function BindersPage() {
             <p className="text-sm text-muted-foreground">Erstelle deinen ersten Binder oder eine Box, um Karten zu organisieren</p>
             <button
               onClick={() => setShowCreate(true)}
-              className="mt-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
-              style={{ background: 'var(--pokedex-red)' }}
+              className="mt-2 px-5 py-2.5 rounded-md text-sm font-semibold text-white"
+              style={{ background: 'var(--action-add)' }}
             >
               Erste Sammlung erstellen
             </button>

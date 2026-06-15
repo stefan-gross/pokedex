@@ -18,8 +18,64 @@ import type { CardDoc, BinderDoc, CardVariant } from '@/types';
 
 /* ── Helpers ─────────────────────────────────────────────────── */
 
-const LANGUAGE_FLAGS: Record<string, string> = {
-  de: '🇩🇪', en: '🇬🇧', jp: '🇯🇵', fr: '🇫🇷',
+/** Schlichte SVG-Flag-Swatches statt Emoji-Flaggen — konsistent über Plattformen. */
+function LanguageFlag({ lang, size = 14 }: { lang: string; size?: number }) {
+  const w = Math.round(size * 1.4);
+  const h = size;
+  const wrap = (children: React.ReactNode) => (
+    <span
+      style={{
+        display: 'inline-block', width: w, height: h, borderRadius: 2,
+        overflow: 'hidden', flexShrink: 0, lineHeight: 0,
+        boxShadow: 'inset 0 0 0 0.5px rgba(0,0,0,0.2)',
+      }}
+    >
+      <svg viewBox="0 0 30 18" width={w} height={h}>{children}</svg>
+    </span>
+  );
+  switch (lang) {
+    case 'de': return wrap(<>
+      <rect width="30" height="6" fill="#000" />
+      <rect y="6" width="30" height="6" fill="#DD0000" />
+      <rect y="12" width="30" height="6" fill="#FFCE00" />
+    </>);
+    case 'en': return wrap(<>
+      <rect width="30" height="18" fill="#012169" />
+      <path d="M0 0 L30 18 M30 0 L0 18" stroke="#fff" strokeWidth="2.5" />
+      <path d="M0 0 L30 18 M30 0 L0 18" stroke="#C8102E" strokeWidth="1" />
+      <rect x="13" width="4" height="18" fill="#fff" />
+      <rect y="7" width="30" height="4" fill="#fff" />
+      <rect x="14" width="2" height="18" fill="#C8102E" />
+      <rect y="8" width="30" height="2" fill="#C8102E" />
+    </>);
+    case 'fr': return wrap(<>
+      <rect width="10" height="18" fill="#002654" />
+      <rect x="10" width="10" height="18" fill="#fff" />
+      <rect x="20" width="10" height="18" fill="#ED2939" />
+    </>);
+    case 'jp': return wrap(<>
+      <rect width="30" height="18" fill="#fff" />
+      <circle cx="15" cy="9" r="4.5" fill="#BC002D" />
+    </>);
+    default: return (
+      <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }}>{lang}</span>
+    );
+  }
+}
+
+const CONDITION_LABEL: Record<string, string> = {
+  NM: 'Near Mint',
+  LP: 'Lightly Played',
+  MP: 'Moderately Played',
+  HP: 'Heavily Played',
+  Poor: 'Poor',
+};
+const CONDITION_COLOR: Record<string, string> = {
+  NM: '#48bb78',
+  LP: '#facc15',
+  MP: '#fb923c',
+  HP: '#f87171',
+  Poor: '#9ca3af',
 };
 
 const VALID_ENERGY = new Set([
@@ -568,14 +624,11 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                           <CardVariantPrice tcgId={card.id} variant={variant} />
                           <button
                             onClick={() => setAddVariant(variant)}
-                            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-                            style={{
-                              background: isOwned ? 'var(--secondary)' : 'var(--pokedex-red)',
-                              border: isOwned ? '1.5px solid var(--border)' : 'none',
-                            }}
+                            className="w-9 h-9 rounded-md flex items-center justify-center shrink-0 text-white"
+                            style={{ background: 'var(--action-add)' }}
                             aria-label="Hinzufügen"
                           >
-                            <Plus size={16} color={isOwned ? 'var(--muted-foreground)' : '#fff'} strokeWidth={2.5} />
+                            <Plus size={16} strokeWidth={2.5} />
                           </button>
                         </div>
                       </div>
@@ -589,14 +642,16 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                             const isDeleting = deletingId === copy.id;
                             const binder = copyBinders[0];
                             const isDefaultBinder = !binder || !!binder.isDefault;
+                            const binderName = binder?.name ?? 'Meine Sammlung';
+                            const condColor  = CONDITION_COLOR[copy.condition] ?? 'var(--muted-foreground)';
                             return (
                               <div
                                 key={copy.id}
-                                className="flex items-center gap-1.5 rounded-lg px-2 py-1.5"
-                                style={{ background: 'var(--secondary)', minHeight: 36 }}
+                                className="flex items-center gap-2 rounded-lg px-2.5 py-2"
+                                style={{ background: 'var(--secondary)', minHeight: 48 }}
                               >
                                 {/* Chips */}
-                                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
                                   {copy.needsReview && (
                                     <button
                                       onClick={async () => {
@@ -604,63 +659,73 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                         window.dispatchEvent(new Event('review-count-changed'));
                                         onSaved?.();
                                       }}
-                                      className="text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-1 shrink-0"
-                                      style={{ background: 'rgba(229,62,62,.15)', color: 'var(--pokedex-red)' }}
+                                      className="text-[11px] px-2 py-1 rounded flex items-center gap-1 shrink-0 text-white"
+                                      style={{ background: 'var(--action-delete)' }}
                                     >
-                                      <CheckCircle2 size={10} /> Prüfen
+                                      <CheckCircle2 size={11} /> Prüfen
                                     </button>
                                   )}
-                                  <span className="text-[13px] shrink-0">{LANGUAGE_FLAGS[copy.language] ?? copy.language}</span>
+                                  <LanguageFlag lang={copy.language} size={16} />
                                   <span
-                                    className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
-                                    style={{ background: 'rgba(255,255,255,.07)', color: 'var(--muted-foreground)' }}
+                                    className="text-[12px] font-semibold px-2 py-1 rounded border shrink-0"
+                                    style={{
+                                      borderColor: condColor,
+                                      color: condColor,
+                                      background: 'transparent',
+                                    }}
                                   >
-                                    {copy.condition}
+                                    {CONDITION_LABEL[copy.condition] ?? copy.condition}
                                   </span>
-                                  {/* Sammlung-Pill — nur bei nicht-Default-Bindern (spart Platz) */}
-                                  {!isDefaultBinder && binder && (
-                                    <div
-                                      role="button"
-                                      tabIndex={0}
-                                      onClick={() => router.push(`/binders/${binder.id}`)}
-                                      onKeyDown={(e) => e.key === 'Enter' && router.push(`/binders/${binder.id}`)}
-                                      className="text-[11px] font-semibold pl-2 pr-1.5 py-0.5 rounded-full flex items-center gap-1 cursor-pointer shrink-0 ml-auto truncate"
-                                      style={{
-                                        background: 'rgba(66,153,225,.12)',
-                                        border: '1px solid rgba(66,153,225,.35)',
-                                        color: '#4299e1',
-                                        maxWidth: 140,
-                                      }}
-                                    >
-                                      {binder.icon && <span>{binder.icon}</span>}
-                                      <span className="truncate">{binder.name}</span>
+                                  {/* Sammlung-Pill — größer für mobile Touch-Targets */}
+                                  <div
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => router.push(binder ? `/binders/${binder.id}` : '/binders')}
+                                    onKeyDown={(e) => e.key === 'Enter' && router.push(binder ? `/binders/${binder.id}` : '/binders')}
+                                    className="text-[13px] font-semibold pl-3 pr-2 py-1.5 rounded-full flex items-center gap-1.5 cursor-pointer shrink-0 ml-auto truncate"
+                                    style={{
+                                      background: isDefaultBinder ? 'var(--secondary)' : 'rgba(66,153,225,.12)',
+                                      border: isDefaultBinder
+                                        ? '1px dashed var(--border)'
+                                        : '1px solid rgba(66,153,225,.35)',
+                                      color: isDefaultBinder ? 'var(--muted-foreground)' : '#4299e1',
+                                      maxWidth: 180,
+                                      minHeight: 32,
+                                    }}
+                                  >
+                                    {binder?.icon && <span>{binder.icon}</span>}
+                                    <span className="truncate">{binderName}</span>
+                                    {!isDefaultBinder && binder ? (
                                       <button
                                         onClick={(e) => { e.stopPropagation(); handleRemoveFromBinder(copy, binder.id); }}
-                                        className="rounded-full p-0.5 transition-colors shrink-0"
-                                        style={{ background: 'rgba(229,62,62,.2)', color: '#fc8181' }}
+                                        className="rounded-full p-1 transition-colors shrink-0 text-white"
+                                        style={{ background: 'var(--action-delete)' }}
                                         title="Aus Sammlung entfernen"
+                                        aria-label="Aus Sammlung entfernen"
                                       >
-                                        <Trash2 size={10} />
+                                        <X size={12} strokeWidth={3} />
                                       </button>
-                                    </div>
-                                  )}
+                                    ) : (
+                                      <ChevronRight size={13} style={{ opacity: 0.7 }} />
+                                    )}
+                                  </div>
                                 </div>
 
-                                {/* Löschen */}
+                                {/* Löschen — roter Hintergrund, weißer Papierkorb */}
                                 <button
                                   onClick={() => handleDelete(copy)}
                                   disabled={isDeleting}
-                                  className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                                  className="shrink-0 w-10 h-10 rounded-md flex items-center justify-center transition-colors text-white"
                                   style={{
-                                    background: isConfirm ? 'rgba(229,62,62,.2)' : 'rgba(229,62,62,.08)',
-                                    color: 'var(--pokedex-red)',
+                                    background: isConfirm ? 'var(--action-delete-hover)' : 'var(--action-delete)',
                                   }}
+                                  aria-label="Karte löschen"
                                 >
                                   {isDeleting
                                     ? <span className="text-[10px]">…</span>
                                     : isConfirm
-                                      ? <span className="text-[10px] font-bold">OK?</span>
-                                      : <Trash2 size={12} />
+                                      ? <span className="text-[11px] font-bold">OK?</span>
+                                      : <Trash2 size={16} />
                                   }
                                 </button>
                               </div>
