@@ -31,19 +31,31 @@ function priceForVariant(data: PriceResult, appVariant: CardVariant): PriceVaria
 }
 
 /** Kompakter Inline-Preis: nur die Trend-Zahl, tier-eingefärbt — für genau EINE
- *  Karten-Variante. Loading-State + fehlende Daten ergeben unsichtbaren Span,
- *  damit das Layout in der umschließenden Zeile stabil bleibt. */
+ *  Karten-Variante. Zeigt explizit „—" wenn keine Preisdaten gefunden wurden,
+ *  damit der User weiß, dass der Fetch abgeschlossen ist (kein hängender Spinner-Eindruck). */
 export function CardVariantPrice({
   tcgId, variant, className,
 }: { tcgId: string | undefined; variant: CardVariant; className?: string }) {
   const { data, loading } = usePrice(tcgId);
   if (loading) {
-    return <span className={className}><Loader2 size={12} className="animate-spin text-muted-foreground" /></span>;
+    return (
+      <span className={(className ?? '') + ' inline-flex items-center'}>
+        <Loader2 size={12} className="animate-spin text-muted-foreground" />
+      </span>
+    );
   }
-  if (!data) return <span className={className} />;
+  const empty = (
+    <span
+      className={(className ?? '') + ' text-sm text-muted-foreground tabular-nums'}
+      title="Keine Preisdaten verfügbar"
+    >
+      —
+    </span>
+  );
+  if (!data) return empty;
   const v = priceForVariant(data, variant);
   const price = v?.trend ?? v?.market;
-  if (price == null) return <span className={className} />;
+  if (price == null) return empty;
   const tier = classifyValue(price);
   const priceColor =
     tier.tier === 'standard' || tier.tier === 'schoen' ? undefined : tier.badgeColor;
