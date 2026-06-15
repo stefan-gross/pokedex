@@ -8,17 +8,12 @@ import { EnergyIcon } from '@/components/ui/EnergyIcon';
 import { TCG_TYPES } from '@/lib/hooks/useCardBrowser';
 import { getAllSets, filterSets, type TcgSet } from '@/lib/firestore/sets';
 import { SERIES_NAMES_DE } from '@/lib/card-constants';
+import { BINDER_SIZES, type BinderSize } from '@/lib/binder-sizes';
 import type { BinderDoc } from '@/types';
 
 type PickerTab = 'icons' | 'types' | 'set';
 
 const COLORS = ['#e53e3e', '#ed8936', '#ecc94b', '#48bb78', '#38b2ac', '#4299e1', '#667eea', '#ed64a6'];
-const SIZES: { value: 9 | 12 | 16 | 18; label: string }[] = [
-  { value: 9,  label: '9er (3×3)'  },
-  { value: 12, label: '12er (3×4)' },
-  { value: 16, label: '16er (4×4)' },
-  { value: 18, label: '18er (3×6)' },
-];
 
 interface Props {
   existing?: BinderDoc;
@@ -31,8 +26,9 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
   const [name,   setName]   = useState(existing?.name ?? '');
   const [icon,   setIcon]   = useState(existing?.icon ?? 'folder');
   const [color,  setColor]  = useState(existing?.color ?? '#e53e3e');
-  const [size,   setSize]   = useState<9 | 12 | 16 | 18>(existing?.size ?? 9);
-  const [saving,     setSaving]     = useState(false);
+  const [size,     setSize]     = useState<BinderSize>((existing?.size as BinderSize) ?? 9);
+  const [capacity, setCapacity] = useState<string>(existing?.capacity != null ? String(existing.capacity) : '');
+  const [saving,   setSaving]   = useState(false);
   const [pickerTab,  setPickerTab]  = useState<PickerTab>('icons');
   const [setQuery,   setSetQuery]   = useState('');
   const [allSets,    setAllSets]    = useState<TcgSet[]>([]);
@@ -56,12 +52,17 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
     if (!name.trim()) return;
     setSaving(true);
     try {
+      // Beim Bearbeiten: leeres Feld → null (löscht den Wert in Firestore).
+      // Beim Neu-Erstellen: leeres Feld → undefined (Feld wird gar nicht geschrieben).
+      const parsedCapacity = capacity.trim() === ''
+        ? (existing ? null : undefined)
+        : Math.max(1, Math.floor(Number(capacity)));
       const data = {
         name: name.trim(),
         icon,
         color,
         collectionType,
-        ...(isBinder ? { size } : {}),
+        ...(isBinder ? { size, capacity: parsedCapacity } : {}),
       };
       if (existing) {
         await updateBinder(existing.id, data);
@@ -268,27 +269,45 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
           </div>
         </div>
 
-        {/* Größe — nur für Binder */}
+        {/* Größe + Kapazität — nur für Binder */}
         {isBinder && (
-          <div className="mb-5">
-            <label className="text-xs text-muted-foreground mb-1 block">Größe</label>
-            <div className="flex gap-2 flex-wrap">
-              {SIZES.map(s => (
-                <button
-                  key={s.value}
-                  onClick={() => setSize(s.value)}
-                  className="px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors"
-                  style={{
-                    borderColor: size === s.value ? color : 'var(--border)',
-                    background: size === s.value ? `${color}20` : 'var(--secondary)',
-                    color: size === s.value ? color : undefined,
-                  }}
-                >
-                  {s.label}
-                </button>
-              ))}
+          <>
+            <div className="mb-5">
+              <label className="text-xs text-muted-foreground mb-1 block">Seitenlayout</label>
+              <div className="flex gap-2 flex-wrap">
+                {BINDER_SIZES.map(s => (
+                  <button
+                    key={s.value}
+                    onClick={() => setSize(s.value)}
+                    className="px-3 py-1.5 rounded-md border text-xs font-medium transition-colors"
+                    style={{
+                      borderColor: size === s.value ? color : 'var(--border)',
+                      background: size === s.value ? `${color}20` : 'var(--secondary)',
+                      color: size === s.value ? color : undefined,
+                    }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+
+            <div className="mb-5">
+              <label className="text-xs text-muted-foreground mb-1 block">
+                Kapazität <span className="text-muted-foreground/60">(optional)</span>
+              </label>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step={1}
+                value={capacity}
+                onChange={e => setCapacity(e.target.value.replace(/[^0-9]/g, ''))}
+                placeholder="z.B. 400 — wie viele Karten passen rein?"
+                className="w-full h-10 rounded-md border border-border bg-secondary px-3 text-sm"
+              />
+            </div>
+          </>
         )}
 
         </div>{/* end scroll container */}

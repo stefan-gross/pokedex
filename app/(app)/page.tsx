@@ -135,28 +135,29 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      {/* Stat Tiles */}
+      {/* Stat Tiles — Sammlungen · Karten · Gesamtwert nebeneinander */}
       <div className="space-y-3">
-        <div className="rounded-2xl bg-card shadow-card px-4 py-3 flex items-center justify-between min-h-[68px]">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-xs text-muted-foreground font-medium">Sammlung</span>
-            {thisWeek != null && thisWeek > 0 && (
-              <span className="text-[10px] text-muted-foreground/60">+{thisWeek} diese Woche</span>
-            )}
-            {!totalValue.loading && totalValue.withPrice > 0 && (
-              <span className="text-[13px] font-bold mt-1" style={{ color: 'var(--pokedex-red)' }}>
-                ≈ {totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
-              </span>
-            )}
-          </div>
-          <div className="flex items-baseline gap-4">
-            <div className="text-right">
-              <div className="text-[26px] font-extrabold leading-none" style={{ color: 'var(--pokedex-red)' }}>
-                {loading ? '—' : totalOwned?.toLocaleString('de')}
-              </div>
-              <div className="text-[10px] text-muted-foreground/60 mt-0.5">Karten</div>
-            </div>
-          </div>
+        <div className="grid grid-cols-3 gap-2">
+          <TopStat
+            label="Sammlungen"
+            value={loading ? '—' : String(binders.length)}
+          />
+          <TopStat
+            label="Karten"
+            value={loading ? '—' : (totalOwned ?? 0).toLocaleString('de')}
+            highlight
+            sub={thisWeek != null && thisWeek > 0 ? `+${thisWeek} diese Woche` : undefined}
+          />
+          <TopStat
+            label="Gesamtwert"
+            value={
+              totalValue.loading
+                ? '—'
+                : totalValue.withPrice > 0
+                  ? totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
+                  : '—'
+            }
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -269,6 +270,28 @@ export default function DashboardPage() {
         </div>
       )}
 
+    </div>
+  );
+}
+
+/** Kompakte Top-Statistik: Label oben, Wert prominent darunter, optional Sub-Text.
+ *  Der mittlere „Karten"-Tile wird per `highlight` in pokedex-red gefärbt. */
+function TopStat({ label, value, sub, highlight = false }: {
+  label: string; value: string; sub?: string; highlight?: boolean;
+}) {
+  return (
+    <div className="rounded-2xl bg-card shadow-card px-2.5 py-2.5 flex flex-col items-center justify-center text-center min-h-[78px]">
+      <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">{label}</span>
+      <span
+        className="text-[20px] font-extrabold leading-tight tabular-nums truncate w-full"
+        style={highlight ? { color: 'var(--pokedex-red)' } : undefined}
+        title={value}
+      >
+        {value}
+      </span>
+      {sub && (
+        <span className="text-[10px] text-muted-foreground/70 mt-0.5 truncate w-full">{sub}</span>
+      )}
     </div>
   );
 }

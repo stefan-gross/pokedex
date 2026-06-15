@@ -28,6 +28,11 @@ export interface CardDoc {
   updatedAt: Timestamp;
 }
 
+export interface BinderPage {
+  /** Länge = binder.size. Eintrag ist eine CardDoc-ID oder null für leeren Slot. */
+  slots: (string | null)[];
+}
+
 export interface BinderDoc {
   id: string;
   name: string;
@@ -36,7 +41,13 @@ export interface BinderDoc {
   icon?: string;
   /** 'binder' = Ordner mit fester Seitengröße, 'box' = offene Box ohne Größenlimit */
   collectionType?: 'binder' | 'box';
-  size?: 9 | 12 | 16 | 18;   // nur bei collectionType === 'binder'
+  size?: 4 | 9 | 12 | 16 | 18;   // Seitenlayout, nur bei collectionType === 'binder'
+  /** Optionale Gesamt-Kartenanzahl, die in den Binder passt (z.B. 400). Unabhängig vom Seitenlayout.
+   *  `null` = wurde explizit gelöscht (für Update-Schreibungen); `undefined`/Feld fehlt = nie gesetzt. */
+  capacity?: number | null;
+  /** Positionales Seiten-Layout. Wenn undefined: Legacy-Binder, Slots werden aus cardIds[]
+   *  in Reihenfolge generiert. Jede Seite hat exakt `size` Slots, leere Slots sind null. */
+  pages?: BinderPage[];
   isDefault?: boolean;
   /** „Neue Karten"-Inbox: Auffang für ungespeicherte Scans beim Verlassen des Scanners. Wird ausgeblendet wenn leer. */
   isInbox?: boolean;

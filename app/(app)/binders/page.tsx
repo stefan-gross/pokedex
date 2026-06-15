@@ -8,6 +8,7 @@ import { getCards } from '@/lib/firestore/cards';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { BinderIcon } from '@/lib/binder-icons';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
+import { binderSizeLabel, type BinderSize } from '@/lib/binder-sizes';
 import type { BinderDoc, CardDoc } from '@/types';
 
 export default function BindersPage() {
@@ -105,7 +106,7 @@ function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; 
   const cardCount = binder.cardIds.length;
   const bgColor   = binder.color ?? 'var(--pokedex-red)';
   const isBox     = binder.collectionType === 'box';
-  const subtitle  = isBox ? 'Box' : `${binder.size ?? 9}er Binder`;
+  const subtitle  = isBox ? 'Box' : binderSizeLabel((binder.size ?? 9) as BinderSize);
   const totalValue = useTotalValue(binderCards);
 
   return (
@@ -116,37 +117,45 @@ function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; 
       {/* Color bar */}
       <div className="h-1.5 w-full" style={{ background: bgColor }} />
 
-      <div className="flex-1 p-3 flex flex-col justify-between">
-        <div className="flex items-start gap-2">
-          <BinderIcon name={binder.icon ?? (isBox ? 'box' : 'folder')} size={24} style={{ color: bgColor }} className="shrink-0" />
-          <div className="min-w-0">
-            <div className="font-semibold text-sm leading-tight truncate">{binder.name}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">{subtitle}</div>
+      <div className="flex-1 p-3 flex items-stretch gap-2">
+        {/* Linke Spalte: Icon + Name + Sub + Value */}
+        <div className="flex-1 min-w-0 flex flex-col justify-between">
+          <div className="flex items-start gap-2 min-w-0">
+            <BinderIcon name={binder.icon ?? (isBox ? 'box' : 'folder')} size={22} style={{ color: bgColor }} className="shrink-0" />
+            <div className="min-w-0">
+              <div className="font-semibold text-sm leading-tight truncate">{binder.name}</div>
+              <div className="text-[11px] text-muted-foreground mt-0.5 truncate">{subtitle}</div>
+            </div>
+          </div>
+          <div className="flex flex-col gap-0.5 mt-2">
+            {(binder.wishlistCardIds?.length ?? 0) > 0 && (
+              <span className="text-[11px] inline-flex items-center gap-0.5" style={{ color: '#ed64a6' }}>
+                +{binder.wishlistCardIds.length} <Heart size={10} fill="currentColor" />
+              </span>
+            )}
+            {!totalValue.loading && totalValue.withPrice > 0 && (
+              <span className="text-[12px] font-bold truncate" style={{ color: bgColor }}>
+                ≈ {totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
+              </span>
+            )}
           </div>
         </div>
 
-        <div className="flex flex-col gap-1 mt-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">
-              {cardCount} Karten
-              {(binder.wishlistCardIds?.length ?? 0) > 0 && (
-                <span className="ml-1 inline-flex items-center gap-0.5" style={{ color: '#ed64a6' }}>
-                  +{binder.wishlistCardIds.length} <Heart size={10} fill="currentColor" />
-                </span>
-              )}
+        {/* Rechte Spalte: große Karten-Zahl */}
+        <div className="shrink-0 flex flex-col items-end justify-center min-w-[64px]">
+          <span
+            className="text-[32px] font-extrabold leading-none tabular-nums"
+            style={{ color: bgColor }}
+          >
+            {cardCount}
+          </span>
+          {!isBox && binder.capacity != null ? (
+            <span className="text-[10px] text-muted-foreground mt-1">
+              von {binder.capacity}
             </span>
-            {!isBox && binder.size && (
-              <div
-                className="text-xs font-bold px-2 py-0.5 rounded-full"
-                style={{ background: `${bgColor}20`, color: bgColor }}
-              >
-                {cardCount}/{binder.size}
-              </div>
-            )}
-          </div>
-          {!totalValue.loading && totalValue.withPrice > 0 && (
-            <span className="text-sm font-bold" style={{ color: bgColor }}>
-              ≈ {totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
+          ) : (
+            <span className="text-[10px] text-muted-foreground mt-1">
+              {cardCount === 1 ? 'Karte' : 'Karten'}
             </span>
           )}
         </div>

@@ -215,3 +215,16 @@
     box-shadow: 0 4px 16px rgba(30,40,80,0.07), 0 1px 0 rgba(30,40,80,0.04);
   }
 }
+
+/* Binder Edit-Mode: dezentes Wackeln à la iOS Home-Screen */
+@keyframes binder-wiggle {
+  0%   { transform: rotate(-0.6deg); }
+  100% { transform: rotate(0.6deg); }
+}
+
+/* Karte „lebendig" während Drag — sanftes Auf-Ab-Bobbing */
+@keyframes binder-card-bob {
+  0%   { transform: translateY(0); }
+  50%  { transform: translateY(-2px); }
+  100% { transform: translateY(0); }
+}

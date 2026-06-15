@@ -3,9 +3,36 @@ import {
   orderBy, query, Timestamp, arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
-import type { BinderDoc } from '@/types';
+import type { BinderDoc, BinderPage } from '@/types';
 
 const COL = 'binders';
+
+/** Schreibt das positionale Seitenlayout + synchronisiert `cardIds` (derived).
+ *  cardIds bleibt für Dashboard/useTotalValue/Collection-Lookups die Source of Truth
+ *  über "welche Karten sind in diesem Binder?"; pages liefert zusätzlich die Position. */
+export async function setBinderPages(binderId: string, pages: BinderPage[]): Promise<void> {
+  const cardIds = pagesToCardIds(pages);
+  await updateDoc(doc(db, COL, binderId), { pages, cardIds });
+}
+
+/** Reine Helper-Funktionen — keine Firestore-Calls. */
+export function pagesToCardIds(pages: BinderPage[]): string[] {
+  return pages.flatMap(p => p.slots.filter((s): s is string => !!s));
+}
+
+/** Materialisiert ein flaches cardIds-Array in Seiten der vorgegebenen Größe.
+ *  Wird beim ersten Edit eines Legacy-Binders genutzt. */
+export function cardIdsToPages(cardIds: string[], size: number): BinderPage[] {
+  if (cardIds.length === 0) return [{ slots: Array(size).fill(null) }];
+  const pages: BinderPage[] = [];
+  for (let i = 0; i < cardIds.length; i += size) {
+    const chunk = cardIds.slice(i, i + size);
+    const slots: (string | null)[] = [...chunk];
+    while (slots.length < size) slots.push(null);
+    pages.push({ slots });
+  }
+  return pages;
+}
 
 export async function getBinders(): Promise<BinderDoc[]> {
   const snap = await getDocs(query(collection(db, COL), orderBy('sortOrder')));
