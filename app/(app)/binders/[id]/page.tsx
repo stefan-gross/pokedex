@@ -1,11 +1,20 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo, use, useCallback } from 'react';
+import { useState, useEffect, useMemo, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, Settings, LayoutGrid, BookOpen, Pencil, Eye,
   Plus, X, ChevronRight,
 } from 'lucide-react';
+import {
+  DndContext, DragOverlay, PointerSensor, TouchSensor, useSensor, useSensors,
+  closestCenter, useDroppable,
+  type DragEndEvent, type DragStartEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext, useSortable, arrayMove, rectSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { getBinder, deleteBinder, setBinderPages, cardIdsToPages } from '@/lib/firestore/binders';
 import { getCard } from '@/lib/firestore/cards';
 import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
@@ -64,11 +73,8 @@ export default function BinderDetailPage({ params }: Props) {
 
   const persistPages = useCallback(async (newPages: BinderPage[]) => {
     setPages(newPages);
-    try {
-      await setBinderPages(id, newPages);
-    } catch (e) {
-      console.error('[binder] persistPages error', e);
-    }
+    try { await setBinderPages(id, newPages); }
+    catch (e) { console.error('[binder] persistPages error', e); }
   }, [id]);
 
   const handleDelete = async () => {
@@ -86,15 +92,13 @@ export default function BinderDetailPage({ params }: Props) {
     setDetailCard(catalogCardToInfo(cc));
   };
 
-  // ── Slot-Operationen (in der aktuellen Seite) ───────────────────────────
+  // ── Slot-Operationen ────────────────────────────────────────────────────
   const swapSlots = (slotA: number, slotB: number) => {
     if (slotA === slotB) return;
     const next = pages.map(p => ({ slots: [...p.slots] }));
     const cur = next[pageIdx];
     if (!cur) return;
-    const tmp = cur.slots[slotA];
-    cur.slots[slotA] = cur.slots[slotB];
-    cur.slots[slotB] = tmp;
+    [cur.slots[slotA], cur.slots[slotB]] = [cur.slots[slotB], cur.slots[slotA]];
     persistPages(next);
   };
 
@@ -112,10 +116,8 @@ export default function BinderDetailPage({ params }: Props) {
     persistPages(next);
   };
 
-  // ── Page-Verwaltung ──────────────────────────────────────────────────────
-  const addPage = () => {
-    persistPages([...pages, { slots: Array(binderSize).fill(null) }]);
-  };
+  // ── Page-Verwaltung ─────────────────────────────────────────────────────
+  const addPage = () => persistPages([...pages, { slots: Array(binderSize).fill(null) }]);
 
   const deletePage = (i: number) => {
     const hasContent = pages[i].slots.some(s => !!s);
@@ -125,19 +127,11 @@ export default function BinderDetailPage({ params }: Props) {
     if (pageIdx >= next.length) setPageIdx(Math.max(0, next.length - 1));
   };
 
-  const movePage = (from: number, to: number) => {
-    if (from === to || from === to - 1) return;
-    const next = [...pages];
-    const [p] = next.splice(from, 1);
-    next.splice(from < to ? to - 1 : to, 0, p);
-    persistPages(next);
-  };
-
-  const swapPages = (a: number, b: number) => {
-    if (a === b) return;
-    const next = [...pages];
-    [next[a], next[b]] = [next[b], next[a]];
-    persistPages(next);
+  const movePagesByIds = (fromId: string, toId: string) => {
+    const from = Number(fromId.replace('page-', ''));
+    const to   = Number(toId.replace('page-', ''));
+    if (from === to) return;
+    persistPages(arrayMove(pages, from, to));
   };
 
   if (loading || !binder) {
@@ -155,10 +149,8 @@ export default function BinderDetailPage({ params }: Props) {
 
   return (
     <div className="min-h-screen pb-24">
-      {/* Color bar */}
       <div className="h-1.5 w-full" style={{ background: binderColor }} />
 
-      {/* Header */}
       <div className="sticky top-0 z-20 bg-background border-b border-border px-4 pt-3 pb-3">
         <div className="flex items-center gap-3">
           <button onClick={() => router.back()} className="text-muted-foreground" aria-label="Zurück">
@@ -239,7 +231,6 @@ export default function BinderDetailPage({ params }: Props) {
         )}
       </div>
 
-      {/* Body */}
       {isBox || view === 'grid' ? (
         <GridView cards={cards} onCardTap={openDetail} />
       ) : view === 'binder' ? (
@@ -253,8 +244,7 @@ export default function BinderDetailPage({ params }: Props) {
           onOpenPage={(i) => { setPageIdx(i); setView('page'); }}
           onAddPage={addPage}
           onDeletePage={deletePage}
-          onMovePage={movePage}
-          onSwapPages={swapPages}
+          onMovePage={movePagesByIds}
         />
       ) : (
         <PageDetail
@@ -307,7 +297,6 @@ export default function BinderDetailPage({ params }: Props) {
   );
 }
 
-// ── View-Toggle-Button ────────────────────────────────────────────────────
 function ViewBtn({
   icon, active, onClick, color, label,
 }: { icon: React.ReactNode; active: boolean; onClick: () => void; color: string; label: string }) {
@@ -326,7 +315,7 @@ function ViewBtn({
   );
 }
 
-// ── Mini-Page-Grid (in Doppelseiten-Übersicht — auch für „Neue Seite") ────
+// ── Mini-Page-Grid ────────────────────────────────────────────────────────
 function MiniPageGrid({
   slots, cols, cardsById, dim,
 }: { slots: (string | null)[]; cols: number; cardsById: Map<string, CardDoc>; dim?: boolean }) {
@@ -395,455 +384,167 @@ function GridView({ cards, onCardTap }: { cards: CardDoc[]; onCardTap: (c: CardD
   );
 }
 
-// ── Binder Overview — Doppelseiten + Page-Drag mit Insertion-Animation ────
-type TileRect = { left: number; top: number; width: number; height: number; cx: number; cy: number };
-
-type PageDrag = {
-  sourceIdx: number;
-  startX: number;   // Cursor-Position zum Drag-Start (clientX)
-  startY: number;
-  dx: number;       // Aktuelle Drag-Differenz zum Start
-  dy: number;
-  pointerId: number;
-  /** Snapshot der Tile-Rects zum Drag-Start — wird NICHT mehr neu berechnet,
-   *  damit Hit-Test während Animation stabil bleibt. */
-  rects: Map<number, TileRect>;
-  /** Insertion-Position 0..pages.length */
-  insertAt: number;
-  /** Wenn cursor mittig auf einer Seite ist, Swap statt Insert */
-  swapWith: number | null;
-};
-
+// ── Binder Overview — Doppelseiten mit dnd-kit-Sortable ───────────────────
 function BinderOverview({
   pages, binderSize, cols, cardsById, accent, editMode,
-  onOpenPage, onAddPage, onDeletePage, onMovePage, onSwapPages,
+  onOpenPage, onAddPage, onDeletePage, onMovePage,
 }: {
   pages: BinderPage[]; binderSize: number; cols: number;
   cardsById: Map<string, CardDoc>; accent: string; editMode: boolean;
   onOpenPage: (i: number) => void;
   onAddPage: () => void;
   onDeletePage: (i: number) => void;
-  onMovePage: (from: number, to: number) => void;
-  onSwapPages: (a: number, b: number) => void;
+  onMovePage: (fromId: string, toId: string) => void;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const tileRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [drag, setDrag] = useState<PageDrag | null>(null);
-  // Click-Suppression-Flag: nach Drag den nachfolgenden Click-Event ignorieren
-  const justDraggedRef = useRef(false);
-
-  const clearLongPress = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-  };
-
-  // Snapshot aller Tile-Positionen zum Drag-Start — Live-Rects sind durch Transforms instabil
-  const snapshotRects = (): Map<number, TileRect> => {
-    const map = new Map<number, TileRect>();
-    tileRefs.current.forEach((el, idx) => {
-      const r = el.getBoundingClientRect();
-      map.set(idx, {
-        left: r.left, top: r.top, width: r.width, height: r.height,
-        cx: r.left + r.width / 2, cy: r.top + r.height / 2,
-      });
-    });
-    return map;
-  };
-
-  // Tile-Pointer-Down: Long-Press startet Drag
-  const onTilePointerDown = (e: React.PointerEvent, pageI: number) => {
-    if (!editMode) return;
-    clearLongPress();
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const pid = e.pointerId;
-    longPressTimer.current = setTimeout(() => {
-      longPressTimer.current = null;
-      const rects = snapshotRects();
-      try { containerRef.current?.setPointerCapture(pid); } catch {}
-      setDrag({
-        sourceIdx: pageI, startX, startY, dx: 0, dy: 0, pointerId: pid,
-        rects, insertAt: pageI, swapWith: null,
-      });
-      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate?.(15);
-    }, 350);
-  };
-
-  // Container-Pointer-Move: cancelt Long-Press bei großer Bewegung, sonst trackt Drag
-  const onContainerPointerMove = (e: React.PointerEvent) => {
-    // Vor Long-Press: bei signifikanter Bewegung den Timer abbrechen
-    if (longPressTimer.current && drag == null) {
-      // Wir haben startX/Y nicht hier, also vergleichen wir mit aktuellem Element-Center
-      // Simpler: nach > 8 px Bewegung ohne Drag → cancel
-      clearLongPress();
-    }
-    if (!drag || e.pointerId !== drag.pointerId) return;
-    const dx = e.clientX - drag.startX;
-    const dy = e.clientY - drag.startY;
-
-    // Hit-Test mit Snapshot-Rects (nicht den Live-Rects, die durch Transforms wandern)
-    let insertAt = pages.length;
-    let swapWith: number | null = null;
-    for (let i = 0; i < pages.length; i++) {
-      if (i === drag.sourceIdx) continue;
-      const r = drag.rects.get(i);
-      if (!r) continue;
-      if (e.clientY >= r.top && e.clientY <= r.top + r.height) {
-        const midX = r.left + r.width / 2;
-        const innerL = r.left + r.width * 0.25;
-        const innerR = r.left + r.width * 0.75;
-        if (e.clientX > innerL && e.clientX < innerR) {
-          swapWith = i; insertAt = i; break;
-        } else if (e.clientX <= midX) {
-          insertAt = i; break;
-        } else {
-          insertAt = i + 1; break;
-        }
-      }
-    }
-    setDrag({ ...drag, dx, dy, insertAt, swapWith });
-  };
-
-  const onContainerPointerUp = () => {
-    if (!drag) return;
-    const { sourceIdx, insertAt, swapWith } = drag;
-    if (swapWith != null && swapWith !== sourceIdx) {
-      onSwapPages(sourceIdx, swapWith);
-    } else if (insertAt !== sourceIdx && insertAt !== sourceIdx + 1) {
-      onMovePage(sourceIdx, insertAt);
-    }
-    // Click-Suppression: der nachfolgende `click` auf die Tile soll nicht öffnen
-    justDraggedRef.current = true;
-    setTimeout(() => { justDraggedRef.current = false; }, 100);
-    setDrag(null);
-  };
-
-  const onContainerPointerCancel = () => {
-    setDrag(null);
-    clearLongPress();
-  };
-
-  // Tile-Click (View-Mode oder kein Long-Press) öffnet Page — aber nicht direkt nach Drag
-  const onTileClick = (pageI: number) => {
-    if (editMode) return;
-    if (justDraggedRef.current) return;
-    onOpenPage(pageI);
-  };
-
-  // Verschiebungs-Offset jeder Tile berechnen (Snapshot-basiert)
-  const tileShift = (idx: number): { x: number; y: number } => {
-    if (!drag) return { x: 0, y: 0 };
-    if (idx === drag.sourceIdx) return { x: 0, y: 0 };
-    // Swap: nur swap-target tauscht visuell die Position
-    if (drag.swapWith != null && drag.swapWith !== drag.sourceIdx) {
-      if (idx === drag.swapWith) {
-        const src = drag.rects.get(drag.sourceIdx);
-        const dst = drag.rects.get(drag.swapWith);
-        if (!src || !dst) return { x: 0, y: 0 };
-        return { x: src.left - dst.left, y: src.top - dst.top };
-      }
-      return { x: 0, y: 0 };
-    }
-    // Insert: alle Tiles ab insertAt nach rechts shiften (in 2-Spalten-Grid = halbe Tile-Breite)
-    const r = drag.rects.get(idx);
-    if (!r) return { x: 0, y: 0 };
-    const newIdx = idx > drag.sourceIdx ? idx - 1 : idx;
-    return newIdx >= drag.insertAt ? { x: r.width * 0.5, y: 0 } : { x: 0, y: 0 };
-  };
-
-  return (
-    <div
-      ref={containerRef}
-      className="px-3 pt-4 grid grid-cols-2 gap-3 relative select-none"
-      style={{ touchAction: drag ? 'none' : undefined }}
-      onPointerMove={onContainerPointerMove}
-      onPointerUp={onContainerPointerUp}
-      onPointerCancel={onContainerPointerCancel}
-    >
-      {pages.map((page, pageI) => {
-        const isSource = drag?.sourceIdx === pageI;
-        const shift = tileShift(pageI);
-        const transform = isSource
-          ? `translate(${drag!.dx}px, ${drag!.dy}px) scale(1.05)`
-          : (shift.x !== 0 || shift.y !== 0)
-            ? `translate(${shift.x}px, ${shift.y}px)`
-            : undefined;
-        return (
-          <div
-            key={pageI}
-            ref={el => { if (el) tileRefs.current.set(pageI, el); }}
-            data-page={pageI}
-            className="bg-card rounded-xl border border-border shadow-card p-2 flex flex-col"
-            style={{
-              transform,
-              transition: isSource ? 'none' : 'transform 200ms ease-out',
-              zIndex: isSource ? 50 : 1,
-              touchAction: editMode ? 'none' : undefined,
-              opacity: isSource ? 0.95 : 1,
-              animation: editMode && !isSource ? 'binder-wiggle 0.5s ease-in-out infinite alternate' : undefined,
-            }}
-            onPointerDown={e => onTilePointerDown(e, pageI)}
-            onClick={() => onTileClick(pageI)}
-          >
-            <MiniPageGrid slots={page.slots} cols={cols} cardsById={cardsById} />
-            <div className="flex items-center justify-between mt-2">
-              <span className="text-[11px] text-muted-foreground">
-                Seite {pageI + 1}
-                {' · '}
-                <span className="tabular-nums">
-                  {page.slots.filter(Boolean).length}/{binderSize}
-                </span>
-              </span>
-              {editMode && (
-                <button
-                  onClick={e => { e.stopPropagation(); onDeletePage(pageI); }}
-                  className="w-6 h-6 rounded-md flex items-center justify-center text-white"
-                  style={{ background: 'var(--action-delete)' }}
-                  aria-label="Seite löschen"
-                >
-                  <X size={11} strokeWidth={3} />
-                </button>
-              )}
-            </div>
-          </div>
-        );
-      })}
-
-      {editMode && (
-        <button
-          onClick={onAddPage}
-          className="relative bg-card rounded-xl border-2 border-dashed border-border p-2 flex flex-col"
-          aria-label="Neue Seite"
-        >
-          <MiniPageGrid
-            slots={Array(binderSize).fill(null)}
-            cols={cols}
-            cardsById={cardsById}
-            dim
-          />
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span
-              className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg text-white"
-              style={{ background: 'var(--action-add)' }}
-            >
-              <Plus size={24} strokeWidth={3} />
-            </span>
-          </div>
-          <div className="flex items-center justify-between mt-2 pointer-events-none">
-            <span className="text-[11px] text-muted-foreground">Neue Seite</span>
-          </div>
-        </button>
-      )}
-    </div>
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
   );
-}
 
-// ── Card-Slot (Edit + Drag-Logik integriert) ──────────────────────────────
-function CardSlot({
-  card, accent, editMode, onTap, onDelete, onDragStart, onDragMove, onDragEnd, isDropTarget = false,
-}: {
-  card: CardDoc; accent: string; editMode: boolean;
-  onTap?: () => void;
-  onDelete?: () => void;
-  onDragStart?: () => void;
-  onDragMove?: (clientX: number, clientY: number) => void;
-  /** Wird beim Drop aufgerufen — targetSlot ist die data-slot Nummer am Drop-Punkt, oder null. */
-  onDragEnd?: (targetSlot: number | null) => void;
-  /** Wenn true: ein anderer Slot wird gerade auf diesen hier gedraggt — visueller Hint. */
-  isDropTarget?: boolean;
-}) {
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
-  const [drag, setDrag] = useState<{ x: number; y: number; pid: number } | null>(null);
-  // Geschwindigkeits-basierte Tilt-Animation: dragRot folgt sanft der horizontalen Velocity
-  const [dragRot, setDragRot] = useState(0);
-  const velRef = useRef<{ x: number; t: number } | null>(null);
-  const elRef = useRef<HTMLDivElement>(null);
+  const items = pages.map((_, i) => `page-${i}`);
+  const [activeId, setActiveId] = useState<string | null>(null);
 
-  const cleanup = () => {
-    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
-    dragStartRef.current = null;
-    velRef.current = null;
-    setDrag(null);
-    setDragRot(0);
-  };
-
-  // Wrapper: macht 1:1-Translate ohne Transition (Finger-Tracking)
-  // Inner: macht "Pickup"-Animation (Scale + Shadow + leichte Rotation) mit Transition
   return (
-    <div
-      ref={elRef}
-      className="relative w-full aspect-[2.5/3.5]"
-      style={{
-        transform: drag ? `translate3d(${drag.x}px, ${drag.y}px, 0)` : undefined,
-        transition: drag ? 'none' : 'transform 220ms cubic-bezier(.2,.9,.3,1)',
-        zIndex: drag ? 50 : 1,
-        touchAction: editMode ? 'none' : undefined,
-        willChange: drag ? 'transform' : undefined,
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={(e: DragStartEvent) => setActiveId(String(e.active.id))}
+      onDragEnd={(e: DragEndEvent) => {
+        setActiveId(null);
+        if (!e.over || e.over.id === e.active.id) return;
+        onMovePage(String(e.active.id), String(e.over.id));
       }}
-      onPointerDown={e => {
-        if (!editMode || !onDragEnd) return; // View-Mode → reiner Tap-Pfad
-        dragStartRef.current = { x: e.clientX, y: e.clientY };
-        const pid = e.pointerId;
-        cleanup();
-        longPressTimer.current = setTimeout(() => {
-          longPressTimer.current = null;
-          try { (elRef.current as HTMLDivElement).setPointerCapture(pid); } catch {}
-          setDrag({ x: 0, y: 0, pid });
-          onDragStart?.();
-          if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate?.(15);
-        }, 350);
-      }}
-      onPointerMove={e => {
-        if (drag && e.pointerId === drag.pid && dragStartRef.current) {
-          setDrag({
-            x: e.clientX - dragStartRef.current.x,
-            y: e.clientY - dragStartRef.current.y,
-            pid: drag.pid,
-          });
-          // Velocity-basierte Tilt-Berechnung: schnelle horizontale Bewegung kippt die Karte
-          const now = performance.now();
-          if (velRef.current) {
-            const dt = now - velRef.current.t;
-            if (dt > 0) {
-              const vx = (e.clientX - velRef.current.x) / dt; // px/ms
-              const target = Math.max(-10, Math.min(10, vx * 18));
-              // Sanft glätten — 30 % zur Ziel-Rotation, Rest zur Ruhelage
-              setDragRot(prev => prev + (target - prev) * 0.35);
-            }
-          }
-          velRef.current = { x: e.clientX, t: now };
-          onDragMove?.(e.clientX, e.clientY);
-          return;
-        }
-        if (longPressTimer.current && dragStartRef.current) {
-          const dx = e.clientX - dragStartRef.current.x;
-          const dy = e.clientY - dragStartRef.current.y;
-          if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-            clearTimeout(longPressTimer.current);
-            longPressTimer.current = null;
-            dragStartRef.current = null;
-          }
-        }
-      }}
-      onPointerUp={e => {
-        if (drag) {
-          const elements = document.elementsFromPoint(e.clientX, e.clientY);
-          let target: number | null = null;
-          for (const el of elements) {
-            const ds = (el as HTMLElement).dataset?.slot;
-            if (ds != null) { target = Number(ds); break; }
-          }
-          onDragEnd?.(target);
-          cleanup();
-          return;
-        }
-        if (longPressTimer.current) {
-          clearTimeout(longPressTimer.current);
-          longPressTimer.current = null;
-          onTap?.();
-        }
-        dragStartRef.current = null;
-      }}
-      onPointerCancel={() => {
-        if (drag) onDragEnd?.(null);
-        cleanup();
-      }}
-      onClick={e => { if (drag) e.stopPropagation(); }}
+      onDragCancel={() => setActiveId(null)}
     >
-      {/* Mid-Layer: Pickup-Animation (scale + velocity-rotation + shadow) */}
-      <div
-        className="absolute inset-0"
-        style={{
-          transform: drag
-            ? `scale(1.10) rotate(${dragRot}deg)`
-            : isDropTarget ? 'scale(1.04)' : 'scale(1) rotate(0deg)',
-          transition: drag
-            ? 'transform 80ms linear, box-shadow 180ms ease-out'
-            : 'transform 220ms cubic-bezier(.2,.9,.3,1), box-shadow 220ms ease-out',
-          willChange: 'transform',
-        }}
-      >
-        {/* Inner-Layer: kontinuierliches Bobbing während Drag (gibt der Karte „Leben") */}
-        <div
-          className="relative w-full h-full rounded-xl overflow-hidden border"
-          style={{
-            borderColor: isDropTarget ? accent : `${accent}55`,
-            borderWidth: isDropTarget ? 2 : 1,
-            background: '#1a1a1a',
-            boxShadow: drag
-              ? '0 16px 36px rgba(0,0,0,0.45), 0 4px 12px rgba(0,0,0,0.3)'
-              : isDropTarget ? `0 0 0 4px ${accent}30` : undefined,
-            animation: drag
-              ? 'binder-card-bob 1.1s ease-in-out infinite'
-              : editMode ? 'binder-wiggle 0.5s ease-in-out infinite alternate' : undefined,
-            transition: 'border-color 150ms ease-out, box-shadow 220ms ease-out',
-          }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={card.tcgImageUrl ?? `https://images.pokemontcg.io/${card.setId}/${card.number.split('/')[0]}_hires.png`}
-            alt={card.name}
-            className="w-full h-full object-cover pointer-events-none"
-            draggable={false}
-          />
-          {card.quantity > 1 && !editMode && (
-            <div className="absolute top-1 right-1 text-[9px] font-bold px-1 py-0.5 rounded bg-black/70 text-white">
-              ×{card.quantity}
-            </div>
-          )}
-          {editMode && onDelete && !drag && (
+      <SortableContext items={items} strategy={rectSortingStrategy}>
+        <div className="px-3 pt-4 grid grid-cols-2 gap-3">
+          {pages.map((page, pageI) => (
+            <SortablePageTile
+              key={`page-${pageI}`}
+              id={`page-${pageI}`}
+              pageI={pageI}
+              page={page}
+              binderSize={binderSize}
+              cols={cols}
+              cardsById={cardsById}
+              accent={accent}
+              editMode={editMode}
+              onOpen={() => onOpenPage(pageI)}
+              onDelete={() => onDeletePage(pageI)}
+            />
+          ))}
+
+          {editMode && (
             <button
-              onPointerDown={e => e.stopPropagation()}
-              onClick={e => { e.stopPropagation(); onDelete(); }}
-              className="absolute top-1 right-1 w-7 h-7 rounded-md flex items-center justify-center shadow-md text-white"
-              style={{ background: 'var(--action-delete)' }}
-              aria-label="Aus Slot entfernen"
+              onClick={onAddPage}
+              className="relative bg-card rounded-xl border-2 border-dashed border-border p-2 flex flex-col"
+              aria-label="Neue Seite"
             >
-              <X size={14} strokeWidth={3} />
+              <MiniPageGrid
+                slots={Array(binderSize).fill(null)}
+                cols={cols}
+                cardsById={cardsById}
+                dim
+              />
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <span
+                  className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg text-white"
+                  style={{ background: 'var(--action-add)' }}
+                >
+                  <Plus size={24} strokeWidth={3} />
+                </span>
+              </div>
+              <div className="flex items-center justify-between mt-2 pointer-events-none">
+                <span className="text-[11px] text-muted-foreground">Neue Seite</span>
+              </div>
             </button>
           )}
-          <div
-            className="absolute bottom-0 left-0 right-0 px-1 pb-1 pt-3 pointer-events-none"
-            style={{ background: 'linear-gradient(to top, rgba(0,0,0,.7), transparent)' }}
-          >
-            <div className="text-[9px] text-white/80 truncate">{card.number}</div>
-          </div>
         </div>
-      </div>
-    </div>
+      </SortableContext>
+
+      <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(.2,.9,.3,1)' }}>
+        {activeId
+          ? (() => {
+              const idx = Number(activeId.replace('page-', ''));
+              const page = pages[idx];
+              if (!page) return null;
+              return (
+                <div
+                  className="bg-card rounded-xl border-2 shadow-2xl p-2 flex flex-col"
+                  style={{ borderColor: accent, transform: 'rotate(-2deg) scale(1.05)' }}
+                >
+                  <MiniPageGrid slots={page.slots} cols={cols} cardsById={cardsById} />
+                  <div className="mt-2 text-[11px] text-muted-foreground">Seite {idx + 1}</div>
+                </div>
+              );
+            })()
+          : null}
+      </DragOverlay>
+    </DndContext>
   );
 }
 
-// ── Empty-Slot ────────────────────────────────────────────────────────────
-function EmptySlot({ n, editMode, onAdd }: { n: number; editMode: boolean; onAdd?: () => void }) {
+function SortablePageTile({
+  id, pageI, page, binderSize, cols, cardsById, accent, editMode, onOpen, onDelete,
+}: {
+  id: string;
+  pageI: number;
+  page: BinderPage;
+  binderSize: number;
+  cols: number;
+  cardsById: Map<string, CardDoc>;
+  accent: string;
+  editMode: boolean;
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled: !editMode,
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.3 : 1,
+    animation: editMode && !isDragging ? 'binder-wiggle 0.5s ease-in-out infinite alternate' : undefined,
+  };
+
   return (
     <div
-      className="relative rounded-xl border border-dashed border-border aspect-[2.5/3.5] w-full"
-      style={{ background: 'var(--secondary)' }}
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className="bg-card rounded-xl border border-border shadow-card p-2 flex flex-col"
+      onClick={() => { if (!editMode) onOpen(); }}
     >
-      <div className="absolute inset-0 flex items-center justify-center">
-        {editMode && onAdd ? (
+      <MiniPageGrid slots={page.slots} cols={cols} cardsById={cardsById} />
+      <div className="flex items-center justify-between mt-2">
+        <span className="text-[11px] text-muted-foreground">
+          Seite {pageI + 1}
+          {' · '}
+          <span className="tabular-nums">
+            {page.slots.filter(Boolean).length}/{binderSize}
+          </span>
+        </span>
+        {editMode && (
           <button
-            onClick={onAdd}
-            className="w-12 h-12 rounded-full flex items-center justify-center shadow-md text-white"
-            style={{ background: 'var(--action-add)' }}
-            aria-label="Karte hinzufügen"
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); onDelete(); }}
+            className="w-6 h-6 rounded-md flex items-center justify-center text-white"
+            style={{ background: 'var(--action-delete)' }}
+            aria-label="Seite löschen"
           >
-            <Plus size={24} strokeWidth={3} />
+            <X size={11} strokeWidth={3} />
           </button>
-        ) : (
-          <span className="text-muted-foreground/30 text-lg">{n}</span>
         )}
       </div>
     </div>
   );
 }
 
-// ── Page Detail ───────────────────────────────────────────────────────────
+// ── Page Detail — Slots als dnd-kit-Sortable (Swap-Semantik) ──────────────
 function PageDetail({
   pages, pageIdx, cols, cardsById, accent, editMode,
   onChangePageIdx, onSwapInPage, onClearSlot, onAddToSlot, onBack, onCardTap,
@@ -859,22 +560,20 @@ function PageDetail({
 }) {
   const page = pages[pageIdx];
   const totalPages = pages.length;
-  // Welcher Slot wird gerade als Drop-Ziel von einem laufenden Card-Drag „getroffen"?
-  const [hoverTarget, setHoverTarget] = useState<number | null>(null);
-  const [draggingFrom, setDraggingFrom] = useState<number | null>(null);
+  const [activeSlot, setActiveSlot] = useState<number | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 350, tolerance: 8 } }),
+  );
 
   if (!page) {
     return <div className="px-4 py-8 text-center text-muted-foreground">Keine Seite</div>;
   }
 
-  const computeHover = (clientX: number, clientY: number): number | null => {
-    const elements = document.elementsFromPoint(clientX, clientY);
-    for (const el of elements) {
-      const ds = (el as HTMLElement).dataset?.slot;
-      if (ds != null) return Number(ds);
-    }
-    return null;
-  };
+  const activeCard = activeSlot != null && page.slots[activeSlot]
+    ? cardsById.get(page.slots[activeSlot]!)
+    : null;
 
   return (
     <div>
@@ -913,43 +612,184 @@ function PageDetail({
         <div className="w-9" />
       </div>
 
-      <div
-        className="grid gap-2 px-3 pb-6"
-        style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={(e: DragStartEvent) => {
+          const slotI = Number(String(e.active.id).replace('slot-', ''));
+          setActiveSlot(slotI);
+        }}
+        onDragEnd={(e: DragEndEvent) => {
+          setActiveSlot(null);
+          if (!e.over || e.over.id === e.active.id) return;
+          const from = Number(String(e.active.id).replace('slot-', ''));
+          const to   = Number(String(e.over.id).replace('slot-', ''));
+          onSwapInPage(from, to);
+        }}
+        onDragCancel={() => setActiveSlot(null)}
       >
-        {page.slots.map((slotId, slotI) => {
-          const card = slotId ? cardsById.get(slotId) : undefined;
-          return (
-            <div key={slotI} data-slot={slotI}>
-              {card ? (
-                <CardSlot
-                  card={card}
-                  accent={accent}
-                  editMode={editMode}
-                  onTap={() => onCardTap(card)}
-                  onDelete={editMode ? () => onClearSlot(slotI) : undefined}
-                  isDropTarget={draggingFrom != null && draggingFrom !== slotI && hoverTarget === slotI}
-                  onDragStart={editMode ? () => setDraggingFrom(slotI) : undefined}
-                  onDragMove={editMode ? (cx, cy) => {
-                    const t = computeHover(cx, cy);
-                    setHoverTarget(t !== slotI ? t : null);
-                  } : undefined}
-                  onDragEnd={editMode ? (target) => {
-                    setDraggingFrom(null);
-                    setHoverTarget(null);
-                    if (target != null && target !== slotI) onSwapInPage(slotI, target);
-                  } : undefined}
-                />
-              ) : (
-                <EmptySlot
-                  n={pageIdx * page.slots.length + slotI + 1}
-                  editMode={editMode}
-                  onAdd={editMode ? () => onAddToSlot(slotI) : undefined}
-                />
-              )}
+        <div
+          className="grid gap-2 px-3 pb-6"
+          style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+        >
+          {page.slots.map((slotId, slotI) => {
+            const card = slotId ? cardsById.get(slotId) : undefined;
+            return card ? (
+              <DraggableCardSlot
+                key={slotI}
+                id={`slot-${slotI}`}
+                card={card}
+                accent={accent}
+                editMode={editMode}
+                isDragging={activeSlot === slotI}
+                onTap={() => onCardTap(card)}
+                onDelete={() => onClearSlot(slotI)}
+              />
+            ) : (
+              <DroppableEmptySlot
+                key={slotI}
+                id={`slot-${slotI}`}
+                n={pageIdx * page.slots.length + slotI + 1}
+                editMode={editMode}
+                accent={accent}
+                onAdd={() => onAddToSlot(slotI)}
+              />
+            );
+          })}
+        </div>
+
+        <DragOverlay dropAnimation={{ duration: 220, easing: 'cubic-bezier(.2,.9,.3,1)' }}>
+          {activeCard ? (
+            <div
+              className="rounded-xl overflow-hidden border-2"
+              style={{
+                borderColor: accent,
+                background: '#1a1a1a',
+                boxShadow: '0 16px 36px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.35)',
+                transform: 'rotate(-2deg) scale(1.08)',
+                aspectRatio: '2.5/3.5',
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={activeCard.tcgImageUrl ?? `https://images.pokemontcg.io/${activeCard.setId}/${activeCard.number.split('/')[0]}_hires.png`}
+                alt={activeCard.name}
+                className="w-full h-full object-cover"
+              />
             </div>
-          );
-        })}
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+    </div>
+  );
+}
+
+// ── Draggable Card-Slot (dnd-kit) ─────────────────────────────────────────
+function DraggableCardSlot({
+  id, card, accent, editMode, isDragging, onTap, onDelete,
+}: {
+  id: string;
+  card: CardDoc;
+  accent: string;
+  editMode: boolean;
+  isDragging: boolean;
+  onTap: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, isOver } = useSortable({
+    id,
+    disabled: !editMode,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...(editMode ? listeners : {})}
+      className="relative rounded-xl overflow-hidden border aspect-[2.5/3.5] w-full"
+      style={{
+        borderColor: isOver ? accent : `${accent}55`,
+        borderWidth: isOver ? 2 : 1,
+        background: '#1a1a1a',
+        opacity: isDragging ? 0.3 : 1,
+        boxShadow: isOver ? `0 0 0 4px ${accent}40` : undefined,
+        transform: isOver ? 'scale(1.04)' : undefined,
+        transition: 'border-color 150ms ease-out, box-shadow 150ms ease-out, transform 150ms ease-out',
+        animation: editMode && !isDragging ? 'binder-wiggle 0.5s ease-in-out infinite alternate' : undefined,
+        touchAction: editMode ? 'none' : undefined,
+      }}
+      onClick={() => { if (!editMode) onTap(); }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={card.tcgImageUrl ?? `https://images.pokemontcg.io/${card.setId}/${card.number.split('/')[0]}_hires.png`}
+        alt={card.name}
+        className="w-full h-full object-cover pointer-events-none"
+        draggable={false}
+      />
+      {card.quantity > 1 && !editMode && (
+        <div className="absolute top-1 right-1 text-[9px] font-bold px-1 py-0.5 rounded bg-black/70 text-white">
+          ×{card.quantity}
+        </div>
+      )}
+      {editMode && !isDragging && (
+        <button
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); onDelete(); }}
+          className="absolute top-1 right-1 w-7 h-7 rounded-md flex items-center justify-center shadow-md text-white"
+          style={{ background: 'var(--action-delete)' }}
+          aria-label="Aus Slot entfernen"
+        >
+          <X size={14} strokeWidth={3} />
+        </button>
+      )}
+      <div
+        className="absolute bottom-0 left-0 right-0 px-1 pb-1 pt-3 pointer-events-none"
+        style={{ background: 'linear-gradient(to top, rgba(0,0,0,.7), transparent)' }}
+      >
+        <div className="text-[9px] text-white/80 truncate">{card.number}</div>
+      </div>
+    </div>
+  );
+}
+
+// ── Droppable Empty-Slot (dnd-kit) ────────────────────────────────────────
+function DroppableEmptySlot({
+  id, n, editMode, accent, onAdd,
+}: {
+  id: string;
+  n: number;
+  editMode: boolean;
+  accent: string;
+  onAdd: () => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id, disabled: !editMode });
+  return (
+    <div
+      ref={setNodeRef}
+      className="relative rounded-xl border border-dashed aspect-[2.5/3.5] w-full"
+      style={{
+        background: 'var(--secondary)',
+        borderColor: isOver ? accent : 'var(--border)',
+        borderWidth: isOver ? 2 : 1,
+        boxShadow: isOver ? `0 0 0 4px ${accent}40` : undefined,
+        transform: isOver ? 'scale(1.04)' : undefined,
+        transition: 'border-color 150ms ease-out, box-shadow 150ms ease-out, transform 150ms ease-out',
+      }}
+    >
+      <div className="absolute inset-0 flex items-center justify-center">
+        {editMode ? (
+          <button
+            onClick={onAdd}
+            className="w-12 h-12 rounded-full flex items-center justify-center shadow-md text-white"
+            style={{ background: 'var(--action-add)' }}
+            aria-label="Karte hinzufügen"
+          >
+            <Plus size={24} strokeWidth={3} />
+          </button>
+        ) : (
+          <span className="text-muted-foreground/30 text-lg">{n}</span>
+        )}
       </div>
     </div>
   );
