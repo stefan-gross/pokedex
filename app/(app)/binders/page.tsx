@@ -1,29 +1,39 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { Plus, Folder, Heart } from 'lucide-react';
 import { getBinders, deleteBinder } from '@/lib/firestore/binders';
+import { getCards } from '@/lib/firestore/cards';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { BinderIcon } from '@/lib/binder-icons';
-import type { BinderDoc } from '@/types';
+import { useTotalValue } from '@/lib/hooks/use-total-value';
+import type { BinderDoc, CardDoc } from '@/types';
 
 export default function BindersPage() {
   const [binders, setBinders] = useState<BinderDoc[]>([]);
+  const [cards, setCards] = useState<CardDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
 
   const load = async () => {
     try {
-      const data = await getBinders();
+      const [binderData, cardData] = await Promise.all([getBinders(), getCards()]);
       // Inbox-Binder „Neue Karten" nur anzeigen, wenn Karten drin sind
-      setBinders(data.filter(b => !(b.isInbox && b.cardIds.length === 0)));
+      setBinders(binderData.filter(b => !(b.isInbox && b.cardIds.length === 0)));
+      setCards(cardData);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => { load(); }, []);
+
+  const cardsById = useMemo(() => {
+    const m = new Map<string, CardDoc>();
+    for (const c of cards) m.set(c.id, c);
+    return m;
+  }, [cards]);
 
   return (
     <div className="min-h-screen">
@@ -65,9 +75,19 @@ export default function BindersPage() {
         )}
 
         <div className="grid grid-cols-2 gap-3">
-          {binders.map(binder => (
-            <BinderTile key={binder.id} binder={binder} onDeleted={load} />
-          ))}
+          {binders.map(binder => {
+            const binderCards = binder.cardIds
+              .map(id => cardsById.get(id))
+              .filter((c): c is CardDoc => !!c);
+            return (
+              <BinderTile
+                key={binder.id}
+                binder={binder}
+                binderCards={binderCards}
+                onDeleted={load}
+              />
+            );
+          })}
         </div>
       </div>
 
@@ -81,11 +101,12 @@ export default function BindersPage() {
   );
 }
 
-function BinderTile({ binder, onDeleted: _ }: { binder: BinderDoc; onDeleted: () => void }) {
+function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; binderCards: CardDoc[]; onDeleted: () => void }) {
   const cardCount = binder.cardIds.length;
   const bgColor   = binder.color ?? 'var(--pokedex-red)';
   const isBox     = binder.collectionType === 'box';
   const subtitle  = isBox ? 'Box' : `${binder.size ?? 9}er Binder`;
+  const totalValue = useTotalValue(binderCards);
 
   return (
     <Link
@@ -104,22 +125,29 @@ function BinderTile({ binder, onDeleted: _ }: { binder: BinderDoc; onDeleted: ()
           </div>
         </div>
 
-        <div className="flex items-center justify-between mt-3">
-          <span className="text-xs text-muted-foreground">
-            {cardCount} Karten
-            {(binder.wishlistCardIds?.length ?? 0) > 0 && (
-              <span className="ml-1 inline-flex items-center gap-0.5" style={{ color: '#ed64a6' }}>
-                +{binder.wishlistCardIds.length} <Heart size={10} fill="currentColor" />
-              </span>
+        <div className="flex flex-col gap-1 mt-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">
+              {cardCount} Karten
+              {(binder.wishlistCardIds?.length ?? 0) > 0 && (
+                <span className="ml-1 inline-flex items-center gap-0.5" style={{ color: '#ed64a6' }}>
+                  +{binder.wishlistCardIds.length} <Heart size={10} fill="currentColor" />
+                </span>
+              )}
+            </span>
+            {!isBox && binder.size && (
+              <div
+                className="text-xs font-bold px-2 py-0.5 rounded-full"
+                style={{ background: `${bgColor}20`, color: bgColor }}
+              >
+                {cardCount}/{binder.size}
+              </div>
             )}
-          </span>
-          {!isBox && binder.size && (
-            <div
-              className="text-xs font-bold px-2 py-0.5 rounded-full"
-              style={{ background: `${bgColor}20`, color: bgColor }}
-            >
-              {cardCount}/{binder.size}
-            </div>
+          </div>
+          {!totalValue.loading && totalValue.withPrice > 0 && (
+            <span className="text-sm font-bold" style={{ color: bgColor }}>
+              ≈ {totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
+            </span>
           )}
         </div>
       </div>

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Settings, Star, Clock, Percent } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getCards } from '@/lib/firestore/cards';
+import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { getBinders } from '@/lib/firestore/binders';
 import { getWishlists } from '@/lib/firestore/wishlists';
 import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
@@ -118,6 +119,7 @@ export default function DashboardPage() {
   }, [displayedSets.map(s => s.setId).join(','), setView]);
 
   const loading = cards === null;
+  const totalValue = useTotalValue(cards);
 
   return (
     <div className="px-4 pt-6 pb-4 space-y-5">
@@ -140,6 +142,11 @@ export default function DashboardPage() {
             <span className="text-xs text-muted-foreground font-medium">Sammlung</span>
             {thisWeek != null && thisWeek > 0 && (
               <span className="text-[10px] text-muted-foreground/60">+{thisWeek} diese Woche</span>
+            )}
+            {!totalValue.loading && totalValue.withPrice > 0 && (
+              <span className="text-[13px] font-bold mt-1" style={{ color: 'var(--pokedex-red)' }}>
+                ≈ {totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
+              </span>
             )}
           </div>
           <div className="flex items-baseline gap-4">

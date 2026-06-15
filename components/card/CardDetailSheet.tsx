@@ -529,35 +529,33 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                         background: isOwned ? 'rgba(72,187,120,.04)' : 'transparent',
                       }}
                     >
-                      {/* Variant-Zeile: Name + Owned-Badge + + Button */}
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <div className="flex items-center gap-2">
+                      {/* Variant-Zeile: Name + Owned-Badge + Preis + + Button */}
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <div className="flex items-center gap-2 min-w-0">
                           <span className="text-[15px] font-bold">{VARIANT_LABELS[variant]}</span>
                           {isOwned && (
                             <span
-                              className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                              className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
                               style={{ background: 'rgba(72,187,120,.15)', color: 'var(--green, #48bb78)' }}
                             >
                               ✓
                             </span>
                           )}
                         </div>
-                        <button
-                          onClick={() => setAddVariant(variant)}
-                          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                          style={{
-                            background: isOwned ? 'var(--secondary)' : 'var(--pokedex-red)',
-                            border: isOwned ? '1.5px solid var(--border)' : 'none',
-                          }}
-                          aria-label="Hinzufügen"
-                        >
-                          <Plus size={18} color={isOwned ? 'var(--muted-foreground)' : '#fff'} strokeWidth={2.5} />
-                        </button>
-                      </div>
-
-                      {/* Preis für genau diese Variante */}
-                      <div className="mb-3">
-                        <CardVariantPrice tcgId={card.id} variant={variant} />
+                        <div className="flex items-center gap-3 shrink-0">
+                          <CardVariantPrice tcgId={card.id} variant={variant} />
+                          <button
+                            onClick={() => setAddVariant(variant)}
+                            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                            style={{
+                              background: isOwned ? 'var(--secondary)' : 'var(--pokedex-red)',
+                              border: isOwned ? '1.5px solid var(--border)' : 'none',
+                            }}
+                            aria-label="Hinzufügen"
+                          >
+                            <Plus size={18} color={isOwned ? 'var(--muted-foreground)' : '#fff'} strokeWidth={2.5} />
+                          </button>
+                        </div>
                       </div>
 
                       {/* Eigene Kopien */}

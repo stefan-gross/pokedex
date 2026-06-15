@@ -30,39 +30,34 @@ function priceForVariant(data: PriceResult, appVariant: CardVariant): PriceVaria
   }
 }
 
-/** Eine Zeile mit Provider + Stand-Datum + Trend-Preis für genau EINE Karten-Variante.
- *  Zeigt den Preis tier-eingefärbt (Standard/Schön = neutral, Besonders/Wertvoll/Schatz = farbig). */
-export function CardVariantPrice({ tcgId, variant }: { tcgId: string | undefined; variant: CardVariant }) {
+/** Kompakter Inline-Preis: nur die Trend-Zahl, tier-eingefärbt — für genau EINE
+ *  Karten-Variante. Loading-State + fehlende Daten ergeben unsichtbaren Span,
+ *  damit das Layout in der umschließenden Zeile stabil bleibt. */
+export function CardVariantPrice({
+  tcgId, variant, className,
+}: { tcgId: string | undefined; variant: CardVariant; className?: string }) {
   const { data, loading } = usePrice(tcgId);
   if (loading) {
-    return (
-      <div className="flex items-center justify-between text-xs text-muted-foreground py-1">
-        <span>Lade Preis…</span>
-        <Loader2 size={12} className="animate-spin" />
-      </div>
-    );
+    return <span className={className}><Loader2 size={12} className="animate-spin text-muted-foreground" /></span>;
   }
-  if (!data) {
-    return (
-      <p className="text-xs text-muted-foreground py-1">Keine Preisdaten verfügbar</p>
-    );
-  }
+  if (!data) return <span className={className} />;
   const v = priceForVariant(data, variant);
   const price = v?.trend ?? v?.market;
+  if (price == null) return <span className={className} />;
   const tier = classifyValue(price);
-  const providerLabel = data.provider === 'cardmarket' ? 'Cardmarket' : 'TCGplayer (USD)';
   const priceColor =
     tier.tier === 'standard' || tier.tier === 'schoen' ? undefined : tier.badgeColor;
   return (
-    <div className="flex items-center justify-between gap-2 py-1">
-      <span className="text-xs text-muted-foreground">
-        {providerLabel}
-        {data.updatedAt && <> · Stand {data.updatedAt}</>}
-      </span>
-      <span className="text-lg font-bold tabular-nums" style={{ color: priceColor }}>
-        {fmt(price, data.currency)}
-      </span>
-    </div>
+    <span
+      className={(className ?? '') + ' text-base font-bold tabular-nums'}
+      style={{ color: priceColor }}
+      title={
+        (data.provider === 'cardmarket' ? 'Cardmarket' : 'TCGplayer (USD)')
+        + (data.updatedAt ? ` · Stand ${data.updatedAt}` : '')
+      }
+    >
+      {fmt(price, data.currency)}
+    </span>
   );
 }
 
