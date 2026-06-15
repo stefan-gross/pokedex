@@ -111,7 +111,7 @@ export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end">
+    <div className="fixed inset-0 z-[100] flex items-end">
       <div className="absolute inset-0 bg-black/60" onClick={saving ? undefined : onClose} />
 
       <div className="relative w-full rounded-t-2xl bg-card border-t border-border p-4 pb-safe max-h-[85vh] overflow-y-auto">

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Plus, Heart, CheckCircle2, ChevronDown, ChevronRight, Trash2, Info, Repeat2, LayoutGrid } from 'lucide-react';
+import { X, Plus, Heart, CheckCircle2, ChevronDown, ChevronRight, ChevronLeft, Trash2, Info, Repeat2, LayoutGrid } from 'lucide-react';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
@@ -87,7 +87,7 @@ function AccHeader({
 }
 
 /* ── Component ───────────────────────────────────────────────── */
-export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, onSaved }: Props) {
+export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMeta, onClose, onSaved }: Props) {
   const router = useRouter();
   const [visible,      setVisible]      = useState(false);
   const [zoomed,       setZoomed]       = useState(false);
@@ -98,6 +98,11 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
   const [imgSrcDe,     setImgSrcDe]     = useState<string | undefined>(undefined);
   const [addVariant,   setAddVariant]   = useState<CardVariant | null>(null);
   const [species,      setSpecies]      = useState<SpeciesDE | null>(null);
+  // Navigations-Stack für Evolutions-Sprünge — leerer Stack = Initial-Karte sichtbar
+  const [cardStack,    setCardStack]    = useState<CardInfo[]>([]);
+  // Wenn der Aufrufer eine andere Initial-Karte übergibt (neuer Detail-Aufruf), Stack zurücksetzen
+  useEffect(() => { setCardStack([]); }, [initialCard?.id]);
+  const card = cardStack.length > 0 ? cardStack[cardStack.length - 1] : initialCard;
   const [speciesLoaded,setSpeciesLoaded]= useState(false);
   const [evoCards,     setEvoCards]     = useState<CardInfo[]>([]);
   const [evoLoaded,    setEvoLoaded]    = useState(false);
@@ -296,8 +301,18 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
 
         {/* ── Karten-Header (wie echte Pokémon-Karte) ───────── */}
         <div className="flex items-center justify-between px-4 pb-2.5 gap-2 shrink-0">
-          {/* Links: Evolutionsstufe */}
-          {stage ? (
+          {/* Links: Back-Pfeil (wenn auf Evo-Karte navigiert) ODER Evolutionsstufe */}
+          {cardStack.length > 0 ? (
+            <button
+              onClick={() => setCardStack(s => s.slice(0, -1))}
+              className="flex items-center gap-1 h-8 pl-2 pr-3 rounded-full shrink-0"
+              style={{ background: 'var(--secondary)' }}
+              aria-label="Zurück"
+            >
+              <ChevronLeft size={16} />
+              <span className="text-[12px] font-semibold">Zurück</span>
+            </button>
+          ) : stage ? (
             <span
               className="text-[13px] font-bold px-3 py-1 rounded-full border shrink-0"
               style={{ background: 'rgba(66,153,225,.12)', color: 'var(--blue, #4299e1)', borderColor: 'rgba(66,153,225,.3)' }}
@@ -469,33 +484,40 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
               <div className="px-4 pb-4 border-t border-border/50">
                 {evoCards.length > 1 ? (
                   <div className="flex items-center gap-0 overflow-x-auto pt-3 pb-1" style={{ scrollbarWidth: 'none' }}>
-                    {evoCards.map((ec, i) => (
-                      <div key={ec.id} className="flex items-center shrink-0">
-                        {i > 0 && (
-                          <span className="text-muted-foreground text-lg px-2 pb-4">›</span>
-                        )}
-                        <div className="flex flex-col items-center gap-1.5">
-                          <div
-                            className="rounded-lg overflow-hidden border-2 w-[62px]"
-                            style={{ borderColor: ec.id === card.id ? 'var(--pokedex-red)' : 'var(--border)' }}
+                    {evoCards.map((ec, i) => {
+                      const isCurrent = ec.id === card.id;
+                      return (
+                        <div key={ec.id} className="flex items-center shrink-0">
+                          {i > 0 && (
+                            <span className="text-muted-foreground text-lg px-2 pb-4">›</span>
+                          )}
+                          <button
+                            onClick={() => { if (!isCurrent) setCardStack(s => [...s, ec]); }}
+                            disabled={isCurrent}
+                            className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform disabled:cursor-default"
                           >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={ec.imgSmall}
-                              alt={ec.name}
-                              className="w-full block"
-                              style={{ aspectRatio: '2.5/3.5', objectFit: 'cover' }}
-                            />
-                          </div>
-                          <span
-                            className="text-[10px] text-center max-w-[64px] truncate"
-                            style={{ color: ec.id === card.id ? 'var(--pokedex-red)' : 'var(--muted-foreground)', fontWeight: ec.id === card.id ? 700 : 400 }}
-                          >
-                            {ec.name}
-                          </span>
+                            <div
+                              className="rounded-lg overflow-hidden border-2 w-[62px]"
+                              style={{ borderColor: isCurrent ? 'var(--pokedex-red)' : 'var(--border)' }}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={ec.imgSmall}
+                                alt={ec.name}
+                                className="w-full block"
+                                style={{ aspectRatio: '2.5/3.5', objectFit: 'cover' }}
+                              />
+                            </div>
+                            <span
+                              className="text-[10px] text-center max-w-[64px] truncate"
+                              style={{ color: isCurrent ? 'var(--pokedex-red)' : 'var(--muted-foreground)', fontWeight: isCurrent ? 700 : 400 }}
+                            >
+                              {ec.name}
+                            </span>
+                          </button>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : evoLoaded ? (
                   <p className="text-[13px] text-muted-foreground pt-3">Keine Evolutionslinie</p>
@@ -523,53 +545,55 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                   return (
                     <div
                       key={variant}
-                      className="px-4 py-3"
+                      className="px-3 py-2"
                       style={{
                         borderTop: vi > 0 ? '1px solid color-mix(in srgb, var(--border) 50%, transparent)' : 'none',
                         background: isOwned ? 'rgba(72,187,120,.04)' : 'transparent',
                       }}
                     >
                       {/* Variant-Zeile: Name + Owned-Badge + Preis + + Button */}
-                      <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center justify-between gap-2 mb-2">
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-[15px] font-bold">{VARIANT_LABELS[variant]}</span>
+                          <span className="text-[14px] font-semibold">{VARIANT_LABELS[variant]}</span>
                           {isOwned && (
                             <span
-                              className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                              className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
                               style={{ background: 'rgba(72,187,120,.15)', color: 'var(--green, #48bb78)' }}
                             >
                               ✓
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-3 shrink-0">
+                        <div className="flex items-center gap-2 shrink-0">
                           <CardVariantPrice tcgId={card.id} variant={variant} />
                           <button
                             onClick={() => setAddVariant(variant)}
-                            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
                             style={{
                               background: isOwned ? 'var(--secondary)' : 'var(--pokedex-red)',
                               border: isOwned ? '1.5px solid var(--border)' : 'none',
                             }}
                             aria-label="Hinzufügen"
                           >
-                            <Plus size={18} color={isOwned ? 'var(--muted-foreground)' : '#fff'} strokeWidth={2.5} />
+                            <Plus size={16} color={isOwned ? 'var(--muted-foreground)' : '#fff'} strokeWidth={2.5} />
                           </button>
                         </div>
                       </div>
 
                       {/* Eigene Kopien */}
                       {copies.length > 0 && (
-                        <div className="flex flex-col gap-2 mt-2">
+                        <div className="flex flex-col gap-1.5">
                           {copies.map(copy => {
                             const copyBinders = bindersOf(copy);
                             const isConfirm = confirmId === copy.id;
                             const isDeleting = deletingId === copy.id;
+                            const binder = copyBinders[0];
+                            const isDefaultBinder = !binder || !!binder.isDefault;
                             return (
                               <div
                                 key={copy.id}
-                                className="flex items-center gap-2 rounded-xl px-3 py-2.5"
-                                style={{ background: 'var(--secondary)', minHeight: 44 }}
+                                className="flex items-center gap-1.5 rounded-lg px-2 py-1.5"
+                                style={{ background: 'var(--secondary)', minHeight: 36 }}
                               >
                                 {/* Chips */}
                                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
@@ -580,70 +604,53 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                                         window.dispatchEvent(new Event('review-count-changed'));
                                         onSaved?.();
                                       }}
-                                      className="text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0"
+                                      className="text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-1 shrink-0"
                                       style={{ background: 'rgba(229,62,62,.15)', color: 'var(--pokedex-red)' }}
                                     >
                                       <CheckCircle2 size={10} /> Prüfen
                                     </button>
                                   )}
-                                  <span className="text-[14px] shrink-0">{LANGUAGE_FLAGS[copy.language] ?? copy.language}</span>
+                                  <span className="text-[13px] shrink-0">{LANGUAGE_FLAGS[copy.language] ?? copy.language}</span>
                                   <span
-                                    className="text-[12px] font-semibold px-2 py-0.5 rounded-full shrink-0"
+                                    className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
                                     style={{ background: 'rgba(255,255,255,.07)', color: 'var(--muted-foreground)' }}
                                   >
                                     {copy.condition}
                                   </span>
-                                  {(copy as CardDoc & { price?: number }).price != null && (
-                                    <span
-                                      className="text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0"
-                                      style={{ background: 'rgba(255,255,255,.07)', color: 'var(--muted-foreground)' }}
+                                  {/* Sammlung-Pill — nur bei nicht-Default-Bindern (spart Platz) */}
+                                  {!isDefaultBinder && binder && (
+                                    <div
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={() => router.push(`/binders/${binder.id}`)}
+                                      onKeyDown={(e) => e.key === 'Enter' && router.push(`/binders/${binder.id}`)}
+                                      className="text-[11px] font-semibold pl-2 pr-1.5 py-0.5 rounded-full flex items-center gap-1 cursor-pointer shrink-0 ml-auto truncate"
+                                      style={{
+                                        background: 'rgba(66,153,225,.12)',
+                                        border: '1px solid rgba(66,153,225,.35)',
+                                        color: '#4299e1',
+                                        maxWidth: 140,
+                                      }}
                                     >
-                                      {((copy as CardDoc & { price?: number }).price!).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
-                                    </span>
-                                  )}
-                                  {/* Sammlung-Pill — rechts ausgerichtet */}
-                                  {(() => {
-                                    const binder = copyBinders[0];
-                                    const isDefault = !binder || !!binder.isDefault;
-                                    const label = binder ? binder.name : 'Meine Sammlung';
-                                    const icon  = binder?.icon ?? null;
-                                    return (
-                                      <div
-                                        role="button"
-                                        tabIndex={0}
-                                        onClick={() => router.push(binder ? `/binders/${binder.id}` : '/binders')}
-                                        onKeyDown={(e) => e.key === 'Enter' && router.push(binder ? `/binders/${binder.id}` : '/binders')}
-                                        className="text-[12px] font-semibold pl-3 pr-2 py-1 rounded-full flex items-center gap-1.5 cursor-pointer shrink-0 ml-auto"
-                                        style={{
-                                          background: 'rgba(66,153,225,.12)',
-                                          border: '1px solid rgba(66,153,225,.35)',
-                                          color: '#4299e1',
-                                        }}
+                                      {binder.icon && <span>{binder.icon}</span>}
+                                      <span className="truncate">{binder.name}</span>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleRemoveFromBinder(copy, binder.id); }}
+                                        className="rounded-full p-0.5 transition-colors shrink-0"
+                                        style={{ background: 'rgba(229,62,62,.2)', color: '#fc8181' }}
+                                        title="Aus Sammlung entfernen"
                                       >
-                                        {icon && <span>{icon}</span>}
-                                        {label}
-                                        {!isDefault && binder ? (
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); handleRemoveFromBinder(copy, binder.id); }}
-                                            className="rounded-full p-0.5 transition-colors"
-                                            style={{ background: 'rgba(229,62,62,.2)', color: '#fc8181' }}
-                                            title="Aus Sammlung entfernen"
-                                          >
-                                            <Trash2 size={10} />
-                                          </button>
-                                        ) : (
-                                          <ChevronRight size={13} style={{ opacity: 0.7 }} />
-                                        )}
-                                      </div>
-                                    );
-                                  })()}
+                                        <Trash2 size={10} />
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
 
                                 {/* Löschen */}
                                 <button
                                   onClick={() => handleDelete(copy)}
                                   disabled={isDeleting}
-                                  className="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-colors"
+                                  className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
                                   style={{
                                     background: isConfirm ? 'rgba(229,62,62,.2)' : 'rgba(229,62,62,.08)',
                                     color: 'var(--pokedex-red)',
@@ -653,7 +660,7 @@ export function CardDetailSheet({ card, ownedCopies, binders, setMeta, onClose, 
                                     ? <span className="text-[10px]">…</span>
                                     : isConfirm
                                       ? <span className="text-[10px] font-bold">OK?</span>
-                                      : <Trash2 size={14} />
+                                      : <Trash2 size={12} />
                                   }
                                 </button>
                               </div>
