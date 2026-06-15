@@ -70,10 +70,3 @@ export function usePrice(tcgId: string | undefined): UsePriceState {
 
   return { data, loading };
 }
-
-/** Erste Variant — die meisten Karten haben nur „Normal", manche auch „Reverse Holo". */
-export function pickMainPrice(data: PriceResult | null): number | undefined {
-  if (!data?.variants?.length) return undefined;
-  const v = data.variants[0];
-  return v.market ?? v.trend ?? v.mid ?? v.low;
-}

@@ -1,5 +1,5 @@
-export type PriceProvider = 'cardmarket';
-export type PriceCurrency = 'EUR';
+export type PriceProvider = 'cardmarket' | 'tcgplayer';
+export type PriceCurrency = 'EUR' | 'USD';
 
 export interface PriceVariant {
   label: string;
@@ -13,13 +13,12 @@ export interface PriceVariant {
 export interface PriceResult {
   provider: PriceProvider;
   currency: PriceCurrency;
-  /** Wann pokemontcg.io die Daten zuletzt von Cardmarket synchronisiert hat (Format: "YYYY/MM/DD"). */
+  /** Wann pokemontcg.io die Daten zuletzt synchronisiert hat (Format: "YYYY/MM/DD"). */
   updatedAt?: string;
   variants: PriceVariant[];
 }
 
 export interface IPriceProvider {
-  readonly name: PriceProvider;
-  readonly currency: PriceCurrency;
+  readonly name: string;
   fetchPrices(tcgId: string): Promise<PriceResult | null>;
 }

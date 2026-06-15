@@ -1,5 +1,5 @@
 export type { PriceResult, PriceVariant, PriceProvider, PriceCurrency, IPriceProvider } from './types';
 
-import { cardmarketProvider } from './cardmarket';
+import { pokemontcgProvider } from './pokemontcg';
 
-export { cardmarketProvider as activeProvider };
+export { pokemontcgProvider as activeProvider };

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { getCard } from '@/lib/firestore/cards';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
-import { CardPrices } from '@/components/card/CardPrices';
+import { CardPriceDetail } from '@/components/card/CardPriceDetail';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -47,7 +47,11 @@ export default async function CardDetailPage({ params }: Props) {
           <Row label="Anzahl" value={String(card.quantity)} />
         </div>
 
-        {card.tcgId && <CardPrices tcgId={card.tcgId} />}
+        {card.tcgId && (
+          <div className="bg-card border border-border rounded-xl p-4">
+            <CardPriceDetail tcgId={card.tcgId} />
+          </div>
+        )}
       </div>
     </div>
   );

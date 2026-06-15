@@ -13,6 +13,7 @@ import { addCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { addCardToBinder, ensureDefaultBinder, ensureInboxBinder } from '@/lib/firestore/binders';
 import { BulkAddToCollectionModal } from '@/components/scanner/BulkAddToCollectionModal';
 import { CardPrice } from '@/components/card/CardPrice';
+import { ValueBadge } from '@/components/card/ValueBadge';
 import { catalogCardToInfo } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition as PersistedCondition, CardDoc, CardLanguage, CardVariant } from '@/types';
@@ -1079,6 +1080,12 @@ export default function ScannerPage() {
                         </span>
                       );
                     })()}
+                    {/* Wert-Badge oben rechts auf Grid-Tile (nur ab 'wertvoll') */}
+                    {card && (
+                      <div className="absolute top-1 right-1">
+                        <ValueBadge tcgId={card.id} iconOnly />
+                      </div>
+                    )}
                     {/* Trash + Quick-Add unten rechts */}
                     <div
                       className="absolute flex items-end gap-1"
@@ -1227,6 +1234,13 @@ export default function ScannerPage() {
                   {/* Karten-Bild — bündig oben im Panel */}
                   <div className="flex-1 min-h-0 relative flex items-center justify-center">
                     {renderFace(j)}
+
+                    {/* Wert-Badge oben links auf der Karte (nur ab 'wertvoll') */}
+                    {jCard && (
+                      <div className="absolute top-2 left-2">
+                        <ValueBadge tcgId={jCard.id} />
+                      </div>
+                    )}
 
                     {/* Trash + Plus unten rechts auf der Karte */}
                     <div
@@ -2305,6 +2319,13 @@ function ScannedCardTile({
         >
           <Trash2 size={14} color="#ef4444" />
         </button>
+
+        {/* Wert-Badge unten links — sichtbar nur ab Tier 'wertvoll' */}
+        {card && (
+          <div className="absolute bottom-0.5 left-0.5">
+            <ValueBadge tcgId={card.id} iconOnly />
+          </div>
+        )}
 
         {/* Fake-Warnung (Mitte oben, über Variant/Condition-Pills) */}
         {(job.result?.fakeRisk === 'medium' || job.result?.fakeRisk === 'high') && (

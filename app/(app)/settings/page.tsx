@@ -203,6 +203,28 @@ export default function SettingsPage() {
     }
   }
 
+  // ── Preise jetzt aktualisieren ─────────────────────────────────────────
+  const [refreshingPrices, setRefreshingPrices] = useState(false);
+  const [refreshPricesResult, setRefreshPricesResult] = useState<string | null>(null);
+  async function handleRefreshPrices() {
+    if (refreshingPrices) return;
+    setRefreshingPrices(true);
+    setRefreshPricesResult(null);
+    try {
+      const res = await fetch('/api/settings/refresh-prices', { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const j = await res.json() as { refreshed: number; upgraded: number; errored: number; total: number };
+      const msg = j.upgraded > 0
+        ? `${j.refreshed}/${j.total} aktualisiert, ${j.upgraded} auf Cardmarket umgestiegen.`
+        : `${j.refreshed}/${j.total} aktualisiert.`;
+      setRefreshPricesResult(j.errored > 0 ? `${msg} ${j.errored} Fehler.` : msg);
+    } catch (e) {
+      setRefreshPricesResult(`Fehler: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setRefreshingPrices(false);
+    }
+  }
+
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });
     router.push('/login');
@@ -360,6 +382,26 @@ export default function SettingsPage() {
                   <div>
                     <p className="text-sm font-medium text-orange-500">Daten neu aufbauen</p>
                     <p className="text-xs text-muted-foreground">Reset + alle Schritte komplett neu — z. B. nach Schema-Änderung</p>
+                  </div>
+                </button>
+
+                {/* Preise jetzt aktualisieren */}
+                <button
+                  onClick={handleRefreshPrices}
+                  disabled={refreshingPrices}
+                  className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors active:bg-secondary disabled:opacity-40 border-t border-border"
+                >
+                  <RefreshCw size={18} className={`shrink-0 text-blue-500 ${refreshingPrices ? 'animate-spin' : ''}`} />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-blue-500">
+                      {refreshingPrices ? 'Preise werden aktualisiert…' : 'Preise jetzt aktualisieren'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Holt aktuelle Cardmarket/TCGplayer-Preise für deine Sammlung
+                    </p>
+                    {refreshPricesResult && (
+                      <p className="text-xs text-muted-foreground mt-1 font-mono">{refreshPricesResult}</p>
+                    )}
                   </div>
                 </button>
               </>

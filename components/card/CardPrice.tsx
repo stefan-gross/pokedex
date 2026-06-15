@@ -1,18 +1,21 @@
 'use client';
 
-import { usePrice, pickMainPrice } from '@/lib/hooks/use-price';
+import { usePrice } from '@/lib/hooks/use-price';
+import { pickTrendPrice, classifyValue } from '@/lib/prices/value-tier';
 
 interface Props {
   tcgId: string | undefined;
-  /** Kompakte Variante ohne Trend-Icon, ohne „Cardmarket"-Label. */
+  /** Kompakte Variante ohne Tier-Färbung, ohne Platzhalter wenn leer. */
   compact?: boolean;
   className?: string;
 }
 
-/** Kleiner EUR-Preis-Pill mit Marktpreis von Cardmarket. */
+/** Einzelner Preis-Pill mit Trend-Preis (Cardmarket) oder Market (TCGplayer).
+ *  Hintergrund-Farbe = Wert-Tier (grau / weiß / gelb / orange / rot). */
 export function CardPrice({ tcgId, compact = false, className }: Props) {
   const { data, loading } = usePrice(tcgId);
-  const price = pickMainPrice(data);
+  const price = pickTrendPrice(data);
+  const tier = classifyValue(price);
 
   if (loading) {
     return (
@@ -27,25 +30,26 @@ export function CardPrice({ tcgId, compact = false, className }: Props) {
 
   if (price == null) {
     return compact ? null : (
-      <span
-        className={(className ?? '') + ' text-[11px] text-muted-foreground'}
-      >
+      <span className={(className ?? '') + ' text-[11px] text-muted-foreground'}>
         — €
       </span>
     );
   }
 
-  const text = price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+  const currency = data?.currency ?? 'EUR';
+  const locale = currency === 'USD' ? 'en-US' : 'de-DE';
+  const text = price.toLocaleString(locale, { style: 'currency', currency });
 
   return (
     <span
       className={
         (className ?? '') +
-        ' inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold'
+        ' inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap'
       }
       style={{
-        background: 'rgba(255,255,255,0.10)',
-        color: '#fff',
+        background: tier.badgeColor,
+        color: tier.textColor,
+        boxShadow: tier.glow,
       }}
     >
       {text}

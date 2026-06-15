@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySessionToken, SESSION_COOKIE } from '@/lib/auth'
 
-const PUBLIC_PATHS = ['/login', '/api/auth']
+// /api/cron/* prüft selbst CRON_SECRET — Middleware muss durchlassen,
+// damit Vercel-Cron-Jobs (kein Session-Cookie) den Handler erreichen.
+const PUBLIC_PATHS = ['/login', '/api/auth', '/api/cron']
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
