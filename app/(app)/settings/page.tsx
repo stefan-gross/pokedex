@@ -5,10 +5,12 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, Sun, Moon, Smartphone, RefreshCw,
-  Database, CheckCircle, Clock, AlertCircle, RotateCcw,
+  Database, CheckCircle, Clock, AlertCircle, RotateCcw, Trash2,
 } from 'lucide-react';
 import Link from 'next/link';
 import type { SyncMeta } from '@/lib/firestore/catalog';
+import { getCards, deleteCard } from '@/lib/firestore/cards';
+import { getBinders, updateBinder } from '@/lib/firestore/binders';
 
 const THEMES = [
   { value: 'system', label: 'System', icon: Smartphone },
@@ -162,6 +164,42 @@ export default function SettingsPage() {
       setRunningAll(false);
       setSyncing(false);
       await loadSyncStatus();
+    }
+  }
+
+  // ── Sammlung zurücksetzen ──────────────────────────────────────────────
+  // Löscht alle `cards`-Docs und leert die `cardIds`-Arrays aller Binder.
+  // Binder selbst bleiben erhalten (Struktur soll überleben).
+  const [resetting, setResetting] = useState(false);
+  const [confirmStage, setConfirmStage] = useState<0 | 1>(0);
+  const [resetProgress, setResetProgress] = useState<string | null>(null);
+  async function handleResetCollection() {
+    if (confirmStage === 0) { setConfirmStage(1); return; }
+    setResetting(true);
+    setResetProgress(null);
+    try {
+      const cards = await getCards();
+      setResetProgress(`Lösche ${cards.length} Karten…`);
+      let done = 0;
+      for (const c of cards) {
+        await deleteCard(c.id);
+        done++;
+        if (done % 5 === 0) setResetProgress(`${done}/${cards.length} gelöscht…`);
+      }
+      // Binder-cardIds leeren (Binder bleiben bestehen)
+      const binders = await getBinders();
+      setResetProgress(`Räume ${binders.length} Sammlungen auf…`);
+      for (const b of binders) {
+        if ((b.cardIds?.length ?? 0) > 0) {
+          await updateBinder(b.id, { cardIds: [] });
+        }
+      }
+      setResetProgress(`Fertig — ${done} Karten gelöscht.`);
+    } catch (e) {
+      setResetProgress(`Fehler: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setResetting(false);
+      setConfirmStage(0);
     }
   }
 
@@ -362,7 +400,44 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* 4. Account */}
+        {/* 4. Gefahren-Zone */}
+        <section>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Gefahren-Zone</p>
+          <div className="bg-card shadow-card rounded-2xl overflow-hidden">
+            <button
+              onClick={handleResetCollection}
+              disabled={resetting}
+              className="w-full flex items-center gap-3 px-4 py-4 text-left active:bg-secondary transition-colors disabled:opacity-50"
+            >
+              <Trash2 size={18} className="text-red-500 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-red-500">
+                  {confirmStage === 0
+                    ? 'Sammlung zurücksetzen'
+                    : resetting
+                      ? 'Wird gelöscht…'
+                      : 'Wirklich? Tippe nochmal zum Bestätigen'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Löscht alle Karten aus deiner Sammlung. Sammlungs-/Binder-Struktur bleibt erhalten.
+                </p>
+                {resetProgress && (
+                  <p className="text-xs text-muted-foreground mt-1 font-mono">{resetProgress}</p>
+                )}
+              </div>
+            </button>
+            {confirmStage === 1 && !resetting && (
+              <button
+                onClick={() => setConfirmStage(0)}
+                className="w-full px-4 py-3 text-sm text-muted-foreground border-t border-border active:bg-secondary"
+              >
+                Abbrechen
+              </button>
+            )}
+          </div>
+        </section>
+
+        {/* 5. Account */}
         <section>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Account</p>
           <div className="bg-card shadow-card rounded-2xl overflow-hidden">
