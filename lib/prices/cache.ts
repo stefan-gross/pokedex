@@ -5,6 +5,11 @@ import type { PriceResult, PriceProvider, PriceCurrency } from './types';
 
 /** TTL: nach 24 h gilt der gecachte Preis als stale → Live-Refresh. */
 export const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+/** Leere Cache-Einträge (empty: true) nur 1 h gültig — neue Sets bekommen oft
+ *  innerhalb von Stunden Cardmarket-/TCGplayer-Daten nachgeschoben. Außerdem
+ *  müssen Einträge, die noch vor dem TCGplayer-Fallback-Deploy entstanden sind,
+ *  zeitnah neu probiert werden. */
+export const EMPTY_CACHE_TTL_MS = 60 * 60 * 1000;
 
 /** Shape von `tcg_catalog.{tcgId}.prices`. Provider-generisch über Cardmarket + TCGplayer. */
 export interface CachedPrices {
@@ -19,7 +24,8 @@ export interface CachedPrices {
 export function isFresh(c: CachedPrices | undefined): boolean {
   if (!c?.cachedAt) return false;
   const age = Date.now() - c.cachedAt.toMillis();
-  return age < CACHE_TTL_MS;
+  const ttl = c.empty ? EMPTY_CACHE_TTL_MS : CACHE_TTL_MS;
+  return age < ttl;
 }
 
 export function toResult(c: CachedPrices): PriceResult | null {
