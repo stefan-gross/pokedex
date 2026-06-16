@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, use, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, Settings, LayoutGrid, BookOpen, Pencil, Eye,
@@ -398,7 +398,9 @@ function BinderOverview({
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+    // Längeres Long-Press auf Mobil + großzügigere Tolerance verhindert,
+    // dass kleine Finger-Bewegungen während des Press die Aktivierung killen.
+    useSensor(TouchSensor, { activationConstraint: { delay: 350, tolerance: 16 } }),
   );
 
   const items = pages.map((_, i) => `page-${i}`);
@@ -498,7 +500,7 @@ function SortablePageTile({
   onOpen: () => void;
   onDelete: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({
     id,
     disabled: !editMode,
   });
@@ -507,7 +509,17 @@ function SortablePageTile({
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.3 : 1,
-    animation: editMode && !isDragging ? 'binder-wiggle 0.5s ease-in-out infinite alternate' : undefined,
+    animation: editMode && !isDragging && !isOver ? 'binder-wiggle 0.5s ease-in-out infinite alternate' : undefined,
+    // touch-action: none verhindert, dass der Browser den Touch als Scroll
+    // interpretiert und den Drag abbricht — kritisch für Touch-DnD auf iOS.
+    touchAction: editMode ? 'none' : undefined,
+    // Drop-Target-Highlight: gestrichelte, dickere Border in Akzentfarbe
+    // + Ring-Shadow + Snap-Scale, gleich wie bei Karten-Slots
+    borderColor: isOver ? accent : undefined,
+    borderStyle: isOver ? 'dashed' : undefined,
+    borderWidth: isOver ? 2 : undefined,
+    boxShadow: isOver ? `0 0 0 4px ${accent}40, 0 4px 16px rgba(30,40,80,0.08)` : undefined,
+    scale: isOver ? '1.03' : undefined,
   };
 
   return (
@@ -544,7 +556,9 @@ function SortablePageTile({
   );
 }
 
-// ── Page Detail — Slots als dnd-kit-Sortable (Swap-Semantik) ──────────────
+// ── Page Detail — Slots als dnd-kit-Sortable + Buch-Blätter-Swipe ─────────
+type FlipState = { dir: 'forward' | 'backward'; progress: number; committing: boolean } | null;
+
 function PageDetail({
   pages, pageIdx, cols, cardsById, accent, editMode,
   onChangePageIdx, onSwapInPage, onClearSlot, onAddToSlot, onBack, onCardTap,
@@ -562,6 +576,10 @@ function PageDetail({
   const totalPages = pages.length;
   const [activeSlot, setActiveSlot] = useState<number | null>(null);
 
+  // Buch-Blätter-State (nur im View-Mode aktiv)
+  const [flip, setFlip] = useState<FlipState>(null);
+  const flipStartRef = useRef<{ x: number; y: number; w: number; locked: boolean } | null>(null);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 350, tolerance: 8 } }),
@@ -574,6 +592,121 @@ function PageDetail({
   const activeCard = activeSlot != null && page.slots[activeSlot]
     ? cardsById.get(page.slots[activeSlot]!)
     : null;
+
+  // ── Static Page Grid (für View-Mode + Flip-Layers) ─────────────────────
+  const renderStaticPage = (p: BinderPage, slotOffset: number, key: string) => (
+    <div
+      key={key}
+      className="grid gap-2 px-3 pb-6"
+      style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+    >
+      {p.slots.map((slotId, slotI) => {
+        const card = slotId ? cardsById.get(slotId) : undefined;
+        return (
+          <div key={slotI} className="relative">
+            {card ? (
+              <button
+                onClick={() => onCardTap(card)}
+                className="relative rounded-xl overflow-hidden border block w-full aspect-[2.5/3.5]"
+                style={{ borderColor: `${accent}55`, background: '#1a1a1a' }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={card.tcgImageUrl ?? `https://images.pokemontcg.io/${card.setId}/${card.number.split('/')[0]}_hires.png`}
+                  alt={card.name}
+                  className="w-full h-full object-cover pointer-events-none"
+                  draggable={false}
+                />
+                {card.quantity > 1 && (
+                  <div className="absolute top-1 right-1 text-[9px] font-bold px-1 py-0.5 rounded bg-black/70 text-white">
+                    ×{card.quantity}
+                  </div>
+                )}
+                <div
+                  className="absolute bottom-0 left-0 right-0 px-1 pb-1 pt-3 pointer-events-none"
+                  style={{ background: 'linear-gradient(to top, rgba(0,0,0,.7), transparent)' }}
+                >
+                  <div className="text-[9px] text-white/80 truncate">{card.number}</div>
+                </div>
+              </button>
+            ) : (
+              <div
+                className="rounded-xl border border-dashed border-border aspect-[2.5/3.5] w-full"
+                style={{ background: 'var(--secondary)' }}
+              >
+                <div className="w-full h-full flex items-center justify-center">
+                  <span className="text-muted-foreground/30 text-lg">{slotOffset + slotI + 1}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  // ── Flip-Pointer-Handlers ──────────────────────────────────────────────
+  const onFlipDown = (e: React.PointerEvent) => {
+    if (editMode) return;
+    const w = (e.currentTarget as HTMLDivElement).clientWidth;
+    flipStartRef.current = { x: e.clientX, y: e.clientY, w, locked: false };
+  };
+  const onFlipMove = (e: React.PointerEvent) => {
+    if (editMode || !flipStartRef.current || flip?.committing) return;
+    const dx = e.clientX - flipStartRef.current.x;
+    const dy = e.clientY - flipStartRef.current.y;
+    // Erst dann committen, wenn die Geste klar horizontal ist
+    if (!flipStartRef.current.locked) {
+      if (Math.abs(dx) < 10) return;
+      if (Math.abs(dy) > Math.abs(dx)) {
+        flipStartRef.current = null; // war ein Scroll
+        return;
+      }
+      flipStartRef.current.locked = true;
+    }
+    const dir: 'forward' | 'backward' = dx < 0 ? 'forward' : 'backward';
+    if (dir === 'forward' && pageIdx >= totalPages - 1) return;
+    if (dir === 'backward' && pageIdx === 0) return;
+    const progress = Math.max(0, Math.min(1, Math.abs(dx) / flipStartRef.current.w));
+    setFlip({ dir, progress, committing: false });
+  };
+  const onFlipUp = () => {
+    if (!flipStartRef.current) return;
+    flipStartRef.current = null;
+    if (!flip) return;
+    // Über 35 % der Breite gezogen → committen
+    if (flip.progress > 0.35) {
+      const targetIdx = flip.dir === 'forward' ? pageIdx + 1 : pageIdx - 1;
+      setFlip({ ...flip, progress: 1, committing: true });
+      setTimeout(() => {
+        onChangePageIdx(targetIdx);
+        setFlip(null);
+      }, 350);
+    } else {
+      setFlip({ ...flip, progress: 0, committing: true });
+      setTimeout(() => setFlip(null), 250);
+    }
+  };
+
+  // ── Layout-Berechnungen für Flip-Layers ────────────────────────────────
+  const showFlip = flip != null;
+  const slotOffset = pageIdx * page.slots.length;
+  // Die rotierende Seite: bei forward = aktuelle Seite, bei backward = vorherige Seite
+  const rotatingPage = !showFlip ? page
+    : flip.dir === 'forward' ? page : pages[pageIdx - 1];
+  const rotatingOffset = !showFlip ? slotOffset
+    : flip.dir === 'forward' ? slotOffset : (pageIdx - 1) * page.slots.length;
+  const underneathPage = !showFlip ? null
+    : flip.dir === 'forward' ? pages[pageIdx + 1] : page;
+  const underneathOffset = !showFlip ? 0
+    : flip.dir === 'forward' ? (pageIdx + 1) * page.slots.length : slotOffset;
+  // Rotation: forward 0 → -180; backward -180 → 0
+  const rotation = !showFlip
+    ? 0
+    : flip.dir === 'forward'
+      ? -180 * flip.progress
+      : -180 * (1 - flip.progress);
+  const flipTransition = flip?.committing ? 'transform 350ms cubic-bezier(.4,.0,.2,1)' : 'none';
 
   return (
     <div>
@@ -612,74 +745,108 @@ function PageDetail({
         <div className="w-9" />
       </div>
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={(e: DragStartEvent) => {
-          const slotI = Number(String(e.active.id).replace('slot-', ''));
-          setActiveSlot(slotI);
-        }}
-        onDragEnd={(e: DragEndEvent) => {
-          setActiveSlot(null);
-          if (!e.over || e.over.id === e.active.id) return;
-          const from = Number(String(e.active.id).replace('slot-', ''));
-          const to   = Number(String(e.over.id).replace('slot-', ''));
-          onSwapInPage(from, to);
-        }}
-        onDragCancel={() => setActiveSlot(null)}
-      >
-        <div
-          className="grid gap-2 px-3 pb-6"
-          style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+      {editMode ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={(e: DragStartEvent) => {
+            const slotI = Number(String(e.active.id).replace('slot-', ''));
+            setActiveSlot(slotI);
+          }}
+          onDragEnd={(e: DragEndEvent) => {
+            setActiveSlot(null);
+            if (!e.over || e.over.id === e.active.id) return;
+            const from = Number(String(e.active.id).replace('slot-', ''));
+            const to   = Number(String(e.over.id).replace('slot-', ''));
+            onSwapInPage(from, to);
+          }}
+          onDragCancel={() => setActiveSlot(null)}
         >
-          {page.slots.map((slotId, slotI) => {
-            const card = slotId ? cardsById.get(slotId) : undefined;
-            return card ? (
-              <DraggableCardSlot
-                key={slotI}
-                id={`slot-${slotI}`}
-                card={card}
-                accent={accent}
-                editMode={editMode}
-                isDragging={activeSlot === slotI}
-                onTap={() => onCardTap(card)}
-                onDelete={() => onClearSlot(slotI)}
-              />
-            ) : (
-              <DroppableEmptySlot
-                key={slotI}
-                id={`slot-${slotI}`}
-                n={pageIdx * page.slots.length + slotI + 1}
-                editMode={editMode}
-                accent={accent}
-                onAdd={() => onAddToSlot(slotI)}
-              />
-            );
-          })}
-        </div>
+          <div
+            className="grid gap-2 px-3 pb-6"
+            style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+          >
+            {page.slots.map((slotId, slotI) => {
+              const card = slotId ? cardsById.get(slotId) : undefined;
+              return card ? (
+                <DraggableCardSlot
+                  key={slotI}
+                  id={`slot-${slotI}`}
+                  card={card}
+                  accent={accent}
+                  editMode={editMode}
+                  isDragging={activeSlot === slotI}
+                  onTap={() => onCardTap(card)}
+                  onDelete={() => onClearSlot(slotI)}
+                />
+              ) : (
+                <DroppableEmptySlot
+                  key={slotI}
+                  id={`slot-${slotI}`}
+                  n={pageIdx * page.slots.length + slotI + 1}
+                  editMode={editMode}
+                  accent={accent}
+                  onAdd={() => onAddToSlot(slotI)}
+                />
+              );
+            })}
+          </div>
 
-        <DragOverlay dropAnimation={{ duration: 220, easing: 'cubic-bezier(.2,.9,.3,1)' }}>
-          {activeCard ? (
-            <div
-              className="rounded-xl overflow-hidden border-2"
-              style={{
-                borderColor: accent,
-                background: '#1a1a1a',
-                boxShadow: '0 16px 36px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.35)',
-                transform: 'rotate(-2deg) scale(1.08)',
-                aspectRatio: '2.5/3.5',
-              }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={activeCard.tcgImageUrl ?? `https://images.pokemontcg.io/${activeCard.setId}/${activeCard.number.split('/')[0]}_hires.png`}
-                alt={activeCard.name}
-                className="w-full h-full object-cover"
-              />
+          <DragOverlay dropAnimation={{ duration: 220, easing: 'cubic-bezier(.2,.9,.3,1)' }}>
+            {activeCard ? (
+              <div
+                className="rounded-xl overflow-hidden border-2"
+                style={{
+                  borderColor: accent,
+                  background: '#1a1a1a',
+                  boxShadow: '0 16px 36px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.35)',
+                  transform: 'rotate(-2deg) scale(1.08)',
+                  aspectRatio: '2.5/3.5',
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={activeCard.tcgImageUrl ?? `https://images.pokemontcg.io/${activeCard.setId}/${activeCard.number.split('/')[0]}_hires.png`}
+                  alt={activeCard.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      ) : (
+        // View-Mode: Buch-Blätter-Animation. Stage hat Perspective,
+        // zwei Layer: rotierende Seite oben, statische Ziel-Seite darunter.
+        <div
+          className="relative"
+          style={{ perspective: '2000px', touchAction: 'pan-y' }}
+          onPointerDown={onFlipDown}
+          onPointerMove={onFlipMove}
+          onPointerUp={onFlipUp}
+          onPointerCancel={onFlipUp}
+        >
+          {showFlip && underneathPage && (
+            <div className="absolute inset-0">
+              {renderStaticPage(underneathPage, underneathOffset, 'under')}
             </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+          )}
+          <div
+            style={{
+              transform: `rotateY(${rotation}deg)`,
+              transformOrigin: 'left center',
+              transition: flipTransition,
+              backfaceVisibility: 'hidden',
+              willChange: showFlip ? 'transform' : undefined,
+              // Sanfter Schatten unter der „abhebenden" Seite, intensiver bei größerem Winkel
+              boxShadow: showFlip
+                ? `${-Math.abs(rotation) * 0.2}px 0 ${Math.abs(rotation) * 0.4}px rgba(0,0,0,0.3)`
+                : undefined,
+            }}
+          >
+            {renderStaticPage(rotatingPage, rotatingOffset, 'top')}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -706,16 +873,17 @@ function DraggableCardSlot({
       ref={setNodeRef}
       {...attributes}
       {...(editMode ? listeners : {})}
-      className="relative rounded-xl overflow-hidden border aspect-[2.5/3.5] w-full"
+      className="relative rounded-xl overflow-hidden aspect-[2.5/3.5] w-full"
       style={{
         borderColor: isOver ? accent : `${accent}55`,
+        borderStyle: isOver ? 'dashed' : 'solid',
         borderWidth: isOver ? 2 : 1,
         background: '#1a1a1a',
         opacity: isDragging ? 0.3 : 1,
         boxShadow: isOver ? `0 0 0 4px ${accent}40` : undefined,
         transform: isOver ? 'scale(1.04)' : undefined,
         transition: 'border-color 150ms ease-out, box-shadow 150ms ease-out, transform 150ms ease-out',
-        animation: editMode && !isDragging ? 'binder-wiggle 0.5s ease-in-out infinite alternate' : undefined,
+        animation: editMode && !isDragging && !isOver ? 'binder-wiggle 0.5s ease-in-out infinite alternate' : undefined,
         touchAction: editMode ? 'none' : undefined,
       }}
       onClick={() => { if (!editMode) onTap(); }}
