@@ -9,7 +9,8 @@ import { TCG_TYPES } from '@/lib/hooks/useCardBrowser';
 import { getAllSets, filterSets, type TcgSet } from '@/lib/firestore/sets';
 import { SERIES_NAMES_DE } from '@/lib/card-constants';
 import { BINDER_SIZES, type BinderSize } from '@/lib/binder-sizes';
-import type { BinderDoc } from '@/types';
+import { initialSheetCount } from '@/lib/binder-sheets';
+import type { BinderDoc, BinderPage } from '@/types';
 
 type PickerTab = 'icons' | 'types' | 'set';
 
@@ -67,7 +68,18 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
       if (existing) {
         await updateBinder(existing.id, data);
       } else {
-        await addBinder({ ...data, size: isBinder ? size : 9, sortOrder: Date.now() });
+        // Bei Neuanlage: leere Blätter direkt mit anlegen, damit der User
+        // sofort durchblättern kann. Anzahl aus Capacity berechnet (1 Blatt = 2 Pages).
+        const sheetCount = isBinder ? initialSheetCount(parsedCapacity, size) : 0;
+        const initialPages: BinderPage[] = isBinder
+          ? Array.from({ length: sheetCount * 2 }, () => ({ slots: Array(size).fill(null) }))
+          : [];
+        await addBinder({
+          ...data,
+          size: isBinder ? size : 9,
+          sortOrder: Date.now(),
+          ...(initialPages.length > 0 ? { pages: initialPages } : {}),
+        });
       }
       onSaved();
     } finally {

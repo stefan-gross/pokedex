@@ -15,13 +15,20 @@ import {
   SortableContext, useSortable, arrayMove, rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { getBinder, deleteBinder, setBinderPages, cardIdsToPages } from '@/lib/firestore/binders';
+import {
+  getBinder, deleteBinder, setBinderPages, cardIdsToPages,
+  ensureDefaultBinder, addCardToBinder,
+} from '@/lib/firestore/binders';
 import { getCard } from '@/lib/firestore/cards';
 import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { BinderIcon } from '@/lib/binder-icons';
 import { binderSizeLabel, binderSizeCols, type BinderSize } from '@/lib/binder-sizes';
+import {
+  pagesToSheets, sheetsToPages, ensureEvenPages, pagesToSpreads, spreadLabel,
+  type BookSpread,
+} from '@/lib/binder-sheets';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal';
 import type { BinderDoc, BinderPage, CardDoc } from '@/types';
@@ -30,7 +37,7 @@ interface Props {
   params: Promise<{ id: string }>;
 }
 
-type View = 'binder' | 'page' | 'grid';
+type View = 'binder' | 'spread' | 'grid';
 
 export default function BinderDetailPage({ params }: Props) {
   const { id } = use(params);
@@ -47,9 +54,9 @@ export default function BinderDetailPage({ params }: Props) {
   const [showEdit, setShowEdit] = useState(false);
   const [showActions, setShowActions] = useState(false);
   const [view, setView] = useState<View>('binder');
-  const [pageIdx, setPageIdx] = useState<number>(0);
+  const [spreadIdx, setSpreadIdx] = useState<number>(0);
   const [editMode, setEditMode] = useState(false);
-  const [pickerSlot, setPickerSlot] = useState<{ page: number; slot: number } | null>(null);
+  const [pickerSlot, setPickerSlot] = useState<{ pageIdx: number; slotIdx: number } | null>(null);
   const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
   const [detailOwned, setDetailOwned] = useState<CardDoc[]>([]);
 
@@ -64,7 +71,9 @@ export default function BinderDetailPage({ params }: Props) {
     const ownedCards = owned.filter(Boolean) as CardDoc[];
     setCards(ownedCards);
     const size = (b.size ?? 9) as BinderSize;
-    setPages(b.pages && b.pages.length > 0 ? b.pages : cardIdsToPages(b.cardIds, size));
+    const rawPages = b.pages && b.pages.length > 0 ? b.pages : cardIdsToPages(b.cardIds, size);
+    // Pages immer gerade Anzahl — Sheets sind Vorder+Rück-Paare
+    setPages(ensureEvenPages(rawPages, size));
     if (b.collectionType === 'box') setView('grid');
     setLoading(false);
   }, [id, router]);
@@ -92,46 +101,80 @@ export default function BinderDetailPage({ params }: Props) {
     setDetailCard(catalogCardToInfo(cc));
   };
 
-  // ── Slot-Operationen ────────────────────────────────────────────────────
-  const swapSlots = (slotA: number, slotB: number) => {
-    if (slotA === slotB) return;
+  // ── Slot-Operationen (über Page-Index) ─────────────────────────────────
+  const swapSlots = (pA: number, sA: number, pB: number, sB: number) => {
+    if (pA === pB && sA === sB) return;
     const next = pages.map(p => ({ slots: [...p.slots] }));
-    const cur = next[pageIdx];
-    if (!cur) return;
-    [cur.slots[slotA], cur.slots[slotB]] = [cur.slots[slotB], cur.slots[slotA]];
+    if (!next[pA] || !next[pB]) return;
+    [next[pA].slots[sA], next[pB].slots[sB]] = [next[pB].slots[sB], next[pA].slots[sA]];
     persistPages(next);
   };
 
-  const clearSlot = (slotI: number) => {
+  const clearSlot = (pageIdx: number, slotIdx: number) => {
     const next = pages.map(p => ({ slots: [...p.slots] }));
     if (!next[pageIdx]) return;
-    next[pageIdx].slots[slotI] = null;
+    next[pageIdx].slots[slotIdx] = null;
     persistPages(next);
   };
 
-  const assignSlot = (pageI: number, slotI: number, cardDocId: string) => {
+  const assignSlot = (pageIdx: number, slotIdx: number, cardDocId: string) => {
     const next = pages.map(p => ({ slots: [...p.slots] }));
-    if (!next[pageI]) return;
-    next[pageI].slots[slotI] = cardDocId;
+    if (!next[pageIdx]) return;
+    next[pageIdx].slots[slotIdx] = cardDocId;
     persistPages(next);
   };
 
-  // ── Page-Verwaltung ─────────────────────────────────────────────────────
-  const addPage = () => persistPages([...pages, { slots: Array(binderSize).fill(null) }]);
-
-  const deletePage = (i: number) => {
-    const hasContent = pages[i].slots.some(s => !!s);
-    if (hasContent && !confirm('Diese Seite enthält Karten. Wirklich löschen?')) return;
-    const next = pages.filter((_, idx) => idx !== i);
-    persistPages(next.length === 0 ? [{ slots: Array(binderSize).fill(null) }] : next);
-    if (pageIdx >= next.length) setPageIdx(Math.max(0, next.length - 1));
+  // ── Sheet-Verwaltung ────────────────────────────────────────────────────
+  const addSheet = () => {
+    const empty = (): BinderPage => ({ slots: Array(binderSize).fill(null) });
+    persistPages([...pages, empty(), empty()]);
   };
 
-  const movePagesByIds = (fromId: string, toId: string) => {
-    const from = Number(fromId.replace('page-', ''));
-    const to   = Number(toId.replace('page-', ''));
+  const deleteSheet = async (sheetIdx: number) => {
+    const frontIdx = sheetIdx * 2;
+    const backIdx = sheetIdx * 2 + 1;
+    const cardIdsOnSheet = [
+      ...(pages[frontIdx]?.slots ?? []),
+      ...(pages[backIdx]?.slots ?? []),
+    ].filter((s): s is string => !!s);
+
+    if (cardIdsOnSheet.length > 0) {
+      const ok = confirm(
+        `Blatt ${sheetIdx + 1} enthält ${cardIdsOnSheet.length} Karte(n). ` +
+        `Sie werden zurück in „Meine Sammlung" verschoben. Fortfahren?`
+      );
+      if (!ok) return;
+    }
+
+    // Karten in den Default-Binder schieben
+    if (cardIdsOnSheet.length > 0) {
+      try {
+        const defaultId = await ensureDefaultBinder();
+        for (const cid of cardIdsOnSheet) {
+          await addCardToBinder(defaultId, cid);
+        }
+      } catch (e) {
+        console.error('[binder] cascade to default failed', e);
+      }
+    }
+
+    // Sheet aus Pages entfernen
+    const next = pages.filter((_, i) => i !== frontIdx && i !== backIdx);
+    const safe = next.length === 0
+      ? [{ slots: Array(binderSize).fill(null) }, { slots: Array(binderSize).fill(null) }]
+      : ensureEvenPages(next, binderSize);
+    persistPages(safe);
+    // Spread-Index korrigieren falls über das Ende hinaus
+    const newTotalSheets = safe.length / 2;
+    if (spreadIdx > newTotalSheets) setSpreadIdx(Math.max(0, newTotalSheets));
+  };
+
+  const moveSheetByIds = (fromId: string, toId: string) => {
+    const from = Number(fromId.replace('sheet-', ''));
+    const to   = Number(toId.replace('sheet-', ''));
     if (from === to) return;
-    persistPages(arrayMove(pages, from, to));
+    const sheets = pagesToSheets(pages, binderSize);
+    persistPages(sheetsToPages(arrayMove(sheets, from, to)));
   };
 
   if (loading || !binder) {
@@ -146,6 +189,8 @@ export default function BinderDetailPage({ params }: Props) {
   const layoutCols = binderSizeCols(binderSize);
   const layoutLabel = isBox ? 'Box' : binderSizeLabel(binderSize);
   const totalCapacity = isBox ? null : (binder.capacity ?? null);
+  const sheets = pagesToSheets(pages, binderSize);
+  const spreads = pagesToSpreads(pages);
 
   return (
     <div className="min-h-screen pb-24">
@@ -167,10 +212,7 @@ export default function BinderDetailPage({ params }: Props) {
             <p className="text-xs text-muted-foreground">{layoutLabel}</p>
           </div>
           <div className="flex flex-col items-end shrink-0 leading-none">
-            <span
-              className="text-[36px] font-extrabold tabular-nums"
-              style={{ color: binderColor }}
-            >
+            <span className="text-[36px] font-extrabold tabular-nums" style={{ color: binderColor }}>
               {cards.length}
             </span>
             {totalCapacity != null && (
@@ -191,7 +233,7 @@ export default function BinderDetailPage({ params }: Props) {
         <div className="flex items-center justify-between gap-2 mt-3">
           {!isBox && (
             <div className="flex rounded-full p-0.5 bg-secondary border border-border">
-              <ViewBtn icon={<BookOpen size={15} />} active={view === 'binder'} onClick={() => { setView('binder'); setEditMode(false); }} color={binderColor} label="Doppelseiten" />
+              <ViewBtn icon={<BookOpen size={15} />} active={view === 'binder'} onClick={() => { setView('binder'); setEditMode(false); }} color={binderColor} label="Blätter" />
               <ViewBtn icon={<LayoutGrid size={15} />} active={view === 'grid'} onClick={() => { setView('grid'); setEditMode(false); }} color={binderColor} label="Gitter" />
             </div>
           )}
@@ -213,17 +255,11 @@ export default function BinderDetailPage({ params }: Props) {
 
         {showActions && (
           <div className="absolute right-4 top-[calc(100%-8px)] bg-card border border-border rounded-md shadow-lg overflow-hidden z-30 min-w-[160px]">
-            <button
-              onClick={() => { setShowActions(false); setShowEdit(true); }}
-              className="w-full px-4 py-3 text-sm text-left hover:bg-secondary"
-            >
+            <button onClick={() => { setShowActions(false); setShowEdit(true); }} className="w-full px-4 py-3 text-sm text-left hover:bg-secondary">
               Bearbeiten
             </button>
             {!binder.isDefault && (
-              <button
-                onClick={() => { setShowActions(false); handleDelete(); }}
-                className="w-full px-4 py-3 text-sm text-left text-destructive hover:bg-secondary"
-              >
+              <button onClick={() => { setShowActions(false); handleDelete(); }} className="w-full px-4 py-3 text-sm text-left text-destructive hover:bg-secondary">
                 Sammlung löschen
               </button>
             )}
@@ -235,29 +271,35 @@ export default function BinderDetailPage({ params }: Props) {
         <GridView cards={cards} onCardTap={openDetail} />
       ) : view === 'binder' ? (
         <BinderOverview
-          pages={pages}
-          binderSize={binderSize}
+          sheets={sheets}
           cols={layoutCols}
           cardsById={cardsById}
           accent={binderColor}
           editMode={editMode}
-          onOpenPage={(i) => { setPageIdx(i); setView('page'); }}
-          onAddPage={addPage}
-          onDeletePage={deletePage}
-          onMovePage={movePagesByIds}
+          onOpenSheet={(sheetIdx) => {
+            // Sheet n öffnet Spread, das die Vorderseite (page 2n) zeigt.
+            // Spread 0 zeigt Vorder Blatt 1 (allein). Spread k zeigt Rück Blatt k + Vorder Blatt k+1.
+            // Wir wollen also: Vorder Blatt n+1 sichtbar → spread n (Buch-Anfang) wenn n=0, sonst spread n.
+            setSpreadIdx(sheetIdx === 0 ? 0 : sheetIdx);
+            setView('spread');
+          }}
+          onAddSheet={addSheet}
+          onDeleteSheet={deleteSheet}
+          onMoveSheet={moveSheetByIds}
         />
       ) : (
-        <PageDetail
-          pages={pages}
-          pageIdx={Math.min(pageIdx, pages.length - 1)}
+        <SpreadView
+          spreads={spreads}
+          spreadIdx={Math.min(spreadIdx, spreads.length - 1)}
           cols={layoutCols}
+          binderSize={binderSize}
           cardsById={cardsById}
           accent={binderColor}
           editMode={editMode}
-          onChangePageIdx={setPageIdx}
-          onSwapInPage={swapSlots}
+          onChangeSpread={setSpreadIdx}
+          onSwap={swapSlots}
           onClearSlot={clearSlot}
-          onAddToSlot={(slot) => setPickerSlot({ page: Math.min(pageIdx, pages.length - 1), slot })}
+          onAddToSlot={(pageIdx, slotIdx) => setPickerSlot({ pageIdx, slotIdx })}
           onBack={() => setView('binder')}
           onCardTap={openDetail}
         />
@@ -276,7 +318,7 @@ export default function BinderDetailPage({ params }: Props) {
           excludeBinderId={binder.id}
           onClose={() => setPickerSlot(null)}
           onPick={(cardDocId) => {
-            assignSlot(pickerSlot.page, pickerSlot.slot, cardDocId);
+            assignSlot(pickerSlot.pageIdx, pickerSlot.slotIdx, cardDocId);
             getCard(cardDocId).then(c => {
               if (c) setCards(prev => prev.some(p => p.id === c.id) ? prev : [...prev, c]);
             });
@@ -312,6 +354,26 @@ function ViewBtn({
     >
       {icon}
     </button>
+  );
+}
+
+// ── Ring-Spalte (Loch-Linie eines Blatts) ─────────────────────────────────
+function RingsCol() {
+  return (
+    <div className="flex flex-col items-center justify-around self-stretch py-2" style={{ width: 12 }}>
+      {[0, 1, 2, 3].map(i => (
+        <span
+          key={i}
+          className="rounded-full"
+          style={{
+            width: 5, height: 5,
+            background: 'var(--muted-foreground)',
+            opacity: 0.45,
+            boxShadow: 'inset 0 0.5px 1px rgba(0,0,0,0.3)',
+          }}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -384,26 +446,91 @@ function GridView({ cards, onCardTap }: { cards: CardDoc[]; onCardTap: (c: CardD
   );
 }
 
-// ── Binder Overview — Doppelseiten mit dnd-kit-Sortable ───────────────────
-function BinderOverview({
-  pages, binderSize, cols, cardsById, accent, editMode,
-  onOpenPage, onAddPage, onDeletePage, onMovePage,
+// ── Sheet-Tile (Vorder + Rück mit Ringen an beiden Außenrändern) ──────────
+function SheetTile({
+  sheet, cols, cardsById, accent, editMode, onOpen, onDelete, isOverlay,
 }: {
-  pages: BinderPage[]; binderSize: number; cols: number;
-  cardsById: Map<string, CardDoc>; accent: string; editMode: boolean;
-  onOpenPage: (i: number) => void;
-  onAddPage: () => void;
-  onDeletePage: (i: number) => void;
-  onMovePage: (fromId: string, toId: string) => void;
+  sheet: { front: BinderPage; back: BinderPage; sheetIdx: number };
+  cols: number;
+  cardsById: Map<string, CardDoc>;
+  accent: string;
+  editMode: boolean;
+  onOpen?: () => void;
+  onDelete?: () => void;
+  isOverlay?: boolean;
+}) {
+  const slotsFilled = sheet.front.slots.filter(Boolean).length + sheet.back.slots.filter(Boolean).length;
+  const slotsTotal = sheet.front.slots.length + sheet.back.slots.length;
+  return (
+    <div
+      className="bg-card rounded-xl border shadow-card p-2"
+      style={{
+        borderColor: isOverlay ? accent : 'var(--border)',
+        borderStyle: 'solid',
+        borderWidth: isOverlay ? 2 : 1,
+        cursor: editMode ? undefined : 'pointer',
+      }}
+      onClick={() => { if (!editMode && onOpen) onOpen(); }}
+    >
+      <div className="flex items-stretch gap-1.5">
+        <RingsCol />
+        <div className="flex-1 min-w-0">
+          <MiniPageGrid slots={sheet.front.slots} cols={cols} cardsById={cardsById} />
+          <div className="text-[9px] text-center text-muted-foreground/70 mt-1">Vorder</div>
+        </div>
+        {/* Buchrücken-Knick */}
+        <div className="self-stretch w-px bg-border" />
+        <div className="flex-1 min-w-0">
+          <MiniPageGrid slots={sheet.back.slots} cols={cols} cardsById={cardsById} />
+          <div className="text-[9px] text-center text-muted-foreground/70 mt-1">Rück</div>
+        </div>
+        <RingsCol />
+      </div>
+      <div className="flex items-center justify-between mt-2">
+        <span className="text-[11px] text-muted-foreground">
+          Blatt {sheet.sheetIdx + 1}
+          {' · '}
+          <span className="tabular-nums">
+            {slotsFilled}/{slotsTotal}
+          </span>
+        </span>
+        {editMode && onDelete && (
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); onDelete(); }}
+            className="w-6 h-6 rounded-md flex items-center justify-center text-white"
+            style={{ background: 'var(--action-delete)' }}
+            aria-label="Blatt löschen"
+          >
+            <X size={11} strokeWidth={3} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Binder Overview — Sheets als Sortable mit dnd-kit ─────────────────────
+function BinderOverview({
+  sheets, cols, cardsById, accent, editMode,
+  onOpenSheet, onAddSheet, onDeleteSheet, onMoveSheet,
+}: {
+  sheets: { front: BinderPage; back: BinderPage; sheetIdx: number }[];
+  cols: number;
+  cardsById: Map<string, CardDoc>;
+  accent: string;
+  editMode: boolean;
+  onOpenSheet: (sheetIdx: number) => void;
+  onAddSheet: () => void;
+  onDeleteSheet: (sheetIdx: number) => void;
+  onMoveSheet: (fromId: string, toId: string) => void;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    // Längeres Long-Press auf Mobil + großzügigere Tolerance verhindert,
-    // dass kleine Finger-Bewegungen während des Press die Aktivierung killen.
     useSensor(TouchSensor, { activationConstraint: { delay: 350, tolerance: 16 } }),
   );
 
-  const items = pages.map((_, i) => `page-${i}`);
+  const items = sheets.map(s => `sheet-${s.sheetIdx}`);
   const [activeId, setActiveId] = useState<string | null>(null);
 
   return (
@@ -414,40 +541,43 @@ function BinderOverview({
       onDragEnd={(e: DragEndEvent) => {
         setActiveId(null);
         if (!e.over || e.over.id === e.active.id) return;
-        onMovePage(String(e.active.id), String(e.over.id));
+        onMoveSheet(String(e.active.id), String(e.over.id));
       }}
       onDragCancel={() => setActiveId(null)}
     >
       <SortableContext items={items} strategy={rectSortingStrategy}>
-        <div className="px-3 pt-4 grid grid-cols-2 gap-3">
-          {pages.map((page, pageI) => (
-            <SortablePageTile
-              key={`page-${pageI}`}
-              id={`page-${pageI}`}
-              pageI={pageI}
-              page={page}
-              binderSize={binderSize}
+        <div className="px-3 pt-4 flex flex-col gap-3">
+          {sheets.map(sheet => (
+            <SortableSheetTile
+              key={`sheet-${sheet.sheetIdx}`}
+              id={`sheet-${sheet.sheetIdx}`}
+              sheet={sheet}
               cols={cols}
               cardsById={cardsById}
               accent={accent}
               editMode={editMode}
-              onOpen={() => onOpenPage(pageI)}
-              onDelete={() => onDeletePage(pageI)}
+              onOpen={() => onOpenSheet(sheet.sheetIdx)}
+              onDelete={() => onDeleteSheet(sheet.sheetIdx)}
             />
           ))}
 
           {editMode && (
             <button
-              onClick={onAddPage}
-              className="relative bg-card rounded-xl border-2 border-dashed border-border p-2 flex flex-col"
-              aria-label="Neue Seite"
+              onClick={onAddSheet}
+              className="relative bg-card rounded-xl border-2 border-dashed border-border p-2"
+              aria-label="Neues Blatt"
             >
-              <MiniPageGrid
-                slots={Array(binderSize).fill(null)}
-                cols={cols}
-                cardsById={cardsById}
-                dim
-              />
+              <div className="flex items-stretch gap-1.5 opacity-50">
+                <RingsCol />
+                <div className="flex-1 min-w-0">
+                  <MiniPageGrid slots={Array(sheets[0]?.front.slots.length ?? 9).fill(null)} cols={cols} cardsById={cardsById} dim />
+                </div>
+                <div className="self-stretch w-px bg-border" />
+                <div className="flex-1 min-w-0">
+                  <MiniPageGrid slots={Array(sheets[0]?.back.slots.length ?? 9).fill(null)} cols={cols} cardsById={cardsById} dim />
+                </div>
+                <RingsCol />
+              </div>
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <span
                   className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg text-white"
@@ -456,9 +586,7 @@ function BinderOverview({
                   <Plus size={24} strokeWidth={3} />
                 </span>
               </div>
-              <div className="flex items-center justify-between mt-2 pointer-events-none">
-                <span className="text-[11px] text-muted-foreground">Neue Seite</span>
-              </div>
+              <div className="mt-2 text-[11px] text-muted-foreground text-center">Neues Blatt</div>
             </button>
           )}
         </div>
@@ -467,16 +595,12 @@ function BinderOverview({
       <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(.2,.9,.3,1)' }}>
         {activeId
           ? (() => {
-              const idx = Number(activeId.replace('page-', ''));
-              const page = pages[idx];
-              if (!page) return null;
+              const idx = Number(activeId.replace('sheet-', ''));
+              const s = sheets.find(x => x.sheetIdx === idx);
+              if (!s) return null;
               return (
-                <div
-                  className="bg-card rounded-xl border-2 shadow-2xl p-2 flex flex-col"
-                  style={{ borderColor: accent, transform: 'rotate(-2deg) scale(1.05)' }}
-                >
-                  <MiniPageGrid slots={page.slots} cols={cols} cardsById={cardsById} />
-                  <div className="mt-2 text-[11px] text-muted-foreground">Seite {idx + 1}</div>
+                <div style={{ transform: 'rotate(-1.5deg) scale(1.03)' }}>
+                  <SheetTile sheet={s} cols={cols} cardsById={cardsById} accent={accent} editMode={false} isOverlay />
                 </div>
               );
             })()
@@ -486,13 +610,11 @@ function BinderOverview({
   );
 }
 
-function SortablePageTile({
-  id, pageI, page, binderSize, cols, cardsById, accent, editMode, onOpen, onDelete,
+function SortableSheetTile({
+  id, sheet, cols, cardsById, accent, editMode, onOpen, onDelete,
 }: {
   id: string;
-  pageI: number;
-  page: BinderPage;
-  binderSize: number;
+  sheet: { front: BinderPage; back: BinderPage; sheetIdx: number };
   cols: number;
   cardsById: Map<string, CardDoc>;
   accent: string;
@@ -510,73 +632,50 @@ function SortablePageTile({
     transition,
     opacity: isDragging ? 0.3 : 1,
     animation: editMode && !isDragging && !isOver ? 'binder-wiggle 0.5s ease-in-out infinite alternate' : undefined,
-    // touch-action: none verhindert, dass der Browser den Touch als Scroll
-    // interpretiert und den Drag abbricht — kritisch für Touch-DnD auf iOS.
     touchAction: editMode ? 'none' : undefined,
-    // Drop-Target-Highlight: gestrichelte, dickere Border in Akzentfarbe
-    // + Ring-Shadow + Snap-Scale, gleich wie bei Karten-Slots
     borderColor: isOver ? accent : undefined,
     borderStyle: isOver ? 'dashed' : undefined,
     borderWidth: isOver ? 2 : undefined,
-    boxShadow: isOver ? `0 0 0 4px ${accent}40, 0 4px 16px rgba(30,40,80,0.08)` : undefined,
-    scale: isOver ? '1.03' : undefined,
+    boxShadow: isOver ? `0 0 0 4px ${accent}40` : undefined,
+    scale: isOver ? '1.02' : undefined,
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className="bg-card rounded-xl border border-border shadow-card p-2 flex flex-col"
-      onClick={() => { if (!editMode) onOpen(); }}
-    >
-      <MiniPageGrid slots={page.slots} cols={cols} cardsById={cardsById} />
-      <div className="flex items-center justify-between mt-2">
-        <span className="text-[11px] text-muted-foreground">
-          Seite {pageI + 1}
-          {' · '}
-          <span className="tabular-nums">
-            {page.slots.filter(Boolean).length}/{binderSize}
-          </span>
-        </span>
-        {editMode && (
-          <button
-            onPointerDown={e => e.stopPropagation()}
-            onClick={e => { e.stopPropagation(); onDelete(); }}
-            className="w-6 h-6 rounded-md flex items-center justify-center text-white"
-            style={{ background: 'var(--action-delete)' }}
-            aria-label="Seite löschen"
-          >
-            <X size={11} strokeWidth={3} />
-          </button>
-        )}
-      </div>
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <SheetTile
+        sheet={sheet}
+        cols={cols}
+        cardsById={cardsById}
+        accent={accent}
+        editMode={editMode}
+        onOpen={onOpen}
+        onDelete={onDelete}
+      />
     </div>
   );
 }
 
-// ── Page Detail — Slots als dnd-kit-Sortable + Buch-Blätter-Swipe ─────────
+// ── Spread View — Doppelseite mit Karten-Drag über beide Seiten ───────────
 type FlipState = { dir: 'forward' | 'backward'; progress: number; committing: boolean } | null;
 
-function PageDetail({
-  pages, pageIdx, cols, cardsById, accent, editMode,
-  onChangePageIdx, onSwapInPage, onClearSlot, onAddToSlot, onBack, onCardTap,
+function SpreadView({
+  spreads, spreadIdx, cols, binderSize, cardsById, accent, editMode,
+  onChangeSpread, onSwap, onClearSlot, onAddToSlot, onBack, onCardTap,
 }: {
-  pages: BinderPage[]; pageIdx: number; cols: number;
+  spreads: BookSpread[]; spreadIdx: number; cols: number; binderSize: number;
   cardsById: Map<string, CardDoc>; accent: string; editMode: boolean;
-  onChangePageIdx: (i: number) => void;
-  onSwapInPage: (slotA: number, slotB: number) => void;
-  onClearSlot: (slot: number) => void;
-  onAddToSlot: (slot: number) => void;
+  onChangeSpread: (i: number) => void;
+  onSwap: (pA: number, sA: number, pB: number, sB: number) => void;
+  onClearSlot: (pageIdx: number, slotIdx: number) => void;
+  onAddToSlot: (pageIdx: number, slotIdx: number) => void;
   onBack: () => void;
   onCardTap: (c: CardDoc) => void;
 }) {
-  const page = pages[pageIdx];
-  const totalPages = pages.length;
-  const [activeSlot, setActiveSlot] = useState<number | null>(null);
+  const spread = spreads[spreadIdx];
+  const totalSpreads = spreads.length;
+  const [activeSlot, setActiveSlot] = useState<{ pageIdx: number; slotIdx: number } | null>(null);
 
-  // Buch-Blätter-State (nur im View-Mode aktiv)
+  // Buch-Blätter-State
   const [flip, setFlip] = useState<FlipState>(null);
   const flipStartRef = useRef<{ x: number; y: number; w: number; locked: boolean } | null>(null);
 
@@ -585,67 +684,77 @@ function PageDetail({
     useSensor(TouchSensor, { activationConstraint: { delay: 350, tolerance: 8 } }),
   );
 
-  if (!page) {
+  if (!spread) {
     return <div className="px-4 py-8 text-center text-muted-foreground">Keine Seite</div>;
   }
 
-  const activeCard = activeSlot != null && page.slots[activeSlot]
-    ? cardsById.get(page.slots[activeSlot]!)
+  const activeCard = activeSlot && spread
+    ? cardsById.get(
+        (activeSlot.pageIdx === spread.leftPageIdx ? spread.left : spread.right)
+          ?.slots[activeSlot.slotIdx] ?? ''
+      )
     : null;
 
-  // ── Static Page Grid (für View-Mode + Flip-Layers) ─────────────────────
-  const renderStaticPage = (p: BinderPage, slotOffset: number, key: string) => (
-    <div
-      key={key}
-      className="grid gap-2 px-3 pb-6"
-      style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
-    >
-      {p.slots.map((slotId, slotI) => {
-        const card = slotId ? cardsById.get(slotId) : undefined;
-        return (
-          <div key={slotI} className="relative">
-            {card ? (
-              <button
-                onClick={() => onCardTap(card)}
-                className="relative rounded-xl overflow-hidden border block w-full aspect-[2.5/3.5]"
-                style={{ borderColor: `${accent}55`, background: '#1a1a1a' }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={card.tcgImageUrl ?? `https://images.pokemontcg.io/${card.setId}/${card.number.split('/')[0]}_hires.png`}
-                  alt={card.name}
-                  className="w-full h-full object-cover pointer-events-none"
-                  draggable={false}
-                />
-                {card.quantity > 1 && (
-                  <div className="absolute top-1 right-1 text-[9px] font-bold px-1 py-0.5 rounded bg-black/70 text-white">
-                    ×{card.quantity}
-                  </div>
-                )}
-                <div
-                  className="absolute bottom-0 left-0 right-0 px-1 pb-1 pt-3 pointer-events-none"
-                  style={{ background: 'linear-gradient(to top, rgba(0,0,0,.7), transparent)' }}
-                >
-                  <div className="text-[9px] text-white/80 truncate">{card.number}</div>
-                </div>
-              </button>
-            ) : (
-              <div
-                className="rounded-xl border border-dashed border-border aspect-[2.5/3.5] w-full"
-                style={{ background: 'var(--secondary)' }}
-              >
-                <div className="w-full h-full flex items-center justify-center">
-                  <span className="text-muted-foreground/30 text-lg">{slotOffset + slotI + 1}</span>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })}
+  // ── Page-Renderer (für Spread-Layout, optional DnD-Slots) ──────────────
+  const renderSpreadSide = (
+    page: BinderPage | null,
+    pageIdx: number | null,
+    side: 'left' | 'right',
+  ) => {
+    if (!page || pageIdx == null) {
+      return (
+        <div
+          className="flex-1 rounded-lg border border-dashed border-border bg-secondary/30"
+          style={{ minHeight: 200, opacity: 0.4 }}
+          aria-hidden
+        />
+      );
+    }
+    return (
+      <div
+        className="flex-1 grid gap-1.5"
+        style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+      >
+        {page.slots.map((slotId, slotI) => {
+          const card = slotId ? cardsById.get(slotId) : undefined;
+          const slotKey = `slot-${pageIdx}-${slotI}`;
+          return card ? (
+            <DraggableCardSlot
+              key={slotKey}
+              id={slotKey}
+              card={card}
+              accent={accent}
+              editMode={editMode}
+              isDragging={activeSlot?.pageIdx === pageIdx && activeSlot?.slotIdx === slotI}
+              onTap={() => onCardTap(card)}
+              onDelete={() => onClearSlot(pageIdx, slotI)}
+            />
+          ) : (
+            <DroppableEmptySlot
+              key={slotKey}
+              id={slotKey}
+              n={pageIdx * binderSize + slotI + 1}
+              editMode={editMode}
+              accent={accent}
+              onAdd={() => onAddToSlot(pageIdx, slotI)}
+            />
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderSpread = (sp: BookSpread, key: string) => (
+    <div key={key} className="flex items-stretch gap-1 px-2">
+      <RingsCol />
+      {renderSpreadSide(sp.left, sp.leftPageIdx, 'left')}
+      <div className="self-stretch w-px bg-border my-1" />
+      {renderSpreadSide(sp.right, sp.rightPageIdx, 'right')}
+      <RingsCol />
     </div>
   );
 
-  // ── Flip-Pointer-Handlers ──────────────────────────────────────────────
+  // ── Flip-Pointer-Handlers (View-Mode only) ─────────────────────────────
   const onFlipDown = (e: React.PointerEvent) => {
     if (editMode) return;
     const w = (e.currentTarget as HTMLDivElement).clientWidth;
@@ -655,18 +764,14 @@ function PageDetail({
     if (editMode || !flipStartRef.current || flip?.committing) return;
     const dx = e.clientX - flipStartRef.current.x;
     const dy = e.clientY - flipStartRef.current.y;
-    // Erst dann committen, wenn die Geste klar horizontal ist
     if (!flipStartRef.current.locked) {
       if (Math.abs(dx) < 10) return;
-      if (Math.abs(dy) > Math.abs(dx)) {
-        flipStartRef.current = null; // war ein Scroll
-        return;
-      }
+      if (Math.abs(dy) > Math.abs(dx)) { flipStartRef.current = null; return; }
       flipStartRef.current.locked = true;
     }
     const dir: 'forward' | 'backward' = dx < 0 ? 'forward' : 'backward';
-    if (dir === 'forward' && pageIdx >= totalPages - 1) return;
-    if (dir === 'backward' && pageIdx === 0) return;
+    if (dir === 'forward' && spreadIdx >= totalSpreads - 1) return;
+    if (dir === 'backward' && spreadIdx === 0) return;
     const progress = Math.max(0, Math.min(1, Math.abs(dx) / flipStartRef.current.w));
     setFlip({ dir, progress, committing: false });
   };
@@ -674,70 +779,51 @@ function PageDetail({
     if (!flipStartRef.current) return;
     flipStartRef.current = null;
     if (!flip) return;
-    // Über 35 % der Breite gezogen → committen
     if (flip.progress > 0.35) {
-      const targetIdx = flip.dir === 'forward' ? pageIdx + 1 : pageIdx - 1;
+      const target = flip.dir === 'forward' ? spreadIdx + 1 : spreadIdx - 1;
       setFlip({ ...flip, progress: 1, committing: true });
-      setTimeout(() => {
-        onChangePageIdx(targetIdx);
-        setFlip(null);
-      }, 350);
+      setTimeout(() => { onChangeSpread(target); setFlip(null); }, 350);
     } else {
       setFlip({ ...flip, progress: 0, committing: true });
       setTimeout(() => setFlip(null), 250);
     }
   };
 
-  // ── Layout-Berechnungen für Flip-Layers ────────────────────────────────
+  // Layout-Berechnungen für Flip-Layers
   const showFlip = flip != null;
-  const slotOffset = pageIdx * page.slots.length;
-  // Die rotierende Seite: bei forward = aktuelle Seite, bei backward = vorherige Seite
-  const rotatingPage = !showFlip ? page
-    : flip.dir === 'forward' ? page : pages[pageIdx - 1];
-  const rotatingOffset = !showFlip ? slotOffset
-    : flip.dir === 'forward' ? slotOffset : (pageIdx - 1) * page.slots.length;
-  const underneathPage = !showFlip ? null
-    : flip.dir === 'forward' ? pages[pageIdx + 1] : page;
-  const underneathOffset = !showFlip ? 0
-    : flip.dir === 'forward' ? (pageIdx + 1) * page.slots.length : slotOffset;
-  // Rotation: forward 0 → -180; backward -180 → 0
-  const rotation = !showFlip
-    ? 0
-    : flip.dir === 'forward'
-      ? -180 * flip.progress
-      : -180 * (1 - flip.progress);
+  const rotatingSpread = !showFlip ? spread
+    : flip.dir === 'forward' ? spread : spreads[spreadIdx - 1];
+  const underneathSpread = !showFlip ? null
+    : flip.dir === 'forward' ? spreads[spreadIdx + 1] : spread;
+  const rotation = !showFlip ? 0
+    : flip.dir === 'forward' ? -180 * flip.progress : -180 * (1 - flip.progress);
   const flipTransition = flip?.committing ? 'transform 350ms cubic-bezier(.4,.0,.2,1)' : 'none';
 
   return (
     <div>
       <div className="flex items-center justify-between px-4 pt-2 pb-3">
-        <button
-          onClick={onBack}
-          className="w-9 h-9 rounded-md flex items-center justify-center"
-          style={{ background: 'var(--secondary)' }}
-          aria-label="Zurück zur Übersicht"
-        >
+        <button onClick={onBack} className="w-9 h-9 rounded-md flex items-center justify-center" style={{ background: 'var(--secondary)' }} aria-label="Zurück">
           <ChevronLeft size={16} />
         </button>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => onChangePageIdx(Math.max(0, pageIdx - 1))}
-            disabled={pageIdx === 0}
+            onClick={() => onChangeSpread(Math.max(0, spreadIdx - 1))}
+            disabled={spreadIdx === 0}
             className="w-8 h-8 rounded-md flex items-center justify-center disabled:opacity-30"
             style={{ background: 'var(--secondary)' }}
-            aria-label="Vorherige Seite"
+            aria-label="Vorherige Doppelseite"
           >
             <ChevronLeft size={14} />
           </button>
-          <span className="text-xs font-mono text-muted-foreground tabular-nums">
-            Seite {pageIdx + 1} / {totalPages}
+          <span className="text-[11px] font-mono text-muted-foreground tabular-nums whitespace-nowrap">
+            {spreadLabel(spread)}
           </span>
           <button
-            onClick={() => onChangePageIdx(Math.min(totalPages - 1, pageIdx + 1))}
-            disabled={pageIdx >= totalPages - 1}
+            onClick={() => onChangeSpread(Math.min(totalSpreads - 1, spreadIdx + 1))}
+            disabled={spreadIdx >= totalSpreads - 1}
             className="w-8 h-8 rounded-md flex items-center justify-center disabled:opacity-30"
             style={{ background: 'var(--secondary)' }}
-            aria-label="Nächste Seite"
+            aria-label="Nächste Doppelseite"
           >
             <ChevronRight size={14} />
           </button>
@@ -750,47 +836,19 @@ function PageDetail({
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragStart={(e: DragStartEvent) => {
-            const slotI = Number(String(e.active.id).replace('slot-', ''));
-            setActiveSlot(slotI);
+            const parts = String(e.active.id).split('-');
+            setActiveSlot({ pageIdx: Number(parts[1]), slotIdx: Number(parts[2]) });
           }}
           onDragEnd={(e: DragEndEvent) => {
             setActiveSlot(null);
             if (!e.over || e.over.id === e.active.id) return;
-            const from = Number(String(e.active.id).replace('slot-', ''));
-            const to   = Number(String(e.over.id).replace('slot-', ''));
-            onSwapInPage(from, to);
+            const fromParts = String(e.active.id).split('-');
+            const toParts = String(e.over.id).split('-');
+            onSwap(Number(fromParts[1]), Number(fromParts[2]), Number(toParts[1]), Number(toParts[2]));
           }}
           onDragCancel={() => setActiveSlot(null)}
         >
-          <div
-            className="grid gap-2 px-3 pb-6"
-            style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
-          >
-            {page.slots.map((slotId, slotI) => {
-              const card = slotId ? cardsById.get(slotId) : undefined;
-              return card ? (
-                <DraggableCardSlot
-                  key={slotI}
-                  id={`slot-${slotI}`}
-                  card={card}
-                  accent={accent}
-                  editMode={editMode}
-                  isDragging={activeSlot === slotI}
-                  onTap={() => onCardTap(card)}
-                  onDelete={() => onClearSlot(slotI)}
-                />
-              ) : (
-                <DroppableEmptySlot
-                  key={slotI}
-                  id={`slot-${slotI}`}
-                  n={pageIdx * page.slots.length + slotI + 1}
-                  editMode={editMode}
-                  accent={accent}
-                  onAdd={() => onAddToSlot(slotI)}
-                />
-              );
-            })}
-          </div>
+          {renderSpread(spread, 'edit')}
 
           <DragOverlay dropAnimation={{ duration: 220, easing: 'cubic-bezier(.2,.9,.3,1)' }}>
             {activeCard ? (
@@ -802,6 +860,7 @@ function PageDetail({
                   boxShadow: '0 16px 36px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.35)',
                   transform: 'rotate(-2deg) scale(1.08)',
                   aspectRatio: '2.5/3.5',
+                  width: 80,
                 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -815,8 +874,6 @@ function PageDetail({
           </DragOverlay>
         </DndContext>
       ) : (
-        // View-Mode: Buch-Blätter-Animation. Stage hat Perspective,
-        // zwei Layer: rotierende Seite oben, statische Ziel-Seite darunter.
         <div
           className="relative"
           style={{ perspective: '2000px', touchAction: 'pan-y' }}
@@ -825,9 +882,9 @@ function PageDetail({
           onPointerUp={onFlipUp}
           onPointerCancel={onFlipUp}
         >
-          {showFlip && underneathPage && (
+          {showFlip && underneathSpread && (
             <div className="absolute inset-0">
-              {renderStaticPage(underneathPage, underneathOffset, 'under')}
+              {renderSpread(underneathSpread, 'under')}
             </div>
           )}
           <div
@@ -837,13 +894,12 @@ function PageDetail({
               transition: flipTransition,
               backfaceVisibility: 'hidden',
               willChange: showFlip ? 'transform' : undefined,
-              // Sanfter Schatten unter der „abhebenden" Seite, intensiver bei größerem Winkel
               boxShadow: showFlip
                 ? `${-Math.abs(rotation) * 0.2}px 0 ${Math.abs(rotation) * 0.4}px rgba(0,0,0,0.3)`
                 : undefined,
             }}
           >
-            {renderStaticPage(rotatingPage, rotatingOffset, 'top')}
+            {renderSpread(rotatingSpread, 'top')}
           </div>
         </div>
       )}
@@ -851,7 +907,7 @@ function PageDetail({
   );
 }
 
-// ── Draggable Card-Slot (dnd-kit) ─────────────────────────────────────────
+// ── Draggable Card-Slot ───────────────────────────────────────────────────
 function DraggableCardSlot({
   id, card, accent, editMode, isDragging, onTap, onDelete,
 }: {
@@ -904,24 +960,18 @@ function DraggableCardSlot({
         <button
           onPointerDown={e => e.stopPropagation()}
           onClick={e => { e.stopPropagation(); onDelete(); }}
-          className="absolute top-1 right-1 w-7 h-7 rounded-md flex items-center justify-center shadow-md text-white"
+          className="absolute top-0.5 right-0.5 w-5 h-5 rounded-md flex items-center justify-center shadow-md text-white"
           style={{ background: 'var(--action-delete)' }}
           aria-label="Aus Slot entfernen"
         >
-          <X size={14} strokeWidth={3} />
+          <X size={10} strokeWidth={3} />
         </button>
       )}
-      <div
-        className="absolute bottom-0 left-0 right-0 px-1 pb-1 pt-3 pointer-events-none"
-        style={{ background: 'linear-gradient(to top, rgba(0,0,0,.7), transparent)' }}
-      >
-        <div className="text-[9px] text-white/80 truncate">{card.number}</div>
-      </div>
     </div>
   );
 }
 
-// ── Droppable Empty-Slot (dnd-kit) ────────────────────────────────────────
+// ── Droppable Empty-Slot ──────────────────────────────────────────────────
 function DroppableEmptySlot({
   id, n, editMode, accent, onAdd,
 }: {
@@ -949,14 +999,14 @@ function DroppableEmptySlot({
         {editMode ? (
           <button
             onClick={onAdd}
-            className="w-12 h-12 rounded-full flex items-center justify-center shadow-md text-white"
+            className="w-8 h-8 rounded-full flex items-center justify-center shadow-md text-white"
             style={{ background: 'var(--action-add)' }}
             aria-label="Karte hinzufügen"
           >
-            <Plus size={24} strokeWidth={3} />
+            <Plus size={16} strokeWidth={3} />
           </button>
         ) : (
-          <span className="text-muted-foreground/30 text-lg">{n}</span>
+          <span className="text-muted-foreground/30 text-xs">{n}</span>
         )}
       </div>
     </div>
