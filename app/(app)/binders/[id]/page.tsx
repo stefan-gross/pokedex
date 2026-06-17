@@ -39,18 +39,20 @@ interface Props {
 type View = 'binder' | 'page' | 'grid';
 
 /** Resolved Hintergrund-Farbe basierend auf Binder-Setting. */
+const MILKY_BG = 'rgba(255, 255, 255, 0.55)';
+
 function resolvePageBg(setting: 'black' | 'white' | 'transparent' | undefined): string {
   switch (setting) {
     case 'white':       return '#f3f4f6';
-    case 'transparent': return 'transparent';
+    case 'transparent': return MILKY_BG;
     case 'black':
     default:            return '#1a1a1a';
   }
 }
 
-/** Hochkontrast-Textfarbe für einen Hintergrund (Hex). */
+/** Hochkontrast-Textfarbe für einen Hintergrund. Nicht-Hex (rgba/milky) → dunkler Text. */
 function readableText(bg: string): string {
-  if (!bg?.startsWith('#')) return '#ffffff';
+  if (!bg?.startsWith('#')) return '#1a1a1a';
   const hex = bg.replace('#', '');
   const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
   const r = parseInt(full.slice(0, 2), 16);
@@ -58,6 +60,20 @@ function readableText(bg: string): string {
   const b = parseInt(full.slice(4, 6), 16);
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return luminance > 0.6 ? '#1a1a1a' : '#ffffff';
+}
+
+/** Slot-Farben passend zum Seitenhintergrund. */
+function slotColors(pageBg: string): { bg: string; border: string } {
+  if (!pageBg?.startsWith('#')) {
+    // milky / halbtransparent: dezent opaker Slot mit dunkler Border
+    return { bg: 'rgba(255,255,255,0.6)', border: 'rgba(0,0,0,0.18)' };
+  }
+  const onDark = readableText(pageBg) === '#ffffff';
+  const target = onDark ? 'white' : 'black';
+  return {
+    bg:     `color-mix(in srgb, ${pageBg} 86%, ${target} 14%)`,
+    border: `color-mix(in srgb, ${pageBg} 65%, ${target} 35%)`,
+  };
 }
 
 export default function BinderDetailPage({ params }: Props) {
@@ -400,10 +416,11 @@ function RingsCol() {
 
 // ── Mini-Page-Grid ────────────────────────────────────────────────────────
 function MiniPageGrid({
-  slots, cols, cardsById, dim, accent,
-}: { slots: (string | null)[]; cols: number; cardsById: Map<string, CardDoc>; dim?: boolean; accent?: string }) {
-  const slotBg     = accent ? `color-mix(in srgb, ${accent} 70%, white 30%)` : 'var(--secondary)';
-  const slotBorder = accent ? `color-mix(in srgb, ${accent} 55%, white 45%)` : 'var(--border)';
+  slots, cols, cardsById, dim, pageBg,
+}: { slots: (string | null)[]; cols: number; cardsById: Map<string, CardDoc>; dim?: boolean; pageBg?: string }) {
+  const { bg: slotBg, border: slotBorder } = pageBg
+    ? slotColors(pageBg)
+    : { bg: 'var(--secondary)', border: 'var(--border)' };
   return (
     <div
       className="grid gap-1 w-full"
@@ -501,13 +518,13 @@ function SheetTile({
       <div className="relative flex items-stretch gap-1.5">
         <RingsCol />
         <div className="flex-1 min-w-0">
-          <MiniPageGrid slots={sheet.front.slots} cols={cols} cardsById={cardsById} accent={pageBg === 'transparent' ? undefined : pageBg} />
+          <MiniPageGrid slots={sheet.front.slots} cols={cols} cardsById={cardsById} pageBg={pageBg} />
           <div className="text-[9px] text-center mt-1" style={{ color: pageTextColor, opacity: 0.75 }}>Vorder</div>
         </div>
         {/* Buchrücken-Knick */}
         <div className="self-stretch w-px" style={{ background: pageTextColor, opacity: 0.25 }} />
         <div className="flex-1 min-w-0">
-          <MiniPageGrid slots={sheet.back.slots} cols={cols} cardsById={cardsById} accent={pageBg === 'transparent' ? undefined : pageBg} />
+          <MiniPageGrid slots={sheet.back.slots} cols={cols} cardsById={cardsById} pageBg={pageBg} />
           <div className="text-[9px] text-center mt-1" style={{ color: pageTextColor, opacity: 0.75 }}>Rück</div>
         </div>
         <RingsCol />
@@ -768,8 +785,8 @@ function SinglePageView({
     return (
       <div
         key={key}
-        className="flex items-stretch gap-2 px-3 py-3 mx-3 rounded-xl"
-        style={{ background: pageBg }}
+        className="flex items-stretch gap-2 px-3 py-3 mx-3 rounded-xl border shadow-card"
+        style={{ background: pageBg, borderColor: 'var(--border)' }}
       >
         {pageIsFront && <RingsCol />}
         {slotsContent}
@@ -819,7 +836,14 @@ function SinglePageView({
     if (flip.progress > 0.35) {
       const target = flip.dir === 'forward' ? pageIdx + 1 : pageIdx - 1;
       setFlip({ ...flip, progress: 1, committing: true });
-      setTimeout(() => { onChangePageIdx(target); setFlip(null); }, 350);
+      // 1) Animation läuft auf progress=1 zu (350ms)
+      // 2) pageIdx → target; flip auf opacity-Mask schalten und ohne Transition direkt
+      //    auf progress=0 zurücksetzen, damit der Top-Layer keinen sichtbaren Snap
+      //    der alten Inhalte zeigt
+      setTimeout(() => {
+        onChangePageIdx(target);
+        setFlip(null);
+      }, 350);
     } else {
       setFlip({ ...flip, progress: 0, committing: true });
       setTimeout(() => setFlip(null), 250);
@@ -913,9 +937,9 @@ function SinglePageView({
           onPointerUp={onFlipUp}
           onPointerCancel={onFlipUp}
         >
-          {/* Ziel-Seite (darunter bei Rotate, daneben bei Slide) — bei Rotate
-              wandert sie mit der aktuellen Seite nach außen, damit beim nächsten
-              Swipe konsistent von der Außenkante hereingleiten kann. */}
+          {/* Ziel-Seite: bei Rotate wandert sie synchron mit der rotierenden
+              Seite nach außen (Folgeseite folgt der Bewegung). Bei Slide
+              kommt sie horizontal von der Außenkante hereingeglitten. */}
           {showFlip && targetPage && (
             <div
               className="absolute inset-0"
@@ -943,6 +967,10 @@ function SinglePageView({
                 ? (rotateHingeLeft ? 'left center' : 'right center')
                 : undefined,
               transition: flipTransition,
+              backfaceVisibility: flip?.kind === 'rotate' ? 'hidden' : undefined,
+              // Maske gegen Flicker am Commit: ab 90° unsichtbar setzen,
+              // damit der finale Transform-Reset keine alten Inhalte aufblitzen lässt.
+              opacity: flip?.kind === 'rotate' && Math.abs(rotateAngle) > 90 ? 0 : 1,
               willChange: showFlip ? 'transform' : undefined,
               boxShadow: showFlip && flip.kind === 'rotate'
                 ? `${(rotateHingeLeft ? -1 : 1) * Math.abs(rotateAngle) * 0.2}px 0 ${Math.abs(rotateAngle) * 0.4}px rgba(0,0,0,0.3)`
@@ -1040,15 +1068,14 @@ function DroppableEmptySlot({
   onAdd: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id, disabled: !editMode });
-  // Empty-Slot ist transparent damit die Page-Background-Farbe durchscheint.
-  // Nur eine dezente Border zeigt den Slot.
+  const { bg: emptyBg, border: emptyBorder } = slotColors(pageBg);
   return (
     <div
       ref={setNodeRef}
       className="relative rounded-xl border border-dashed aspect-[2.5/3.5] w-full"
       style={{
-        background: 'transparent',
-        borderColor: isOver ? accent : (pageBg === '#f3f4f6' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.2)'),
+        background: emptyBg,
+        borderColor: isOver ? accent : emptyBorder,
         borderWidth: isOver ? 2 : 1,
         boxShadow: isOver ? `0 0 0 4px ${accent}40` : undefined,
         transform: isOver ? 'scale(1.04)' : undefined,
