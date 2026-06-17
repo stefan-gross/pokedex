@@ -29,6 +29,7 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
   const [color,  setColor]  = useState(existing?.color ?? '#e53e3e');
   const [size,     setSize]     = useState<BinderSize>((existing?.size as BinderSize) ?? 9);
   const [capacity, setCapacity] = useState<string>(existing?.capacity != null ? String(existing.capacity) : '');
+  const [pageBg,   setPageBg]   = useState<'black' | 'white' | 'transparent'>(existing?.pageBackground ?? 'black');
   const [saving,   setSaving]   = useState(false);
   const [pickerTab,  setPickerTab]  = useState<PickerTab>('icons');
   const [setQuery,   setSetQuery]   = useState('');
@@ -63,7 +64,7 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
         icon,
         color,
         collectionType,
-        ...(isBinder ? { size, capacity: parsedCapacity } : {}),
+        ...(isBinder ? { size, capacity: parsedCapacity, pageBackground: pageBg } : {}),
       };
       if (existing) {
         await updateBinder(existing.id, data);
@@ -318,6 +319,37 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
                 placeholder="z.B. 400 — wie viele Karten passen rein?"
                 className="w-full h-10 rounded-md border border-border bg-secondary px-3 text-sm"
               />
+            </div>
+
+            <div className="mb-5">
+              <label className="text-xs text-muted-foreground mb-1 block">Seiten-Hintergrund</label>
+              <div className="flex gap-2">
+                {([
+                  { value: 'black',       label: 'Schwarz',          swatch: '#1a1a1a' },
+                  { value: 'white',       label: 'Weiß',             swatch: '#f3f4f6' },
+                  { value: 'transparent', label: 'Halbtransparent',  swatch: 'rgba(127,127,127,0.18)' },
+                ] as const).map(opt => {
+                  const active = pageBg === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => setPageBg(opt.value)}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-md border text-xs font-medium transition-colors"
+                      style={{
+                        borderColor: active ? color : 'var(--border)',
+                        background: active ? `${color}20` : 'var(--secondary)',
+                        color: active ? color : undefined,
+                      }}
+                    >
+                      <span
+                        className="w-4 h-4 rounded-sm border border-border"
+                        style={{ background: opt.swatch }}
+                      />
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </>
         )}

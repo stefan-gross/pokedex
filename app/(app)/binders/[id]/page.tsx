@@ -3,8 +3,8 @@
 import { useState, useEffect, useMemo, useRef, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  ChevronLeft, Settings, LayoutGrid, BookOpen, Pencil, Eye,
-  Plus, X, ChevronRight,
+  ChevronLeft, Settings, LayoutGrid, BookOpen, FileText, Pencil, Eye,
+  Plus, X, ChevronRight, ChevronDown,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, TouchSensor, useSensor, useSensors,
@@ -26,8 +26,7 @@ import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { BinderIcon } from '@/lib/binder-icons';
 import { binderSizeLabel, binderSizeCols, type BinderSize } from '@/lib/binder-sizes';
 import {
-  pagesToSheets, sheetsToPages, ensureEvenPages, pagesToSpreads, spreadLabel,
-  type BookSpread,
+  pagesToSheets, sheetsToPages, ensureEvenPages, pageLabel,
 } from '@/lib/binder-sheets';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal';
@@ -37,7 +36,29 @@ interface Props {
   params: Promise<{ id: string }>;
 }
 
-type View = 'binder' | 'spread' | 'grid';
+type View = 'binder' | 'page' | 'grid';
+
+/** Resolved Hintergrund-Farbe basierend auf Binder-Setting. */
+function resolvePageBg(setting: 'black' | 'white' | 'transparent' | undefined): string {
+  switch (setting) {
+    case 'white':       return '#f3f4f6';
+    case 'transparent': return 'transparent';
+    case 'black':
+    default:            return '#1a1a1a';
+  }
+}
+
+/** Hochkontrast-Textfarbe für einen Hintergrund (Hex). */
+function readableText(bg: string): string {
+  if (!bg?.startsWith('#')) return '#ffffff';
+  const hex = bg.replace('#', '');
+  const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? '#1a1a1a' : '#ffffff';
+}
 
 export default function BinderDetailPage({ params }: Props) {
   const { id } = use(params);
@@ -54,7 +75,7 @@ export default function BinderDetailPage({ params }: Props) {
   const [showEdit, setShowEdit] = useState(false);
   const [showActions, setShowActions] = useState(false);
   const [view, setView] = useState<View>('binder');
-  const [spreadIdx, setSpreadIdx] = useState<number>(0);
+  const [pageIdx, setPageIdx] = useState<number>(0);
   const [editMode, setEditMode] = useState(false);
   const [pickerSlot, setPickerSlot] = useState<{ pageIdx: number; slotIdx: number } | null>(null);
   const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
@@ -164,9 +185,8 @@ export default function BinderDetailPage({ params }: Props) {
       ? [{ slots: Array(binderSize).fill(null) }, { slots: Array(binderSize).fill(null) }]
       : ensureEvenPages(next, binderSize);
     persistPages(safe);
-    // Spread-Index korrigieren falls über das Ende hinaus
-    const newTotalSheets = safe.length / 2;
-    if (spreadIdx > newTotalSheets) setSpreadIdx(Math.max(0, newTotalSheets));
+    // Page-Index korrigieren falls über das Ende hinaus
+    if (pageIdx >= safe.length) setPageIdx(Math.max(0, safe.length - 1));
   };
 
   const moveSheetByIds = (fromId: string, toId: string) => {
@@ -189,8 +209,8 @@ export default function BinderDetailPage({ params }: Props) {
   const layoutCols = binderSizeCols(binderSize);
   const layoutLabel = isBox ? 'Box' : binderSizeLabel(binderSize);
   const totalCapacity = isBox ? null : (binder.capacity ?? null);
+  const pageBg = resolvePageBg(binder.pageBackground);
   const sheets = pagesToSheets(pages, binderSize);
-  const spreads = pagesToSpreads(pages);
 
   return (
     <div className="min-h-screen pb-24">
@@ -234,7 +254,8 @@ export default function BinderDetailPage({ params }: Props) {
           {!isBox && (
             <div className="flex rounded-full p-0.5 bg-secondary border border-border">
               <ViewBtn icon={<BookOpen size={15} />} active={view === 'binder'} onClick={() => { setView('binder'); setEditMode(false); }} color={binderColor} label="Blätter" />
-              <ViewBtn icon={<LayoutGrid size={15} />} active={view === 'grid'} onClick={() => { setView('grid'); setEditMode(false); }} color={binderColor} label="Gitter" />
+              <ViewBtn icon={<FileText size={15} />} active={view === 'page'} onClick={() => { setView('page'); setEditMode(false); }} color={binderColor} label="Seite" />
+              <ViewBtn icon={<LayoutGrid size={15} />} active={view === 'grid'} onClick={() => { setView('grid'); setEditMode(false); }} color={binderColor} label="Liste" />
             </div>
           )}
           {!isBox && view !== 'grid' && (
@@ -275,31 +296,31 @@ export default function BinderDetailPage({ params }: Props) {
           cols={layoutCols}
           cardsById={cardsById}
           accent={binderColor}
+          pageBg={pageBg}
           editMode={editMode}
           onOpenSheet={(sheetIdx) => {
-            // Sheet n öffnet Spread, das die Vorderseite (page 2n) zeigt.
-            // Spread 0 zeigt Vorder Blatt 1 (allein). Spread k zeigt Rück Blatt k + Vorder Blatt k+1.
-            // Wir wollen also: Vorder Blatt n+1 sichtbar → spread n (Buch-Anfang) wenn n=0, sonst spread n.
-            setSpreadIdx(sheetIdx === 0 ? 0 : sheetIdx);
-            setView('spread');
+            // Sheet n öffnet die Vorderseite des Blatts = pageIdx 2n
+            setPageIdx(sheetIdx * 2);
+            setView('page');
           }}
           onAddSheet={addSheet}
           onDeleteSheet={deleteSheet}
           onMoveSheet={moveSheetByIds}
         />
       ) : (
-        <SpreadView
-          spreads={spreads}
-          spreadIdx={Math.min(spreadIdx, spreads.length - 1)}
+        <SinglePageView
+          pages={pages}
+          pageIdx={Math.min(pageIdx, pages.length - 1)}
           cols={layoutCols}
           binderSize={binderSize}
           cardsById={cardsById}
           accent={binderColor}
+          pageBg={pageBg}
           editMode={editMode}
-          onChangeSpread={setSpreadIdx}
+          onChangePageIdx={setPageIdx}
           onSwap={swapSlots}
           onClearSlot={clearSlot}
-          onAddToSlot={(pageIdx, slotIdx) => setPickerSlot({ pageIdx, slotIdx })}
+          onAddToSlot={(pIdx, slotIdx) => setPickerSlot({ pageIdx: pIdx, slotIdx })}
           onBack={() => setView('binder')}
           onCardTap={openDetail}
         />
@@ -379,8 +400,10 @@ function RingsCol() {
 
 // ── Mini-Page-Grid ────────────────────────────────────────────────────────
 function MiniPageGrid({
-  slots, cols, cardsById, dim,
-}: { slots: (string | null)[]; cols: number; cardsById: Map<string, CardDoc>; dim?: boolean }) {
+  slots, cols, cardsById, dim, accent,
+}: { slots: (string | null)[]; cols: number; cardsById: Map<string, CardDoc>; dim?: boolean; accent?: string }) {
+  const slotBg     = accent ? `color-mix(in srgb, ${accent} 70%, white 30%)` : 'var(--secondary)';
+  const slotBorder = accent ? `color-mix(in srgb, ${accent} 55%, white 45%)` : 'var(--border)';
   return (
     <div
       className="grid gap-1 w-full"
@@ -393,8 +416,8 @@ function MiniPageGrid({
             key={slotI}
             className="aspect-[2.5/3.5] rounded-md overflow-hidden"
             style={{
-              background: card ? '#1a1a1a' : 'var(--secondary)',
-              border: card ? 'none' : '1px dashed var(--border)',
+              background: card ? '#1a1a1a' : slotBg,
+              border: card ? 'none' : `1px dashed ${slotBorder}`,
             }}
           >
             {card && (
@@ -448,12 +471,13 @@ function GridView({ cards, onCardTap }: { cards: CardDoc[]; onCardTap: (c: CardD
 
 // ── Sheet-Tile (Vorder + Rück mit Ringen an beiden Außenrändern) ──────────
 function SheetTile({
-  sheet, cols, cardsById, accent, editMode, onOpen, onDelete, isOverlay,
+  sheet, cols, cardsById, accent, pageBg, editMode, onOpen, onDelete, isOverlay,
 }: {
   sheet: { front: BinderPage; back: BinderPage; sheetIdx: number };
   cols: number;
   cardsById: Map<string, CardDoc>;
   accent: string;
+  pageBg: string;
   editMode: boolean;
   onOpen?: () => void;
   onDelete?: () => void;
@@ -461,38 +485,39 @@ function SheetTile({
 }) {
   const slotsFilled = sheet.front.slots.filter(Boolean).length + sheet.back.slots.filter(Boolean).length;
   const slotsTotal = sheet.front.slots.length + sheet.back.slots.length;
+  const pageTextColor = pageBg === 'transparent' ? '#1a1a1a' : readableText(pageBg);
   return (
     <div
-      className="bg-card rounded-xl border shadow-card p-2"
+      className="rounded-xl border shadow-card p-2"
       style={{
-        borderColor: isOverlay ? accent : 'var(--border)',
+        background: pageBg,
+        borderColor: isOverlay ? pageTextColor : 'var(--border)',
         borderStyle: 'solid',
         borderWidth: isOverlay ? 2 : 1,
         cursor: editMode ? undefined : 'pointer',
       }}
       onClick={() => { if (!editMode && onOpen) onOpen(); }}
     >
-      <div className="flex items-stretch gap-1.5">
+      <div className="relative flex items-stretch gap-1.5">
         <RingsCol />
         <div className="flex-1 min-w-0">
-          <MiniPageGrid slots={sheet.front.slots} cols={cols} cardsById={cardsById} />
-          <div className="text-[9px] text-center text-muted-foreground/70 mt-1">Vorder</div>
+          <MiniPageGrid slots={sheet.front.slots} cols={cols} cardsById={cardsById} accent={pageBg === 'transparent' ? undefined : pageBg} />
+          <div className="text-[9px] text-center mt-1" style={{ color: pageTextColor, opacity: 0.75 }}>Vorder</div>
         </div>
         {/* Buchrücken-Knick */}
-        <div className="self-stretch w-px bg-border" />
+        <div className="self-stretch w-px" style={{ background: pageTextColor, opacity: 0.25 }} />
         <div className="flex-1 min-w-0">
-          <MiniPageGrid slots={sheet.back.slots} cols={cols} cardsById={cardsById} />
-          <div className="text-[9px] text-center text-muted-foreground/70 mt-1">Rück</div>
+          <MiniPageGrid slots={sheet.back.slots} cols={cols} cardsById={cardsById} accent={pageBg === 'transparent' ? undefined : pageBg} />
+          <div className="text-[9px] text-center mt-1" style={{ color: pageTextColor, opacity: 0.75 }}>Rück</div>
         </div>
         <RingsCol />
       </div>
-      <div className="flex items-center justify-between mt-2">
-        <span className="text-[11px] text-muted-foreground">
+      <div className="relative flex items-center justify-center mt-2">
+        <span
+          className="text-[11px] font-bold tabular-nums"
+          style={{ color: pageTextColor }}
+        >
           Blatt {sheet.sheetIdx + 1}
-          {' · '}
-          <span className="tabular-nums">
-            {slotsFilled}/{slotsTotal}
-          </span>
         </span>
         {editMode && onDelete && (
           <button
@@ -512,13 +537,14 @@ function SheetTile({
 
 // ── Binder Overview — Sheets als Sortable mit dnd-kit ─────────────────────
 function BinderOverview({
-  sheets, cols, cardsById, accent, editMode,
+  sheets, cols, cardsById, accent, pageBg, editMode,
   onOpenSheet, onAddSheet, onDeleteSheet, onMoveSheet,
 }: {
   sheets: { front: BinderPage; back: BinderPage; sheetIdx: number }[];
   cols: number;
   cardsById: Map<string, CardDoc>;
   accent: string;
+  pageBg: string;
   editMode: boolean;
   onOpenSheet: (sheetIdx: number) => void;
   onAddSheet: () => void;
@@ -555,6 +581,7 @@ function BinderOverview({
               cols={cols}
               cardsById={cardsById}
               accent={accent}
+              pageBg={pageBg}
               editMode={editMode}
               onOpen={() => onOpenSheet(sheet.sheetIdx)}
               onDelete={() => onDeleteSheet(sheet.sheetIdx)}
@@ -600,7 +627,7 @@ function BinderOverview({
               if (!s) return null;
               return (
                 <div style={{ transform: 'rotate(-1.5deg) scale(1.03)' }}>
-                  <SheetTile sheet={s} cols={cols} cardsById={cardsById} accent={accent} editMode={false} isOverlay />
+                  <SheetTile sheet={s} cols={cols} cardsById={cardsById} accent={accent} pageBg={pageBg} editMode={false} isOverlay />
                 </div>
               );
             })()
@@ -611,13 +638,14 @@ function BinderOverview({
 }
 
 function SortableSheetTile({
-  id, sheet, cols, cardsById, accent, editMode, onOpen, onDelete,
+  id, sheet, cols, cardsById, accent, pageBg, editMode, onOpen, onDelete,
 }: {
   id: string;
   sheet: { front: BinderPage; back: BinderPage; sheetIdx: number };
   cols: number;
   cardsById: Map<string, CardDoc>;
   accent: string;
+  pageBg: string;
   editMode: boolean;
   onOpen: () => void;
   onDelete: () => void;
@@ -647,6 +675,7 @@ function SortableSheetTile({
         cols={cols}
         cardsById={cardsById}
         accent={accent}
+        pageBg={pageBg}
         editMode={editMode}
         onOpen={onOpen}
         onDelete={onDelete}
@@ -656,26 +685,30 @@ function SortableSheetTile({
 }
 
 // ── Spread View — Doppelseite mit Karten-Drag über beide Seiten ───────────
-type FlipState = { dir: 'forward' | 'backward'; progress: number; committing: boolean } | null;
+type FlipState = {
+  kind: 'rotate' | 'slide';
+  dir: 'forward' | 'backward';
+  progress: number;
+  committing: boolean;
+} | null;
 
-function SpreadView({
-  spreads, spreadIdx, cols, binderSize, cardsById, accent, editMode,
-  onChangeSpread, onSwap, onClearSlot, onAddToSlot, onBack, onCardTap,
+function SinglePageView({
+  pages, pageIdx, cols, binderSize, cardsById, accent, pageBg, editMode,
+  onChangePageIdx, onSwap, onClearSlot, onAddToSlot, onBack, onCardTap,
 }: {
-  spreads: BookSpread[]; spreadIdx: number; cols: number; binderSize: number;
-  cardsById: Map<string, CardDoc>; accent: string; editMode: boolean;
-  onChangeSpread: (i: number) => void;
+  pages: BinderPage[]; pageIdx: number; cols: number; binderSize: number;
+  cardsById: Map<string, CardDoc>; accent: string; pageBg: string; editMode: boolean;
+  onChangePageIdx: (i: number) => void;
   onSwap: (pA: number, sA: number, pB: number, sB: number) => void;
   onClearSlot: (pageIdx: number, slotIdx: number) => void;
   onAddToSlot: (pageIdx: number, slotIdx: number) => void;
   onBack: () => void;
   onCardTap: (c: CardDoc) => void;
 }) {
-  const spread = spreads[spreadIdx];
-  const totalSpreads = spreads.length;
+  const page = pages[pageIdx];
+  const totalPages = pages.length;
   const [activeSlot, setActiveSlot] = useState<{ pageIdx: number; slotIdx: number } | null>(null);
 
-  // Buch-Blätter-State
   const [flip, setFlip] = useState<FlipState>(null);
   const flipStartRef = useRef<{ x: number; y: number; w: number; locked: boolean } | null>(null);
 
@@ -684,77 +717,72 @@ function SpreadView({
     useSensor(TouchSensor, { activationConstraint: { delay: 350, tolerance: 8 } }),
   );
 
-  if (!spread) {
+  if (!page) {
     return <div className="px-4 py-8 text-center text-muted-foreground">Keine Seite</div>;
   }
 
-  const activeCard = activeSlot && spread
-    ? cardsById.get(
-        (activeSlot.pageIdx === spread.leftPageIdx ? spread.left : spread.right)
-          ?.slots[activeSlot.slotIdx] ?? ''
-      )
+  // Vorderseite = gerader Index, Ringe links. Rückseite = ungerader Index, Ringe rechts.
+  const isFront = pageIdx % 2 === 0;
+  const label = pageLabel(pageIdx);
+  const activeCard = activeSlot
+    ? cardsById.get(pages[activeSlot.pageIdx]?.slots[activeSlot.slotIdx] ?? '')
     : null;
 
-  // ── Page-Renderer (für Spread-Layout, optional DnD-Slots) ──────────────
-  const renderSpreadSide = (
-    page: BinderPage | null,
-    pageIdx: number | null,
-    side: 'left' | 'right',
-  ) => {
-    if (!page || pageIdx == null) {
-      return (
-        <div
-          className="flex-1 rounded-lg border border-dashed border-border bg-secondary/30"
-          style={{ minHeight: 200, opacity: 0.4 }}
-          aria-hidden
-        />
-      );
-    }
-    return (
+  // Page-Renderer — Slots im Layout-Grid mit Page-Background + Ring auf richtiger Seite
+  const renderPage = (p: BinderPage, pIdx: number, key: string) => {
+    const pageIsFront = pIdx % 2 === 0;
+    const slotsContent = (
       <div
         className="flex-1 grid gap-1.5"
         style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
       >
-        {page.slots.map((slotId, slotI) => {
+        {p.slots.map((slotId, slotI) => {
           const card = slotId ? cardsById.get(slotId) : undefined;
-          const slotKey = `slot-${pageIdx}-${slotI}`;
+          const slotKey = `slot-${pIdx}-${slotI}`;
           return card ? (
             <DraggableCardSlot
               key={slotKey}
               id={slotKey}
               card={card}
               accent={accent}
+              pageBg={pageBg}
               editMode={editMode}
-              isDragging={activeSlot?.pageIdx === pageIdx && activeSlot?.slotIdx === slotI}
+              isDragging={activeSlot?.pageIdx === pIdx && activeSlot?.slotIdx === slotI}
               onTap={() => onCardTap(card)}
-              onDelete={() => onClearSlot(pageIdx, slotI)}
+              onDelete={() => onClearSlot(pIdx, slotI)}
             />
           ) : (
             <DroppableEmptySlot
               key={slotKey}
               id={slotKey}
-              n={pageIdx * binderSize + slotI + 1}
+              n={pIdx * binderSize + slotI + 1}
               editMode={editMode}
               accent={accent}
-              onAdd={() => onAddToSlot(pageIdx, slotI)}
+              pageBg={pageBg}
+              onAdd={() => onAddToSlot(pIdx, slotI)}
             />
           );
         })}
       </div>
     );
+    return (
+      <div
+        key={key}
+        className="flex items-stretch gap-2 px-3 py-3 mx-3 rounded-xl"
+        style={{ background: pageBg }}
+      >
+        {pageIsFront && <RingsCol />}
+        {slotsContent}
+        {!pageIsFront && <RingsCol />}
+      </div>
+    );
   };
 
-  const renderSpread = (sp: BookSpread, key: string) => (
-    <div key={key} className="flex items-stretch gap-1 px-2">
-      <RingsCol />
-      {renderSpreadSide(sp.left, sp.leftPageIdx, 'left')}
-      <div className="self-stretch w-px bg-border my-1" />
-      {renderSpreadSide(sp.right, sp.rightPageIdx, 'right')}
-      <RingsCol />
-    </div>
-  );
-
-  // ── Flip-Pointer-Handlers (View-Mode only) ─────────────────────────────
+  // Flip-Pointer-Handlers (nur im View-Mode aktiv)
+  // Vorderseite (gerader Index, Ringe links): swipe-left → rotate forward (Rückseite zeigen);
+  //                                            swipe-right → slide backward (vorheriges Blatt-Back von links)
+  // Rückseite  (ungerader Index, Ringe rechts): swipe-right → rotate backward (Vorderseite zeigen);
+  //                                              swipe-left  → slide forward (nächstes Blatt-Front von rechts)
   const onFlipDown = (e: React.PointerEvent) => {
     if (editMode) return;
     const w = (e.currentTarget as HTMLDivElement).clientWidth;
@@ -769,66 +797,69 @@ function SpreadView({
       if (Math.abs(dy) > Math.abs(dx)) { flipStartRef.current = null; return; }
       flipStartRef.current.locked = true;
     }
-    const dir: 'forward' | 'backward' = dx < 0 ? 'forward' : 'backward';
-    if (dir === 'forward' && spreadIdx >= totalSpreads - 1) return;
-    if (dir === 'backward' && spreadIdx === 0) return;
+    const direction: 'left' | 'right' = dx < 0 ? 'left' : 'right';
+
+    let kind: 'rotate' | 'slide';
+    let dir: 'forward' | 'backward';
+    if (isFront && direction === 'left')         { kind = 'rotate'; dir = 'forward';  }
+    else if (!isFront && direction === 'right')  { kind = 'rotate'; dir = 'backward'; }
+    else if (!isFront && direction === 'left')   { kind = 'slide';  dir = 'forward';  }
+    else /* isFront && right */                  { kind = 'slide';  dir = 'backward'; }
+
+    if (dir === 'forward' && pageIdx >= totalPages - 1) return;
+    if (dir === 'backward' && pageIdx === 0) return;
+
     const progress = Math.max(0, Math.min(1, Math.abs(dx) / flipStartRef.current.w));
-    setFlip({ dir, progress, committing: false });
+    setFlip({ kind, dir, progress, committing: false });
   };
   const onFlipUp = () => {
     if (!flipStartRef.current) return;
     flipStartRef.current = null;
     if (!flip) return;
     if (flip.progress > 0.35) {
-      const target = flip.dir === 'forward' ? spreadIdx + 1 : spreadIdx - 1;
+      const target = flip.dir === 'forward' ? pageIdx + 1 : pageIdx - 1;
       setFlip({ ...flip, progress: 1, committing: true });
-      setTimeout(() => { onChangeSpread(target); setFlip(null); }, 350);
+      setTimeout(() => { onChangePageIdx(target); setFlip(null); }, 350);
     } else {
       setFlip({ ...flip, progress: 0, committing: true });
       setTimeout(() => setFlip(null), 250);
     }
   };
 
-  // Layout-Berechnungen für Flip-Layers
+  // Layer-Berechnungen: aktuelle Seite (oben, animiert) + Ziel-Seite (darunter)
   const showFlip = flip != null;
-  const rotatingSpread = !showFlip ? spread
-    : flip.dir === 'forward' ? spread : spreads[spreadIdx - 1];
-  const underneathSpread = !showFlip ? null
-    : flip.dir === 'forward' ? spreads[spreadIdx + 1] : spread;
-  const rotation = !showFlip ? 0
-    : flip.dir === 'forward' ? -180 * flip.progress : -180 * (1 - flip.progress);
+  const targetIdx = !showFlip ? pageIdx
+    : flip.dir === 'forward' ? pageIdx + 1 : pageIdx - 1;
+  const targetPage = pages[targetIdx] ?? null;
   const flipTransition = flip?.committing ? 'transform 350ms cubic-bezier(.4,.0,.2,1)' : 'none';
 
+  // Rotate: Vorderseite klappt nach links um (Hinge links), Rückseite nach rechts (Hinge rechts).
+  const rotateHingeLeft = isFront;
+  const rotateAngle = !showFlip || flip.kind !== 'rotate' ? 0
+    : rotateHingeLeft ? -180 * flip.progress : 180 * flip.progress;
+
+  // Slide: aktuelle Seite gleitet aus der Ring-fernen Kante, neue Seite kommt von dort herein.
+  const slideShift = !showFlip || flip.kind !== 'slide' ? 0
+    : flip.dir === 'forward' ? -flip.progress * 100 : flip.progress * 100;
+
+  const sideLabel = isFront ? 'Vorderseite' : 'Rückseite';
+  const totalSheets = Math.ceil(totalPages / 2);
   return (
     <div>
-      <div className="flex items-center justify-between px-4 pt-2 pb-3">
-        <button onClick={onBack} className="w-9 h-9 rounded-md flex items-center justify-center" style={{ background: 'var(--secondary)' }} aria-label="Zurück">
-          <ChevronLeft size={16} />
-        </button>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => onChangeSpread(Math.max(0, spreadIdx - 1))}
-            disabled={spreadIdx === 0}
-            className="w-8 h-8 rounded-md flex items-center justify-center disabled:opacity-30"
-            style={{ background: 'var(--secondary)' }}
-            aria-label="Vorherige Doppelseite"
+      <div className="flex items-center justify-center px-4 pt-2 pb-3">
+        <label className="relative inline-flex items-center">
+          <select
+            value={label.sheet - 1}
+            onChange={e => onChangePageIdx(Number(e.target.value) * 2)}
+            className="appearance-none pl-3 pr-7 h-8 rounded-md text-[13px] font-bold tabular-nums bg-secondary focus:outline-none"
+            aria-label="Blatt auswählen"
           >
-            <ChevronLeft size={14} />
-          </button>
-          <span className="text-[11px] font-mono text-muted-foreground tabular-nums whitespace-nowrap">
-            {spreadLabel(spread)}
-          </span>
-          <button
-            onClick={() => onChangeSpread(Math.min(totalSpreads - 1, spreadIdx + 1))}
-            disabled={spreadIdx >= totalSpreads - 1}
-            className="w-8 h-8 rounded-md flex items-center justify-center disabled:opacity-30"
-            style={{ background: 'var(--secondary)' }}
-            aria-label="Nächste Doppelseite"
-          >
-            <ChevronRight size={14} />
-          </button>
-        </div>
-        <div className="w-9" />
+            {Array.from({ length: totalSheets }, (_, i) => (
+              <option key={i} value={i}>Blatt {i + 1}</option>
+            ))}
+          </select>
+          <ChevronDown size={13} className="absolute right-2 pointer-events-none text-muted-foreground" />
+        </label>
       </div>
 
       {editMode ? (
@@ -848,7 +879,7 @@ function SpreadView({
           }}
           onDragCancel={() => setActiveSlot(null)}
         >
-          {renderSpread(spread, 'edit')}
+          {renderPage(page, pageIdx, 'edit')}
 
           <DragOverlay dropAnimation={{ duration: 220, easing: 'cubic-bezier(.2,.9,.3,1)' }}>
             {activeCard ? (
@@ -875,45 +906,71 @@ function SpreadView({
         </DndContext>
       ) : (
         <div
-          className="relative"
+          className="relative overflow-hidden"
           style={{ perspective: '2000px', touchAction: 'pan-y' }}
           onPointerDown={onFlipDown}
           onPointerMove={onFlipMove}
           onPointerUp={onFlipUp}
           onPointerCancel={onFlipUp}
         >
-          {showFlip && underneathSpread && (
-            <div className="absolute inset-0">
-              {renderSpread(underneathSpread, 'under')}
+          {/* Ziel-Seite (darunter bei Rotate, daneben bei Slide) — bei Rotate
+              wandert sie mit der aktuellen Seite nach außen, damit beim nächsten
+              Swipe konsistent von der Außenkante hereingleiten kann. */}
+          {showFlip && targetPage && (
+            <div
+              className="absolute inset-0"
+              style={{
+                transform: flip.kind === 'slide'
+                  ? `translateX(${slideShift + (flip.dir === 'forward' ? 100 : -100)}%)`
+                  : `translateX(${(rotateHingeLeft ? 1 : -1) * flip.progress * 100}%)`,
+                transition: flipTransition,
+              }}
+            >
+              {renderPage(targetPage, targetIdx, 'target')}
             </div>
           )}
+          {/* Aktuelle Seite (oben, animiert) — bei Rotate gleichzeitig nach
+              außen schieben, damit die Ringe nach 180° auf der gegenüberliegenden
+              Seite liegen (Front-Hinge links → Page wandert nach rechts; umgekehrt). */}
           <div
             style={{
-              transform: `rotateY(${rotation}deg)`,
-              transformOrigin: 'left center',
+              transform: flip?.kind === 'rotate'
+                ? `translateX(${(rotateHingeLeft ? 1 : -1) * flip.progress * 100}%) rotateY(${rotateAngle}deg)`
+                : flip?.kind === 'slide'
+                  ? `translateX(${slideShift}%)`
+                  : undefined,
+              transformOrigin: flip?.kind === 'rotate'
+                ? (rotateHingeLeft ? 'left center' : 'right center')
+                : undefined,
               transition: flipTransition,
-              backfaceVisibility: 'hidden',
               willChange: showFlip ? 'transform' : undefined,
-              boxShadow: showFlip
-                ? `${-Math.abs(rotation) * 0.2}px 0 ${Math.abs(rotation) * 0.4}px rgba(0,0,0,0.3)`
+              boxShadow: showFlip && flip.kind === 'rotate'
+                ? `${(rotateHingeLeft ? -1 : 1) * Math.abs(rotateAngle) * 0.2}px 0 ${Math.abs(rotateAngle) * 0.4}px rgba(0,0,0,0.3)`
                 : undefined,
             }}
           >
-            {renderSpread(rotatingSpread, 'top')}
+            {renderPage(page, pageIdx, 'top')}
           </div>
         </div>
       )}
+
+      <div className="mt-2 flex items-center justify-center px-4">
+        <span className="text-[11px] font-bold text-foreground">
+          {sideLabel}
+        </span>
+      </div>
     </div>
   );
 }
 
 // ── Draggable Card-Slot ───────────────────────────────────────────────────
 function DraggableCardSlot({
-  id, card, accent, editMode, isDragging, onTap, onDelete,
+  id, card, accent, pageBg, editMode, isDragging, onTap, onDelete,
 }: {
   id: string;
   card: CardDoc;
   accent: string;
+  pageBg: string;
   editMode: boolean;
   isDragging: boolean;
   onTap: () => void;
@@ -934,7 +991,7 @@ function DraggableCardSlot({
         borderColor: isOver ? accent : `${accent}55`,
         borderStyle: isOver ? 'dashed' : 'solid',
         borderWidth: isOver ? 2 : 1,
-        background: '#1a1a1a',
+        background: pageBg === 'transparent' ? '#1a1a1a' : pageBg,
         opacity: isDragging ? 0.3 : 1,
         boxShadow: isOver ? `0 0 0 4px ${accent}40` : undefined,
         transform: isOver ? 'scale(1.04)' : undefined,
@@ -973,22 +1030,25 @@ function DraggableCardSlot({
 
 // ── Droppable Empty-Slot ──────────────────────────────────────────────────
 function DroppableEmptySlot({
-  id, n, editMode, accent, onAdd,
+  id, n, editMode, accent, pageBg, onAdd,
 }: {
   id: string;
   n: number;
   editMode: boolean;
   accent: string;
+  pageBg: string;
   onAdd: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id, disabled: !editMode });
+  // Empty-Slot ist transparent damit die Page-Background-Farbe durchscheint.
+  // Nur eine dezente Border zeigt den Slot.
   return (
     <div
       ref={setNodeRef}
       className="relative rounded-xl border border-dashed aspect-[2.5/3.5] w-full"
       style={{
-        background: 'var(--secondary)',
-        borderColor: isOver ? accent : 'var(--border)',
+        background: 'transparent',
+        borderColor: isOver ? accent : (pageBg === '#f3f4f6' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.2)'),
         borderWidth: isOver ? 2 : 1,
         boxShadow: isOver ? `0 0 0 4px ${accent}40` : undefined,
         transform: isOver ? 'scale(1.04)' : undefined,

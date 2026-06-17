@@ -20,8 +20,14 @@ export default function BindersPage() {
   const load = async () => {
     try {
       const [binderData, cardData] = await Promise.all([getBinders(), getCards()]);
-      // Inbox-Binder „Neue Karten" nur anzeigen, wenn Karten drin sind
-      setBinders(binderData.filter(b => !(b.isInbox && b.cardIds.length === 0)));
+      // Inbox „Neue Karten" und Default „Meine Sammlung" immer zuerst — danach normal nach sortOrder.
+      const sorted = [...binderData].sort((a, b) => {
+        const aRank = a.isInbox ? 0 : a.isDefault ? 1 : 2;
+        const bRank = b.isInbox ? 0 : b.isDefault ? 1 : 2;
+        if (aRank !== bRank) return aRank - bRank;
+        return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      });
+      setBinders(sorted);
       setCards(cardData);
     } finally {
       setLoading(false);
@@ -75,7 +81,7 @@ export default function BindersPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-3">
           {binders.map(binder => {
             const binderCards = binder.cardIds
               .map(id => cardsById.get(id))
@@ -112,52 +118,52 @@ function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; 
   return (
     <Link
       href={`/binders/${binder.id}`}
-      className="relative rounded-2xl bg-card shadow-card overflow-hidden flex flex-col min-h-[120px] active:scale-[.98] transition-transform"
+      className="relative rounded-2xl bg-card shadow-card overflow-hidden flex items-stretch active:scale-[.99] transition-transform"
     >
-      {/* Color bar */}
-      <div className="h-1.5 w-full" style={{ background: bgColor }} />
+      {/* Vertikale Color-Bar links (statt oben, passt besser auf volle Breite) */}
+      <div className="w-1.5 shrink-0" style={{ background: bgColor }} />
 
-      <div className="flex-1 p-3 flex items-stretch gap-2">
-        {/* Linke Spalte: Icon + Name + Sub + Value */}
-        <div className="flex-1 min-w-0 flex flex-col justify-between">
-          <div className="flex items-start gap-2 min-w-0">
-            <BinderIcon name={binder.icon ?? (isBox ? 'box' : 'folder')} size={22} style={{ color: bgColor }} className="shrink-0" />
-            <div className="min-w-0">
-              <div className="font-semibold text-sm leading-tight truncate">{binder.name}</div>
-              <div className="text-[11px] text-muted-foreground mt-0.5 truncate">{subtitle}</div>
-            </div>
+      <div className="flex-1 min-w-0 p-4 flex flex-col gap-2">
+        <div className="flex items-center gap-2 pb-2 border-b border-border/60 min-w-0">
+          <div className="shrink-0 h-6 flex items-center justify-center overflow-hidden">
+            <BinderIcon name={binder.icon ?? (isBox ? 'box' : 'folder')} size={24} style={{ color: bgColor }} />
           </div>
-          <div className="flex flex-col gap-0.5 mt-2">
-            {(binder.wishlistCardIds?.length ?? 0) > 0 && (
-              <span className="text-[11px] inline-flex items-center gap-0.5" style={{ color: '#ed64a6' }}>
-                +{binder.wishlistCardIds.length} <Heart size={10} fill="currentColor" />
-              </span>
-            )}
-            {!totalValue.loading && totalValue.withPrice > 0 && (
-              <span className="text-[12px] font-bold truncate" style={{ color: bgColor }}>
-                ≈ {totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
-              </span>
-            )}
+          <div className="font-semibold text-base leading-tight truncate min-w-0">
+            {binder.name}
           </div>
         </div>
 
-        {/* Rechte Spalte: große Karten-Zahl */}
-        <div className="shrink-0 flex flex-col items-end justify-center min-w-[64px]">
-          <span
-            className="text-[32px] font-extrabold leading-none tabular-nums"
-            style={{ color: bgColor }}
-          >
-            {cardCount}
-          </span>
-          {!isBox && binder.capacity != null ? (
-            <span className="text-[10px] text-muted-foreground mt-1">
-              von {binder.capacity}
+        <div className="flex items-center gap-3">
+          <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+            <div className="text-xs text-muted-foreground truncate flex items-center gap-2 min-w-0">
+              <span className="truncate">
+                {subtitle}
+                {!isBox && binder.capacity != null && ` · ${binder.capacity} Karten`}
+              </span>
+              {(binder.wishlistCardIds?.length ?? 0) > 0 && (
+                <span className="inline-flex items-center gap-0.5 shrink-0" style={{ color: '#ed64a6' }}>
+                  +{binder.wishlistCardIds.length} <Heart size={10} fill="currentColor" />
+                </span>
+              )}
+            </div>
+            {!totalValue.loading && totalValue.withPrice > 0 && (
+              <div className="text-[13px] font-bold truncate" style={{ color: bgColor }}>
+                ≈ {totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
+              </div>
+            )}
+          </div>
+
+          <div className="shrink-0 flex flex-col items-center justify-center min-w-[72px]">
+            <span
+              className="text-[32px] font-extrabold leading-none tabular-nums"
+              style={{ color: bgColor }}
+            >
+              {cardCount}
             </span>
-          ) : (
             <span className="text-[10px] text-muted-foreground mt-1">
               {cardCount === 1 ? 'Karte' : 'Karten'}
             </span>
-          )}
+          </div>
         </div>
       </div>
     </Link>

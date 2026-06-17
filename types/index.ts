@@ -48,6 +48,9 @@ export interface BinderDoc {
   /** Positionales Seiten-Layout. Wenn undefined: Legacy-Binder, Slots werden aus cardIds[]
    *  in Reihenfolge generiert. Jede Seite hat exakt `size` Slots, leere Slots sind null. */
   pages?: BinderPage[];
+  /** Hintergrund der Binder-Seiten: 'black' (default, dunkler Binder), 'white' (weißer Binder),
+   *  'transparent' (App-Hintergrund scheint durch). */
+  pageBackground?: 'black' | 'white' | 'transparent';
   isDefault?: boolean;
   /** „Neue Karten"-Inbox: Auffang für ungespeicherte Scans beim Verlassen des Scanners. Wird ausgeblendet wenn leer. */
   isInbox?: boolean;
