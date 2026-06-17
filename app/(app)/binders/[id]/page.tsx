@@ -866,6 +866,29 @@ function SinglePageView({
   const slideShift = !showFlip || flip.kind !== 'slide' ? 0
     : flip.dir === 'forward' ? -flip.progress * 100 : flip.progress * 100;
 
+  // Während der Rotation sind ZWEI Nachbar-Blätter im Hintergrund sichtbar:
+  //   - Vorderseite des FOLGENDEN Blatts (Sheet+1):
+  //       Forward:  neighbor 0% → +100% (raus n. rechts)
+  //       Backward: neighbor +100% → 0% (rein v. rechts n. links)
+  //   - Rückseite des VORHERIGEN Blatts (Sheet-1):
+  //       Forward:  prevBack 0% → -100% (raus n. links)
+  //       Backward: prevBack -100% → 0% (rein v. links n. rechts)
+  const currentSheetIdx = Math.floor(pageIdx / 2);
+  const neighborIdx = (currentSheetIdx + 1) * 2;
+  const neighborPage = flip?.kind === 'rotate' ? (pages[neighborIdx] ?? null) : null;
+  const neighborShift = !showFlip || flip.kind !== 'rotate' ? 0
+    : rotateHingeLeft
+      ? flip.progress * 100          // forward: 0 → 100 (raus n. rechts)
+      : (1 - flip.progress) * 100;   // backward: 100 → 0 (rein v. rechts, Bewegungsrichtung links)
+
+  const prevBackIdx = currentSheetIdx * 2 - 1;
+  const prevBackPage = flip?.kind === 'rotate' ? (pages[prevBackIdx] ?? null) : null;
+  const prevBackShift = !showFlip || flip.kind !== 'rotate' ? 0
+    : rotateHingeLeft
+      ? -(1 - flip.progress) * 100   // forward: -100 → 0 (rein v. links)
+      : -flip.progress * 100;        // backward: 0 → -100 (raus n. links)
+
+
   const sideLabel = isFront ? 'Vorderseite' : 'Rückseite';
   const totalSheets = Math.ceil(totalPages / 2);
   return (
@@ -937,25 +960,50 @@ function SinglePageView({
           onPointerUp={onFlipUp}
           onPointerCancel={onFlipUp}
         >
-          {/* Ziel-Seite: bei Rotate wandert sie synchron mit der rotierenden
-              Seite nach außen (Folgeseite folgt der Bewegung). Bei Slide
-              kommt sie horizontal von der Außenkante hereingeglitten. */}
-          {showFlip && targetPage && (
+          {/* Rückseite des vorherigen Blatts — hinter dem rotierenden Blatt
+              auf der gegenüberliegenden Seite des Nachbarblatts. */}
+          {showFlip && flip.kind === 'rotate' && prevBackPage && (
             <div
               className="absolute inset-0"
               style={{
-                transform: flip.kind === 'slide'
-                  ? `translateX(${slideShift + (flip.dir === 'forward' ? 100 : -100)}%)`
-                  : `translateX(${(rotateHingeLeft ? 1 : -1) * flip.progress * 100}%)`,
+                transform: `translateX(${prevBackShift}%)`,
+                transition: flipTransition,
+                zIndex: 0,
+              }}
+            >
+              {renderPage(prevBackPage, prevBackIdx, 'prev-back')}
+            </div>
+          )}
+          {/* Nachbarblatt-Vorderseite — hinter dem rotierenden Blatt; gleitet
+              aus der ring-fernen Kante heraus, während die Rotation läuft. */}
+          {showFlip && flip.kind === 'rotate' && neighborPage && (
+            <div
+              className="absolute inset-0"
+              style={{
+                transform: `translateX(${neighborShift}%)`,
+                transition: flipTransition,
+                zIndex: 0,
+              }}
+            >
+              {renderPage(neighborPage, neighborIdx, 'neighbor')}
+            </div>
+          )}
+          {/* Ziel-Seite — nur bei Slide als separate hereingleitende Schicht.
+              Bei Rotate ist die Rückseite Teil des rotierenden Containers
+              (Back-Face) und rotiert mit der Vorderseite mit. */}
+          {showFlip && flip.kind === 'slide' && targetPage && (
+            <div
+              className="absolute inset-0"
+              style={{
+                transform: `translateX(${slideShift + (flip.dir === 'forward' ? 100 : -100)}%)`,
                 transition: flipTransition,
               }}
             >
               {renderPage(targetPage, targetIdx, 'target')}
             </div>
           )}
-          {/* Aktuelle Seite (oben, animiert) — bei Rotate gleichzeitig nach
-              außen schieben, damit die Ringe nach 180° auf der gegenüberliegenden
-              Seite liegen (Front-Hinge links → Page wandert nach rechts; umgekehrt). */}
+          {/* Animierter Container — bei Rotate als 3D-„Blatt" mit Front- und
+              Backface (Folgeseite); bei Slide einfache horizontale Translation. */}
           <div
             style={{
               transform: flip?.kind === 'rotate'
@@ -966,18 +1014,37 @@ function SinglePageView({
               transformOrigin: flip?.kind === 'rotate'
                 ? (rotateHingeLeft ? 'left center' : 'right center')
                 : undefined,
+              transformStyle: flip?.kind === 'rotate' ? 'preserve-3d' : undefined,
               transition: flipTransition,
-              backfaceVisibility: flip?.kind === 'rotate' ? 'hidden' : undefined,
-              // Maske gegen Flicker am Commit: ab 90° unsichtbar setzen,
-              // damit der finale Transform-Reset keine alten Inhalte aufblitzen lässt.
-              opacity: flip?.kind === 'rotate' && Math.abs(rotateAngle) > 90 ? 0 : 1,
               willChange: showFlip ? 'transform' : undefined,
               boxShadow: showFlip && flip.kind === 'rotate'
                 ? `${(rotateHingeLeft ? -1 : 1) * Math.abs(rotateAngle) * 0.2}px 0 ${Math.abs(rotateAngle) * 0.4}px rgba(0,0,0,0.3)`
                 : undefined,
+              position: 'relative',
+              zIndex: 1,
             }}
           >
-            {renderPage(page, pageIdx, 'top')}
+            {/* Frontface — aktuelle Seite */}
+            <div
+              style={{
+                backfaceVisibility: flip?.kind === 'rotate' ? 'hidden' : undefined,
+              }}
+            >
+              {renderPage(page, pageIdx, 'top-front')}
+            </div>
+            {/* Backface — Folgeseite, an die Vorderseite „angeklebt", rotiert
+                mit; durch eigenes rotateY(180deg) ist sie ab 90° sichtbar. */}
+            {flip?.kind === 'rotate' && targetPage && (
+              <div
+                className="absolute inset-0"
+                style={{
+                  backfaceVisibility: 'hidden',
+                  transform: 'rotateY(180deg)',
+                }}
+              >
+                {renderPage(targetPage, targetIdx, 'top-back')}
+              </div>
+            )}
           </div>
         </div>
       )}
