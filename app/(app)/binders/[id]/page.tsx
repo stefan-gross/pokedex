@@ -782,10 +782,13 @@ function SinglePageView({
         })}
       </div>
     );
+    // Hintergrund-Layer (prev-back, neighbor) ohne Shadow rendern, damit kein
+    // Schatten an der Ring-Kante der rotierenden Seite sichtbar wird.
+    const isBg = key === 'prev-back' || key === 'neighbor';
     return (
       <div
         key={key}
-        className="flex items-stretch gap-2 px-3 py-3 mx-3 rounded-xl border shadow-card"
+        className={`flex items-stretch gap-2 px-3 py-3 mx-3 rounded-xl border${isBg ? '' : ' shadow-card'}`}
         style={{ background: pageBg, borderColor: 'var(--border)' }}
       >
         {pageIsFront && <RingsCol />}
@@ -953,8 +956,15 @@ function SinglePageView({
         </DndContext>
       ) : (
         <div
-          className="relative overflow-hidden"
-          style={{ perspective: '2000px', touchAction: 'pan-y' }}
+          // overflow:visible damit die 3D-Rotation vertikal nicht abgeschnitten
+          // wird. Die horizontalen Hintergrund-Layer werden durch overflow-x:
+          // hidden auf body/html (siehe globals.css) am Viewport-Rand geclippt.
+          className="relative"
+          style={{
+            perspective: '2000px',
+            touchAction: 'pan-y',
+            overscrollBehaviorX: 'contain',
+          }}
           onPointerDown={onFlipDown}
           onPointerMove={onFlipMove}
           onPointerUp={onFlipUp}
@@ -1017,9 +1027,6 @@ function SinglePageView({
               transformStyle: flip?.kind === 'rotate' ? 'preserve-3d' : undefined,
               transition: flipTransition,
               willChange: showFlip ? 'transform' : undefined,
-              boxShadow: showFlip && flip.kind === 'rotate'
-                ? `${(rotateHingeLeft ? -1 : 1) * Math.abs(rotateAngle) * 0.2}px 0 ${Math.abs(rotateAngle) * 0.4}px rgba(0,0,0,0.3)`
-                : undefined,
               position: 'relative',
               zIndex: 1,
             }}

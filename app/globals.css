@@ -181,9 +181,13 @@
   }
   body {
     @apply bg-background text-foreground;
+    overscroll-behavior-x: none;
+    overflow-x: hidden;
   }
   html {
     @apply font-sans;
+    overscroll-behavior-x: none;
+    overflow-x: hidden;
   }
 }
 
