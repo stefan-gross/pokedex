@@ -2764,7 +2764,7 @@ function RecognizedCardLarge({
       >
         {img ? (
           /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={img} alt={card?.name ?? ''} className="w-full h-full object-cover" />
+          <img src={img} alt={card?.name ?? ''} className="w-full h-full object-contain" />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-red-500/10">
             <AlertCircle size={28} color="#f87171" />
@@ -2821,7 +2821,13 @@ function RecognizedCardLarge({
             )}
             <div
               className="flex flex-col justify-center items-start min-w-0 text-white/90"
-              style={{ height: logoHeight, fontSize: `calc(${logoHeight} * 0.3 - 1px)`, lineHeight: 1.25, gap: 'calc(0.15em - 1px)' }}
+              style={{
+                height: logoHeight,
+                fontSize: `calc(${logoHeight} * 0.3 - 1px)`,
+                lineHeight: 1.25,
+                gap: 'calc(0.15em - 1px)',
+                transform: 'translateY(-2px)',
+              }}
             >
               {seriesDe && <span className="truncate max-w-full text-left font-bold">{seriesDe}</span>}
               <span className="truncate max-w-full text-left" style={{ fontSize: 'calc(1em - 1px)' }}>
