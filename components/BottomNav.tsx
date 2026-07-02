@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, BookOpen, Heart, Camera, Pause, LayoutGrid, IdCard, Layers } from 'lucide-react';
+import { Home, Search, BookOpen, Heart, Camera, Pause, LayoutGrid, IdCard, Layers, Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 const FAB_SIZE = 72;
@@ -21,6 +21,7 @@ const SCAN_TOGGLE_EVENT       = 'scanner-toggle-pause';
 const SCAN_GRID_TOGGLE_EVENT  = 'scanner-toggle-grid';
 const SCAN_MODE_TOGGLE_EVENT  = 'scanner-toggle-mode';
 const SCAN_STATE_EVENT        = 'scanner-state-changed';
+const SCAN_ADD_EVENT          = 'scanner-add-recognized';
 
 interface ScannerNavState {
   paused: boolean;        // Stream pausiert?
@@ -28,6 +29,7 @@ interface ScannerNavState {
   jobsCount: number;      // Anzahl Add-Jobs (für Grid-Badge)
   gridVisible: boolean;   // Grid-Button anzeigen?
   reviewMode?: boolean;   // Scanner ist im Review-Grid → BottomNav komplett ausblenden
+  canAdd?: boolean;       // Einzeln-Modus: erkannte Karte kann hinzugefügt werden → grüner +-Button erscheint über der FAB
 }
 
 export function BottomNav() {
@@ -38,6 +40,7 @@ export function BottomNav() {
     jobsCount: 0,
     gridVisible: false,
     reviewMode: false,
+    canAdd: false,
   });
 
   const isScanner = pathname === '/scanner';
@@ -133,15 +136,48 @@ export function BottomNav() {
           )}
         </div>
 
-        {/* Mitte: FAB (ragt durch marginTop:-20 oben heraus) */}
-        <button
-          onClick={handleFabClick}
-          className="flex items-center justify-center rounded-full shadow-xl"
-          style={fabStyle}
-          aria-label={scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren'}
+        {/* Mitte: FAB-Kapsel — Kamera/Pause-Button immer sichtbar, grüner
+            +-Button erscheint animiert darüber, sobald eine erkannte Karte
+            hinzugefügt werden kann. Beide Buttons teilen sich einen Wrapper mit
+            marginTop:-20 (statt vorher auf dem Button selbst) — wächst die
+            Kapsel durch den +-Button, schiebt sich alles gemeinsam weiter nach
+            oben aus der Toolbar heraus. */}
+        <div
+          className="relative flex flex-col items-center transition-all duration-300"
+          style={{
+            marginTop: -26,
+            padding: 6,
+            borderRadius: 999,
+            background: 'rgba(0,0,0,0.35)',
+            border: '1.5px solid rgba(255,255,255,0.18)',
+          }}
         >
-          <FabIcon size={28} color={fabIconColor} fill={!scanState.paused ? '#fff' : 'none'} />
-        </button>
+          <button
+            onClick={() => window.dispatchEvent(new Event(SCAN_ADD_EVENT))}
+            aria-label="Zur Sammlung hinzufügen"
+            className="flex items-center justify-center rounded-full shadow-xl overflow-hidden"
+            style={{
+              width: 56,
+              height: scanState.canAdd ? 56 : 0,
+              marginBottom: scanState.canAdd ? 8 : 0,
+              opacity: scanState.canAdd ? 1 : 0,
+              transform: scanState.canAdd ? 'scale(1)' : 'scale(0.4)',
+              transition: 'height 280ms cubic-bezier(.34,1.56,.64,1), margin-bottom 280ms ease, opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
+              background: 'var(--action-add)',
+              pointerEvents: scanState.canAdd ? 'auto' : 'none',
+            }}
+          >
+            <Plus size={26} color="#fff" strokeWidth={3} />
+          </button>
+          <button
+            onClick={handleFabClick}
+            className="flex items-center justify-center rounded-full shadow-xl"
+            style={{ ...fabStyle, marginTop: 0 }}
+            aria-label={scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren'}
+          >
+            <FabIcon size={28} color={fabIconColor} fill={!scanState.paused ? '#fff' : 'none'} />
+          </button>
+        </div>
 
         {/* Rechts: Mode-Switch */}
         <div

@@ -415,6 +415,13 @@ export default function ScannerPage() {
     setMode(m => m === 'scanning' ? 'review' : 'scanning');
   }, []);
 
+  // Einzeln-Modus: erkannte Karte, die gerade hinzugefügt werden könnte —
+  // steuert den animierten +-Button oberhalb der FAB (BottomNav).
+  const recognizedJob = jobs.find(j => j.id === recognizedJobId) ?? null;
+  const canAddRecognized = !!recognizedJob?.result?.card
+    && !recognizedJob.added
+    && recognizedJob.result.ownedCount !== undefined;
+
   // Events vom BottomNav abonnieren
   useEffect(() => {
     const onTogglePause = () => toggleStreamPaused();
@@ -423,17 +430,22 @@ export default function ScannerPage() {
       if (m) switchScanMode(m);
     };
     const onToggleGrid  = () => toggleGridMode();
+    const onAddRecognized = () => {
+      if (recognizedJobId) setQuickAddJobId(recognizedJobId);
+    };
     window.addEventListener('scanner-toggle-pause', onTogglePause);
     window.addEventListener('scanner-toggle-mode',  onToggleMode as EventListener);
     window.addEventListener('scanner-toggle-grid',  onToggleGrid);
+    window.addEventListener('scanner-add-recognized', onAddRecognized);
     return () => {
       window.removeEventListener('scanner-toggle-pause', onTogglePause);
       window.removeEventListener('scanner-toggle-mode',  onToggleMode as EventListener);
       window.removeEventListener('scanner-toggle-grid',  onToggleGrid);
+      window.removeEventListener('scanner-add-recognized', onAddRecognized);
     };
-  }, [toggleStreamPaused, switchScanMode, toggleGridMode]);
+  }, [toggleStreamPaused, switchScanMode, toggleGridMode, recognizedJobId]);
 
-  // State an BottomNav schicken — paused/scanMode/jobsCount/gridVisible/reviewMode
+  // State an BottomNav schicken — paused/scanMode/jobsCount/gridVisible/reviewMode/canAdd
   const addJobsCount = jobs.filter(j => j.origin === 'add').length;
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('scanner-state-changed', {
@@ -443,15 +455,16 @@ export default function ScannerPage() {
         jobsCount: addJobsCount,
         gridVisible: scanMode === 'add' && addJobsCount > 0,
         reviewMode: mode === 'review',
+        canAdd: canAddRecognized,
       },
     }));
-  }, [streamPaused, scanMode, addJobsCount, mode]);
+  }, [streamPaused, scanMode, addJobsCount, mode, canAddRecognized]);
 
   // Beim Unmount: Reset, damit andere Seiten nicht den Scan-Pause-FAB sehen
   useEffect(() => {
     return () => {
       window.dispatchEvent(new CustomEvent('scanner-state-changed', {
-        detail: { paused: false, scanMode: 'recognize', jobsCount: 0, gridVisible: false, reviewMode: false },
+        detail: { paused: false, scanMode: 'recognize', jobsCount: 0, gridVisible: false, reviewMode: false, canAdd: false },
       }));
     };
   }, []);
@@ -1931,7 +1944,6 @@ export default function ScannerPage() {
           <RecognizedCardLarge
             job={recognized}
             onCardTap={() => setActiveJobId(recognized.id)}
-            onAdd={() => setQuickAddJobId(recognized.id)}
             onDebugTap={() => setDebugJobId(recognized.id)}
           />
         );
@@ -2647,12 +2659,11 @@ function ScannedCardTile({
 interface RecognizedCardLargeProps {
   job: ScanJob;
   onCardTap: () => void;
-  onAdd:     () => void;
   onDebugTap: () => void;
 }
 
 function RecognizedCardLarge({
-  job, onCardTap, onAdd, onDebugTap,
+  job, onCardTap, onDebugTap,
 }: RecognizedCardLargeProps) {
   const img       = cardImgUrlLarge(job);
   const card      = job.result?.card;
@@ -2662,7 +2673,6 @@ function RecognizedCardLarge({
 
   const ownedCount = job.result?.ownedCount;
   const isOwned    = (ownedCount ?? 0) > 0;
-  const ownedKnown = ownedCount !== undefined;
 
   // Rahmenfarbe: Fehler/pHash-Mismatch/Fake-Risk haben Vorrang (wie Slider/Review-Grid,
   // siehe computeBorderStatus/borderStyleFor) — erst wenn davon nichts greift, zeigt
@@ -2782,16 +2792,13 @@ function RecognizedCardLarge({
             {card.name}
           </h2>
 
-          <div className="flex items-center justify-center gap-2 flex-wrap font-mono text-white/80 text-base">
+          <div className="w-full flex items-center justify-between px-6 font-mono text-white/80 text-base">
             <span>
               {numFmt ?? card.number}
               {secretTotal && <span className="text-xs text-white/50"> ({secretTotal})</span>}
             </span>
             {card.nationalDexNumber != null && (
-              <>
-                <span className="text-white/40">·</span>
-                <span>#{String(card.nationalDexNumber).padStart(3, '0')}</span>
-              </>
+              <span>#{String(card.nationalDexNumber).padStart(3, '0')}</span>
             )}
           </div>
 
@@ -2801,12 +2808,10 @@ function RecognizedCardLarge({
         </div>
       )}
 
-      {/* Hinzufügen bleibt immer möglich — auch wenn die Karte schon in der Sammlung
-          ist (z.B. weiteres Exemplar in eine andere Sammlung). „Hinzugefügt" ist nur
-          das kurzlebige Erfolgs-Feedback direkt nach einem Tap. Besitz-Status zeigt
-          der grüne Kartenrahmen an, kein separater Info-Text mehr nötig.
-          mt-auto schiebt die Zeile ans untere Ende des verfügbaren Bereichs. Button
-          ist zentriert und nicht mehr volle Breite. */}
+      {/* Hinzufügen passiert jetzt über den grünen +-Button, der animiert über
+          der Scanner-FAB erscheint (BottomNav, gesteuert über canAddRecognized/
+          scanner-add-recognized-Event) — kein Button mehr direkt auf dieser
+          Ansicht nötig. Besitz-Status zeigt weiterhin der grüne Kartenrahmen an. */}
       {card && job.added && (
         <div
           className="rounded-full text-white font-semibold flex items-center justify-center gap-2 mt-auto h-12 px-8"
@@ -2815,16 +2820,6 @@ function RecognizedCardLarge({
           <Check size={20} strokeWidth={3} />
           Hinzugefügt
         </div>
-      )}
-      {card && !job.added && ownedKnown && (
-        <button
-          onClick={onAdd}
-          className="mt-auto h-12 px-8 rounded-md text-white font-semibold flex items-center justify-center gap-2 shadow-lg"
-          style={{ background: 'var(--action-add)' }}
-        >
-          <Plus size={20} strokeWidth={3} />
-          Zur Sammlung hinzufügen
-        </button>
       )}
     </div>
   );

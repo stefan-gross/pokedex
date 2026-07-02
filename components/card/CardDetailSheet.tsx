@@ -428,7 +428,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                   <span className="text-[13px] font-bold leading-snug truncate">{setNameDe}</span>
                   {isSymbolOnlySet && resolvedMeta?.symbolUrl ? (
                     /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={resolvedMeta.symbolUrl} alt={setCode} className="w-4 h-4 object-contain shrink-0" />
+                    <img src={resolvedMeta.symbolUrl} alt={setCode} className="w-[21px] h-[21px] object-contain shrink-0" />
                   ) : (
                     <span
                       className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border shrink-0"

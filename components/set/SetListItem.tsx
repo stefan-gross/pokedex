@@ -69,7 +69,7 @@ export function SetListItem({
           <div className="flex items-center gap-1.5 shrink-0">
             {isSymbolOnlySet && symbolUrl ? (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img src={symbolUrl} alt={ptcgoCode ?? ''} className="w-4 h-4 object-contain" />
+              <img src={symbolUrl} alt={ptcgoCode ?? ''} className="w-[21px] h-[21px] object-contain" />
             ) : ptcgoCode && (
               <span
                 className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border"
