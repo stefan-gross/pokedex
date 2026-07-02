@@ -17,7 +17,9 @@ import { ValueBadge } from '@/components/card/ValueBadge';
 import { catalogCardToInfo } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition as PersistedCondition, CardDoc, CardLanguage, CardVariant } from '@/types';
-import { CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
+import { CONDITIONS, VARIANT_LABELS, SERIES_NAMES_DE } from '@/lib/card-constants';
+import { useSetMeta } from '@/lib/hooks/use-set-meta';
+import { getSetById } from '@/lib/firestore/sets';
 
 // Gemini liefert Condition in Kurzform (lowercase). Für Persistence wird in
 // die offizielle CardCondition (uppercase) gemappt.
@@ -45,6 +47,7 @@ const PERSISTED_CONDITION_COLOR: Record<PersistedCondition, { bg: string; text: 
 interface GeminiResponse {
   setCode?: string;                      // gedrucktes Set-Kürzel (z.B. "ASC", "SSP")
   number?: string;
+  printedTotal?: number | null;          // Gesamtzahl aus derselben "NNN/TTT"-Prägung, unabhängig von number gelesen
   name?: string;                         // gedruckter Karten-Name (Pokémon/Trainer/Energy)
   language?: string;
   confidence?: string;
@@ -666,6 +669,17 @@ export default function ScannerPage() {
       let catalogCard = null as Awaited<ReturnType<typeof getCardBySetCodeAndNumber>>;
       let dexCandidateCount = 0;
 
+      // Set-printedTotal-Cache für diesen Scan — vermeidet doppelte getSetById-Calls,
+      // wenn mehrere Kandidaten (Dex-Fallback, Name+Number-Mehrdeutigkeit) geprüft werden.
+      const setTotalCache = new Map<string, number | null>();
+      const getSetPrintedTotal = async (setId: string): Promise<number | null> => {
+        if (!setTotalCache.has(setId)) {
+          const doc = await getSetById(setId).catch(() => null);
+          setTotalCache.set(setId, doc?.printedTotal ?? null);
+        }
+        return setTotalCache.get(setId) ?? null;
+      };
+
       // 1) Direkter SetCode+Number-Lookup (nur wenn beide vorhanden)
       if (gemini.setCode && rawNumber) {
         debug.lookupSteps!.push(`getCardBySetCodeAndNumber("${gemini.setCode}", "${rawNumber}")`);
@@ -696,6 +710,20 @@ export default function ScannerPage() {
           );
           catalogCard = null;
         }
+
+        // Gesamtzahl-Gegenprobe: dieselbe Idee wie die Dex-Gegenprobe, aber mit der
+        // unabhängig gelesenen `printedTotal` ("053/172" → 172). Fängt z.B. den Fall
+        // ab, dass ein setCode-Treffer zwar denselben Namen+Nummer hat, aber aus dem
+        // falschen Set stammt (unterschiedliche Gesamtzahl verrät das zuverlässig).
+        if (catalogCard && gemini.printedTotal) {
+          const setTotal = await getSetPrintedTotal(catalogCard.setId);
+          if (setTotal && setTotal !== gemini.printedTotal) {
+            debug.lookupSteps!.push(
+              `verworfen: Set-Gesamtzahl passt nicht (Katalog=${setTotal}, Gemini=${gemini.printedTotal})`,
+            );
+            catalogCard = null;
+          }
+        }
       }
 
       // 3) Name+Number-Fallback — bestes Identifier-Paar wenn setCode fehlt
@@ -717,11 +745,28 @@ export default function ScannerPage() {
             debug.lookupSteps![debug.lookupSteps!.length - 1] += ` → ${altCards.length} Kandidaten`;
             if (altCards.length > 0) catalogCard = altCards[0];
           }
-        } else {
-          catalogCard = nameCards[0];
-          if (nameCards.length > 1) {
+        } else if (nameCards.length > 1) {
+          // Mehrdeutig — z.B. derselbe Name+Nummer existiert zufällig in zwei
+          // verschiedenen Sets (Clefairy #53 in EX Unseen Forces UND Brilliant
+          // Stars). Gesamtzahl-Gegenprobe entscheidet, wenn Gemini sie gelesen hat.
+          let picked: typeof nameCards[number] | null = null;
+          if (gemini.printedTotal) {
+            for (const c of nameCards) {
+              const setTotal = await getSetPrintedTotal(c.setId);
+              if (setTotal === gemini.printedTotal) { picked = c; break; }
+            }
+          }
+          if (picked) {
+            catalogCard = picked;
+            debug.lookupSteps!.push(
+              `name+number mehrdeutig: ${nameCards.length} Kandidaten — per Set-Gesamtzahl (${gemini.printedTotal}) auf ${picked.id} aufgelöst`,
+            );
+          } else {
+            catalogCard = nameCards[0];
             debug.lookupSteps!.push(`name+number mehrdeutig: ${nameCards.length} — erster gewählt`);
           }
+        } else {
+          catalogCard = nameCards[0];
         }
       }
 
@@ -1841,8 +1886,6 @@ export default function ScannerPage() {
             job={recognized}
             onCardTap={() => setActiveJobId(recognized.id)}
             onAdd={() => setQuickAddJobId(recognized.id)}
-            onVariantChange={v => setJobVariant(recognized.id, v)}
-            onConditionChange={c => setJobCondition(recognized.id, c)}
             onDebugTap={() => setDebugJobId(recognized.id)}
           />
         );
@@ -2557,53 +2600,67 @@ function ScannedCardTile({
 
 interface RecognizedCardLargeProps {
   job: ScanJob;
-  onCardTap:         () => void;
-  onAdd:             () => void;
-  onVariantChange:   (v: CardVariant) => void;
-  onConditionChange: (c: PersistedCondition) => void;
-  onDebugTap:        () => void;
+  onCardTap: () => void;
+  onAdd:     () => void;
+  onDebugTap: () => void;
 }
 
 function RecognizedCardLarge({
-  job, onCardTap, onAdd, onVariantChange, onConditionChange, onDebugTap,
+  job, onCardTap, onAdd, onDebugTap,
 }: RecognizedCardLargeProps) {
   const img       = cardImgUrlLarge(job);
   const card      = job.result?.card;
-  // Gleiche Priorität wie Slider/Review-Grid: pHash-Mismatch/Unsure > manuelle
-  // Markierung > Fake-Risk-Farbe > neutral (siehe computeBorderStatus/borderStyleFor).
-  const { border: cardBorder } = borderStyleFor(computeBorderStatus(job), job.result?.fakeRisk);
-  const cardVariants = card?.variants?.length ? card.variants : (['standard'] as CardVariant[]);
-  const variant   = job.editedVariant   ?? cardVariants[0];
-  const condition = job.editedCondition ?? 'NM';
-  const condColor = PERSISTED_CONDITION_COLOR[condition];
+  const setMeta   = useSetMeta(card?.setId, undefined, card?.setName);
+  const [logoFailed, setLogoFailed] = useState(false);
+  useEffect(() => { setLogoFailed(false); }, [setMeta?.logoUrl]);
 
   const ownedCount = job.result?.ownedCount;
   const isOwned    = (ownedCount ?? 0) > 0;
   const ownedKnown = ownedCount !== undefined;
 
+  // Rahmenfarbe: Fehler/pHash-Mismatch/Fake-Risk haben Vorrang (wie Slider/Review-Grid,
+  // siehe computeBorderStatus/borderStyleFor) — erst wenn davon nichts greift, zeigt
+  // der Rahmen stattdessen den Besitz-Status an (grün = schon in der Sammlung, sonst
+  // keiner) statt eines separaten Info-Textes.
+  const statusFlagged = computeBorderStatus(job) !== 'none' || !!job.result?.fakeRisk;
+  const cardBorder = statusFlagged
+    ? borderStyleFor(computeBorderStatus(job), job.result?.fakeRisk).border
+    : isOwned ? '4px solid #22c55e' : '2.5px solid transparent';
+  // Zusätzlicher Glow beim grünen Besitz-Rahmen — reiner Farbrand geht auf bunten
+  // Kartenmotiven schnell unter, der Schein macht "schon vorhanden" unmissverständlich.
+  const cardGlow = !statusFlagged && isOwned ? '0 0 0 3px rgba(34,197,94,0.35)' : undefined;
+
+  const numBase  = card ? card.number.split('/')[0].padStart(3, '0') : null;
+  const numTotal = setMeta?.printedTotal ? String(setMeta.printedTotal).padStart(3, '0') : null;
+  const numFmt   = numBase ? (numTotal ? `${numBase}/${numTotal}` : numBase) : null;
+  // Gesamtzahl inkl. Secret Rares nur anzeigen, wenn das Set welche hat (total > printedTotal).
+  const secretTotal = setMeta?.total && setMeta.printedTotal && setMeta.total > setMeta.printedTotal
+    ? setMeta.total : null;
+  const setCode  = card?.setCode ?? card?.setId?.toUpperCase();
+  const seriesDe = card?.series ? (SERIES_NAMES_DE[card.series] ?? card.series) : null;
+  const showLogo = !!setMeta?.logoUrl && !logoFailed;
+
   return (
     <div
-      className="absolute inset-x-0 z-10 flex flex-col items-center px-6 gap-3"
+      className="absolute inset-x-0 z-10 flex flex-col items-center px-4 gap-3"
       style={{
-        top: 'calc(env(safe-area-inset-top, 0px) + 56px)',
+        top: 'calc(env(safe-area-inset-top, 0px) + 52px)',
         bottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)',
       }}
     >
-      {/* Pokemon-Name + Debug-Zugang */}
-      <div className="relative w-full flex items-center justify-center">
-        <h2 className="text-white font-semibold text-lg truncate text-center max-w-full">
-          {card?.name ?? 'Karte'}
-        </h2>
-        <button
-          onClick={onDebugTap}
-          className="absolute right-0 w-8 h-8 flex items-center justify-center rounded-full bg-white/10"
-          aria-label="Debug-Infos anzeigen"
-        >
-          <Bug size={16} color="#fff" />
-        </button>
-      </div>
+      {/* Debug-Zugang — oben rechts über allem, unabhängig vom Namen (der jetzt
+          unterhalb der Karte steht statt darüber). */}
+      <button
+        onClick={onDebugTap}
+        className="absolute top-0 right-0 w-8 h-8 flex items-center justify-center rounded-full bg-white/10"
+        aria-label="Debug-Infos anzeigen"
+      >
+        <Bug size={16} color="#fff" />
+      </button>
 
-      {/* Karten-Body — Höhe begrenzt durch verfügbaren Platz, Breite via aspect-ratio */}
+      {/* Karten-Body — Höhe begrenzt durch verfügbaren Platz, Breite via aspect-ratio.
+          Varianten-/Zustand-Auswahl passiert nicht mehr hier, sondern beim Hinzufügen
+          im AddToCollectionModal — hält diese Ansicht auf schnelles Scannen fokussiert. */}
       <div
         className="relative rounded-lg overflow-hidden"
         style={{
@@ -2611,6 +2668,7 @@ function RecognizedCardLarge({
           height: 'min(70vh, 100%)',
           maxWidth: '100%',
           border: cardBorder,
+          boxShadow: cardGlow,
           background: '#1a1a1a',
           cursor: card ? 'pointer' : 'default',
         }}
@@ -2625,77 +2683,90 @@ function RecognizedCardLarge({
           </div>
         )}
 
-        {/* Variant-Pill unten links */}
-        {card && (
-          <div className="absolute bottom-2 left-2">
-            <span
-              className="text-xs font-bold px-3 py-1.5 rounded-lg inline-block"
-              style={{ background: 'rgba(0,0,0,0.75)', color: '#fff' }}
-            >
-              {VARIANT_LABELS[variant]}
-            </span>
-            <select
-              value={variant}
-              onClick={e => e.stopPropagation()}
-              onChange={e => onVariantChange(e.target.value as CardVariant)}
-              className="absolute inset-0 opacity-0 cursor-pointer"
-              aria-label="Variante ändern"
-            >
-              {cardVariants.map(v => (
-                <option key={v} value={v}>{VARIANT_LABELS[v]}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {/* Condition-Pill unten rechts */}
-        {card && (
-          <div className="absolute bottom-2 right-2">
-            <span
-              className="text-xs font-bold px-3 py-1.5 rounded-lg inline-block"
-              style={{ background: condColor.bg, color: condColor.text }}
-            >
-              {condition}
-            </span>
-            <select
-              value={condition}
-              onClick={e => e.stopPropagation()}
-              onChange={e => onConditionChange(e.target.value as PersistedCondition)}
-              className="absolute inset-0 opacity-0 cursor-pointer"
-              aria-label="Zustand ändern"
-            >
-              {CONDITIONS.map(c => (
-                <option key={c.value} value={c.value}>{c.short}</option>
-              ))}
-            </select>
+        {/* ×N-Hinweis, wenn mehrere Exemplare schon vorhanden sind — der grüne
+            Kartenrahmen zeigt bereits "besitze ich", die Zahl ist der einzige
+            zusätzliche Info-Bedarf. */}
+        {isOwned && ownedCount && ownedCount > 1 && (
+          <div
+            className="absolute top-2 right-2 flex items-center justify-center min-w-[26px] h-[26px] px-1.5 rounded-full text-xs font-bold"
+            style={{ background: 'rgba(34,197,94,0.9)', color: '#fff' }}
+          >
+            ×{ownedCount}
           </div>
         )}
       </div>
 
-      {/* Set-Code + Nummer + Cardmarket-Preis */}
-      <div className="flex items-center justify-center gap-2">
-        <p className="text-sm text-white/70 text-center font-mono">
-          {card?.setCode ? `${card.setCode} ${card.number}` : '—'}
-        </p>
-        {card && <CardPrice tcgId={card.id} />}
-      </div>
+      {/* Unterhalb der Karte, in dieser Reihenfolge: Set-Zeile, Pokémon-Name,
+          Nummern-Zeile, Preis — jede Zeile zentriert. */}
+      {card && (
+        <div className="w-full flex flex-col items-center gap-2 px-1 mt-2">
+          <div className="w-full flex items-center justify-center gap-3 flex-wrap text-white text-2xl font-medium">
+            {showLogo ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={setMeta!.logoUrl}
+                alt={setCode ?? ''}
+                className="h-12 max-w-[190px] object-contain"
+                onError={() => setLogoFailed(true)}
+              />
+            ) : setMeta?.symbolUrl ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={setMeta.symbolUrl} alt={setCode ?? ''} className="w-8 h-8 object-contain" />
+            ) : (
+              setCode && <span className="font-mono font-bold">{setCode}</span>
+            )}
+            {seriesDe && (
+              <>
+                <span className="text-white/40">·</span>
+                <span>{seriesDe}</span>
+              </>
+            )}
+            <span className="text-white/40">·</span>
+            <span>{setMeta?.nameDe ?? card.setName}</span>
+          </div>
 
-      {/* Status unter der Karte: bereits in Sammlung ODER Hinzufügen-Button */}
-      {card && (job.added || isOwned) && (
+          <h2 className="text-white font-semibold text-xl truncate text-center max-w-full">
+            {card.name}
+          </h2>
+
+          <div className="flex items-center justify-center gap-2 flex-wrap font-mono text-white/70 text-xl">
+            <span>
+              {numFmt ?? card.number}
+              {secretTotal && <span className="text-sm text-white/50"> ({secretTotal})</span>}
+            </span>
+            {card.nationalDexNumber != null && (
+              <>
+                <span className="text-white/40">·</span>
+                <span>#{String(card.nationalDexNumber).padStart(3, '0')}</span>
+              </>
+            )}
+          </div>
+
+          <div style={{ transform: 'scale(1.6)' }} className="mt-1">
+            <CardPrice tcgId={card.id} />
+          </div>
+        </div>
+      )}
+
+      {/* Hinzufügen bleibt immer möglich — auch wenn die Karte schon in der Sammlung
+          ist (z.B. weiteres Exemplar in eine andere Sammlung). „Hinzugefügt" ist nur
+          das kurzlebige Erfolgs-Feedback direkt nach einem Tap. Besitz-Status zeigt
+          der grüne Kartenrahmen an, kein separater Info-Text mehr nötig.
+          mt-auto schiebt die Zeile ans untere Ende des verfügbaren Bereichs. Button
+          ist zentriert und nicht mehr volle Breite. */}
+      {card && job.added && (
         <div
-          className="w-full h-12 rounded-full text-white font-semibold flex items-center justify-center gap-2"
+          className="rounded-full text-white font-semibold flex items-center justify-center gap-2 mt-auto h-12 px-8"
           style={{ background: 'rgba(34,197,94,0.85)' }}
         >
           <Check size={20} strokeWidth={3} />
-          {job.added
-            ? 'Hinzugefügt'
-            : `Bereits in deiner Sammlung${ownedCount && ownedCount > 1 ? ` (×${ownedCount})` : ''}`}
+          Hinzugefügt
         </div>
       )}
-      {card && !job.added && !isOwned && ownedKnown && (
+      {card && !job.added && ownedKnown && (
         <button
           onClick={onAdd}
-          className="w-full h-12 rounded-md text-white font-semibold flex items-center justify-center gap-2 shadow-lg"
+          className="mt-auto h-12 px-8 rounded-md text-white font-semibold flex items-center justify-center gap-2 shadow-lg"
           style={{ background: 'var(--action-add)' }}
         >
           <Plus size={20} strokeWidth={3} />

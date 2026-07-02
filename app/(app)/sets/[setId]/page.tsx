@@ -294,7 +294,7 @@ function SetDetailContent() {
               cards={displayed}
               ownedMap={ownedMap}
               binders={binders}
-              setMeta={{ nameDe: (nameDe || cards[0]?.setName) ?? '', logoUrl, total: totalCount }}
+              setMeta={{ nameDe: (nameDe || cards[0]?.setName) ?? '', logoUrl, printedTotal: totalCount, total: totalCount }}
               sortKey={sort}
             />
           </div>

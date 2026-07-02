@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { X, Plus, Heart, CheckCircle2, ChevronDown, ChevronRight, ChevronLeft, Trash2, Info, Repeat2, LayoutGrid } from 'lucide-react';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
@@ -12,7 +13,7 @@ import { getCardsByEvolutionFamily, getCardsByDexNumber } from '@/lib/firestore/
 import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
 import { CardVariantPrice } from '@/components/card/CardPriceDetail';
 import { fetchPokemonSpeciesDE, getEvolutionFamilyDexNumbers, type SpeciesDE } from '@/lib/pokeapi';
-import { getSetById } from '@/lib/firestore/sets';
+import { useSetMeta, type SetMeta } from '@/lib/hooks/use-set-meta';
 import { CardImage } from '@/components/card/CardImage';
 import type { CardDoc, BinderDoc, CardVariant } from '@/types';
 
@@ -102,7 +103,6 @@ function imgFromLogoUrl(logoUrl: string, cardNumber: string): string | null {
 
 /* ── Props / Types ───────────────────────────────────────────── */
 
-interface SetMeta { nameDe: string; logoUrl: string; total: number; }
 export type { SetMeta };
 
 interface Props {
@@ -164,7 +164,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   const [evoLoaded,    setEvoLoaded]    = useState(false);
   const [deletingId,   setDeletingId]   = useState<string | null>(null);
   const [confirmId,    setConfirmId]    = useState<string | null>(null);
-  const [resolvedMeta,    setResolvedMeta]    = useState<SetMeta | undefined>(setMeta);
+  const resolvedMeta = useSetMeta(card?.setId, setMeta, card?.setName);
   const [resolvedBinders, setResolvedBinders] = useState<BinderDoc[]>(binders ?? []);
 
   /* Reset + load on card change */
@@ -175,26 +175,6 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     // DE-Bild direkt aus Firestore, falls vorhanden (|| fängt auch leere Strings ab)
     setImgSrcDe(card.imgLargeDe || undefined);
     requestAnimationFrame(() => setVisible(true));
-
-    // Set-Metadaten laden (DE-Name, Logo) — aus tcg_sets Firestore, kein externer API-Call
-    const loadMeta = async () => {
-      let meta = setMeta;
-      if (!meta) {
-        const setDoc = await getSetById(card.setId);
-        meta = {
-          nameDe:  setDoc?.nameDe ?? setDoc?.name ?? card.setName,
-          logoUrl: setDoc?.logoUrl ?? `https://images.pokemontcg.io/${card.setId}/logo.png`,
-          total:   setDoc?.total ?? 0,
-        };
-      }
-      setResolvedMeta(meta);
-      // Fallback: DE-Bild aus Logo-URL ableiten wenn imgLargeDe nicht in Firestore
-      if (!card.imgLargeDe) {
-        const deImg = imgFromLogoUrl(meta.logoUrl, card.number);
-        if (deImg) setImgSrcDe(deImg);
-      }
-    };
-    loadMeta();
     getBinders().then(setResolvedBinders).catch(() => {});
 
     const isPokemon = !card.supertype ||
@@ -253,6 +233,14 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     }
   }, [card?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Fallback: DE-Bild aus Logo-URL ableiten, sobald Set-Metadaten geladen sind
+  // (nur nötig wenn imgLargeDe nicht direkt in Firestore hinterlegt ist).
+  useEffect(() => {
+    if (!card || card.imgLargeDe || !resolvedMeta) return;
+    const deImg = imgFromLogoUrl(resolvedMeta.logoUrl, card.number);
+    if (deImg) setImgSrcDe(deImg);
+  }, [card, resolvedMeta]);
+
   if (!card) return null;
 
   /* Derived values */
@@ -265,7 +253,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   const energyTypes = (card.types ?? []).map(toEnergy).filter(Boolean) as EnergyType[];
   const setCode     = card.setCode ?? card.setId.toUpperCase();
   const numBase     = card.number.split('/')[0].padStart(3, '0');
-  const numTotal    = resolvedMeta?.total ? String(resolvedMeta.total).padStart(3, '0') : null;
+  const numTotal    = resolvedMeta?.printedTotal ? String(resolvedMeta.printedTotal).padStart(3, '0') : null;
   const numFmt      = numTotal ? `${numBase}/${numTotal}` : numBase;
   const logoUrl     = resolvedMeta?.logoUrl ?? `https://images.pokemontcg.io/${card.setId}/logo.png`;
   const setNameDe   = resolvedMeta?.nameDe ?? card.setName;
@@ -300,7 +288,12 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     } finally { setDeletingId(null); }
   }
 
-  return (
+  // Portal direkt in document.body: verhindert, dass das Sheet in einem trapped
+  // Stacking-Context landet (z.B. Scanner-Root ist selbst `position: fixed`, was
+  // IMMER einen eigenen Stacking-Context erzeugt — jedes z-index darin wird nur
+  // lokal verglichen und kann nie über Geschwister-Elemente wie die BottomNav
+  // hinausragen, egal wie hoch der Wert ist — siehe gleicher Fix in AddToCollectionModal).
+  return createPortal((
     <div className="fixed inset-0 z-[60] flex items-end">
       {/* Backdrop */}
       <div
@@ -791,5 +784,5 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
         />
       )}
     </div>
-  );
+  ), document.body);
 }

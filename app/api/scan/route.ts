@@ -32,6 +32,12 @@ number — 1–3 digits before the slash in the "NNN/TTT" group. Stamp position
   return only the digits before "/". If no slash-number exists (very old promo
   cards) → number = null.
 
+printedTotal — the digits AFTER the slash in the SAME "NNN/TTT" group (the set's
+  total card count as printed on the card, e.g. "053/172" → printedTotal = 172).
+  Read it as a plain integer, drop leading zeros. This is a SEPARATE, independent
+  reading from "number" — do not derive one from the other, read both digit
+  groups directly from the stamp. null if no slash-number exists.
+
 language — German cards have "KP" (HP) and "Fähigkeit" (Ability).
   English cards have "HP" and "Ability". French has "PV" and "Talent" etc.
 
@@ -57,41 +63,41 @@ confidence — your own confidence in the result: "high" if everything is
 EXAMPLES:
 
 A) Bottom-LEFT stamp "J ASC DE 005/217"
-   → { setCode: "ASC", number: "005", language: "de", confidence: "high" }
+   → { setCode: "ASC", number: "005", printedTotal: 217, language: "de", confidence: "high" }
    (Scarlet & Violet DE — full letter code present)
 
 B) Bottom-LEFT stamp "J SSP 142/191"
-   → { setCode: "SSP", number: "142", language: "en", confidence: "high" }
+   → { setCode: "SSP", number: "142", printedTotal: 191, language: "en", confidence: "high" }
    (Scarlet & Violet EN — full letter code present)
 
 C) Card shows "BASIS 107/203" in the bottom-LEFT with a small icon
    (sun-with-E-letter); no 2–4 letter code visible
-   → { setCode: null, number: "107", language: "de", confidence: "high" }
+   → { setCode: null, number: "107", printedTotal: 203, language: "de", confidence: "high" }
    (Sword & Shield era — symbol only, no letter code)
 
 D) Card shows "078/202" in the bottom-LEFT with a circular set symbol
-   → { setCode: null, number: "078", language: "en", confidence: "high" }
+   → { setCode: null, number: "078", printedTotal: 202, language: "en", confidence: "high" }
    (SWSH/SM/XY EN — symbol only)
 
 E) Trainer card "Doppelball" (HGSS-era, "TRAINER" printed sideways on
    the left edge). Stamp "72/95" + symbol + rarity dot is in the
    BOTTOM-RIGHT corner of the card (in reading orientation)
-   → { setCode: null, number: "072", language: "de", confidence: "high" }
+   → { setCode: null, number: "072", printedTotal: 95, language: "de", confidence: "high" }
    (pre-2020 — stamp at bottom-right, no letter code)
 
 F) Base Set Pikachu — small set icon in bottom-right, no slash-number
-   → { setCode: null, number: null, language: "en", confidence: "medium" }
+   → { setCode: null, number: null, printedTotal: null, language: "en", confidence: "medium" }
 
 G) Lombrero card with banner "Nr. 0271 Frohmut-Pokémon Größe 1,2 m Gewicht 12,5 kg",
    bottom-LEFT stamp "006/094" + set symbol (sun-with-E), no letter code
-   → { setCode: null, number: "006", language: "de", confidence: "high",
+   → { setCode: null, number: "006", printedTotal: 94, language: "de", confidence: "high",
        nationalDexNumber: 271, name: "Lombrero" }
    (CRITICAL: read Dex from the banner text, parse "0271" as integer 271)
 
 H) HGSS Trainer "Doppelball" — top of card shows "TRAINER" sideways on the
    left edge, large name "Doppelball" centered, no Pokédex number (Trainer
    cards have no Pokémon dex), stamp "72/95" + set symbol bottom-RIGHT
-   → { setCode: null, number: "072", language: "de", confidence: "high",
+   → { setCode: null, number: "072", printedTotal: 95, language: "de", confidence: "high",
        nationalDexNumber: null, name: "Doppelball" }
 
 ALSO read the printed card name (large text at the top — Pokémon name, Trainer
@@ -120,6 +126,11 @@ const SCHEMA = {
       type: SchemaType.STRING,
       nullable: true,
       description: 'Card number digits only, no slash',
+    },
+    printedTotal: {
+      type: SchemaType.INTEGER,
+      nullable: true,
+      description: 'Digits AFTER the slash in the same "NNN/TTT" stamp group — the set total as printed on the card. Independent reading from `number`, not derived from it.',
     },
     name: {
       type: SchemaType.STRING,
