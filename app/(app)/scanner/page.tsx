@@ -2700,39 +2700,39 @@ function RecognizedCardLarge({
           Nummern-Zeile, Preis — jede Zeile zentriert. */}
       {card && (
         <div className="w-full flex flex-col items-center gap-2 px-1 mt-2">
-          <div className="w-full flex items-center justify-center gap-3 flex-wrap text-white text-2xl font-medium">
+          <div className="w-full flex items-center justify-center gap-2.5 flex-wrap text-white/90 text-2xl">
             {showLogo ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={setMeta!.logoUrl}
                 alt={setCode ?? ''}
-                className="h-12 max-w-[190px] object-contain"
+                className="h-9 max-w-[160px] object-contain shrink-0"
                 onError={() => setLogoFailed(true)}
               />
             ) : setMeta?.symbolUrl ? (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img src={setMeta.symbolUrl} alt={setCode ?? ''} className="w-8 h-8 object-contain" />
+              <img src={setMeta.symbolUrl} alt={setCode ?? ''} className="w-7 h-7 object-contain shrink-0" />
             ) : (
               setCode && <span className="font-mono font-bold">{setCode}</span>
             )}
             {seriesDe && (
               <>
-                <span className="text-white/40">·</span>
+                <span className="text-white/30">·</span>
                 <span>{seriesDe}</span>
               </>
             )}
-            <span className="text-white/40">·</span>
+            <span className="text-white/30">·</span>
             <span>{setMeta?.nameDe ?? card.setName}</span>
           </div>
 
-          <h2 className="text-white font-semibold text-xl truncate text-center max-w-full">
+          <h2 className="text-white font-bold text-3xl truncate text-center max-w-full">
             {card.name}
           </h2>
 
-          <div className="flex items-center justify-center gap-2 flex-wrap font-mono text-white/70 text-xl">
+          <div className="flex items-center justify-center gap-2 flex-wrap font-mono text-white/80 text-2xl">
             <span>
               {numFmt ?? card.number}
-              {secretTotal && <span className="text-sm text-white/50"> ({secretTotal})</span>}
+              {secretTotal && <span className="text-base text-white/50"> ({secretTotal})</span>}
             </span>
             {card.nationalDexNumber != null && (
               <>
@@ -2742,7 +2742,7 @@ function RecognizedCardLarge({
             )}
           </div>
 
-          <div style={{ transform: 'scale(1.6)' }} className="mt-1">
+          <div style={{ transform: 'scale(2)' }} className="mt-2">
             <CardPrice tcgId={card.id} />
           </div>
         </div>
