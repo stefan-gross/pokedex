@@ -53,9 +53,17 @@ export function hammingDistance(a: bigint, b: bigint): number {
   return count;
 }
 
-/** Schwellwerte lt. Plan: 0-11 match, 12-19 unsure, 20+ mismatch (von 64 möglichen Bits). */
+/**
+ * Grob rekalibriert an zwei realen Foto-vs-Katalogbild-Vergleichen (Handy-Foto
+ * bei Umgebungslicht gegen sauberes Produktbild streut mehr als bei zwei
+ * digitalen Bildern): korrekter Match (Bidiza/CRZ) lag bei Distanz 20, ein
+ * echter Fehlmatch (Bidiza fälschlich als Sharfax/BRS) bei 28. Die
+ * ursprünglichen, engeren Schwellwerte (0-11/12-19/20+) hätten den korrekten
+ * Match als „mismatch" geflaggt. Mit nur zwei Datenpunkten kalibriert — bei
+ * mehr realen Scans ggf. weiter nachjustieren.
+ */
 export function classifyPHashDistance(distance: number): PHashClass {
-  if (distance <= 11) return 'match';
-  if (distance <= 19) return 'unsure';
+  if (distance <= 22) return 'match';
+  if (distance <= 27) return 'unsure';
   return 'mismatch';
 }

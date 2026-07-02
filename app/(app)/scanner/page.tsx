@@ -123,8 +123,9 @@ function computeBorderStatus(job: ScanJob): BorderStatus {
   if (job.status === 'error') return 'error';
   const dist = job.pHashDistance;
   if (typeof dist === 'number') {
-    if (dist >= 20) return 'auto-red';
-    if (dist >= 12) return 'auto-yellow';
+    // Schwellwerte synchron mit classifyPHashDistance() in lib/scan/image-hash.ts
+    if (dist >= 28) return 'auto-red';
+    if (dist >= 23) return 'auto-yellow';
   }
   if (job.flaggedManual) return 'manual-yellow';
   return 'none';
@@ -2184,7 +2185,8 @@ export default function ScannerPage() {
             {/* Bild-Verifikation (pHash) — vergleicht Foto gegen Katalog-Bild */}
             {debugJob.debug.catalogMatch && (() => {
               const dist = debugJob.pHashDistance;
-              const cls = dist == null ? null : dist <= 11 ? 'match' : dist <= 19 ? 'unsure' : 'mismatch';
+              // Schwellwerte synchron mit classifyPHashDistance() in lib/scan/image-hash.ts
+              const cls = dist == null ? null : dist <= 22 ? 'match' : dist <= 27 ? 'unsure' : 'mismatch';
               const clsColor = cls === 'match' ? 'text-green-300' : cls === 'unsure' ? 'text-yellow-300' : cls === 'mismatch' ? 'text-red-300' : 'text-white/40';
               const catalogImg = cardImgUrl(debugJob) ?? cardImgUrlLarge(debugJob);
               return (
