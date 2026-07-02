@@ -32,7 +32,8 @@ interface ScannerNavState {
   reviewMode?: boolean;   // Scanner ist im Review-Grid → BottomNav komplett ausblenden
   canAdd?: boolean;       // Einzeln-Modus: erkannte Karte kann hinzugefügt werden → grüner +-Button erscheint über der FAB
   recognizedCardId?: string | null;    // tcgId der erkannten Karte, für Preis rechts neben dem +-Button
-  recognizedNumber?: string | null;    // "053/172", links neben dem +-Button
+  recognizedNumBase?: string | null;   // "053" (Nummer der Karte im Set), fett/größer
+  recognizedNumTotal?: string | null;  // "172" (Gesamtzahl des Sets), kleiner
   recognizedDex?: string | null;       // "#035", darunter
 }
 
@@ -141,12 +142,19 @@ export function BottomNav() {
               )}
             </button>
           )}
-          {scanState.recognizedNumber && (
+          {scanState.recognizedNumBase && (
             <div
               className="absolute inset-x-0 flex flex-col items-center justify-center font-mono text-white/80 text-lg"
               style={{ top: -92, height: 92 }}
             >
-              <span>{scanState.recognizedNumber}</span>
+              <span>
+                <span className="font-bold" style={{ fontSize: 'calc(1em + 1px)' }}>{scanState.recognizedNumBase}</span>
+                {scanState.recognizedNumTotal && (
+                  <>
+                    /<span style={{ fontSize: 'calc(1em - 4px)' }}>{scanState.recognizedNumTotal}</span>
+                  </>
+                )}
+              </span>
               {scanState.recognizedDex && (
                 <span className="text-sm text-white/60">{scanState.recognizedDex}</span>
               )}

@@ -426,11 +426,8 @@ export default function ScannerPage() {
   // Quelle wie in RecognizedCardLarge (printedTotal aus tcg_sets, nicht aus
   // dem Scan-Ergebnis, siehe useSetMeta).
   const recognizedSetMeta = useSetMeta(recognizedCard?.setId, undefined, recognizedCard?.setName);
-  const recognizedNumBase = recognizedCard ? recognizedCard.number.split('/')[0].padStart(3, '0') : null;
-  const recognizedNumTotal = recognizedSetMeta?.printedTotal ? String(recognizedSetMeta.printedTotal).padStart(3, '0') : null;
-  const recognizedNumber = canAddRecognized
-    ? (recognizedNumBase ? (recognizedNumTotal ? `${recognizedNumBase}/${recognizedNumTotal}` : recognizedNumBase) : null)
-    : null;
+  const recognizedNumBase = canAddRecognized && recognizedCard ? recognizedCard.number.split('/')[0].padStart(3, '0') : null;
+  const recognizedNumTotal = canAddRecognized && recognizedSetMeta?.printedTotal ? String(recognizedSetMeta.printedTotal).padStart(3, '0') : null;
   const recognizedDex = canAddRecognized && recognizedCard?.nationalDexNumber != null
     ? `#${String(recognizedCard.nationalDexNumber).padStart(3, '0')}`
     : null;
@@ -470,11 +467,12 @@ export default function ScannerPage() {
         reviewMode: mode === 'review',
         canAdd: canAddRecognized,
         recognizedCardId,
-        recognizedNumber,
+        recognizedNumBase,
+        recognizedNumTotal,
         recognizedDex,
       },
     }));
-  }, [streamPaused, scanMode, addJobsCount, mode, canAddRecognized, recognizedCardId, recognizedNumber, recognizedDex]);
+  }, [streamPaused, scanMode, addJobsCount, mode, canAddRecognized, recognizedCardId, recognizedNumBase, recognizedNumTotal, recognizedDex]);
 
   // Beim Unmount: Reset, damit andere Seiten nicht den Scan-Pause-FAB sehen
   useEffect(() => {
@@ -2709,11 +2707,20 @@ function RecognizedCardLarge({
   // nur ein grafisches Symbol. `setCode` ist dort nur ein internes pokemontcg.io-
   // Kürzel (z.B. "BS", "JU"), niemals als vermeintlicher Kartendruck anzeigen.
   const isSymbolOnlySet = !!card?.series && SYMBOL_ONLY_SERIES.includes(card.series);
+  // Tatsächlich verfügbare Höhe in diesem Container (= dieselben top/bottom-
+  // Insets wie unten am Container) — NICHT einfach "70dvh" schätzen: das war
+  // der eigentliche Grund für den Zuschnitt-Bug auf echten Geräten. Die Karte
+  // (aspect-ratio + object-cover) schneidet oben/unten ab, sobald die per
+  // Formel angenommene Höhe von der wirklich verfügbaren Höhe abweicht, weil
+  // dann `maxHeight` das Seitenverhältnis bricht. Mit der exakten Höhe hier
+  // ist die Breite von vornherein so berechnet, dass die Karte immer passt.
+  const availableHeightExpr =
+    '100dvh - env(safe-area-inset-top, 0px) - 52px - env(safe-area-inset-bottom, 0px) - 160px';
   // Gemeinsame Basis für alle relativen Größen unterhalb der Karte (Logo, Zeilen,
   // Schrift) — dieselbe Formel wie die Kartenbreite selbst, damit Logo/Text
   // proportional zur tatsächlichen (responsiven) Kartenbreite skalieren statt in
   // festen px, die auf schmalen Screens (iPhone) zu groß wirken.
-  const sizeBase = 'min(70dvh * 63 / 88, 100vw - 32px)';
+  const sizeBase = `min(calc((${availableHeightExpr}) * 63 / 88), calc(100vw - 32px))`;
   const logoHeight = `calc(${sizeBase} * 0.15)`;
 
   return (
@@ -2744,7 +2751,7 @@ function RecognizedCardLarge({
         className="relative overflow-hidden"
         style={{
           aspectRatio: '63 / 88',
-          width: 'min(calc(70dvh * 63 / 88), 100%)',
+          width: sizeBase,
           maxWidth: '100%',
           maxHeight: '100%',
           borderRadius: '4.5%',
@@ -2764,10 +2771,10 @@ function RecognizedCardLarge({
           </div>
         )}
 
-        {/* ×N-Hinweis, wenn mehrere Exemplare schon vorhanden sind — der grüne
-            Kartenrahmen zeigt bereits "besitze ich", die Zahl ist der einzige
-            zusätzliche Info-Bedarf. */}
-        {isOwned && ownedCount && ownedCount > 1 && (
+        {/* ×N-Hinweis, sobald die Karte schon vorhanden ist — auch bei genau
+            einem Exemplar, da der grüne Rahmen allein auf bunten Kartenmotiven
+            nicht immer auffällt. */}
+        {isOwned && ownedCount && (
           <div
             className="absolute top-2 right-2 flex items-center justify-center min-w-[52px] h-[52px] px-2.5 rounded-full text-xl font-bold"
             style={{ background: 'rgba(34,197,94,0.9)', color: '#fff' }}
@@ -2814,7 +2821,7 @@ function RecognizedCardLarge({
             )}
             <div
               className="flex flex-col justify-center items-start min-w-0 text-white/90"
-              style={{ height: logoHeight, fontSize: `calc(${logoHeight} * 0.3)`, lineHeight: 1.25, gap: '0.15em' }}
+              style={{ height: logoHeight, fontSize: `calc(${logoHeight} * 0.3 - 1px)`, lineHeight: 1.25, gap: 'calc(0.15em - 1px)' }}
             >
               {seriesDe && <span className="truncate max-w-full text-left font-bold">{seriesDe}</span>}
               <span className="truncate max-w-full text-left" style={{ fontSize: 'calc(1em - 1px)' }}>
