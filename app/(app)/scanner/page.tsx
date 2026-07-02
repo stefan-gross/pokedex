@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Trash2, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle, EyeOff, SearchX, LayoutGrid, Square, Flag } from 'lucide-react';
+import { X, Trash2, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle, EyeOff, SearchX, LayoutGrid, Square, Flag, Bug } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
@@ -60,6 +60,7 @@ interface GeminiResponse {
     reason?: string;                       // gesetzt wenn triggered=false
     error?: string;                        // gesetzt wenn Schritt 2 fehlgeschlagen ist
     matchedSetCode?: string | null;
+    rejectedMatch?: string;                // gesetzt wenn Gemini einen Code lieferte, der auf keinem Blatt existiert
     matchConfidence?: string | null;
     matchAmbiguous?: boolean;
     sheetsUsed?: string[];
@@ -646,7 +647,7 @@ export default function ScannerPage() {
       if (gemini.error || !hasUsefulInfo) {
         debug.error = gemini.error ?? 'Kein lesbarer Karten-Text';
         debug.totalMs = Date.now() - t0;
-        const errDebug: ScanDebug = { ...debug, geminiParsed: undefined, lookupSteps: undefined };
+        const errDebug: ScanDebug = { ...debug };
         setJobs(prev => prev.map(j => j.id === id
           ? { ...j, status: 'error', result: { card: null, language: (gemini.language ?? 'de') as CardLanguage }, debugInfo: geminiSummary, debug: errDebug }
           : j));
@@ -758,14 +759,13 @@ export default function ScannerPage() {
         : `Katalog: nicht gefunden (setCode=${gemini.setCode ?? 'null'}/${rawNumber || 'null'}, dex=${gemini.nationalDexNumber ?? 'null'}, ${dexCandidateCount} Kandidaten)`;
 
       // Memory-Cleanup beim Finalisieren:
-      //  - geminiParsed + lookupSteps werden nur fürs Debug-Modal gebraucht → raus
+      //  - geminiParsed + lookupSteps bleiben erhalten — werden fürs Debug-Modal
+      //    gebraucht (kleine JSON-Objekte, kein nennenswerter Speicherverbrauch)
       //  - imageBase64: bei Erfolg sofort weg (Katalog-CDN-Bild reicht); bei Error
       //    bleibt es zunächst stehen und wird per setTimeout (siehe weiter unten)
       //    nach 60s gestrippt.
       const finalDebug: ScanDebug = {
         ...debug,
-        geminiParsed: undefined,
-        lookupSteps: undefined,
         imageBase64: catalogCard ? undefined : debug.imageBase64,
       };
 
@@ -1801,6 +1801,7 @@ export default function ScannerPage() {
             onAdd={() => setQuickAddJobId(recognized.id)}
             onVariantChange={v => setJobVariant(recognized.id, v)}
             onConditionChange={c => setJobCondition(recognized.id, c)}
+            onDebugTap={() => setDebugJobId(recognized.id)}
           />
         );
       })()}
@@ -2083,6 +2084,9 @@ export default function ScannerPage() {
                         <div>Referenzblätter bauen: <span className="text-blue-300">{sm.sheetBuildMs ?? '—'} ms</span> <span className="text-white/40">(0 ms = bereits gecacht)</span></div>
                         <div>Blätter geprüft: <span className="text-blue-300">{sm.sheetsUsed?.length ?? 0}</span></div>
                         <div>Match: <span className="text-blue-300">{sm.matchedSetCode ?? '— (kein Match)'}</span></div>
+                        {sm.rejectedMatch && (
+                          <div className="text-orange-300">Verworfen: &quot;{sm.rejectedMatch}&quot; ist auf keinem Blatt ein echter Set-Code (vermutlich Typ-Icon verwechselt)</div>
+                        )}
                         <div>Confidence: <span className="text-blue-300">{sm.matchConfidence ?? '—'}</span>{sm.matchAmbiguous && <span className="text-orange-300"> · mehrdeutig</span>}</div>
                         {sm.error && <div className="text-red-300">Fehler: {sm.error}</div>}
                       </>
@@ -2461,10 +2465,11 @@ interface RecognizedCardLargeProps {
   onAdd:             () => void;
   onVariantChange:   (v: CardVariant) => void;
   onConditionChange: (c: PersistedCondition) => void;
+  onDebugTap:        () => void;
 }
 
 function RecognizedCardLarge({
-  job, onCardTap, onAdd, onVariantChange, onConditionChange,
+  job, onCardTap, onAdd, onVariantChange, onConditionChange, onDebugTap,
 }: RecognizedCardLargeProps) {
   const img       = cardImgUrlLarge(job);
   const card      = job.result?.card;
@@ -2488,10 +2493,19 @@ function RecognizedCardLarge({
         bottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)',
       }}
     >
-      {/* Pokemon-Name */}
-      <h2 className="text-white font-semibold text-lg truncate text-center max-w-full">
-        {card?.name ?? 'Karte'}
-      </h2>
+      {/* Pokemon-Name + Debug-Zugang */}
+      <div className="relative w-full flex items-center justify-center">
+        <h2 className="text-white font-semibold text-lg truncate text-center max-w-full">
+          {card?.name ?? 'Karte'}
+        </h2>
+        <button
+          onClick={onDebugTap}
+          className="absolute right-0 w-8 h-8 flex items-center justify-center rounded-full bg-white/10"
+          aria-label="Debug-Infos anzeigen"
+        >
+          <Bug size={16} color="#fff" />
+        </button>
+      </div>
 
       {/* Karten-Body — Höhe begrenzt durch verfügbaren Platz, Breite via aspect-ratio */}
       <div

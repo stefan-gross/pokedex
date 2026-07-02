@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI, SchemaType, Part } from '@google/generative-ai';
-import { getReferenceSheets } from '@/lib/scan/reference-sheets';
+import { getReferenceSheets, getValidSymbolSetCodes } from '@/lib/scan/reference-sheets';
 
 // Zwei sequenzielle Gemini-Calls (Text-OCR + ggf. Symbol-Abgleich) + Sheet-Aufbau
 // beim Kaltstart brauchen mehr als das Vercel-Default-Timeout.
@@ -309,13 +309,20 @@ export async function POST(req: NextRequest) {
             `${PROMPT_SYMBOL_MATCH}\n\n${contextLine}`,
           ];
           const step2 = await generateWithFallback(step2Parts, SYMBOL_MATCH_SCHEMA, step1.modelIndex);
-          const matched = step2.parsed.matchedSetCode;
-          if (typeof matched === 'string' && matched) {
+          const rawMatch = step2.parsed.matchedSetCode;
+          // Validierung: Gemini verwechselt gelegentlich das Energie-Typ-Icon neben der
+          // Kartennummer (z.B. "F" für Fighting) mit dem Set-Symbol und gibt dessen Buchstaben
+          // zurück — ein Code, der auf keinem Referenzblatt existiert. Nur echte, auf den
+          // Blättern abgebildete ptcgoCodes werden akzeptiert.
+          const validCodes = await getValidSymbolSetCodes();
+          const isValidMatch = typeof rawMatch === 'string' && validCodes.has(rawMatch);
+          const matched = isValidMatch ? rawMatch : null;
+          if (matched) {
             parsed.setCode = matched;
           }
           parsed._symbolMatch = {
             triggered: true,
-            matchedSetCode: matched ?? null,
+            matchedSetCode: matched,
             matchConfidence: step2.parsed.matchConfidence ?? null,
             matchAmbiguous: step2.parsed.matchAmbiguous ?? false,
             sheetsUsed: sheets.map(s => s.label),
@@ -323,8 +330,9 @@ export async function POST(req: NextRequest) {
             model: step2.modelName,
             ms: step2.ms,
             rawText: step2.rawText,
+            ...(typeof rawMatch === 'string' && !isValidMatch ? { rejectedMatch: rawMatch } : {}),
           };
-          console.log(`[scan] symbol-match ${step2.modelName} OK in ${step2.ms}ms (sheets built in ${sheetBuildMs}ms) → ${matched ?? 'no match'}`);
+          console.log(`[scan] symbol-match ${step2.modelName} OK in ${step2.ms}ms (sheets built in ${sheetBuildMs}ms) → ${matched ?? (rawMatch ? `verworfen: "${rawMatch}" (kein echter Set-Code)` : 'no match')}`);
         } else {
           parsed._symbolMatch = { triggered: false, reason: 'Keine Referenzblätter verfügbar (0 Sets geladen)', sheetBuildMs };
         }

@@ -33,10 +33,25 @@ interface SetForSheet {
 }
 
 let sheetsCache: Promise<ReferenceSheet[]> | null = null;
+let validCodesCache: Promise<Set<string>> | null = null;
 
 export function getReferenceSheets(): Promise<ReferenceSheet[]> {
   if (!sheetsCache) sheetsCache = buildReferenceSheets();
   return sheetsCache;
+}
+
+/**
+ * Alle ptcgoCodes, die tatsächlich auf den Referenzblättern abgebildet sind. Gemini
+ * verwechselt im Symbolabgleich gelegentlich das Energie-Typ-Icon neben der Kartennummer
+ * (z.B. "F" für Fighting) mit dem eigentlichen Set-Symbol und gibt dessen Buchstaben
+ * zurück — ein Code, der auf keinem Blatt existiert. Gegen diese Liste validieren wir,
+ * bevor wir einem `matchedSetCode` vertrauen.
+ */
+export function getValidSymbolSetCodes(): Promise<Set<string>> {
+  if (!validCodesCache) {
+    validCodesCache = loadEligibleSets().then(sets => new Set(sets.map(s => s.ptcgoCode)));
+  }
+  return validCodesCache;
 }
 
 async function buildReferenceSheets(): Promise<ReferenceSheet[]> {
@@ -48,7 +63,14 @@ async function buildReferenceSheets(): Promise<ReferenceSheet[]> {
   return sheets.filter((s): s is ReferenceSheet => s !== null);
 }
 
-async function loadEligibleSets(): Promise<SetForSheet[]> {
+let eligibleSetsCache: Promise<SetForSheet[]> | null = null;
+
+function loadEligibleSets(): Promise<SetForSheet[]> {
+  if (!eligibleSetsCache) eligibleSetsCache = loadEligibleSetsUncached();
+  return eligibleSetsCache;
+}
+
+async function loadEligibleSetsUncached(): Promise<SetForSheet[]> {
   const snap = await getAdminDb().collection('tcg_sets').get();
   const sets: SetForSheet[] = [];
   for (const doc of snap.docs) {
