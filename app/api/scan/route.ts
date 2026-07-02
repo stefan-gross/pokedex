@@ -268,11 +268,28 @@ export async function POST(req: NextRequest) {
     // Karte mit reinem Grafik-Stempel (setCode=null) gemeldet hat. Läuft komplett
     // isoliert — jeder Fehler hier degradiert stillschweigend auf das heutige
     // Verhalten (Name+Nummer-Fallback im Client), niemals ein Hard-Fail der Route.
+    //
+    // WICHTIG (Debugging-Hinweis): Dieser Trigger greift NUR, wenn Gemini in Schritt 1
+    // ehrlich setCode=null meldet. Halluziniert Gemini stattdessen direkt einen falschen
+    // Text-Code (das war der ursprüngliche Bug), wird Schritt 2 gar nicht erst ausgelöst —
+    // `_symbolMatch.triggered` unten macht genau das im Debug-Modal sichtbar.
     const looksSymbolOnly = parsed.setCode == null && !parsed.error
       && (parsed.number != null || parsed.name != null || parsed.nationalDexNumber != null);
-    if (looksSymbolOnly) {
+
+    if (!looksSymbolOnly) {
+      parsed._symbolMatch = {
+        triggered: false,
+        reason: parsed.error
+          ? 'Schritt 1 meldete einen Fehler'
+          : parsed.setCode != null
+            ? `Schritt 1 lieferte bereits setCode="${parsed.setCode}" (Text-OCR, ungeprüft)`
+            : 'Schritt 1 hatte keine verwertbaren Identifier (number/name/dex)',
+      };
+    } else {
+      const t1 = Date.now();
       try {
         const sheets = await getReferenceSheets();
+        const sheetBuildMs = Date.now() - t1;
         if (sheets.length > 0) {
           const contextLine = `Original card (from a first read): number=${parsed.number ?? 'unknown'}, name=${parsed.name ?? 'unknown'}.`;
           const step2Parts: (string | Part)[] = [
@@ -286,14 +303,24 @@ export async function POST(req: NextRequest) {
             parsed.setCode = matched;
           }
           parsed._symbolMatch = {
+            triggered: true,
+            matchedSetCode: matched ?? null,
             matchConfidence: step2.parsed.matchConfidence ?? null,
             matchAmbiguous: step2.parsed.matchAmbiguous ?? false,
             sheetsUsed: sheets.map(s => s.label),
+            sheetBuildMs,
+            model: step2.modelName,
+            ms: step2.ms,
+            rawText: step2.rawText,
           };
-          console.log(`[scan] symbol-match ${step2.modelName} OK in ${step2.ms}ms → ${matched ?? 'no match'}`);
+          console.log(`[scan] symbol-match ${step2.modelName} OK in ${step2.ms}ms (sheets built in ${sheetBuildMs}ms) → ${matched ?? 'no match'}`);
+        } else {
+          parsed._symbolMatch = { triggered: false, reason: 'Keine Referenzblätter verfügbar (0 Sets geladen)', sheetBuildMs };
         }
       } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
         console.warn('[scan] symbol-match step failed, degrading to name+number fallback:', err);
+        parsed._symbolMatch = { triggered: true, error: msg, sheetBuildMs: Date.now() - t1 };
       }
     }
 

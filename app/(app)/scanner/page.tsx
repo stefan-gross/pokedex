@@ -53,8 +53,21 @@ interface GeminiResponse {
   fakeRisk?: 'low' | 'medium' | 'high';
   fakeReasons?: string[];
   error?: string;
-  // Nur gesetzt, wenn setCode aus dem Symbol-Abgleich (Referenzblatt) statt aus Text-OCR kam.
-  _symbolMatch?: { matchConfidence?: string | null; matchAmbiguous?: boolean; sheetsUsed?: string[] };
+  // Debug-Info zum Schritt-2-Symbolabgleich — IMMER gesetzt (auch wenn nicht ausgelöst),
+  // damit im Debug-Modal sichtbar ist, warum ein Match ggf. nicht versucht wurde.
+  _symbolMatch?: {
+    triggered: boolean;
+    reason?: string;                       // gesetzt wenn triggered=false
+    error?: string;                        // gesetzt wenn Schritt 2 fehlgeschlagen ist
+    matchedSetCode?: string | null;
+    matchConfidence?: string | null;
+    matchAmbiguous?: boolean;
+    sheetsUsed?: string[];
+    sheetBuildMs?: number;                 // Kaltstart-Kosten (Icon-Fetch + Sharp-Komposition)
+    model?: string;
+    ms?: number;                           // reine Gemini-Zeit für Schritt 2
+    rawText?: string;
+  };
 }
 
 interface ScanState {
@@ -1866,7 +1879,7 @@ export default function ScannerPage() {
         const gp = job.debug?.geminiParsed as
           | { error?: string; setCode?: string | null; number?: string | null;
               language?: string; confidence?: string; nationalDexNumber?: number | null;
-              _symbolMatch?: { matchConfidence?: string | null; matchAmbiguous?: boolean } }
+              _symbolMatch?: GeminiResponse['_symbolMatch'] }
           | undefined;
 
         let HeaderIcon = AlertCircle;
@@ -1929,7 +1942,7 @@ export default function ScannerPage() {
                     <span className="text-muted-foreground">Set-Code</span>
                     <span>
                       {gp.setCode ?? <span className="text-muted-foreground">— (Symbol)</span>}
-                      {gp.setCode && gp._symbolMatch && (
+                      {gp.setCode && gp._symbolMatch?.triggered && (
                         <span className="text-muted-foreground text-[10px]"> (Symbol-Abgleich, {gp._symbolMatch.matchConfidence ?? '?'}{gp._symbolMatch.matchAmbiguous ? ', mehrdeutig' : ''})</span>
                       )}
                     </span>
@@ -2047,20 +2060,42 @@ export default function ScannerPage() {
               <div className="pt-1 border-t border-white/10 mt-1">
                 Gesamt (Render): <span className="text-blue-300">{debugJob.debug.totalMs ?? '—'} ms</span>
               </div>
-              {(() => {
-                const sm = (debugJob.debug.geminiParsed as { _symbolMatch?: { matchConfidence?: string | null; matchAmbiguous?: boolean; sheetsUsed?: string[] } } | undefined)?._symbolMatch;
-                return (
-                  <div className="pt-1 border-t border-white/10 mt-1">
-                    Symbol-Abgleich: {sm
-                      ? <span className="text-blue-300">{sm.matchConfidence ?? '?'}{sm.matchAmbiguous ? ' · mehrdeutig' : ''} · {sm.sheetsUsed?.length ?? 0} Blätter geprüft</span>
-                      : <span className="text-white/40">nicht ausgelöst</span>}
-                  </div>
-                );
-              })()}
               {debugJob.debug.error && (
                 <div className="text-red-300 mt-1">Fehler: {debugJob.debug.error}</div>
               )}
             </div>
+
+            {/* Symbol-Abgleich (Schritt 2) — immer sichtbar, auch wenn nicht ausgelöst */}
+            {(() => {
+              const sm = (debugJob.debug.geminiParsed as { _symbolMatch?: GeminiResponse['_symbolMatch'] } | undefined)?._symbolMatch;
+              return (
+                <div className="mb-4">
+                  <p className="text-white/60 text-xs mb-2 font-mono">Symbol-Abgleich (Schritt 2)</p>
+                  <div className="p-3 rounded-lg bg-white/5 text-xs font-mono text-white/80 space-y-0.5">
+                    <div>Ausgelöst: <span className={sm?.triggered ? 'text-yellow-300' : 'text-white/40'}>{sm?.triggered ? 'ja' : 'nein'}</span></div>
+                    {!sm?.triggered && sm?.reason && (
+                      <div className="text-white/50">Grund: {sm.reason}</div>
+                    )}
+                    {sm?.triggered && (
+                      <>
+                        <div>Modell: <span className="text-blue-300">{sm.model ?? '—'}</span></div>
+                        <div>Gemini (Schritt 2): <span className="text-blue-300">{sm.ms ?? '—'} ms</span></div>
+                        <div>Referenzblätter bauen: <span className="text-blue-300">{sm.sheetBuildMs ?? '—'} ms</span> <span className="text-white/40">(0 ms = bereits gecacht)</span></div>
+                        <div>Blätter geprüft: <span className="text-blue-300">{sm.sheetsUsed?.length ?? 0}</span></div>
+                        <div>Match: <span className="text-blue-300">{sm.matchedSetCode ?? '— (kein Match)'}</span></div>
+                        <div>Confidence: <span className="text-blue-300">{sm.matchConfidence ?? '—'}</span>{sm.matchAmbiguous && <span className="text-orange-300"> · mehrdeutig</span>}</div>
+                        {sm.error && <div className="text-red-300">Fehler: {sm.error}</div>}
+                      </>
+                    )}
+                  </div>
+                  {sm?.rawText && (
+                    <pre className="mt-2 p-3 rounded-lg bg-white/5 text-[10px] text-green-200 overflow-x-auto font-mono whitespace-pre-wrap break-all">
+{sm.rawText}
+                    </pre>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Gemini-Antwort */}
             <div className="mb-4">
