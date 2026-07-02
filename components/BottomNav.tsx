@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, Search, BookOpen, Heart, Camera, Pause, LayoutGrid, IdCard, Layers, Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { CardPrice } from '@/components/card/CardPrice';
 
 const FAB_SIZE = 72;
 
@@ -30,6 +31,9 @@ interface ScannerNavState {
   gridVisible: boolean;   // Grid-Button anzeigen?
   reviewMode?: boolean;   // Scanner ist im Review-Grid → BottomNav komplett ausblenden
   canAdd?: boolean;       // Einzeln-Modus: erkannte Karte kann hinzugefügt werden → grüner +-Button erscheint über der FAB
+  recognizedCardId?: string | null;    // tcgId der erkannten Karte, für Preis rechts neben dem +-Button
+  recognizedNumber?: string | null;    // "053/172", links neben dem +-Button
+  recognizedDex?: string | null;       // "#035", darunter
 }
 
 export function BottomNav() {
@@ -112,10 +116,13 @@ export function BottomNav() {
   if (isScanner) {
     return (
       <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-end" style={navStyle}>
-        {/* Links: Grid-Button (nur Mehrere-Modus mit Karten) */}
+        {/* Links: Grid-Button (nur Mehrere-Modus mit Karten) — außerdem Nummer/Dex
+            der erkannten Karte (Einzeln-Modus), mittig in dieser Zone (= horizontal
+            zentriert zwischen Bildschirmrand und +-Button) und vertikal zentriert
+            in dem Bereich, in dem die Kapsel über die Toolbar hinausragt. */}
         <div
-          className="flex-1 flex justify-start items-end"
-          style={{ paddingLeft: 16, paddingBottom: 10 }}
+          className="flex-1 flex justify-start items-end relative"
+          style={{ paddingLeft: 16, paddingBottom: 10, alignSelf: 'stretch' }}
         >
           {scanState.gridVisible && (
             <button
@@ -133,6 +140,17 @@ export function BottomNav() {
                 </span>
               )}
             </button>
+          )}
+          {scanState.recognizedNumber && (
+            <div
+              className="absolute inset-x-0 flex flex-col items-center justify-center font-mono text-white/80 text-base"
+              style={{ top: -92, height: 92 }}
+            >
+              <span>{scanState.recognizedNumber}</span>
+              {scanState.recognizedDex && (
+                <span className="text-sm text-white/60">{scanState.recognizedDex}</span>
+              )}
+            </div>
           )}
         </div>
 
@@ -152,10 +170,8 @@ export function BottomNav() {
             border: '1.5px solid rgba(255,255,255,0.18)',
           }}
         >
-          <button
-            onClick={() => window.dispatchEvent(new Event(SCAN_ADD_EVENT))}
-            aria-label="Zur Sammlung hinzufügen"
-            className="flex items-center justify-center rounded-full shadow-xl overflow-hidden"
+          <div
+            className="relative flex items-center justify-center overflow-visible"
             style={{
               width: 56,
               height: scanState.canAdd ? 56 : 0,
@@ -163,12 +179,18 @@ export function BottomNav() {
               opacity: scanState.canAdd ? 1 : 0,
               transform: scanState.canAdd ? 'scale(1)' : 'scale(0.4)',
               transition: 'height 280ms cubic-bezier(.34,1.56,.64,1), margin-bottom 280ms ease, opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
-              background: 'var(--action-add)',
               pointerEvents: scanState.canAdd ? 'auto' : 'none',
             }}
           >
-            <Plus size={26} color="#fff" strokeWidth={3} />
-          </button>
+            <button
+              onClick={() => window.dispatchEvent(new Event(SCAN_ADD_EVENT))}
+              aria-label="Zur Sammlung hinzufügen"
+              className="w-full h-full flex items-center justify-center rounded-full shadow-xl"
+              style={{ background: 'var(--action-add)' }}
+            >
+              <Plus size={26} color="#fff" strokeWidth={3} />
+            </button>
+          </div>
           <button
             onClick={handleFabClick}
             className="flex items-center justify-center rounded-full shadow-xl"
@@ -181,8 +203,8 @@ export function BottomNav() {
 
         {/* Rechts: Mode-Switch */}
         <div
-          className="flex-1 flex justify-end items-end"
-          style={{ paddingRight: 16, paddingBottom: 10 }}
+          className="flex-1 flex justify-end items-end relative"
+          style={{ paddingRight: 16, paddingBottom: 10, alignSelf: 'stretch' }}
         >
           <div
             className="flex rounded-full p-0.5 bg-black/55 backdrop-blur-sm"
@@ -210,6 +232,16 @@ export function BottomNav() {
               );
             })}
           </div>
+          {scanState.recognizedCardId && (
+            <div
+              className="absolute inset-x-0 flex items-center justify-center"
+              style={{ top: -92, height: 92 }}
+            >
+              <div style={{ transform: 'scale(2)' }}>
+                <CardPrice tcgId={scanState.recognizedCardId} className="text-blue-400!" />
+              </div>
+            </div>
+          )}
         </div>
       </nav>
     );

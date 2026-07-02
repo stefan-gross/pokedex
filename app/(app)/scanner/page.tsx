@@ -12,7 +12,6 @@ import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
 import { addCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { addCardToBinder, ensureDefaultBinder, ensureInboxBinder } from '@/lib/firestore/binders';
 import { BulkAddToCollectionModal } from '@/components/scanner/BulkAddToCollectionModal';
-import { CardPrice } from '@/components/card/CardPrice';
 import { ValueBadge } from '@/components/card/ValueBadge';
 import { catalogCardToInfo } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
@@ -418,9 +417,23 @@ export default function ScannerPage() {
   // Einzeln-Modus: erkannte Karte, die gerade hinzugefügt werden könnte —
   // steuert den animierten +-Button oberhalb der FAB (BottomNav).
   const recognizedJob = jobs.find(j => j.id === recognizedJobId) ?? null;
-  const canAddRecognized = !!recognizedJob?.result?.card
+  const recognizedCard = recognizedJob?.result?.card;
+  const canAddRecognized = !!recognizedCard
     && !recognizedJob.added
-    && recognizedJob.result.ownedCount !== undefined;
+    && recognizedJob.result!.ownedCount !== undefined;
+  const recognizedCardId = canAddRecognized ? recognizedCard!.id : null;
+  // Für die Nummern-Anzeige links neben dem +-Button (BottomNav) — dieselbe
+  // Quelle wie in RecognizedCardLarge (printedTotal aus tcg_sets, nicht aus
+  // dem Scan-Ergebnis, siehe useSetMeta).
+  const recognizedSetMeta = useSetMeta(recognizedCard?.setId, undefined, recognizedCard?.setName);
+  const recognizedNumBase = recognizedCard ? recognizedCard.number.split('/')[0].padStart(3, '0') : null;
+  const recognizedNumTotal = recognizedSetMeta?.printedTotal ? String(recognizedSetMeta.printedTotal).padStart(3, '0') : null;
+  const recognizedNumber = canAddRecognized
+    ? (recognizedNumBase ? (recognizedNumTotal ? `${recognizedNumBase}/${recognizedNumTotal}` : recognizedNumBase) : null)
+    : null;
+  const recognizedDex = canAddRecognized && recognizedCard?.nationalDexNumber != null
+    ? `#${String(recognizedCard.nationalDexNumber).padStart(3, '0')}`
+    : null;
 
   // Events vom BottomNav abonnieren
   useEffect(() => {
@@ -456,9 +469,12 @@ export default function ScannerPage() {
         gridVisible: scanMode === 'add' && addJobsCount > 0,
         reviewMode: mode === 'review',
         canAdd: canAddRecognized,
+        recognizedCardId,
+        recognizedNumber,
+        recognizedDex,
       },
     }));
-  }, [streamPaused, scanMode, addJobsCount, mode, canAddRecognized]);
+  }, [streamPaused, scanMode, addJobsCount, mode, canAddRecognized, recognizedCardId, recognizedNumber, recognizedDex]);
 
   // Beim Unmount: Reset, damit andere Seiten nicht den Scan-Pause-FAB sehen
   useEffect(() => {
@@ -2686,12 +2702,6 @@ function RecognizedCardLarge({
   // Kartenmotiven schnell unter, der Schein macht "schon vorhanden" unmissverständlich.
   const cardGlow = !statusFlagged && isOwned ? '0 0 0 3px rgba(34,197,94,0.35)' : undefined;
 
-  const numBase  = card ? card.number.split('/')[0].padStart(3, '0') : null;
-  const numTotal = setMeta?.printedTotal ? String(setMeta.printedTotal).padStart(3, '0') : null;
-  const numFmt   = numBase ? (numTotal ? `${numBase}/${numTotal}` : numBase) : null;
-  // Gesamtzahl inkl. Secret Rares nur anzeigen, wenn das Set welche hat (total > printedTotal).
-  const secretTotal = setMeta?.total && setMeta.printedTotal && setMeta.total > setMeta.printedTotal
-    ? setMeta.total : null;
   const setCode  = card?.setCode ?? card?.setId?.toUpperCase();
   const seriesDe = card?.series ? (SERIES_NAMES_DE[card.series] ?? card.series) : null;
   const showLogo = !!setMeta?.logoUrl && !logoFailed;
@@ -2722,11 +2732,12 @@ function RecognizedCardLarge({
           Varianten-/Zustand-Auswahl passiert nicht mehr hier, sondern beim Hinzufügen
           im AddToCollectionModal — hält diese Ansicht auf schnelles Scannen fokussiert. */}
       <div
-        className="relative rounded-lg overflow-hidden"
+        className="relative overflow-hidden"
         style={{
           aspectRatio: '63 / 88',
-          height: 'min(70vh, 100%)',
-          maxWidth: '100%',
+          width: 'min(calc(70vh * 63 / 88), 100%)',
+          maxHeight: '100%',
+          borderRadius: '4.5%',
           border: cardBorder,
           boxShadow: cardGlow,
           background: '#1a1a1a',
@@ -2748,7 +2759,7 @@ function RecognizedCardLarge({
             zusätzliche Info-Bedarf. */}
         {isOwned && ownedCount && ownedCount > 1 && (
           <div
-            className="absolute top-2 right-2 flex items-center justify-center min-w-[26px] h-[26px] px-1.5 rounded-full text-xs font-bold"
+            className="absolute top-2 right-2 flex items-center justify-center min-w-[52px] h-[52px] px-2.5 rounded-full text-xl font-bold"
             style={{ background: 'rgba(34,197,94,0.9)', color: '#fff' }}
           >
             ×{ownedCount}
@@ -2756,22 +2767,31 @@ function RecognizedCardLarge({
         )}
       </div>
 
-      {/* Unterhalb der Karte, in dieser Reihenfolge: Set-Zeile, Pokémon-Name,
-          Nummern-Zeile, Preis — jede Zeile zentriert. */}
+      {/* Unterhalb der Karte: Set-Zeile, Pokémon-Name — zentriert. Nummer/Dex
+          und Preis stehen links/rechts neben dem +-Button (BottomNav). */}
       {card && (
-        <div className="w-full flex flex-col items-center gap-2 px-1 mt-2">
-          <div className="w-full flex items-center justify-center gap-1.5 text-white/90 text-sm">
+        <div className="w-full flex flex-col items-center gap-2 px-1 -mt-1">
+          <div
+            className="w-full flex items-center justify-center gap-2.5 text-white/90"
+            style={{ fontSize: 'calc(min(70vh * 63 / 88, 100vw - 32px) * 0.038)' }}
+          >
             {showLogo ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={setMeta!.logoUrl}
                 alt={setCode ?? ''}
-                className="h-6 max-w-[110px] object-contain shrink-0"
+                className="object-contain shrink-0"
+                style={{ height: 'calc(min(70vh * 63 / 88, 100vw - 32px) * 0.11)', maxWidth: '100%' }}
                 onError={() => setLogoFailed(true)}
               />
             ) : setMeta?.symbolUrl ? (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img src={setMeta.symbolUrl} alt={setCode ?? ''} className="w-4 h-4 object-contain shrink-0" />
+              <img
+                src={setMeta.symbolUrl}
+                alt={setCode ?? ''}
+                className="object-contain shrink-0"
+                style={{ height: '1.2em', width: '1.2em' }}
+              />
             ) : (
               // Kürzel-Text nur als allerletzter Fallback, und nur wenn er echt
               // aufgedruckt sein könnte (S&V-Ära) — alte Sets zeigen sonst nichts,
@@ -2791,20 +2811,6 @@ function RecognizedCardLarge({
           <h2 className="text-white font-bold text-3xl truncate text-center max-w-full">
             {card.name}
           </h2>
-
-          <div className="w-full flex items-center justify-between px-6 font-mono text-white/80 text-base">
-            <span>
-              {numFmt ?? card.number}
-              {secretTotal && <span className="text-xs text-white/50"> ({secretTotal})</span>}
-            </span>
-            {card.nationalDexNumber != null && (
-              <span>#{String(card.nationalDexNumber).padStart(3, '0')}</span>
-            )}
-          </div>
-
-          <div style={{ transform: 'scale(2)' }} className="mt-2">
-            <CardPrice tcgId={card.id} className="text-blue-400!" />
-          </div>
         </div>
       )}
 
