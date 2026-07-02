@@ -2697,7 +2697,7 @@ function RecognizedCardLarge({
   const statusFlagged = computeBorderStatus(job) !== 'none' || !!job.result?.fakeRisk;
   const cardBorder = statusFlagged
     ? borderStyleFor(computeBorderStatus(job), job.result?.fakeRisk).border
-    : isOwned ? '4px solid #22c55e' : '2.5px solid transparent';
+    : isOwned ? '7px solid #22c55e' : '2.5px solid transparent';
   // Zusätzlicher Glow beim grünen Besitz-Rahmen — reiner Farbrand geht auf bunten
   // Kartenmotiven schnell unter, der Schein macht "schon vorhanden" unmissverständlich.
   const cardGlow = !statusFlagged && isOwned ? '0 0 0 3px rgba(34,197,94,0.35)' : undefined;
@@ -2713,7 +2713,7 @@ function RecognizedCardLarge({
   // Schrift) — dieselbe Formel wie die Kartenbreite selbst, damit Logo/Text
   // proportional zur tatsächlichen (responsiven) Kartenbreite skalieren statt in
   // festen px, die auf schmalen Screens (iPhone) zu groß wirken.
-  const sizeBase = 'min(70vh * 63 / 88, 100vw - 32px)';
+  const sizeBase = 'min(70dvh * 63 / 88, 100vw - 32px)';
   const logoHeight = `calc(${sizeBase} * 0.15)`;
 
   return (
@@ -2744,7 +2744,8 @@ function RecognizedCardLarge({
         className="relative overflow-hidden"
         style={{
           aspectRatio: '63 / 88',
-          width: 'min(calc(70vh * 63 / 88), 100%)',
+          width: 'min(calc(70dvh * 63 / 88), 100%)',
+          maxWidth: '100%',
           maxHeight: '100%',
           borderRadius: '4.5%',
           border: cardBorder,
@@ -2815,8 +2816,10 @@ function RecognizedCardLarge({
               className="flex flex-col justify-center items-start min-w-0 text-white/90"
               style={{ height: logoHeight, fontSize: `calc(${logoHeight} * 0.3)`, lineHeight: 1.25, gap: '0.15em' }}
             >
-              {seriesDe && <span className="truncate max-w-full text-left">{seriesDe}</span>}
-              <span className="truncate max-w-full text-left">{setMeta?.nameDe ?? card.setName}</span>
+              {seriesDe && <span className="truncate max-w-full text-left font-bold">{seriesDe}</span>}
+              <span className="truncate max-w-full text-left" style={{ fontSize: 'calc(1em - 1px)' }}>
+                {setMeta?.nameDe ?? card.setName}
+              </span>
             </div>
           </div>
 

@@ -143,7 +143,7 @@ export function BottomNav() {
           )}
           {scanState.recognizedNumber && (
             <div
-              className="absolute inset-x-0 flex flex-col items-center justify-center font-mono text-white/80 text-base"
+              className="absolute inset-x-0 flex flex-col items-center justify-center font-mono text-white/80 text-lg"
               style={{ top: -92, height: 92 }}
             >
               <span>{scanState.recognizedNumber}</span>
