@@ -682,6 +682,19 @@ export default function ScannerPage() {
             debug.lookupSteps![debug.lookupSteps!.length - 1] += catalogCard ? ` → ${catalogCard.id}` : ' → null';
           }
         }
+
+        // Dex-Nummer-Gegenprobe: Gemini liest Dex-Nr. unabhängig vom setCode
+        // (eigenes Feld im Prompt). Weicht sie von der gefundenen Karte ab, war
+        // der setCode falsch (z.B. Symbolabgleich hat ein ähnliches, aber
+        // falsches Set getroffen) — verwerfen und auf Name/Dex-Fallback
+        // unten durchfallen lassen, statt der falschen Karte zu vertrauen.
+        if (catalogCard && gemini.nationalDexNumber && catalogCard.nationalDexNumber
+            && catalogCard.nationalDexNumber !== gemini.nationalDexNumber) {
+          debug.lookupSteps!.push(
+            `verworfen: Dex-Nr. passt nicht (Katalog=${catalogCard.nationalDexNumber}, Gemini=${gemini.nationalDexNumber})`,
+          );
+          catalogCard = null;
+        }
       }
 
       // 3) Name+Number-Fallback — bestes Identifier-Paar wenn setCode fehlt
