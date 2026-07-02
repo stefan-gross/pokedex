@@ -1956,6 +1956,7 @@ export default function ScannerPage() {
         if (!recognized?.result?.card) return null;
         return (
           <RecognizedCardLarge
+            key={recognized.id}
             job={recognized}
             onCardTap={() => setActiveJobId(recognized.id)}
             onDebugTap={() => setDebugJobId(recognized.id)}
@@ -2684,6 +2685,11 @@ function RecognizedCardLarge({
   const setMeta   = useSetMeta(card?.setId, undefined, card?.setName);
   const [logoFailed, setLogoFailed] = useState(false);
   useEffect(() => { setLogoFailed(false); }, [setMeta?.logoUrl]);
+  // Echtes Seitenverhältnis des geladenen Kartenfotos — sobald bekannt (onLoad),
+  // wird die Box exakt danach dimensioniert statt einer 63:88-Annahme zu folgen.
+  // Fotos/Scans weichen leicht vom exakten Kartenformat ab (Zuschnitt-Ränder),
+  // die Annahme führte sonst zu Zuschneiden (object-cover) oder Rand (object-contain).
+  const [imgAspect, setImgAspect] = useState<number | null>(null);
 
   const ownedCount = job.result?.ownedCount;
   const isOwned    = (ownedCount ?? 0) > 0;
@@ -2716,11 +2722,14 @@ function RecognizedCardLarge({
   // ist die Breite von vornherein so berechnet, dass die Karte immer passt.
   const availableHeightExpr =
     '100dvh - env(safe-area-inset-top, 0px) - 52px - env(safe-area-inset-bottom, 0px) - 160px';
+  // Bis das Foto geladen ist, mit dem Standard-Kartenformat rechnen (verhindert
+  // Layout-Sprung) — danach exakt mit dem echten Verhältnis des Fotos.
+  const cardRatio = imgAspect ?? 63 / 88;
   // Gemeinsame Basis für alle relativen Größen unterhalb der Karte (Logo, Zeilen,
   // Schrift) — dieselbe Formel wie die Kartenbreite selbst, damit Logo/Text
   // proportional zur tatsächlichen (responsiven) Kartenbreite skalieren statt in
   // festen px, die auf schmalen Screens (iPhone) zu groß wirken.
-  const sizeBase = `min(calc((${availableHeightExpr}) * 63 / 88), calc(100vw - 32px))`;
+  const sizeBase = `min(calc((${availableHeightExpr}) * ${cardRatio}), calc(100vw - 32px))`;
   const logoHeight = `calc(${sizeBase} * 0.15)`;
 
   return (
@@ -2750,7 +2759,7 @@ function RecognizedCardLarge({
       <div
         className="relative overflow-hidden"
         style={{
-          aspectRatio: '63 / 88',
+          aspectRatio: String(cardRatio),
           width: sizeBase,
           maxWidth: '100%',
           maxHeight: '100%',
@@ -2764,7 +2773,15 @@ function RecognizedCardLarge({
       >
         {img ? (
           /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={img} alt={card?.name ?? ''} className="w-full h-full object-contain" />
+          <img
+            src={img}
+            alt={card?.name ?? ''}
+            className="w-full h-full object-contain"
+            onLoad={e => {
+              const el = e.currentTarget;
+              if (el.naturalWidth && el.naturalHeight) setImgAspect(el.naturalWidth / el.naturalHeight);
+            }}
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-red-500/10">
             <AlertCircle size={28} color="#f87171" />
