@@ -11,7 +11,7 @@ import { getBinders } from '@/lib/firestore/binders';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { CardGrid } from '@/components/card/CardGrid';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
-import { detectVariants, getRarityGroup } from '@/lib/card-constants';
+import { detectVariants, getRarityGroup, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import type { CatalogCard } from '@/lib/firestore/catalog';
 import type { CardDoc, BinderDoc } from '@/types';
@@ -92,6 +92,7 @@ function SetDetailContent() {
   const [logoDe, setLogoDe]         = useState<string | undefined>(undefined);
   const [releaseYear, setReleaseYear] = useState<string | undefined>(undefined);
   const [ptcgoCode, setPtcgoCode]   = useState<string | undefined>(undefined);
+  const [symbolUrl, setSymbolUrl]   = useState<string | undefined>(undefined);
 
   useEffect(() => {
     async function load() {
@@ -109,13 +110,14 @@ function SetDetailContent() {
 
         const set = (setsData.data ?? []).find((s: {
           id: string; name: string; nameDe?: string; logoUrl?: string;
-          releaseDate?: string; ptcgoCode?: string;
+          releaseDate?: string; ptcgoCode?: string; symbolUrl?: string;
         }) => s.id === setId);
         if (set) {
           setNameDe(set.nameDe ?? set.name);
           if (set.logoUrl)     setLogoDe(set.logoUrl);
           if (set.releaseDate) setReleaseYear(set.releaseDate.slice(0, 4));
           if (set.ptcgoCode)   setPtcgoCode(set.ptcgoCode);
+          if (set.symbolUrl)   setSymbolUrl(set.symbolUrl);
         }
       } finally {
         setLoading(false);
@@ -125,6 +127,9 @@ function SetDetailContent() {
   }, [setId]);
 
   const logoUrl = logoDe ?? `https://images.pokemontcg.io/${setId}/logo.png`;
+  // Sets vor Scarlet & Violet tragen keinen echten Kürzel-Aufdruck — nur ein
+  // grafisches Symbol. ptcgoCode ist dort nur ein internes pokemontcg.io-Kürzel.
+  const isSymbolOnlySet = !!rawCards[0]?.series && SYMBOL_ONLY_SERIES.includes(rawCards[0].series);
 
   const ownedMap = useMemo(() => {
     const map = new Map<string, CardDoc[]>();
@@ -224,8 +229,11 @@ function SetDetailContent() {
                   {releaseYear && (
                     <span className="text-xs text-muted-foreground">{releaseYear}</span>
                   )}
-                  {releaseYear && ptcgoCode && <span className="text-muted-foreground/40 text-xs">·</span>}
-                  {ptcgoCode && (
+                  {releaseYear && (ptcgoCode || symbolUrl) && <span className="text-muted-foreground/40 text-xs">·</span>}
+                  {isSymbolOnlySet && symbolUrl ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={symbolUrl} alt={ptcgoCode ?? ''} className="w-4 h-4 object-contain" />
+                  ) : ptcgoCode && (
                     <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border"
                           style={{ color: 'var(--foreground)', borderColor: 'var(--foreground)' }}>
                       {ptcgoCode}

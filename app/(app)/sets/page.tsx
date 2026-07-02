@@ -14,6 +14,7 @@ interface TcgSet {
   nameDe?: string;
   logoUrl?: string;    // DE-Logo (TCGdex) wenn verfügbar, sonst EN-Fallback
   logoUrlEn?: string;
+  symbolUrl?: string;
   series: string;
   printedTotal: number;
   total: number;
@@ -105,6 +106,8 @@ export default function SetsPage() {
                     owned={ownedBySet.get(set.id) ?? 0}
                     total={set.total}
                     ptcgoCode={set.ptcgoCode}
+                    symbolUrl={set.symbolUrl}
+                    series={set.series}
                     href={`/sets/${set.id}?from=sets`}
                     separator={i < group.sets.length - 1}
                   />

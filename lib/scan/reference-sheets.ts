@@ -1,5 +1,6 @@
 import sharp from 'sharp';
 import { getAdminDb } from '../firebase/admin';
+import { SYMBOL_ONLY_SERIES } from '../card-constants';
 
 export interface ReferenceSheet {
   label: string;
@@ -7,17 +8,13 @@ export interface ReferenceSheet {
   mimeType: 'image/jpeg';
 }
 
-// Ära-Reihenfolge exakt wie `series`-Werte von pokemontcg.io (siehe lib/sync-catalog.ts syncSets()).
-// Scarlet & Violet ist bewusst NICHT enthalten — für S&V-Karten liest Gemini den Text-Code direkt
-// (siehe PROMPT in app/api/scan/route.ts), ein Symbol-Abgleich ist dort nicht nötig.
-const ERA_ORDER = [
-  'Base', 'Gym', 'Neo', 'E-Card', 'Other', 'NP',
-  'EX',
-  'Diamond & Pearl', 'Platinum', 'HeartGold & SoulSilver',
-  'Black & White', 'XY',
-  'Sun & Moon',
-  'Sword & Shield',
-];
+// Ära-Reihenfolge = SYMBOL_ONLY_SERIES (lib/card-constants.ts) — Single Source of
+// Truth, auch von RecognizedCardLarge (app/(app)/scanner/page.tsx) genutzt, um zu
+// entscheiden, ob ein Set einen echten Kürzel-Aufdruck hat oder nicht.
+// Scarlet & Violet ist bewusst NICHT enthalten — für S&V-Karten liest Gemini den
+// Text-Code direkt (siehe PROMPT in app/api/scan/route.ts), ein Symbol-Abgleich
+// ist dort nicht nötig.
+const ERA_ORDER = SYMBOL_ONLY_SERIES;
 
 const MAX_ICONS_PER_SHEET = 20;
 const COLS = 5;

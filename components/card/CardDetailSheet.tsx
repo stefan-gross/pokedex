@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { X, Plus, Heart, CheckCircle2, ChevronDown, ChevronRight, ChevronLeft, Trash2, Info, Repeat2, LayoutGrid } from 'lucide-react';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
-import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe } from '@/lib/card-constants';
+import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { markReviewed, deleteCard } from '@/lib/firestore/cards';
 import { getBinders, addCardToBinder, removeCardFromBinder, removeCardFromBinderAndCleanup, ensureDefaultBinder } from '@/lib/firestore/binders';
@@ -257,6 +257,9 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   const numFmt      = numTotal ? `${numBase}/${numTotal}` : numBase;
   const logoUrl     = resolvedMeta?.logoUrl ?? `https://images.pokemontcg.io/${card.setId}/logo.png`;
   const setNameDe   = resolvedMeta?.nameDe ?? card.setName;
+  // Sets vor Scarlet & Violet tragen keinen echten Kürzel-Aufdruck — nur ein
+  // grafisches Symbol. setCode ist dort nur ein internes pokemontcg.io-Kürzel.
+  const isSymbolOnlySet = !!card.series && SYMBOL_ONLY_SERIES.includes(card.series);
 
   function bindersOf(copy: CardDoc) { return resolvedBinders.filter(b => b.cardIds.includes(copy.id)); }
   function toggle(s: Section) {
@@ -423,12 +426,17 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 />
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[13px] font-bold leading-snug truncate">{setNameDe}</span>
-                  <span
-                    className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border shrink-0"
-                    style={{ color: 'var(--foreground)', borderColor: 'var(--foreground)' }}
-                  >
-                    {setCode}
-                  </span>
+                  {isSymbolOnlySet && resolvedMeta?.symbolUrl ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={resolvedMeta.symbolUrl} alt={setCode} className="w-4 h-4 object-contain shrink-0" />
+                  ) : (
+                    <span
+                      className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border shrink-0"
+                      style={{ color: 'var(--foreground)', borderColor: 'var(--foreground)' }}
+                    >
+                      {setCode}
+                    </span>
+                  )}
                 </div>
                 {card.series && (
                   <div className="text-[11px] text-muted-foreground">

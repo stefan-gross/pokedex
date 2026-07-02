@@ -77,12 +77,12 @@ export function BottomNav() {
     gridTemplateColumns: 'repeat(5, 1fr)',
     height: 'calc(56px + env(safe-area-inset-bottom, 0px))',
     paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-    boxShadow: '0 -4px 24px rgba(30,40,80,0.08), 0 -1px 0 rgba(30,40,80,0.05)',
-    ...(isScanner ? {
-      background: 'rgba(0,0,0,0.6)',
-      backdropFilter: 'blur(12px)',
-      WebkitBackdropFilter: 'blur(12px)',
-    } : {}),
+    // Im Scanner soll die Toolbar genauso transparent sein wie der Rest des
+    // Screens (reines Kamerabild ohne Tönung) — kein Hintergrund, kein Blur,
+    // kein Schatten, der eine sichtbare Kante erzeugen würde.
+    ...(isScanner
+      ? { background: 'transparent' }
+      : { boxShadow: '0 -4px 24px rgba(30,40,80,0.08), 0 -1px 0 rgba(30,40,80,0.05)' }),
   };
 
   // Items unten ausgerichtet; FAB (Slot 2) ragt durch marginTop:-20 oben raus

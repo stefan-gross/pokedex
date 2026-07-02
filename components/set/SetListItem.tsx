@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 
 interface SetListItemProps {
   setId: string;
@@ -12,8 +13,14 @@ interface SetListItemProps {
   logoDe?: string;
   owned: number;
   total: number | null;
-  /** Optionaler Set-Code (z.B. "PAF") — wird als Badge angezeigt */
+  /** Optionaler Set-Code (z.B. "PAF") — wird als Badge angezeigt, außer bei
+   *  Sets ohne echten Kürzel-Aufdruck (siehe symbolUrl/series) */
   ptcgoCode?: string;
+  /** Grafisches Set-Symbol (Kartenaufdruck) — ersetzt den Kürzel-Badge bei Sets
+   *  ohne echten Textcode (pre-Scarlet&Violet) */
+  symbolUrl?: string;
+  /** pokemontcg.io-Serie, entscheidet ob Symbol statt Kürzel gezeigt wird */
+  series?: string;
   href: string;
   /** Trennlinie unten (für gruppierte Listen) */
   separator?: boolean;
@@ -24,11 +31,12 @@ interface SetListItemProps {
  * Genutzt auf Dashboard und in der Sets-Übersicht.
  */
 export function SetListItem({
-  setId, name, nameDe, logoDe, owned, total, ptcgoCode, href, separator = false,
+  setId, name, nameDe, logoDe, owned, total, ptcgoCode, symbolUrl, series, href, separator = false,
 }: SetListItemProps) {
   const displayName = nameDe ?? name;
   const logoSrc     = logoDe ?? `https://images.pokemontcg.io/${setId}/logo.png`;
   const pct         = total ? Math.round((owned / total) * 100) : null;
+  const isSymbolOnlySet = !!series && SYMBOL_ONLY_SERIES.includes(series);
 
   return (
     <Link
@@ -59,7 +67,10 @@ export function SetListItem({
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-medium truncate">{displayName}</span>
           <div className="flex items-center gap-1.5 shrink-0">
-            {ptcgoCode && (
+            {isSymbolOnlySet && symbolUrl ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={symbolUrl} alt={ptcgoCode ?? ''} className="w-4 h-4 object-contain" />
+            ) : ptcgoCode && (
               <span
                 className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border"
                 style={{ color: 'var(--foreground)', borderColor: 'var(--foreground)' }}

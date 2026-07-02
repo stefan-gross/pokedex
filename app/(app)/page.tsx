@@ -34,7 +34,7 @@ export default function DashboardPage() {
   const [binders, setBinders]       = useState<BinderDoc[]>([]);
   const [wishlistCount, setWishlistCount] = useState<number | null>(null);
   const [setTotals, setSetTotals]   = useState<Record<string, number>>({});
-  const [setMeta,   setSetMeta]     = useState<Record<string, { nameDe?: string; logoDe?: string; ptcgoCode?: string }>>({});
+  const [setMeta,   setSetMeta]     = useState<Record<string, { nameDe?: string; logoDe?: string; ptcgoCode?: string; symbolUrl?: string; series?: string }>>({});
   const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
   const [detailOwned, setDetailOwned] = useState<CardDoc[]>([]);
 
@@ -111,7 +111,10 @@ export default function DashboardPage() {
       // Deutsche Set-Metadaten laden (Name + Logo)
       if (!(setId in setMeta)) {
         getSetById(setId)
-          .then(set => setSetMeta(prev => ({ ...prev, [setId]: { nameDe: set?.nameDe, logoDe: set?.logoUrl, ptcgoCode: set?.ptcgoCode } })))
+          .then(set => setSetMeta(prev => ({ ...prev, [setId]: {
+            nameDe: set?.nameDe, logoDe: set?.logoUrl, ptcgoCode: set?.ptcgoCode,
+            symbolUrl: set?.symbolUrl, series: set?.series,
+          } })))
           .catch(() => {});
       }
     });
@@ -207,6 +210,8 @@ export default function DashboardPage() {
                   owned={s.owned}
                   total={setTotals[s.setId] ?? null}
                   ptcgoCode={setMeta[s.setId]?.ptcgoCode}
+                  symbolUrl={setMeta[s.setId]?.symbolUrl}
+                  series={setMeta[s.setId]?.series}
                   href={`/sets/${s.setId}?from=dashboard`}
                   separator={i < displayedSets.length - 1}
                 />

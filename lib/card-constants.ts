@@ -255,6 +255,24 @@ export function getRarityGroup(rarity: string): RarityGroup | undefined {
  *  Sets (Wizards-Era ab Legendary Collection + EX-Ära aufwärts) haben für
  *  jede Common/Uncommon/Rare auch eine Reverse-Holo-Variante.
  *  TCGdex-Enrichment kann diese Heuristik später präzise überschreiben. */
+/**
+ * `series`-Werte (pokemontcg.io) aller Sets ohne echten aufgedruckten Set-Kürzel —
+ * diese Karten tragen nur ein grafisches Symbol am Kartenrand, kein Textcode wie
+ * "ASC" (das gibt es erst ab Scarlet & Violet). `ptcgoCode`/`setCode` existiert für
+ * diese Sets zwar in unseren Daten (z.B. "BS", "JU"), ist aber ein internes
+ * pokemontcg.io-Kürzel, das NICHT auf der physischen Karte steht — sollte daher nie
+ * als vermeintlicher Kartendruck angezeigt werden. Gleiche Liste wie
+ * lib/scan/reference-sheets.ts (Symbolabgleich-Referenzblätter).
+ */
+export const SYMBOL_ONLY_SERIES = [
+  'Base', 'Gym', 'Neo', 'E-Card', 'Other', 'NP',
+  'EX',
+  'Diamond & Pearl', 'Platinum', 'HeartGold & SoulSilver',
+  'Black & White', 'XY',
+  'Sun & Moon',
+  'Sword & Shield',
+];
+
 export function detectVariants(rarity: string): CardVariant[] {
   const r = rarity.toLowerCase();
   const variants: CardVariant[] = ['standard'];

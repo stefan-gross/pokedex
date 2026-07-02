@@ -17,7 +17,7 @@ import { ValueBadge } from '@/components/card/ValueBadge';
 import { catalogCardToInfo } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition as PersistedCondition, CardDoc, CardLanguage, CardVariant } from '@/types';
-import { CONDITIONS, VARIANT_LABELS, SERIES_NAMES_DE } from '@/lib/card-constants';
+import { CONDITIONS, VARIANT_LABELS, SERIES_NAMES_DE, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { useSetMeta } from '@/lib/hooks/use-set-meta';
 import { getSetById } from '@/lib/firestore/sets';
 
@@ -287,6 +287,34 @@ function MissingNoArtwork({ size = 96, color = '#1a1a1a', tint = '#ef4444' }: { 
 export default function ScannerPage() {
   const router = useRouter();
   const [jobs, setJobs] = useState<ScanJob[]>([]);
+  // Symbol-Icons für Set-Badges im Slider/Review-Grid — kein Hook-in-Loop möglich
+  // (Tiles werden inline in .map() gerendert, nicht als eigene Komponente), daher
+  // ein simpler setId→symbolUrl-Cache statt useSetMeta() pro Tile.
+  const [setSymbolMap, setSetSymbolMap] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    const missingSetIds = new Set<string>();
+    jobs.forEach(j => {
+      const c = j.result?.card;
+      if (c?.setId && c.series && SYMBOL_ONLY_SERIES.includes(c.series) && !setSymbolMap.has(c.setId)) {
+        missingSetIds.add(c.setId);
+      }
+    });
+    if (missingSetIds.size === 0) return;
+    let cancelled = false;
+    Promise.all([...missingSetIds].map(async setId => {
+      const doc = await getSetById(setId).catch(() => null);
+      return [setId, doc?.symbolUrl] as const;
+    })).then(results => {
+      if (cancelled) return;
+      setSetSymbolMap(prev => {
+        const next = new Map(prev);
+        results.forEach(([setId, symbolUrl]) => { if (symbolUrl) next.set(setId, symbolUrl); });
+        return next;
+      });
+    });
+    return () => { cancelled = true; };
+  }, [jobs, setSymbolMap]);
+
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [activeOwnedCopies, setActiveOwnedCopies] = useState<CardDoc[]>([]);
   const [debugJobId, setDebugJobId] = useState<string | null>(null);
@@ -1215,17 +1243,26 @@ export default function ScannerPage() {
                     </div>
                   </div>
                   <div className="flex items-center justify-center gap-2 mt-2 px-1">
-                    {card?.setCode && (
-                      <div
-                        className="shrink-0 flex flex-col items-center leading-tight rounded-md border px-1.5 py-0.5 font-mono"
-                        style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}
-                      >
-                        <span className="text-[10px] font-bold">{card.setCode}</span>
-                        {card.number && (
-                          <span className="text-[9px] text-white/75">{card.number}</span>
-                        )}
-                      </div>
-                    )}
+                    {card?.setCode && (() => {
+                      const symbolOnly = !!card.series && SYMBOL_ONLY_SERIES.includes(card.series);
+                      const symbolUrl = card.setId ? setSymbolMap.get(card.setId) : undefined;
+                      return (
+                        <div
+                          className="shrink-0 flex flex-col items-center leading-tight rounded-md border px-1.5 py-0.5 font-mono"
+                          style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}
+                        >
+                          {symbolOnly && symbolUrl ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img src={symbolUrl} alt="" className="w-3.5 h-3.5 object-contain" />
+                          ) : (
+                            <span className="text-[10px] font-bold">{card.setCode}</span>
+                          )}
+                          {card.number && (
+                            <span className="text-[9px] text-white/75">{card.number}</span>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <p className="text-xs text-white/90 truncate">
                       {card?.name ?? (job.status === 'processing' ? '…' : 'Fehler')}
                     </p>
@@ -1387,17 +1424,26 @@ export default function ScannerPage() {
 
                   {/* Meta-Zeile im selben Panel: Set-Frame · Name (zentriert) · Dropdowns */}
                   <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 shrink-0 px-2 py-2 border-t border-white/10">
-                    {jCard?.setCode ? (
-                      <div
-                        className="flex flex-col items-center leading-tight rounded-md border px-2 py-1 font-mono"
-                        style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}
-                      >
-                        <span className="text-[11px] font-bold">{jCard.setCode}</span>
-                        {jCard.number && (
-                          <span className="text-[10px] text-white/75">{jCard.number}</span>
-                        )}
-                      </div>
-                    ) : <div />}
+                    {jCard?.setCode ? (() => {
+                      const symbolOnly = !!jCard.series && SYMBOL_ONLY_SERIES.includes(jCard.series);
+                      const symbolUrl = jCard.setId ? setSymbolMap.get(jCard.setId) : undefined;
+                      return (
+                        <div
+                          className="flex flex-col items-center leading-tight rounded-md border px-2 py-1 font-mono"
+                          style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}
+                        >
+                          {symbolOnly && symbolUrl ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img src={symbolUrl} alt="" className="w-4 h-4 object-contain" />
+                          ) : (
+                            <span className="text-[11px] font-bold">{jCard.setCode}</span>
+                          )}
+                          {jCard.number && (
+                            <span className="text-[10px] text-white/75">{jCard.number}</span>
+                          )}
+                        </div>
+                      );
+                    })() : <div />}
 
                     <p className="text-sm font-semibold text-white text-center truncate">
                       {jCard?.name ?? (jIsError ? classifyJobError(j).cardName : '…')}
@@ -2639,6 +2685,10 @@ function RecognizedCardLarge({
   const setCode  = card?.setCode ?? card?.setId?.toUpperCase();
   const seriesDe = card?.series ? (SERIES_NAMES_DE[card.series] ?? card.series) : null;
   const showLogo = !!setMeta?.logoUrl && !logoFailed;
+  // Sets vor Scarlet & Violet tragen KEINEN echten Kürzel-Aufdruck auf der Karte —
+  // nur ein grafisches Symbol. `setCode` ist dort nur ein internes pokemontcg.io-
+  // Kürzel (z.B. "BS", "JU"), niemals als vermeintlicher Kartendruck anzeigen.
+  const isSymbolOnlySet = !!card?.series && SYMBOL_ONLY_SERIES.includes(card.series);
 
   return (
     <div
@@ -2700,39 +2750,42 @@ function RecognizedCardLarge({
           Nummern-Zeile, Preis — jede Zeile zentriert. */}
       {card && (
         <div className="w-full flex flex-col items-center gap-2 px-1 mt-2">
-          <div className="w-full flex items-center justify-center gap-2.5 flex-wrap text-white/90 text-2xl">
+          <div className="w-full flex items-center justify-center gap-1.5 text-white/90 text-sm">
             {showLogo ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={setMeta!.logoUrl}
                 alt={setCode ?? ''}
-                className="h-9 max-w-[160px] object-contain shrink-0"
+                className="h-6 max-w-[110px] object-contain shrink-0"
                 onError={() => setLogoFailed(true)}
               />
             ) : setMeta?.symbolUrl ? (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img src={setMeta.symbolUrl} alt={setCode ?? ''} className="w-7 h-7 object-contain shrink-0" />
+              <img src={setMeta.symbolUrl} alt={setCode ?? ''} className="w-4 h-4 object-contain shrink-0" />
             ) : (
-              setCode && <span className="font-mono font-bold">{setCode}</span>
+              // Kürzel-Text nur als allerletzter Fallback, und nur wenn er echt
+              // aufgedruckt sein könnte (S&V-Ära) — alte Sets zeigen sonst nichts,
+              // statt ein erfundenes Kürzel wie ein Kartendruck aussehen zu lassen.
+              !isSymbolOnlySet && setCode && <span className="font-mono font-bold">{setCode}</span>
             )}
             {seriesDe && (
               <>
                 <span className="text-white/30">·</span>
-                <span>{seriesDe}</span>
+                <span className="truncate">{seriesDe}</span>
               </>
             )}
             <span className="text-white/30">·</span>
-            <span>{setMeta?.nameDe ?? card.setName}</span>
+            <span className="truncate">{setMeta?.nameDe ?? card.setName}</span>
           </div>
 
           <h2 className="text-white font-bold text-3xl truncate text-center max-w-full">
             {card.name}
           </h2>
 
-          <div className="flex items-center justify-center gap-2 flex-wrap font-mono text-white/80 text-2xl">
+          <div className="flex items-center justify-center gap-2 flex-wrap font-mono text-white/80 text-base">
             <span>
               {numFmt ?? card.number}
-              {secretTotal && <span className="text-base text-white/50"> ({secretTotal})</span>}
+              {secretTotal && <span className="text-xs text-white/50"> ({secretTotal})</span>}
             </span>
             {card.nationalDexNumber != null && (
               <>
@@ -2743,7 +2796,7 @@ function RecognizedCardLarge({
           </div>
 
           <div style={{ transform: 'scale(2)' }} className="mt-2">
-            <CardPrice tcgId={card.id} />
+            <CardPrice tcgId={card.id} className="text-blue-400!" />
           </div>
         </div>
       )}
