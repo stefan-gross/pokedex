@@ -2709,13 +2709,22 @@ function RecognizedCardLarge({
   // nur ein grafisches Symbol. `setCode` ist dort nur ein internes pokemontcg.io-
   // Kürzel (z.B. "BS", "JU"), niemals als vermeintlicher Kartendruck anzeigen.
   const isSymbolOnlySet = !!card?.series && SYMBOL_ONLY_SERIES.includes(card.series);
+  // Gemeinsame Basis für alle relativen Größen unterhalb der Karte (Logo, Zeilen,
+  // Schrift) — dieselbe Formel wie die Kartenbreite selbst, damit Logo/Text
+  // proportional zur tatsächlichen (responsiven) Kartenbreite skalieren statt in
+  // festen px, die auf schmalen Screens (iPhone) zu groß wirken.
+  const sizeBase = 'min(70vh * 63 / 88, 100vw - 32px)';
+  const logoHeight = `calc(${sizeBase} * 0.15)`;
 
   return (
     <div
       className="absolute inset-x-0 z-10 flex flex-col items-center px-4 gap-3"
       style={{
         top: 'calc(env(safe-area-inset-top, 0px) + 52px)',
-        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)',
+        // Muss über den grünen +-Button hinausragen, der animiert über die
+        // Scanner-FAB hinaus nach oben pokt (siehe BottomNav-Kapsel) — sonst
+        // verdeckt der Button den Pokémon-Namen.
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 160px)',
       }}
     >
       {/* Debug-Zugang — oben rechts über allem, unabhängig vom Namen (der jetzt
@@ -2771,17 +2780,17 @@ function RecognizedCardLarge({
           und Preis stehen links/rechts neben dem +-Button (BottomNav). */}
       {card && (
         <div className="w-full flex flex-col items-center gap-2 px-1 -mt-1">
-          <div
-            className="w-full flex items-center justify-center gap-2.5 text-white/90"
-            style={{ fontSize: 'calc(min(70vh * 63 / 88, 100vw - 32px) * 0.038)' }}
-          >
+          {/* Logo + Zyklus/Setname als ein Block, zentriert unter der Karte —
+              Logo links, rechts daneben Zyklus- und Setname linksbündig in
+              zwei Zeilen übereinander, beide zusammen so hoch wie das Logo. */}
+          <div className="flex items-center justify-center gap-2.5 max-w-full">
             {showLogo ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={setMeta!.logoUrl}
                 alt={setCode ?? ''}
                 className="object-contain shrink-0"
-                style={{ height: 'calc(min(70vh * 63 / 88, 100vw - 32px) * 0.11)', maxWidth: '100%' }}
+                style={{ height: logoHeight, maxWidth: '40%' }}
                 onError={() => setLogoFailed(true)}
               />
             ) : setMeta?.symbolUrl ? (
@@ -2790,22 +2799,25 @@ function RecognizedCardLarge({
                 src={setMeta.symbolUrl}
                 alt={setCode ?? ''}
                 className="object-contain shrink-0"
-                style={{ height: '1.2em', width: '1.2em' }}
+                style={{ height: logoHeight, width: logoHeight }}
               />
             ) : (
               // Kürzel-Text nur als allerletzter Fallback, und nur wenn er echt
               // aufgedruckt sein könnte (S&V-Ära) — alte Sets zeigen sonst nichts,
               // statt ein erfundenes Kürzel wie ein Kartendruck aussehen zu lassen.
-              !isSymbolOnlySet && setCode && <span className="font-mono font-bold">{setCode}</span>
+              !isSymbolOnlySet && setCode && (
+                <span className="font-mono font-bold text-white/90" style={{ fontSize: `calc(${logoHeight} * 0.5)` }}>
+                  {setCode}
+                </span>
+              )
             )}
-            {seriesDe && (
-              <>
-                <span className="text-white/30">·</span>
-                <span className="truncate">{seriesDe}</span>
-              </>
-            )}
-            <span className="text-white/30">·</span>
-            <span className="truncate">{setMeta?.nameDe ?? card.setName}</span>
+            <div
+              className="flex flex-col justify-center items-start min-w-0 text-white/90"
+              style={{ height: logoHeight, fontSize: `calc(${logoHeight} * 0.3)`, lineHeight: 1.25, gap: '0.15em' }}
+            >
+              {seriesDe && <span className="truncate max-w-full text-left">{seriesDe}</span>}
+              <span className="truncate max-w-full text-left">{setMeta?.nameDe ?? card.setName}</span>
+            </div>
           </div>
 
           <h2 className="text-white font-bold text-3xl truncate text-center max-w-full">
