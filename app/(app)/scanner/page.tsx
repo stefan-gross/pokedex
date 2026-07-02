@@ -469,10 +469,11 @@ export default function ScannerPage() {
     }, 3000);
   }, []);
 
-  /** Memory-Cleanup: nach 60s wird das Base64-Bild aus einem Error-Job entfernt.
-   *  Das Bild hatte nur als Diagnose-Hilfe Sinn — der User hat genug Zeit, ins
-   *  Detail-Sheet zu schauen. Verhindert, dass 50 Error-Snaps × 250 KB im Heap bleiben. */
-  const scheduleErrorImageCleanup = useCallback((id: string) => {
+  /** Memory-Cleanup: nach 60s wird das Base64-Bild aus einem Job entfernt (Error
+   *  ODER erfolgreich erkannt). Das Bild hatte nur als Diagnose-Hilfe Sinn (Debug-
+   *  Modal, pHash-Vergleich) — der User hat genug Zeit, es sich anzuschauen.
+   *  Verhindert, dass viele Snaps × 50-250 KB dauerhaft im Heap bleiben. */
+  const scheduleImageCleanup = useCallback((id: string) => {
     setTimeout(() => {
       setJobs(prev => prev.map(j =>
         j.id === id && j.debug?.imageBase64
@@ -651,7 +652,7 @@ export default function ScannerPage() {
         setJobs(prev => prev.map(j => j.id === id
           ? { ...j, status: 'error', result: { card: null, language: (gemini.language ?? 'de') as CardLanguage }, debugInfo: geminiSummary, debug: errDebug }
           : j));
-        scheduleErrorImageCleanup(id);
+        scheduleImageCleanup(id);
         return;
       }
 
@@ -761,13 +762,11 @@ export default function ScannerPage() {
       // Memory-Cleanup beim Finalisieren:
       //  - geminiParsed + lookupSteps bleiben erhalten — werden fürs Debug-Modal
       //    gebraucht (kleine JSON-Objekte, kein nennenswerter Speicherverbrauch)
-      //  - imageBase64: bei Erfolg sofort weg (Katalog-CDN-Bild reicht); bei Error
-      //    bleibt es zunächst stehen und wird per setTimeout (siehe weiter unten)
-      //    nach 60s gestrippt.
-      const finalDebug: ScanDebug = {
-        ...debug,
-        imageBase64: catalogCard ? undefined : debug.imageBase64,
-      };
+      //  - imageBase64: bleibt zunächst stehen (Debug-Modal + pHash-Vergleich
+      //    brauchen es), wird aber per scheduleImageCleanup() nach 60s gestrippt —
+      //    sowohl bei Erfolg als auch bei Error (verhindert, dass viele Snaps
+      //    dauerhaft Bild-Bytes im Heap halten).
+      const finalDebug: ScanDebug = { ...debug };
 
       // Karte SOFORT rendern, ownedCount kommt asynchron nach.
       // Spart 5-15s Render-Verzögerung auf schwacher Firebase-Verbindung.
@@ -797,6 +796,7 @@ export default function ScannerPage() {
       if (catalogCard && scanModeRef.current === 'recognize') {
         setRecognizedJobId(id);
       }
+      scheduleImageCleanup(id);
 
       // ── Owned-Count non-blocking nachladen ────────────────────────────────
       if (catalogCard) {
@@ -818,6 +818,34 @@ export default function ScannerPage() {
               : j));
           });
       }
+
+      // ── pHash-Bild-Verifikation non-blocking nachladen ─────────────────────
+      // Vergleicht das aufgenommene Foto mit dem Katalog-Bild der gefundenen Karte
+      // (server-seitig, da images.pokemontcg.io keine CORS-Header sendet). Nutzt
+      // `debug.imageBase64` — die lokale Variable, NICHT `finalDebug`, da Letzteres
+      // das Bild bei Erfolg bereits stripped. Rein diagnostisch: Fehler hier
+      // beeinträchtigen den eigentlichen Scan nicht, `pHashDistance` bleibt dann
+      // einfach unbesetzt (kein gelber/roter Rahmen).
+      if (catalogCard && debug.imageBase64) {
+        const cardInfoForHash = catalogCardToInfo(catalogCard);
+        const lang = (gemini.language ?? 'de') as CardLanguage;
+        const catalogImageUrl = (lang === 'de' && cardInfoForHash.imgLargeDe) || cardInfoForHash.imgLarge
+          || (lang === 'de' && cardInfoForHash.imgSmallDe) || cardInfoForHash.imgSmall || null;
+        if (catalogImageUrl) {
+          fetch('/api/scan/verify-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: debug.imageBase64, catalogImageUrl }),
+          })
+            .then(r => r.json())
+            .then(({ distance }) => {
+              if (typeof distance === 'number') {
+                setJobs(prev => prev.map(j => j.id === id ? { ...j, pHashDistance: distance } : j));
+              }
+            })
+            .catch(() => {});
+        }
+      }
     } catch (err) {
       console.error('Scan error:', err);
       const isAbort = err instanceof Error && err.name === 'AbortError';
@@ -828,9 +856,9 @@ export default function ScannerPage() {
       setJobs(prev => prev.map(j => j.id === id
         ? { ...j, status: 'error', result: { card: null, language: 'de' }, debugInfo: `Netzwerkfehler: ${msg}`, debug: errDebug }
         : j));
-      scheduleErrorImageCleanup(id);
+      scheduleImageCleanup(id);
     }
-  }, [scheduleErrorImageCleanup]);
+  }, [scheduleImageCleanup]);
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden">
@@ -2139,6 +2167,59 @@ export default function ScannerPage() {
                 </div>
               </div>
             </div>
+
+            {/* Bild-Verifikation (pHash) — vergleicht Foto gegen Katalog-Bild */}
+            {debugJob.debug.catalogMatch && (() => {
+              const dist = debugJob.pHashDistance;
+              const cls = dist == null ? null : dist <= 11 ? 'match' : dist <= 19 ? 'unsure' : 'mismatch';
+              const clsColor = cls === 'match' ? 'text-green-300' : cls === 'unsure' ? 'text-yellow-300' : cls === 'mismatch' ? 'text-red-300' : 'text-white/40';
+              const catalogImg = cardImgUrl(debugJob) ?? cardImgUrlLarge(debugJob);
+              return (
+                <div className="mb-4">
+                  <p className="text-white/60 text-xs mb-2 font-mono">Bild-Verifikation (pHash)</p>
+                  <div className="p-3 rounded-lg bg-white/5">
+                    <div className="flex gap-2 mb-2">
+                      <div className="flex-1">
+                        <p className="text-[10px] text-white/40 mb-1 font-mono">Foto</p>
+                        {debugJob.debug.imageBase64 ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={`data:${debugJob.debug.mimeType ?? 'image/jpeg'};base64,${debugJob.debug.imageBase64}`}
+                            alt="Gescanntes Foto"
+                            className="w-full rounded border border-white/20 object-contain"
+                            style={{ maxHeight: 180 }}
+                          />
+                        ) : (
+                          <div className="w-full h-24 rounded border border-white/10 flex items-center justify-center text-white/30 text-[10px]">
+                            gelöscht (&gt;60s)
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[10px] text-white/40 mb-1 font-mono">Katalog</p>
+                        {catalogImg ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={catalogImg}
+                            alt="Katalog-Bild"
+                            className="w-full rounded border border-white/20 object-contain"
+                            style={{ maxHeight: 180 }}
+                          />
+                        ) : (
+                          <div className="w-full h-24 rounded border border-white/10 flex items-center justify-center text-white/30 text-[10px]">
+                            kein Bild
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-xs font-mono text-white/80">
+                      Hamming-Distanz: <span className={clsColor}>{dist ?? '— (lädt/nicht verfügbar)'}</span>
+                      {cls && <span className={clsColor}> · {cls}</span>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -2473,9 +2554,9 @@ function RecognizedCardLarge({
 }: RecognizedCardLargeProps) {
   const img       = cardImgUrlLarge(job);
   const card      = job.result?.card;
-  const borderCol = job.result?.fakeRisk
-    ? FAKE_RISK_BORDER[job.result.fakeRisk]
-    : 'rgba(255,255,255,0.15)';
+  // Gleiche Priorität wie Slider/Review-Grid: pHash-Mismatch/Unsure > manuelle
+  // Markierung > Fake-Risk-Farbe > neutral (siehe computeBorderStatus/borderStyleFor).
+  const { border: cardBorder } = borderStyleFor(computeBorderStatus(job), job.result?.fakeRisk);
   const cardVariants = card?.variants?.length ? card.variants : (['standard'] as CardVariant[]);
   const variant   = job.editedVariant   ?? cardVariants[0];
   const condition = job.editedCondition ?? 'NM';
@@ -2514,7 +2595,7 @@ function RecognizedCardLarge({
           aspectRatio: '63 / 88',
           height: 'min(70vh, 100%)',
           maxWidth: '100%',
-          border: `3px solid ${borderCol}`,
+          border: cardBorder,
           background: '#1a1a1a',
           cursor: card ? 'pointer' : 'default',
         }}
