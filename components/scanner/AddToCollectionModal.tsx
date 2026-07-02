@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Plus, Search } from 'lucide-react';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition, CardLanguage, CardVariant } from '@/types';
@@ -123,7 +124,12 @@ export function AddToCollectionModal({
     setSelectedBinders(prev => prev.filter(x => x !== id));
   };
 
-  return (
+  // Portal direkt in document.body: verhindert, dass das Modal in einem
+  // trapped Stacking-Context landet (z.B. Scanner-Root ist selbst `position: fixed`,
+  // was IMMER einen eigenen Stacking-Context erzeugt — jedes z-index darin wird nur
+  // lokal verglichen und kann nie über Geschwister-Elemente wie die BottomNav
+  // hinausragen, egal wie hoch der Wert ist).
+  return createPortal((
     <div className="fixed inset-0 z-[100] flex items-end">
       <div
         className="absolute inset-0 bg-black/60 transition-opacity duration-[250ms]"
@@ -309,5 +315,5 @@ export function AddToCollectionModal({
         </button>
       </div>
     </div>
-  );
+  ), document.body);
 }

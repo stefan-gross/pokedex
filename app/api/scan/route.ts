@@ -183,7 +183,18 @@ const SYMBOL_MATCH_SCHEMA = {
 };
 
 // Fallback-Kette: schnellstes Modell zuerst, bei 503 weiterprobieren.
-const MODEL_FALLBACKS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'];
+// Stand 2026-07-02: Live-Test zeigte, dass die datierten Modelle (gemini-2.5-flash-lite,
+// gemini-2.5-flash) aktuell häufig 503 "high demand" werfen — vermutlich ein breiterer,
+// temporärer Google-Kapazitätsengpass auf diesem Pool, nicht modellspezifisch. Die
+// "-latest"-Aliase liefen im selben Zeitraum durchgehend schnell (1.7-4s) und fehlerfrei
+// durch, deshalb jetzt zuerst. Die datierten Versionen bleiben als Fallback, falls die
+// Aliase selbst mal ausfallen oder auf ein schlechteres Modell zeigen.
+const MODEL_FALLBACKS = [
+  'gemini-flash-lite-latest',
+  'gemini-flash-latest',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash',
+];
 
 interface GenerateResult {
   parsed: Record<string, unknown>;
