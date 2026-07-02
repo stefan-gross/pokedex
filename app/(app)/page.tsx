@@ -182,19 +182,19 @@ export default function DashboardPage() {
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-bold">Sets</h2>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-0.5 p-1 rounded-full bg-secondary">
                 <ViewBtn active={setView === 'favorites'} onClick={() => setSetView('favorites')} label="Meiste Karten">
-                  <Star size={13} />
+                  <Star size={17} />
                 </ViewBtn>
                 <ViewBtn active={setView === 'recent'} onClick={() => setSetView('recent')} label="Zuletzt aktiv">
-                  <Clock size={13} />
+                  <Clock size={17} />
                 </ViewBtn>
                 <ViewBtn active={setView === 'complete'} onClick={() => setSetView('complete')} label="Vollständigste">
-                  <Percent size={13} />
+                  <Percent size={17} />
                 </ViewBtn>
               </div>
-              <Link href="/sets" className="text-xs" style={{ color: 'var(--pokedex-red)' }}>Alle</Link>
+              <Link href="/sets" className="text-sm font-medium" style={{ color: 'var(--pokedex-red)' }}>Alle</Link>
             </div>
           </div>
 
@@ -320,9 +320,10 @@ function ViewBtn({ active, onClick, label, children }: {
     <button
       onClick={onClick}
       title={label}
-      className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
+      className="w-9 h-9 flex items-center justify-center rounded-full transition-colors"
       style={{
-        background: active ? 'color-mix(in srgb, var(--pokedex-red) 12%, transparent)' : undefined,
+        background: active ? 'var(--card)' : undefined,
+        boxShadow: active ? '0 1px 3px rgba(30,40,80,0.12)' : undefined,
         color: active ? 'var(--pokedex-red)' : 'var(--muted-foreground)',
       }}
     >
