@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType, Part } from '@google/generative-ai';
+import { getReferenceSheets } from '@/lib/scan/reference-sheets';
+
+// Zwei sequenzielle Gemini-Calls (Text-OCR + ggf. Symbol-Abgleich) + Sheet-Aufbau
+// beim Kaltstart brauchen mehr als das Vercel-Default-Timeout.
+export const maxDuration = 60;
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -137,63 +142,163 @@ const SCHEMA = {
   required: ['language', 'confidence'],
 };
 
+// Schritt 2 (nur bei setCode=null + erkannter Karte): Symbol-Abgleich gegen
+// beschriftete Referenzblätter mit den echten Set-Symbolen (siehe lib/scan/reference-sheets.ts).
+const PROMPT_SYMBOL_MATCH = `You already read some info from a Pokémon TCG card photo (image 1), but its
+set stamp is only a small GRAPHICAL symbol with no text code, so the set could not be
+identified from OCR alone.
+
+The following image(s) are labeled reference sheets: each shows a grid of official
+Pokémon TCG set symbols, every icon labeled underneath with its set code (e.g. "BRS")
+and set name.
+
+Look closely at the small stamp symbol next to the collector number on the ORIGINAL
+card (image 1) — it is usually near the bottom of the card, next to the number and a
+rarity dot. Compare it visually against the symbols on the reference sheets and find
+the one that matches.
+
+Return the set code label of the best-matching symbol. If two or more symbols look
+nearly identical (e.g. similar abstract shapes from the same era) and you cannot
+confidently pick one, set matchAmbiguous to true and still return your best guess —
+or matchedSetCode: null if truly indistinguishable.`;
+
+const SYMBOL_MATCH_SCHEMA = {
+  type: SchemaType.OBJECT,
+  properties: {
+    matchedSetCode: {
+      type: SchemaType.STRING,
+      nullable: true,
+      description: 'ptcgoCode of the set whose symbol on the reference sheet(s) best matches the stamp icon on the card, or null if no confident match',
+    },
+    matchConfidence: {
+      type: SchemaType.STRING,
+      enum: ['high', 'medium', 'low'],
+    },
+    matchAmbiguous: {
+      type: SchemaType.BOOLEAN,
+      description: 'true if multiple symbols on the sheets look very similar and the match is uncertain',
+    },
+  },
+  required: ['matchConfidence'],
+};
+
 // Fallback-Kette: schnellstes Modell zuerst, bei 503 weiterprobieren.
 const MODEL_FALLBACKS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'];
+
+interface GenerateResult {
+  parsed: Record<string, unknown>;
+  modelName: string;
+  modelIndex: number;
+  ms: number;
+  rawText: string;
+}
+
+/** Ruft Gemini mit Fallback-Kette auf (ab startIndex), bricht bei nicht-503-Fehlern sofort ab. */
+async function generateWithFallback(
+  parts: (string | Part)[],
+  schema: Record<string, unknown>,
+  startIndex: number,
+): Promise<GenerateResult> {
+  let lastError = 'Scan failed';
+  for (let i = startIndex; i < MODEL_FALLBACKS.length; i++) {
+    const modelName = MODEL_FALLBACKS[i];
+    const t0 = Date.now();
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          responseMimeType: 'application/json',
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          responseSchema: schema as any,
+        },
+      });
+      const result = await model.generateContent(parts);
+      const ms = Date.now() - t0;
+
+      const rawText = result.response.text().trim();
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(rawText);
+      } catch {
+        // Safety-Net: falls Schema-Output doch fehlerhaft ist
+        const match = rawText.match(/\{[\s\S]*\}/);
+        parsed = match ? JSON.parse(match[0]) : { error: 'Could not parse response' };
+      }
+
+      console.log(`[scan] ${modelName} OK in ${ms}ms`);
+      return { parsed, modelName, modelIndex: i, ms, rawText };
+    } catch (err) {
+      const ms = Date.now() - t0;
+      console.warn(`[scan] ${modelName} failed after ${ms}ms:`, err);
+      lastError = err instanceof Error ? err.message : String(err);
+      const is503 = lastError.includes('503') || lastError.includes('high demand') || lastError.includes('overloaded');
+      if (!is503) throw new Error(lastError);
+      console.warn(`${modelName} unavailable (503), trying fallback...`);
+    }
+  }
+  throw new Error(lastError);
+}
 
 export async function POST(req: NextRequest) {
   try {
     const { imageBase64, mimeType = 'image/jpeg' } = await req.json();
     if (!imageBase64) return NextResponse.json({ error: 'No image provided' }, { status: 400 });
 
-    let lastError: string = 'Scan failed';
-    for (const modelName of MODEL_FALLBACKS) {
-      const t0 = Date.now();
+    let step1: GenerateResult;
+    try {
+      step1 = await generateWithFallback(
+        [{ inlineData: { data: imageBase64, mimeType } }, PROMPT],
+        SCHEMA,
+        0,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('All Gemini models failed:', msg);
+      return NextResponse.json({ error: `Scan failed: ${msg}` }, { status: 500 });
+    }
+
+    const parsed = step1.parsed;
+
+    // Nummer-Normalisierung: "049/198" → "049"
+    if (typeof parsed.number === 'string' && parsed.number.includes('/')) {
+      parsed.number = parsed.number.split('/')[0];
+    }
+
+    // Schritt 2: Symbol-Abgleich per Referenzblatt, nur wenn Schritt 1 eine echte
+    // Karte mit reinem Grafik-Stempel (setCode=null) gemeldet hat. Läuft komplett
+    // isoliert — jeder Fehler hier degradiert stillschweigend auf das heutige
+    // Verhalten (Name+Nummer-Fallback im Client), niemals ein Hard-Fail der Route.
+    const looksSymbolOnly = parsed.setCode == null && !parsed.error
+      && (parsed.number != null || parsed.name != null || parsed.nationalDexNumber != null);
+    if (looksSymbolOnly) {
       try {
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: {
-            responseMimeType: 'application/json',
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            responseSchema: SCHEMA as any,
-          },
-        });
-        const result = await model.generateContent([
-          { inlineData: { data: imageBase64, mimeType } },
-          PROMPT,
-        ]);
-        const ms = Date.now() - t0;
-
-        const rawText = result.response.text().trim();
-        let parsed: Record<string, unknown>;
-        try {
-          parsed = JSON.parse(rawText);
-        } catch {
-          // Safety-Net: falls Schema-Output doch fehlerhaft ist
-          const match = rawText.match(/\{[\s\S]*\}/);
-          parsed = match ? JSON.parse(match[0]) : { error: 'Could not parse response' };
+        const sheets = await getReferenceSheets();
+        if (sheets.length > 0) {
+          const contextLine = `Original card (from a first read): number=${parsed.number ?? 'unknown'}, name=${parsed.name ?? 'unknown'}.`;
+          const step2Parts: (string | Part)[] = [
+            { inlineData: { data: imageBase64, mimeType } },
+            ...sheets.map(s => ({ inlineData: { data: s.buffer.toString('base64'), mimeType: s.mimeType } })),
+            `${PROMPT_SYMBOL_MATCH}\n\n${contextLine}`,
+          ];
+          const step2 = await generateWithFallback(step2Parts, SYMBOL_MATCH_SCHEMA, step1.modelIndex);
+          const matched = step2.parsed.matchedSetCode;
+          if (typeof matched === 'string' && matched) {
+            parsed.setCode = matched;
+          }
+          parsed._symbolMatch = {
+            matchConfidence: step2.parsed.matchConfidence ?? null,
+            matchAmbiguous: step2.parsed.matchAmbiguous ?? false,
+            sheetsUsed: sheets.map(s => s.label),
+          };
+          console.log(`[scan] symbol-match ${step2.modelName} OK in ${step2.ms}ms → ${matched ?? 'no match'}`);
         }
-
-        // Nummer-Normalisierung: "049/198" → "049"
-        if (typeof parsed.number === 'string' && parsed.number.includes('/')) {
-          parsed.number = parsed.number.split('/')[0];
-        }
-
-        console.log(`[scan] ${modelName} OK in ${ms}ms`);
-
-        parsed._debug = { model: modelName, ms, rawText };
-        return NextResponse.json(parsed);
       } catch (err) {
-        const ms = Date.now() - t0;
-        console.warn(`[scan] ${modelName} failed after ${ms}ms:`, err);
-        lastError = err instanceof Error ? err.message : String(err);
-        const is503 = lastError.includes('503') || lastError.includes('high demand') || lastError.includes('overloaded');
-        if (!is503) break;
-        console.warn(`${modelName} unavailable (503), trying fallback...`);
+        console.warn('[scan] symbol-match step failed, degrading to name+number fallback:', err);
       }
     }
 
-    console.error('All Gemini models failed:', lastError);
-    return NextResponse.json({ error: `Scan failed: ${lastError}` }, { status: 500 });
+    parsed._debug = { model: step1.modelName, ms: step1.ms, rawText: step1.rawText };
+    return NextResponse.json(parsed);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('Scan error:', msg);

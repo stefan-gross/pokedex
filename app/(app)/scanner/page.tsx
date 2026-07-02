@@ -53,6 +53,8 @@ interface GeminiResponse {
   fakeRisk?: 'low' | 'medium' | 'high';
   fakeReasons?: string[];
   error?: string;
+  // Nur gesetzt, wenn setCode aus dem Symbol-Abgleich (Referenzblatt) statt aus Text-OCR kam.
+  _symbolMatch?: { matchConfidence?: string | null; matchAmbiguous?: boolean; sheetsUsed?: string[] };
 }
 
 interface ScanState {
@@ -1863,7 +1865,8 @@ export default function ScannerPage() {
         const job = errorDetailJob;
         const gp = job.debug?.geminiParsed as
           | { error?: string; setCode?: string | null; number?: string | null;
-              language?: string; confidence?: string; nationalDexNumber?: number | null }
+              language?: string; confidence?: string; nationalDexNumber?: number | null;
+              _symbolMatch?: { matchConfidence?: string | null; matchAmbiguous?: boolean } }
           | undefined;
 
         let HeaderIcon = AlertCircle;
@@ -1924,7 +1927,12 @@ export default function ScannerPage() {
                   </div>
                   <div className="grid grid-cols-[80px_1fr] gap-x-2 text-[12px] leading-snug">
                     <span className="text-muted-foreground">Set-Code</span>
-                    <span>{gp.setCode ?? <span className="text-muted-foreground">— (Symbol)</span>}</span>
+                    <span>
+                      {gp.setCode ?? <span className="text-muted-foreground">— (Symbol)</span>}
+                      {gp.setCode && gp._symbolMatch && (
+                        <span className="text-muted-foreground text-[10px]"> (Symbol-Abgleich, {gp._symbolMatch.matchConfidence ?? '?'}{gp._symbolMatch.matchAmbiguous ? ', mehrdeutig' : ''})</span>
+                      )}
+                    </span>
                     <span className="text-muted-foreground">Nummer</span>
                     <span>{gp.number ?? <span className="text-muted-foreground">—</span>}</span>
                     <span className="text-muted-foreground">Sprache</span>
@@ -2039,6 +2047,16 @@ export default function ScannerPage() {
               <div className="pt-1 border-t border-white/10 mt-1">
                 Gesamt (Render): <span className="text-blue-300">{debugJob.debug.totalMs ?? '—'} ms</span>
               </div>
+              {(() => {
+                const sm = (debugJob.debug.geminiParsed as { _symbolMatch?: { matchConfidence?: string | null; matchAmbiguous?: boolean; sheetsUsed?: string[] } } | undefined)?._symbolMatch;
+                return (
+                  <div className="pt-1 border-t border-white/10 mt-1">
+                    Symbol-Abgleich: {sm
+                      ? <span className="text-blue-300">{sm.matchConfidence ?? '?'}{sm.matchAmbiguous ? ' · mehrdeutig' : ''} · {sm.sheetsUsed?.length ?? 0} Blätter geprüft</span>
+                      : <span className="text-white/40">nicht ausgelöst</span>}
+                  </div>
+                );
+              })()}
               {debugJob.debug.error && (
                 <div className="text-red-300 mt-1">Fehler: {debugJob.debug.error}</div>
               )}
