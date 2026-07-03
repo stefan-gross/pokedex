@@ -2783,7 +2783,11 @@ function RecognizedCardLarge({
           aspectRatio: String(cardRatio),
           maxWidth: '100%',
           maxHeight: '100%',
-          borderRadius: '4.5%',
+          // Fester px-Wert statt % — bei % skaliert die Ecke elliptisch (Breite
+          // und Höhe getrennt), auf einer Hochformat-Karte sieht die Rundung
+          // dadurch oben/unten anders aus als links/rechts. Ein px-Wert relativ
+          // zur Breite ergibt eine gleichmäßige, kreisrunde Ecke wie im Original.
+          borderRadius: sizeBasePx != null ? `${sizeBasePx * 0.045}px` : '4.5%',
           border: cardBorder,
           boxShadow: cardGlow,
           background: '#1a1a1a',
@@ -2814,7 +2818,7 @@ function RecognizedCardLarge({
             ref={imgElRef}
             src={img}
             alt={card?.name ?? ''}
-            className="w-full h-full object-contain"
+            className="w-full h-full object-fill"
             onLoad={e => {
               const el = e.currentTarget;
               if (el.naturalWidth && el.naturalHeight) setImgAspect(el.naturalWidth / el.naturalHeight);
