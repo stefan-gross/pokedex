@@ -681,8 +681,14 @@ export default function ScannerPage() {
 
       debug.geminiModel = gemini._debug?.model;
       debug.geminiMs    = gemini._debug?.ms ?? fetchMs;
-      // Wire-Overhead = Upload+Server-Parse+Download (alles außer Modell-Call)
-      debug.uploadMs    = gemini._debug?.ms != null ? fetchMs - gemini._debug.ms : undefined;
+      // Reine Netzwerk-/Server-Overhead-Zeit (Upload+Parse+Download) — Schritt-2-
+      // Symbolabgleich (Gemini-Zeit + Referenzblätter-Bau) MUSS hier rausgerechnet
+      // werden, sonst wird bei alten Karten (Schritt 2 ausgelöst) fälschlich eine
+      // riesige "Upload"-Zeit angezeigt, die in Wahrheit Schritt 2 ist.
+      const step2TotalMs = gemini._symbolMatch?.triggered
+        ? (gemini._symbolMatch.ms ?? 0) + (gemini._symbolMatch.sheetBuildMs ?? 0)
+        : 0;
+      debug.uploadMs    = gemini._debug?.ms != null ? fetchMs - gemini._debug.ms - step2TotalMs : undefined;
       debug.geminiRaw   = gemini._debug?.rawText;
       debug.geminiParsed = { ...gemini, _debug: undefined };
       console.log('[scanner] Gemini response:', { fetchMs, uploadMs: debug.uploadMs, gemini });
@@ -2212,8 +2218,8 @@ export default function ScannerPage() {
             <div className="mb-4 p-3 rounded-lg bg-white/5 text-xs font-mono text-white/80">
               <div>Modell: <span className="text-blue-300">{debugJob.debug.geminiModel ?? '—'}</span></div>
               <div>Payload: <span className="text-blue-300">{debugJob.debug.imageSizeKb ?? '—'} KB</span></div>
-              <div>Upload (wire): <span className="text-blue-300">{debugJob.debug.uploadMs ?? '—'} ms</span></div>
-              <div>Gemini: <span className="text-blue-300">{debugJob.debug.geminiMs ?? '—'} ms</span></div>
+              <div>Netzwerk/Server-Overhead: <span className="text-blue-300">{debugJob.debug.uploadMs ?? '—'} ms</span></div>
+              <div>Gemini (Schritt 1): <span className="text-blue-300">{debugJob.debug.geminiMs ?? '—'} ms</span></div>
               <div>Lookup: <span className="text-blue-300">{debugJob.debug.lookupMs ?? '—'} ms</span></div>
               <div>Owned: <span className="text-blue-300">{debugJob.debug.ownedMs ?? '—'} ms</span> <span className="text-white/40">(async)</span></div>
               <div className="pt-1 border-t border-white/10 mt-1">
@@ -2783,7 +2789,7 @@ function RecognizedCardLarge({
           // und Höhe getrennt), auf einer Hochformat-Karte sieht die Rundung
           // dadurch oben/unten anders aus als links/rechts. Ein px-Wert relativ
           // zur Breite ergibt eine gleichmäßige, kreisrunde Ecke wie im Original.
-          borderRadius: sizeBasePx != null ? `${sizeBasePx * 0.045}px` : '4.5%',
+          borderRadius: sizeBasePx != null ? `${sizeBasePx * 0.07}px` : '7%',
           border: cardBorder,
           boxShadow: cardGlow,
           background: '#1a1a1a',

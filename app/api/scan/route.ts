@@ -194,17 +194,20 @@ const SYMBOL_MATCH_SCHEMA = {
 };
 
 // Fallback-Kette: schnellstes Modell zuerst, bei 503 weiterprobieren.
-// Stand 2026-07-02: Live-Test zeigte, dass die datierten Modelle (gemini-2.5-flash-lite,
-// gemini-2.5-flash) aktuell häufig 503 "high demand" werfen — vermutlich ein breiterer,
-// temporärer Google-Kapazitätsengpass auf diesem Pool, nicht modellspezifisch. Die
-// "-latest"-Aliase liefen im selben Zeitraum durchgehend schnell (1.7-4s) und fehlerfrei
-// durch, deshalb jetzt zuerst. Die datierten Versionen bleiben als Fallback, falls die
-// Aliase selbst mal ausfallen oder auf ein schlechteres Modell zeigen.
+// Stand 2026-07-03: Benchmark mit 3 Testkarten x 5 Modellen zeigte, dass
+// "-latest"-Aliase inzwischen deutlich langsamer/inkonstanter sind (8-16s,
+// da sie mittlerweile auf Gemini 3.1 zeigen — "-latest" wird von Google bei
+// jedem neuen Release automatisch umgehängt, ohne dass wir es merken). Das
+// explizit gepinnte gemini-2.5-flash-lite war im selben Test durchgehend am
+// schnellsten UND konstantesten (~2.3s Ø, alle 3 Karten 1.8-2.7s). Bewusst
+// gepinnt statt Alias, damit sich das Verhalten nicht wieder unbemerkt
+// ändert. gemini-2.5-flash und die Aliase bleiben als Fallback, falls
+// gemini-2.5-flash-lite mal ausfällt oder abgekündigt wird.
 const MODEL_FALLBACKS = [
-  'gemini-flash-lite-latest',
-  'gemini-flash-latest',
   'gemini-2.5-flash-lite',
   'gemini-2.5-flash',
+  'gemini-flash-lite-latest',
+  'gemini-flash-latest',
 ];
 
 interface GenerateResult {
@@ -266,6 +269,15 @@ export async function POST(req: NextRequest) {
     const { imageBase64, mimeType = 'image/jpeg' } = await req.json();
     if (!imageBase64) return NextResponse.json({ error: 'No image provided' }, { status: 400 });
 
+    // Referenzblätter für den Symbolabgleich (Schritt 2) schon JETZT anstoßen,
+    // parallel zu Schritt 1 — nicht erst danach. Schritt 1 dauert ohnehin
+    // mehrere Sekunden, in der Zeit läuft der Kaltstart-Aufbau (Icon-Fetch +
+    // Sharp-Komposition, ~1.5s) unsichtbar mit statt zusätzlich in Reihe zu
+    // kosten. Wird Schritt 2 am Ende gar nicht gebraucht (setCode bereits
+    // vorhanden), verpufft die Arbeit einfach — kostet nichts extra.
+    const sheetsPromise = getReferenceSheets();
+    sheetsPromise.catch(() => {}); // verhindert "unhandled rejection", falls Schritt 2 gar nicht greift
+
     let step1: GenerateResult;
     try {
       step1 = await generateWithFallback(
@@ -310,7 +322,10 @@ export async function POST(req: NextRequest) {
     } else {
       const t1 = Date.now();
       try {
-        const sheets = await getReferenceSheets();
+        // sheetsPromise läuft bereits seit Request-Start (parallel zu Schritt 1)
+        // — sheetBuildMs ist hier normalerweise ~0, weil der Aufbau längst
+        // während Schritt 1 durchgelaufen ist (siehe Kommentar oben am POST-Start).
+        const sheets = await sheetsPromise;
         const sheetBuildMs = Date.now() - t1;
         if (sheets.length > 0) {
           const contextLine = `Original card (from a first read): number=${parsed.number ?? 'unknown'}, name=${parsed.name ?? 'unknown'}.`;
