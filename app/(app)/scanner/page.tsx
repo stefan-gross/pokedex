@@ -2732,24 +2732,19 @@ function RecognizedCardLarge({
   // nur ein grafisches Symbol. `setCode` ist dort nur ein internes pokemontcg.io-
   // Kürzel (z.B. "BS", "JU"), niemals als vermeintlicher Kartendruck anzeigen.
   const isSymbolOnlySet = !!card?.series && SYMBOL_ONLY_SERIES.includes(card.series);
-  // Tatsächlich verfügbare Höhe in diesem Container (= dieselben top/bottom-
-  // Insets wie unten am Container) — NICHT einfach "70dvh" schätzen: das war
-  // der eigentliche Grund für den Zuschnitt-Bug auf echten Geräten. Die Karte
-  // (aspect-ratio + object-cover) schneidet oben/unten ab, sobald die per
-  // Formel angenommene Höhe von der wirklich verfügbaren Höhe abweicht, weil
-  // dann `maxHeight` das Seitenverhältnis bricht. Mit der exakten Höhe hier
-  // ist die Breite von vornherein so berechnet, dass die Karte immer passt.
-  const availableHeightExpr =
-    '100dvh - env(safe-area-inset-top, 0px) - 52px - env(safe-area-inset-bottom, 0px) - 160px';
   // Bis das Foto geladen ist, mit dem Standard-Kartenformat rechnen (verhindert
   // Layout-Sprung) — danach exakt mit dem echten Verhältnis des Fotos.
   const cardRatio = imgAspect ?? 63 / 88;
-  // Gemeinsame Basis für alle relativen Größen unterhalb der Karte (Logo, Zeilen,
-  // Schrift) — dieselbe Formel wie die Kartenbreite selbst, damit Logo/Text
-  // proportional zur tatsächlichen (responsiven) Kartenbreite skalieren statt in
-  // festen px, die auf schmalen Screens (iPhone) zu groß wirken.
-  const sizeBase = `min(calc((${availableHeightExpr}) * ${cardRatio}), calc(100vw - 32px))`;
-  const logoHeight = `calc(${sizeBase} * 0.15)`;
+  // Kartenbreite kommt NICHT mehr aus einer geschätzten vh/dvh-Formel (schätzte
+  // die verfügbare Höhe daneben und brach dann per maxHeight das Seiten-
+  // verhältnis) — stattdessen füllt die Karte per Flexbox (flex-1/min-h-0,
+  // siehe unten) nativ den verbleibenden Platz in der Spalte, das ist die
+  // tatsächliche, vom Browser selbst berechnete verfügbare Höhe. Die Breite
+  // wird per aspect-ratio + maxWidth aus dieser Höhe abgeleitet.
+  // sizeBasePx: die real gerenderte Kartenbreite (aus dem ResizeObserver oben)
+  // — Basis für Logo/Text-Größen darunter, damit die proportional mitskalieren.
+  const sizeBasePx = containerSize?.w ?? null;
+  const logoHeight = sizeBasePx != null ? `${sizeBasePx * 0.15}px` : '40px';
 
   return (
     <div
@@ -2772,15 +2767,20 @@ function RecognizedCardLarge({
         <Bug size={16} color="#fff" />
       </button>
 
-      {/* Karten-Body — Höhe begrenzt durch verfügbaren Platz, Breite via aspect-ratio.
-          Varianten-/Zustand-Auswahl passiert nicht mehr hier, sondern beim Hinzufügen
-          im AddToCollectionModal — hält diese Ansicht auf schnelles Scannen fokussiert. */}
+      {/* Karten-Body — die Slot-Zelle (flex-1/min-h-0) füllt per nativer
+          Flexbox-Berechnung exakt den verbleibenden Platz in der Spalte (statt
+          eine Höhe per vh/dvh zu schätzen). Darin bekommt die Karte weder feste
+          Breite noch Höhe, sondern aspect-ratio + maxWidth/maxHeight — der
+          Browser wählt selbst die größtmögliche Größe, die in beide Richtungen
+          passt (wie object-fit:contain, nur für die Box selbst statt fürs Bild).
+          Varianten-/Zustand-Auswahl passiert nicht mehr hier, sondern beim
+          Hinzufügen im AddToCollectionModal. */}
+      <div className="w-full flex-1 min-h-0 flex items-center justify-center">
       <div
         ref={containerRef}
         className="relative overflow-hidden"
         style={{
           aspectRatio: String(cardRatio),
-          width: sizeBase,
           maxWidth: '100%',
           maxHeight: '100%',
           borderRadius: '4.5%',
@@ -2837,6 +2837,7 @@ function RecognizedCardLarge({
             ×{ownedCount}
           </div>
         )}
+      </div>
       </div>
 
       {/* Unterhalb der Karte: Set-Zeile, Pokémon-Name — zentriert. Nummer/Dex
