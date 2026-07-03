@@ -2690,23 +2690,19 @@ function RecognizedCardLarge({
   // Fotos/Scans weichen leicht vom exakten Kartenformat ab (Zuschnitt-Ränder),
   // die Annahme führte sonst zu Zuschneiden (object-cover) oder Rand (object-contain).
   const [imgAspect, setImgAspect] = useState<number | null>(null);
-  // Debug: live gerenderte Maße von Rahmen (Container-Box) und Bild anzeigen —
-  // hilft beim Vergleich zwischen Preview und echtem Gerät.
+  // Gerenderte Kartenbreite live per ResizeObserver — Basis für Logo-/Text-
+  // Größen und Ecken-Radius, die proportional zur tatsächlichen Kartenbreite
+  // skalieren sollen (siehe sizeBasePx unten).
   const containerRef = useRef<HTMLDivElement>(null);
-  const imgElRef = useRef<HTMLImageElement>(null);
   const [containerSize, setContainerSize] = useState<{ w: number; h: number } | null>(null);
-  const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
   useEffect(() => {
-    const targets = [containerRef.current, imgElRef.current].filter(Boolean) as HTMLElement[];
-    if (targets.length === 0) return;
+    const target = containerRef.current;
+    if (!target) return;
     const ro = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        if (entry.target === containerRef.current) setContainerSize({ w: Math.round(width), h: Math.round(height) });
-        if (entry.target === imgElRef.current) setImgSize({ w: Math.round(width), h: Math.round(height) });
-      }
+      const { width, height } = entries[0].contentRect;
+      setContainerSize({ w: Math.round(width), h: Math.round(height) });
     });
-    targets.forEach(t => ro.observe(t));
+    ro.observe(target);
     return () => ro.disconnect();
   }, []);
 
@@ -2795,27 +2791,9 @@ function RecognizedCardLarge({
         }}
         onClick={card ? onCardTap : undefined}
       >
-        {/* Debug: Maße von Rahmen (Container) und Bild */}
-        {containerSize && (
-          <div
-            className="absolute top-1 left-1 z-10 px-1 rounded text-[9px] font-mono text-white/90 pointer-events-none"
-            style={{ background: 'rgba(0,0,0,0.6)' }}
-          >
-            Rahmen {containerSize.w}×{containerSize.h}
-          </div>
-        )}
-        {imgSize && (
-          <div
-            className="absolute bottom-1 right-1 z-10 px-1 rounded text-[9px] font-mono text-white/90 pointer-events-none"
-            style={{ background: 'rgba(0,0,0,0.6)' }}
-          >
-            Bild {imgSize.w}×{imgSize.h}
-          </div>
-        )}
         {img ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
-            ref={imgElRef}
             src={img}
             alt={card?.name ?? ''}
             className="w-full h-full object-fill"
