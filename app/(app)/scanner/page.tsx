@@ -2701,7 +2701,7 @@ function RecognizedCardLarge({
   const statusFlagged = computeBorderStatus(job) !== 'none' || !!job.result?.fakeRisk;
   const cardBorder = statusFlagged
     ? borderStyleFor(computeBorderStatus(job), job.result?.fakeRisk).border
-    : isOwned ? '7px solid #22c55e' : '2.5px solid transparent';
+    : isOwned ? '4px solid #22c55e' : '2.5px solid transparent';
   // Zusätzlicher Glow beim grünen Besitz-Rahmen — reiner Farbrand geht auf bunten
   // Kartenmotiven schnell unter, der Schein macht "schon vorhanden" unmissverständlich.
   const cardGlow = !statusFlagged && isOwned ? '0 0 0 3px rgba(34,197,94,0.35)' : undefined;
