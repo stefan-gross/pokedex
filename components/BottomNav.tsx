@@ -86,7 +86,7 @@ export function BottomNav() {
   const scannerCameraColor = '#8b5cf6';
   // Rahmen-Kreise (Gooey-Schicht) sind etwas größer als die eigentlichen Buttons
   // (56px / FAB_SIZE) — der Überstand ergibt den sichtbaren "Ring" pro Kreis.
-  const FRAME_PAD = 8;
+  const FRAME_PAD = 1;
   const FRAME_SIZE = 56 + FRAME_PAD * 2;
   const FRAME_SIZE_CAM = FAB_SIZE + FRAME_PAD * 2;
 
@@ -184,36 +184,46 @@ export function BottomNav() {
           className="relative flex flex-col items-center transition-all duration-300"
           style={{ marginTop: -26 }}
         >
-          {/* Rahmen-Schicht (unscharf+kontrastreich → verschmilzt zu einer Form) */}
+          {/* SVG-Goo-Filter statt CSS blur+contrast — sauberere, kontrolliertere
+              Metaball-Verschmelzung (klassische "Gooey"-Technik). */}
+          <svg width="0" height="0" style={{ position: 'absolute' }}>
+            <defs>
+              <filter id="fab-goo">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur" />
+                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -10" result="goo" />
+              </filter>
+            </defs>
+          </svg>
+          {/* Rahmen-Schicht — verschmilzt per Goo-Filter zu einer Form */}
           <div
             className="absolute inset-0 flex flex-col items-center pointer-events-none"
-            style={{ filter: 'blur(7px) contrast(45)' }}
+            style={{ filter: 'url(#fab-goo)' }}
           >
             <div
               className="flex items-center justify-center"
-              style={{ gap: (scanState.canAdd || scanState.canDelete) ? 4 : 0, marginBottom: (scanState.canAdd || scanState.canDelete) ? 4 : 0 }}
+              style={{ gap: -4, marginBottom: -4 }}
             >
               <div
                 className="flex items-center justify-center"
                 style={{ width: FRAME_SIZE, height: scanState.canDelete ? FRAME_SIZE : 0, opacity: scanState.canDelete ? 1 : 0, transition: 'height 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease' }}
               >
-                <div className="rounded-full" style={{ width: FRAME_SIZE, height: FRAME_SIZE, background: '#000' }} />
+                <div className="rounded-full" style={{ width: FRAME_SIZE, height: FRAME_SIZE, background: 'rgba(0,0,0,0.55)' }} />
               </div>
               <div
                 className="flex items-center justify-center"
                 style={{ width: FRAME_SIZE, height: scanState.canAdd ? FRAME_SIZE : 0, opacity: scanState.canAdd ? 1 : 0, transition: 'height 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease' }}
               >
-                <div className="rounded-full" style={{ width: FRAME_SIZE, height: FRAME_SIZE, background: '#000' }} />
+                <div className="rounded-full" style={{ width: FRAME_SIZE, height: FRAME_SIZE, background: 'rgba(0,0,0,0.55)' }} />
               </div>
             </div>
-            <div className="rounded-full" style={{ width: FRAME_SIZE_CAM, height: FRAME_SIZE_CAM, background: '#000' }} />
+            <div className="rounded-full" style={{ width: FRAME_SIZE_CAM, height: FRAME_SIZE_CAM, background: 'rgba(0,0,0,0.55)' }} />
           </div>
 
           {/* Icon-Schicht — scharf, Originalfarben */}
           <div className="relative flex flex-col items-center">
             <div
               className="flex items-center justify-center"
-              style={{ gap: (scanState.canAdd || scanState.canDelete) ? 4 : 0, marginBottom: (scanState.canAdd || scanState.canDelete) ? 4 : 0 }}
+              style={{ gap: -4, marginBottom: -4 }}
             >
               <div
                 className="relative flex items-center justify-center overflow-visible"
