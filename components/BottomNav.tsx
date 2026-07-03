@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, BookOpen, Heart, Camera, Pause, LayoutGrid, IdCard, Layers, Plus } from 'lucide-react';
+import { Home, Search, BookOpen, Heart, Camera, Pause, LayoutGrid, IdCard, Layers, Plus, Minus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { CardPrice } from '@/components/card/CardPrice';
 
@@ -23,6 +23,7 @@ const SCAN_GRID_TOGGLE_EVENT  = 'scanner-toggle-grid';
 const SCAN_MODE_TOGGLE_EVENT  = 'scanner-toggle-mode';
 const SCAN_STATE_EVENT        = 'scanner-state-changed';
 const SCAN_ADD_EVENT          = 'scanner-add-recognized';
+const SCAN_REMOVE_EVENT       = 'scanner-remove-recognized';
 
 interface ScannerNavState {
   paused: boolean;        // Stream pausiert?
@@ -31,6 +32,7 @@ interface ScannerNavState {
   gridVisible: boolean;   // Grid-Button anzeigen?
   reviewMode?: boolean;   // Scanner ist im Review-Grid → BottomNav komplett ausblenden
   canAdd?: boolean;       // Einzeln-Modus: erkannte Karte kann hinzugefügt werden → grüner +-Button erscheint über der FAB
+  canDelete?: boolean;    // Einzeln-Modus: erkannte Karte ist bereits im Besitz → roter Löschen-Button erscheint neben dem +-Button
   recognizedCardId?: string | null;    // tcgId der erkannten Karte, für Preis rechts neben dem +-Button
   recognizedNumBase?: string | null;   // "053" (Nummer der Karte im Set), fett/größer
   recognizedNumTotal?: string | null;  // "172" (Gesamtzahl des Sets), kleiner
@@ -79,6 +81,14 @@ export function BottomNav() {
     background: 'var(--pokedex-red)',
     boxShadow: '0 4px 20px rgba(220,38,38,0.45)',
   };
+  // Kamera/Pause-Button in der Scanner-FAB-Kapsel: lila statt rot, damit er sich
+  // klar von Löschen (rot) und Hinzufügen (grün) daneben abhebt.
+  const scannerCameraColor = '#8b5cf6';
+  // Rahmen-Kreise (Gooey-Schicht) sind etwas größer als die eigentlichen Buttons
+  // (56px / FAB_SIZE) — der Überstand ergibt den sichtbaren "Ring" pro Kreis.
+  const FRAME_PAD = 8;
+  const FRAME_SIZE = 56 + FRAME_PAD * 2;
+  const FRAME_SIZE_CAM = FAB_SIZE + FRAME_PAD * 2;
 
   // Kompaktere Höhe: 56 px Inhalt + Safe-Area
   const navStyle: React.CSSProperties = {
@@ -162,51 +172,101 @@ export function BottomNav() {
           )}
         </div>
 
-        {/* Mitte: FAB-Kapsel — Kamera/Pause-Button immer sichtbar, grüner
-            +-Button erscheint animiert darüber, sobald eine erkannte Karte
-            hinzugefügt werden kann. Beide Buttons teilen sich einen Wrapper mit
-            marginTop:-20 (statt vorher auf dem Button selbst) — wächst die
-            Kapsel durch den +-Button, schiebt sich alles gemeinsam weiter nach
-            oben aus der Toolbar heraus. */}
+        {/* Mitte: FAB-Kapsel — Kamera/Pause-Button immer sichtbar, roter Löschen-
+            und grüner Hinzufügen-Button erscheinen animiert daneben, sobald
+            nutzbar. Zwei übereinanderliegende Schichten mit identischem Slot-
+            Raster: eine geblurrte "Rahmen"-Schicht (dunkle Kreise, etwas größer
+            als die Buttons) darunter erzeugt per Gooey-Effekt den Eindruck von
+            drei überlappenden, ineinander übergehenden Kreisen — die eigentlichen
+            Buttons obendrüber bleiben scharf und in ihren normalen Farben
+            (Rot/Grün/Lila), keine Weichzeichnung auf den Buttons selbst. */}
         <div
           className="relative flex flex-col items-center transition-all duration-300"
-          style={{
-            marginTop: -26,
-            padding: 6,
-            borderRadius: 999,
-            background: 'rgba(0,0,0,0.35)',
-            border: '1.5px solid rgba(255,255,255,0.18)',
-          }}
+          style={{ marginTop: -26 }}
         >
+          {/* Rahmen-Schicht (unscharf+kontrastreich → verschmilzt zu einer Form) */}
           <div
-            className="relative flex items-center justify-center overflow-visible"
-            style={{
-              width: 56,
-              height: scanState.canAdd ? 56 : 0,
-              marginBottom: scanState.canAdd ? 8 : 0,
-              opacity: scanState.canAdd ? 1 : 0,
-              transform: scanState.canAdd ? 'scale(1)' : 'scale(0.4)',
-              transition: 'height 280ms cubic-bezier(.34,1.56,.64,1), margin-bottom 280ms ease, opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
-              pointerEvents: scanState.canAdd ? 'auto' : 'none',
-            }}
+            className="absolute inset-0 flex flex-col items-center pointer-events-none"
+            style={{ filter: 'blur(7px) contrast(45)' }}
           >
-            <button
-              onClick={() => window.dispatchEvent(new Event(SCAN_ADD_EVENT))}
-              aria-label="Zur Sammlung hinzufügen"
-              className="w-full h-full flex items-center justify-center rounded-full shadow-xl"
-              style={{ background: 'var(--action-add)' }}
+            <div
+              className="flex items-center justify-center"
+              style={{ gap: (scanState.canAdd || scanState.canDelete) ? 4 : 0, marginBottom: (scanState.canAdd || scanState.canDelete) ? 4 : 0 }}
             >
-              <Plus size={26} color="#fff" strokeWidth={3} />
-            </button>
+              <div
+                className="flex items-center justify-center"
+                style={{ width: FRAME_SIZE, height: scanState.canDelete ? FRAME_SIZE : 0, opacity: scanState.canDelete ? 1 : 0, transition: 'height 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease' }}
+              >
+                <div className="rounded-full" style={{ width: FRAME_SIZE, height: FRAME_SIZE, background: '#000' }} />
+              </div>
+              <div
+                className="flex items-center justify-center"
+                style={{ width: FRAME_SIZE, height: scanState.canAdd ? FRAME_SIZE : 0, opacity: scanState.canAdd ? 1 : 0, transition: 'height 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease' }}
+              >
+                <div className="rounded-full" style={{ width: FRAME_SIZE, height: FRAME_SIZE, background: '#000' }} />
+              </div>
+            </div>
+            <div className="rounded-full" style={{ width: FRAME_SIZE_CAM, height: FRAME_SIZE_CAM, background: '#000' }} />
           </div>
-          <button
-            onClick={handleFabClick}
-            className="flex items-center justify-center rounded-full shadow-xl"
-            style={{ ...fabStyle, marginTop: 0 }}
-            aria-label={scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren'}
-          >
-            <FabIcon size={28} color={fabIconColor} fill={!scanState.paused ? '#fff' : 'none'} />
-          </button>
+
+          {/* Icon-Schicht — scharf, Originalfarben */}
+          <div className="relative flex flex-col items-center">
+            <div
+              className="flex items-center justify-center"
+              style={{ gap: (scanState.canAdd || scanState.canDelete) ? 4 : 0, marginBottom: (scanState.canAdd || scanState.canDelete) ? 4 : 0 }}
+            >
+              <div
+                className="relative flex items-center justify-center overflow-visible"
+                style={{
+                  width: FRAME_SIZE,
+                  height: scanState.canDelete ? FRAME_SIZE : 0,
+                  opacity: scanState.canDelete ? 1 : 0,
+                  transform: scanState.canDelete ? 'scale(1)' : 'scale(0.4)',
+                  transition: 'height 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
+                  pointerEvents: scanState.canDelete ? 'auto' : 'none',
+                }}
+              >
+                <button
+                  onClick={() => window.dispatchEvent(new Event(SCAN_REMOVE_EVENT))}
+                  aria-label="Aus Sammlung entfernen"
+                  className="flex items-center justify-center rounded-full shadow-xl"
+                  style={{ width: 56, height: 56, background: '#ef4444' }}
+                >
+                  <Minus size={26} color="#fff" strokeWidth={3} />
+                </button>
+              </div>
+              <div
+                className="relative flex items-center justify-center overflow-visible"
+                style={{
+                  width: FRAME_SIZE,
+                  height: scanState.canAdd ? FRAME_SIZE : 0,
+                  opacity: scanState.canAdd ? 1 : 0,
+                  transform: scanState.canAdd ? 'scale(1)' : 'scale(0.4)',
+                  transition: 'height 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
+                  pointerEvents: scanState.canAdd ? 'auto' : 'none',
+                }}
+              >
+                <button
+                  onClick={() => window.dispatchEvent(new Event(SCAN_ADD_EVENT))}
+                  aria-label="Zur Sammlung hinzufügen"
+                  className="flex items-center justify-center rounded-full shadow-xl"
+                  style={{ width: 56, height: 56, background: 'var(--action-add)' }}
+                >
+                  <Plus size={26} color="#fff" strokeWidth={3} />
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center justify-center" style={{ width: FRAME_SIZE_CAM, height: FRAME_SIZE_CAM }}>
+              <button
+                onClick={handleFabClick}
+                className="flex items-center justify-center rounded-full shadow-xl"
+                style={{ ...fabStyle, width: FAB_SIZE, height: FAB_SIZE, marginTop: 0, background: scannerCameraColor }}
+                aria-label={scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren'}
+              >
+                <FabIcon size={28} color={fabIconColor} fill={!scanState.paused ? '#fff' : 'none'} />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Rechts: Mode-Switch */}

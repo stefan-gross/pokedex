@@ -422,6 +422,11 @@ export default function ScannerPage() {
     && !recognizedJob.added
     && recognizedJob.result!.ownedCount !== undefined;
   const recognizedCardId = canAddRecognized ? recognizedCard!.id : null;
+  // Löschen-Button neben dem +-Button: erscheint nur, wenn die erkannte Karte
+  // bereits im Besitz ist. Tap öffnet CardDetailSheet (siehe onRemoveRecognized
+  // unten) — dieselbe Ansicht, die auch beim Antippen der Karte selbst aufgeht,
+  // inkl. bestehender Lösch-UI pro Exemplar (auch bei mehreren Exemplaren).
+  const canDeleteRecognized = !!recognizedCard && (recognizedJob?.result?.ownedCount ?? 0) > 0;
   // Für die Nummern-Anzeige links neben dem +-Button (BottomNav) — dieselbe
   // Quelle wie in RecognizedCardLarge (printedTotal aus tcg_sets, nicht aus
   // dem Scan-Ergebnis, siehe useSetMeta).
@@ -443,15 +448,20 @@ export default function ScannerPage() {
     const onAddRecognized = () => {
       if (recognizedJobId) setQuickAddJobId(recognizedJobId);
     };
+    const onRemoveRecognized = () => {
+      if (recognizedJobId) setActiveJobId(recognizedJobId);
+    };
     window.addEventListener('scanner-toggle-pause', onTogglePause);
     window.addEventListener('scanner-toggle-mode',  onToggleMode as EventListener);
     window.addEventListener('scanner-toggle-grid',  onToggleGrid);
     window.addEventListener('scanner-add-recognized', onAddRecognized);
+    window.addEventListener('scanner-remove-recognized', onRemoveRecognized);
     return () => {
       window.removeEventListener('scanner-toggle-pause', onTogglePause);
       window.removeEventListener('scanner-toggle-mode',  onToggleMode as EventListener);
       window.removeEventListener('scanner-toggle-grid',  onToggleGrid);
       window.removeEventListener('scanner-add-recognized', onAddRecognized);
+      window.removeEventListener('scanner-remove-recognized', onRemoveRecognized);
     };
   }, [toggleStreamPaused, switchScanMode, toggleGridMode, recognizedJobId]);
 
@@ -466,19 +476,20 @@ export default function ScannerPage() {
         gridVisible: scanMode === 'add' && addJobsCount > 0,
         reviewMode: mode === 'review',
         canAdd: canAddRecognized,
+        canDelete: canDeleteRecognized,
         recognizedCardId,
         recognizedNumBase,
         recognizedNumTotal,
         recognizedDex,
       },
     }));
-  }, [streamPaused, scanMode, addJobsCount, mode, canAddRecognized, recognizedCardId, recognizedNumBase, recognizedNumTotal, recognizedDex]);
+  }, [streamPaused, scanMode, addJobsCount, mode, canAddRecognized, canDeleteRecognized, recognizedCardId, recognizedNumBase, recognizedNumTotal, recognizedDex]);
 
   // Beim Unmount: Reset, damit andere Seiten nicht den Scan-Pause-FAB sehen
   useEffect(() => {
     return () => {
       window.dispatchEvent(new CustomEvent('scanner-state-changed', {
-        detail: { paused: false, scanMode: 'recognize', jobsCount: 0, gridVisible: false, reviewMode: false, canAdd: false },
+        detail: { paused: false, scanMode: 'recognize', jobsCount: 0, gridVisible: false, reviewMode: false, canAdd: false, canDelete: false },
       }));
     };
   }, []);
