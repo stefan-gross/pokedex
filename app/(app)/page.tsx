@@ -301,14 +301,14 @@ function ValueHero({ totalOwned, thisWeek, totalValue, heroCard }: {
           aria-hidden="true"
           className="absolute pointer-events-none select-none"
           style={{
-            top: '50%',
-            right: -18,
-            height: '70%',
+            top: -28,
+            right: -28,
+            height: '135%',
             width: 'auto',
             aspectRatio: '63/88',
             objectFit: 'cover',
-            transform: 'translateY(-50%) rotate(16deg)',
-            opacity: 0.35,
+            transform: 'rotate(16deg)',
+            opacity: 0.65,
             borderRadius: 10,
             boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
           }}
@@ -336,9 +336,9 @@ function ValueHero({ totalOwned, thisWeek, totalValue, heroCard }: {
           )}
         </div>
 
-        <div className="flex items-center mt-3.5 pt-3.5 border-t border-border/40">
+        <div className="flex items-baseline gap-1.5 mt-3.5 pt-3.5 border-t border-border/40">
           <span className="text-[13px] text-muted-foreground">Geschätzter Wert</span>
-          <span className="text-lg font-extrabold ml-auto">{valueLabel}</span>
+          <span className="text-lg font-extrabold">{valueLabel}</span>
         </div>
       </div>
     </div>
