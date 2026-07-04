@@ -41,7 +41,7 @@ export function SetListItem({
   return (
     <Link
       href={href}
-      className={`flex items-center gap-3 px-4 py-3 active:bg-secondary transition-colors${separator ? ' border-b border-border/40' : ''}`}
+      className={`flex items-center gap-3 px-4 py-[13px] active:bg-secondary transition-colors${separator ? ' border-b border-border/30' : ''}`}
     >
       {/* Logo */}
       <div className="w-14 shrink-0 flex items-center justify-center">
@@ -65,29 +65,34 @@ export function SetListItem({
       {/* Info */}
       <div className="flex-1 min-w-0 space-y-1.5">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-medium truncate">{displayName}</span>
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-sm font-medium truncate">{displayName}</span>
             {isSymbolOnlySet && symbolUrl ? (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img src={symbolUrl} alt={ptcgoCode ?? ''} className="w-[21px] h-[21px] object-contain" />
+              <img src={symbolUrl} alt={ptcgoCode ?? ''} className="w-[16px] h-[16px] object-contain shrink-0" />
             ) : ptcgoCode && (
               <span
-                className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border"
-                style={{ color: 'var(--foreground)', borderColor: 'var(--foreground)' }}
+                className="text-[10px] font-bold rounded-[5px] shrink-0"
+                style={{ color: '#9A9DA6', background: '#F2F2F2', padding: '1px 5px', letterSpacing: '.03em' }}
               >
                 {ptcgoCode}
               </span>
             )}
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {owned}{total != null ? `/${total}` : ' Karten'}
-            </span>
           </div>
+          {pct != null && (
+            <span className="text-[13px] font-bold shrink-0 tabular-nums" style={{ color: 'var(--action-add)' }}>
+              {pct}%
+            </span>
+          )}
         </div>
         <div className="h-2 rounded-full bg-secondary overflow-hidden">
           <div
             className="h-full rounded-full transition-all"
             style={{ width: `${pct ?? 0}%`, background: 'var(--pokedex-red)' }}
           />
+        </div>
+        <div className="text-[11px] text-muted-foreground tabular-nums">
+          {owned} / {total ?? '?'} Karten
         </div>
       </div>
     </Link>

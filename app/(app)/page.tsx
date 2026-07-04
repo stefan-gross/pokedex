@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Settings, Star, Clock, Percent } from 'lucide-react';
+import { Settings, Star, Clock, Percent, ArrowUp } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getCards } from '@/lib/firestore/cards';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
@@ -138,42 +138,18 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      {/* Stat Tiles — Sammlungen · Karten · Gesamtwert nebeneinander */}
+      {/* Wert-Hero + Chip-Streifen */}
       <div className="space-y-3">
-        <div className="grid grid-cols-3 gap-2">
-          <TopStat
-            label="Sammlungen"
-            value={loading ? '—' : String(binders.length)}
-          />
-          <TopStat
-            label="Karten"
-            value={loading ? '—' : (totalOwned ?? 0).toLocaleString('de')}
-            highlight
-            sub={thisWeek != null && thisWeek > 0 ? `+${thisWeek} diese Woche` : undefined}
-          />
-          <TopStat
-            label="Gesamtwert"
-            value={
-              totalValue.loading
-                ? '—'
-                : totalValue.withPrice > 0
-                  ? totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
-                  : '—'
-            }
-          />
-        </div>
+        <ValueHero
+          totalOwned={loading ? null : (totalOwned ?? 0)}
+          thisWeek={thisWeek}
+          totalValue={totalValue}
+        />
 
-        <div className="grid grid-cols-2 gap-3">
-          <StatTile
-            label="Sets"
-            sub={uniqueSets != null ? `${uniqueSets} mit Karten` : '…'}
-            value={loading ? '—' : String(uniqueSets ?? 0)}
-          />
-          <StatTile
-            label="Wunschliste"
-            sub="Noch nicht vorhanden"
-            value={wishlistCount == null ? '—' : String(wishlistCount)}
-          />
+        <div className="grid grid-cols-3 gap-2">
+          <StatChip label="Sammlungen" value={loading ? '—' : String(binders.length)} />
+          <StatChip label="Sets" value={loading ? '—' : String(uniqueSets ?? 0)} />
+          <StatChip label="Wunschliste" value={wishlistCount == null ? '—' : String(wishlistCount)} />
         </div>
       </div>
 
@@ -240,9 +216,9 @@ export default function DashboardPage() {
       {recentCards.length > 0 && (
         <section>
           <h2 className="text-base font-bold mb-3">Zuletzt hinzugefügt</h2>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-2.5">
             {recentCards.map(card => (
-              <RecentCard key={card.id} name={card.name} number={card.number} img={card.tcgImageUrl!} onClick={() => openDetail(card)} />
+              <RecentCard key={card.id} name={card.name} img={card.tcgImageUrl!} onClick={() => openDetail(card)} />
             ))}
           </div>
         </section>
@@ -279,36 +255,62 @@ export default function DashboardPage() {
   );
 }
 
-/** Kompakte Top-Statistik: Label oben, Wert prominent darunter, optional Sub-Text.
- *  Der mittlere „Karten"-Tile wird per `highlight` in pokedex-red gefärbt. */
-function TopStat({ label, value, sub, highlight = false }: {
-  label: string; value: string; sub?: string; highlight?: boolean;
+/** Wert-Hero: ersetzt die 3 TopStat-Kacheln durch eine große Karte mit
+ *  Kartenanzahl (Hauptwert), Wochen-Delta-Chip und Gesamtwert-Fußzeile. */
+function ValueHero({ totalOwned, thisWeek, totalValue }: {
+  totalOwned: number | null;
+  thisWeek: number | null;
+  totalValue: { loading: boolean; withPrice: number; total: number };
 }) {
+  const valueLabel = totalValue.loading
+    ? '—'
+    : totalValue.withPrice > 0
+      ? totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
+      : '—';
+
   return (
-    <div className="rounded-2xl bg-card shadow-card px-2.5 py-2.5 flex flex-col items-center justify-center text-center min-h-[78px]">
-      <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">{label}</span>
-      <span
-        className="text-[20px] font-extrabold leading-tight tabular-nums truncate w-full"
-        style={highlight ? { color: 'var(--pokedex-red)' } : undefined}
-        title={value}
-      >
-        {value}
-      </span>
-      {sub && (
-        <span className="text-[10px] text-muted-foreground/70 mt-0.5 truncate w-full">{sub}</span>
-      )}
+    <div className="bg-card rounded-[22px] shadow-card p-5 relative overflow-hidden">
+      <div
+        className="absolute pointer-events-none"
+        style={{ top: -30, right: -30, width: 130, height: 130, borderRadius: 999, background: 'rgba(229,62,62,0.06)' }}
+      />
+      <div className="relative">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Karten in der Sammlung
+        </span>
+        <div className="flex items-baseline gap-2 mt-1">
+          <span
+            className="tabular-nums"
+            style={{ fontSize: 46, fontWeight: 800, lineHeight: 1, color: 'var(--pokedex-red)', letterSpacing: '-.03em' }}
+          >
+            {(totalOwned ?? 0).toLocaleString('de')}
+          </span>
+          {thisWeek != null && thisWeek > 0 && (
+            <span
+              className="inline-flex items-center gap-0.5 text-xs font-bold rounded-full"
+              style={{ background: '#E7F4EC', color: 'var(--action-add)', padding: '4px 9px' }}
+            >
+              <ArrowUp size={12} strokeWidth={3} />
+              {thisWeek} diese Woche
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center mt-3.5 pt-3.5 border-t border-border/40">
+          <span className="text-[13px] text-muted-foreground">Geschätzter Wert</span>
+          <span className="text-lg font-extrabold ml-auto">{valueLabel}</span>
+        </div>
+      </div>
     </div>
   );
 }
 
-function StatTile({ label, sub, value }: { label: string; sub: string; value: string }) {
+/** Kompakter Stat-Chip im 3er-Streifen (Sammlungen · Sets · Wunschliste). */
+function StatChip({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-card shadow-card p-3 flex items-center justify-between gap-2 min-h-[68px]">
-      <div className="flex-1 min-w-0 flex flex-col justify-between">
-        <div className="text-xs text-muted-foreground font-medium">{label}</div>
-        <div className="text-[10px] text-muted-foreground/60 mt-1">{sub}</div>
-      </div>
-      <div className="text-[28px] font-extrabold leading-none shrink-0">{value}</div>
+    <div className="bg-card rounded-[14px] shadow-card px-2 py-3 flex flex-col items-center gap-0.5">
+      <span className="text-[22px] font-extrabold leading-none tabular-nums">{value}</span>
+      <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
     </div>
   );
 }
@@ -333,14 +335,14 @@ function ViewBtn({ active, onClick, label, children }: {
 }
 
 
-function RecentCard({ name, number, img, onClick }: { name: string; number: string; img: string; onClick: () => void }) {
+function RecentCard({ name, img, onClick }: { name: string; img: string; onClick: () => void }) {
   return (
     <button onClick={onClick} className="flex flex-col items-center gap-1 text-left w-full">
-      <div className="w-full aspect-[2/3] rounded-lg overflow-hidden bg-secondary shadow-card">
+      <div className="w-full aspect-[63/88] rounded-[11px] overflow-hidden bg-secondary shadow-card">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={img} alt={name} className="w-full h-full object-cover" />
       </div>
-      <span className="text-[10px] text-muted-foreground text-center truncate w-full">{number}</span>
+      <span className="text-[11px] font-semibold text-center truncate w-full mt-0.5">{name}</span>
     </button>
   );
 }
