@@ -26,16 +26,19 @@ export interface TotalValueState {
   /** Wie viele Karten der Eingangsliste einen Preis hatten. */
   withPrice: number;
   totalCards: number;
+  /** Karte mit dem höchsten Einzelpreis (nicht × quantity) — für die Hero-
+   *  Anzeige im Dashboard. Nur Karten mit `tcgImageUrl` sind Kandidaten. */
+  topCard: CardDoc | null;
 }
 
 /** Summiert grob den Wert einer Kartenliste (Trend-Preis pro Karte × quantity).
  *  USD-Preise werden 1:1 als EUR addiert — grobe Einordnung, kein exakter Verkaufswert. */
 export function useTotalValue(cards: CardDoc[] | null): TotalValueState {
-  const [state, setState] = useState<TotalValueState>({ total: 0, loading: !!cards, withPrice: 0, totalCards: 0 });
+  const [state, setState] = useState<TotalValueState>({ total: 0, loading: !!cards, withPrice: 0, totalCards: 0, topCard: null });
 
   useEffect(() => {
-    if (!cards) { setState({ total: 0, loading: true, withPrice: 0, totalCards: 0 }); return; }
-    if (cards.length === 0) { setState({ total: 0, loading: false, withPrice: 0, totalCards: 0 }); return; }
+    if (!cards) { setState({ total: 0, loading: true, withPrice: 0, totalCards: 0, topCard: null }); return; }
+    if (cards.length === 0) { setState({ total: 0, loading: false, withPrice: 0, totalCards: 0, topCard: null }); return; }
 
     let alive = true;
     setState(s => ({ ...s, loading: true }));
@@ -45,6 +48,8 @@ export function useTotalValue(cards: CardDoc[] | null): TotalValueState {
       if (!alive) return;
       let total = 0;
       let withPrice = 0;
+      let topCard: CardDoc | null = null;
+      let topPrice = -Infinity;
       for (const card of cards) {
         if (!card.tcgId) continue;
         const entry: CachedPriceClient | null | undefined = pricesMap.get(card.tcgId);
@@ -54,11 +59,15 @@ export function useTotalValue(cards: CardDoc[] | null): TotalValueState {
         if (price == null) continue;
         total += price * (card.quantity || 1);
         withPrice++;
+        if (card.tcgImageUrl && price > topPrice) {
+          topPrice = price;
+          topCard = card;
+        }
       }
-      setState({ total, loading: false, withPrice, totalCards: cards.length });
+      setState({ total, loading: false, withPrice, totalCards: cards.length, topCard });
     }).catch(() => {
       if (!alive) return;
-      setState({ total: 0, loading: false, withPrice: 0, totalCards: cards.length });
+      setState({ total: 0, loading: false, withPrice: 0, totalCards: cards.length, topCard: null });
     });
 
     return () => { alive = false; };

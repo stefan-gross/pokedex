@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { Settings, Star, Clock, Percent, ArrowUp } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { getCards } from '@/lib/firestore/cards';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { getBinders } from '@/lib/firestore/binders';
 import { getWishlists } from '@/lib/firestore/wishlists';
 import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
 import { getSetById } from '@/lib/firestore/sets';
+import { getRarityGroup } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { getCountFromServer, collection, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
@@ -124,6 +125,22 @@ export default function DashboardPage() {
   const loading = cards === null;
   const totalValue = useTotalValue(cards);
 
+  // Fallback für den Wert-Hero, falls keine Karte einen Preis hat: seltenste
+  // Karte nach Rarity-Ordnung (Promo zählt nicht als "selten", siehe order 99).
+  const rarestCard = useMemo(() => {
+    if (!cards) return null;
+    let best: CardDoc | null = null;
+    let bestOrder = -1;
+    for (const c of cards) {
+      if (!c.tcgImageUrl) continue;
+      const order = c.rarity ? (getRarityGroup(c.rarity)?.order ?? -1) : -1;
+      const effectiveOrder = order === 99 ? -1 : order;
+      if (effectiveOrder > bestOrder) { bestOrder = effectiveOrder; best = c; }
+    }
+    return best;
+  }, [cards]);
+  const heroCard = totalValue.loading ? null : (totalValue.topCard ?? rarestCard);
+
   return (
     <div className="px-4 pt-6 pb-4 space-y-5">
 
@@ -144,6 +161,7 @@ export default function DashboardPage() {
           totalOwned={loading ? null : (totalOwned ?? 0)}
           thisWeek={thisWeek}
           totalValue={totalValue}
+          heroCard={heroCard}
         />
 
         <div className="grid grid-cols-3 gap-2">
@@ -257,10 +275,11 @@ export default function DashboardPage() {
 
 /** Wert-Hero: ersetzt die 3 TopStat-Kacheln durch eine große Karte mit
  *  Kartenanzahl (Hauptwert), Wochen-Delta-Chip und Gesamtwert-Fußzeile. */
-function ValueHero({ totalOwned, thisWeek, totalValue }: {
+function ValueHero({ totalOwned, thisWeek, totalValue, heroCard }: {
   totalOwned: number | null;
   thisWeek: number | null;
   totalValue: { loading: boolean; withPrice: number; total: number };
+  heroCard: CardDoc | null;
 }) {
   const valueLabel = totalValue.loading
     ? '—'
@@ -274,6 +293,27 @@ function ValueHero({ totalOwned, thisWeek, totalValue }: {
         className="absolute pointer-events-none"
         style={{ top: -30, right: -30, width: 130, height: 130, borderRadius: 999, background: 'rgba(229,62,62,0.06)' }}
       />
+      {heroCard?.tcgImageUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={heroCard.tcgImageUrl}
+          alt=""
+          aria-hidden="true"
+          className="absolute pointer-events-none select-none"
+          style={{
+            top: '50%',
+            right: -18,
+            height: '70%',
+            width: 'auto',
+            aspectRatio: '63/88',
+            objectFit: 'cover',
+            transform: 'translateY(-50%) rotate(16deg)',
+            opacity: 0.35,
+            borderRadius: 10,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+          }}
+        />
+      )}
       <div className="relative">
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Karten in der Sammlung
