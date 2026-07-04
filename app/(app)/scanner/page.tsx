@@ -221,7 +221,7 @@ function classifyJobError(job: ScanJob): ErrorClass {
       kind: 'gemini-blind',
       Icon: EyeOff,
       iconColor: '#facc15',
-      cardName: 'Blindfish',
+      cardName: 'Enigmon',
       attackTitle: 'Keine Karte im Bild',
       attackText: 'Halte die Karte deutlicher in den Rahmen.',
     };
@@ -231,7 +231,7 @@ function classifyJobError(job: ScanJob): ErrorClass {
       kind: 'gemini-thin',
       Icon: AlertTriangle,
       iconColor: '#fb923c',
-      cardName: 'Glitchmander',
+      cardName: 'Enigmon',
       attackTitle: 'Karten-Text unlesbar',
       attackText: 'Beleuchte die Karte stärker oder rücke näher heran.',
     };
@@ -241,7 +241,7 @@ function classifyJobError(job: ScanJob): ErrorClass {
       kind: 'non-western',
       Icon: AlertTriangle,
       iconColor: '#fb923c',
-      cardName: 'Errorchu',
+      cardName: 'Enigmon',
       attackTitle: `Nicht-Western-Karte (${lang?.toUpperCase()})`,
       attackText: lang === 'ja'
         ? 'Japanische Karten nutzen ein eigenes Code-System und sind im Katalog nicht enthalten.'
@@ -252,56 +252,53 @@ function classifyJobError(job: ScanJob): ErrorClass {
     kind: 'catalog-miss',
     Icon: SearchX,
     iconColor: '#f87171',
-    cardName: 'Errorchu',
+    cardName: 'Enigmon',
     attackTitle: 'Im Katalog nicht gefunden',
     attackText: 'Möglicherweise ein Set, das noch nicht synchronisiert wurde. Versuche es nochmal oder synchronisiere die Daten.',
   };
 }
 
-/** Inline-SVG-Artwork „MissingNo." — pixelated Glitch-Pokémon-Silhouette als
- *  Error-Karten-Artwork. Skaliert via `size`. */
-function MissingNoArtwork({ size = 96, color = '#1a1a1a', tint = '#ef4444' }: { size?: number; color?: string; tint?: string }) {
-  // 16×16 Pixel-Grid — Pokémon-artige Form mit Glitch-Streifen.
-  // 0 = leer, 1 = Hauptkörper, 2 = Glitch-Akzent (rot)
-  const grid: number[][] = [
-    [0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0],
-    [0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0],
-    [0,0,1,1,2,2,1,1,1,2,2,1,1,1,0,0],
-    [0,1,1,1,2,2,1,1,1,2,2,1,1,1,1,0],
-    [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-    [0,1,1,1,1,1,2,2,2,2,1,1,1,1,1,0],
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,1,2,2,2,2,2,2,2,2,2,2,2,2,1,1],
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,1,1,1,2,2,2,2,2,2,2,2,1,1,1,1],
-    [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-    [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-    [0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0],
-    [0,0,1,1,1,0,0,0,0,0,0,1,1,1,0,0],
-    [0,0,1,1,0,0,0,0,0,0,0,0,1,1,0,0],
-    [0,1,1,1,0,0,0,0,0,0,0,0,1,1,1,0],
-  ];
-  const cells: React.ReactElement[] = [];
-  const cell = size / 16;
-  for (let y = 0; y < 16; y++) {
-    for (let x = 0; x < 16; x++) {
-      const v = grid[y][x];
-      if (v === 0) continue;
-      cells.push(
-        <rect
-          key={`${x}-${y}`}
-          x={x * cell}
-          y={y * cell}
-          width={cell}
-          height={cell}
-          fill={v === 2 ? tint : color}
-        />
-      );
-    }
-  }
+/** Inline-SVG-Artwork der Error-Karte — gezeichnete Landschaft (Busch + Teich
+ *  im Vordergrund, Vulkan im Hintergrund, großes Fragezeichen im Vordergrund),
+ *  im Stil eines echten Pokémon-Karten-Artworks statt der früheren Glitch-Optik. */
+function ErrorLandscapeArtwork({ className }: { className?: string }) {
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
-      {cells}
+    <svg viewBox="0 0 200 140" className={className} preserveAspectRatio="xMidYMid slice" aria-hidden>
+      {/* Himmel */}
+      <rect x="0" y="0" width="200" height="140" fill="#bcd9e8" />
+      {/* Vulkan im Hintergrund */}
+      <path d="M 70 90 L 108 24 L 118 24 L 150 90 Z" fill="#8a7a68" stroke="#3a332c" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M 96 44 L 113 24 L 118 24 L 130 44 Z" fill="#5c4d40" stroke="#3a332c" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M 108 24 Q 112 15 108 8" fill="none" stroke="#9a9a9a" strokeWidth="4" strokeLinecap="round" opacity="0.65" />
+      <path d="M 116 24 Q 122 13 117 4" fill="none" stroke="#9a9a9a" strokeWidth="4" strokeLinecap="round" opacity="0.5" />
+      {/* Ferner Hügelzug */}
+      <path d="M 0 96 Q 30 82 60 94 T 200 90 L 200 140 L 0 140 Z" fill="#a9c98f" opacity="0.8" />
+      {/* Wiese im Vordergrund */}
+      <path d="M 0 108 Q 50 96 100 108 T 200 106 L 200 140 L 0 140 Z" fill="#8fb86c" />
+      {/* Teich */}
+      <ellipse cx="48" cy="120" rx="34" ry="12" fill="#6fb7d6" stroke="#3a332c" strokeWidth="2" />
+      <path d="M 24 120 Q 48 126 72 120" fill="none" stroke="#e8f4fa" strokeWidth="1.5" opacity="0.7" />
+      {/* Busch */}
+      <g stroke="#3a332c" strokeWidth="2" strokeLinejoin="round">
+        <circle cx="158" cy="112" r="16" fill="#5a9950" />
+        <circle cx="174" cy="116" r="12" fill="#5a9950" />
+        <circle cx="146" cy="118" r="11" fill="#4d8a44" />
+      </g>
+      {/* Großes Fragezeichen im Vordergrund */}
+      <text
+        x="100"
+        y="112"
+        textAnchor="middle"
+        fontFamily="Georgia, serif"
+        fontSize="92"
+        fontWeight="700"
+        fill="#2b2b2b"
+        stroke="#f5f0da"
+        strokeWidth="3"
+        paintOrder="stroke"
+      >
+        ?
+      </text>
     </svg>
   );
 }
@@ -1184,18 +1181,19 @@ export default function ScannerPage() {
                     ) : isError ? (() => {
                       const ec = classifyJobError(job);
                       const ErrIcon = ec.Icon;
+                      const miniNormalDark = '#6f6d4e';
                       return (
                         <div
                           className="w-full h-full flex flex-col"
                           style={{
-                            background: 'linear-gradient(180deg, #f5d97c 0%, #e8b942 100%)',
+                            background: 'linear-gradient(180deg, #d9d4b0 0%, #b8b287 100%)',
                             padding: 4,
                           }}
                         >
                           <div
                             className="flex-1 flex flex-col"
                             style={{
-                              background: 'linear-gradient(180deg, #fef5d2 0%, #fce8a8 100%)',
+                              background: 'linear-gradient(180deg, #f7f4e4 0%, #ece5c4 100%)',
                               borderRadius: 4,
                               overflow: 'hidden',
                             }}
@@ -1203,28 +1201,27 @@ export default function ScannerPage() {
                             {/* Mini-Header */}
                             <div
                               className="flex items-center justify-between px-1.5 py-1 gap-1"
-                              style={{ background: 'rgba(220,38,38,0.12)' }}
+                              style={{ background: 'rgba(111,109,78,0.16)' }}
                             >
                               <div className="flex items-center gap-1 min-w-0">
                                 <span
                                   className="text-[7px] font-bold px-1 rounded text-white shrink-0"
-                                  style={{ background: 'var(--pokedex-red)' }}
+                                  style={{ background: miniNormalDark }}
                                 >
-                                  ERR
+                                  NORMAL
                                 </span>
                                 <span className="text-[10px] font-extrabold leading-none truncate" style={{ color: '#1a1a1a' }}>
                                   {ec.cardName}
                                 </span>
                               </div>
-                              <span className="text-[9px] font-extrabold shrink-0" style={{ color: 'var(--pokedex-red)' }}>
-                                404
+                              <span className="text-[9px] font-extrabold shrink-0" style={{ color: miniNormalDark }}>
+                                ???
                               </span>
                             </div>
-                            {/* Mini-Artwork: Snap-Foto wenn da, sonst MissingNo */}
+                            {/* Mini-Artwork: Snap-Foto wenn da, sonst gezeichnete Landschaft */}
                             <div
                               className="flex-1 mx-1 my-1 relative overflow-hidden"
                               style={{
-                                background: 'linear-gradient(135deg, rgba(220,38,38,0.18) 0%, rgba(220,38,38,0.05) 100%)',
                                 border: '2px solid rgba(0,0,0,0.55)',
                                 borderRadius: 2,
                               }}
@@ -1237,14 +1234,12 @@ export default function ScannerPage() {
                                   className="w-full h-full object-cover"
                                 />
                               ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                  <MissingNoArtwork size={72} color="#1a1a1a" tint={ec.iconColor} />
-                                </div>
+                                <ErrorLandscapeArtwork className="w-full h-full" />
                               )}
                               {/* Klein-Icon oben rechts als sekundärer Hint zum Fehler-Typ */}
                               <div
                                 className="absolute top-0.5 right-0.5 w-6 h-6 rounded-full flex items-center justify-center"
-                                style={{ background: 'rgba(0,0,0,0.65)' }}
+                                style={{ background: 'rgba(255,255,255,0.65)' }}
                               >
                                 <ErrIcon size={14} color={ec.iconColor} strokeWidth={2} />
                               </div>
@@ -1254,8 +1249,8 @@ export default function ScannerPage() {
                               className="px-1.5 py-0.5 text-[8px] font-mono flex items-center justify-between"
                               style={{ background: 'rgba(0,0,0,0.06)', color: '#1a1a1a' }}
                             >
-                              <span className="font-bold" style={{ color: 'var(--pokedex-red)' }}>ERR</span>
-                              <span>404/404</span>
+                              <span className="font-bold" style={{ color: miniNormalDark }}>???</span>
+                              <span>0/0</span>
                             </div>
                           </div>
                         </div>
@@ -1417,14 +1412,12 @@ export default function ScannerPage() {
                     <div className="absolute top-2 right-2 w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.75)' }}>
                       <ErrIcon size={18} color={ec.iconColor} strokeWidth={2} />
                     </div>
-                    <div className="absolute top-2 left-2 px-2 py-1 rounded text-xs font-extrabold text-white" style={{ background: 'var(--pokedex-red)' }}>
+                    <div className="absolute top-2 left-2 px-2 py-1 rounded text-xs font-extrabold text-white" style={{ background: '#6f6d4e' }}>
                       {ec.cardName}
                     </div>
                   </>
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <MissingNoArtwork size={144} color="#1a1a1a" tint={ec.iconColor} />
-                  </div>
+                  <ErrorLandscapeArtwork className="w-full h-full" />
                 );
               }
               return jImg ? (
@@ -1887,11 +1880,9 @@ export default function ScannerPage() {
         const errored = jobs.find(j => j.origin === 'recognize' && j.status === 'error');
         if (!errored) return null;
         const { Icon: HeaderIcon, iconColor, cardName, attackTitle, attackText } = classifyJobError(errored);
-
-        const retry = () => {
-          setJobs(prev => prev.filter(j => j.id !== errored.id));
-          setStreamPaused(false);
-        };
+        // Normal-Typ-Farbe (Hauptspiel-Normal-Typ-Ton), für eine authentisch
+        // wirkende Karte statt der früheren rot eingefärbten Glitch-Optik.
+        const normalDark = '#6f6d4e';
 
         return (
           <div
@@ -1901,7 +1892,7 @@ export default function ScannerPage() {
               bottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)',
             }}
           >
-            {/* Pokémon-Karten-Look: Error-Edition */}
+            {/* Pokémon-Karten-Look: unbekannte Karte (Typ Normal) */}
             <div
               className="relative pointer-events-auto"
               style={{
@@ -1909,7 +1900,7 @@ export default function ScannerPage() {
                 height: 'min(70vh, 100%)',
                 maxWidth: '100%',
                 borderRadius: 14,
-                background: 'linear-gradient(180deg, #f5d97c 0%, #e8b942 100%)',
+                background: 'linear-gradient(180deg, #d9d4b0 0%, #b8b287 100%)',
                 padding: 8,
                 boxShadow: '0 10px 40px rgba(0,0,0,0.55)',
               }}
@@ -1919,21 +1910,21 @@ export default function ScannerPage() {
                 className="w-full h-full flex flex-col"
                 style={{
                   borderRadius: 8,
-                  background: 'linear-gradient(180deg, #fef5d2 0%, #fce8a8 100%)',
+                  background: 'linear-gradient(180deg, #f7f4e4 0%, #ece5c4 100%)',
                   overflow: 'hidden',
                 }}
               >
-                {/* Header: Name + HP + Nummer */}
+                {/* Header: Name + Typ + KP */}
                 <div
                   className="flex items-center justify-between px-3 py-2 gap-2"
-                  style={{ background: 'rgba(220,38,38,0.12)' }}
+                  style={{ background: 'rgba(111,109,78,0.16)' }}
                 >
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span
                       className="text-[10px] font-bold px-1.5 py-0.5 rounded text-white shrink-0"
-                      style={{ background: 'var(--pokedex-red)' }}
+                      style={{ background: normalDark }}
                     >
-                      ERR
+                      NORMAL
                     </span>
                     <span className="text-base font-extrabold leading-none truncate" style={{ color: '#1a1a1a' }}>
                       {cardName}
@@ -1941,24 +1932,23 @@ export default function ScannerPage() {
                   </div>
                   <div className="flex items-baseline gap-0.5 shrink-0">
                     <span className="text-[10px] font-bold" style={{ color: '#1a1a1a' }}>KP</span>
-                    <span className="text-base font-extrabold" style={{ color: 'var(--pokedex-red)' }}>404</span>
+                    <span className="text-base font-extrabold" style={{ color: normalDark }}>???</span>
                   </div>
                 </div>
 
-                {/* Artwork-Bereich: MissingNo-Pokémon + Fehlertyp-Icon */}
+                {/* Artwork-Bereich: gezeichnete Landschaft mit Fragezeichen */}
                 <div
-                  className="flex-1 mx-3 my-2 relative flex items-center justify-center"
+                  className="flex-1 mx-3 my-2 relative overflow-hidden"
                   style={{
-                    background: 'linear-gradient(135deg, rgba(220,38,38,0.18) 0%, rgba(220,38,38,0.05) 100%)',
                     border: '3px solid rgba(0,0,0,0.55)',
                     borderRadius: 4,
                     minHeight: 100,
                   }}
                 >
-                  <MissingNoArtwork size={144} color="#1a1a1a" tint={iconColor} />
-                  {/* Sekundäres Fehler-Icon oben rechts (klein) */}
-                  <div className="absolute top-2 right-2">
-                    <HeaderIcon size={24} color={iconColor} strokeWidth={2} />
+                  <ErrorLandscapeArtwork className="w-full h-full" />
+                  {/* Sekundäres Fehlertyp-Icon oben rechts (klein, zur Diagnose) */}
+                  <div className="absolute top-2 right-2 p-1 rounded-full" style={{ background: 'rgba(255,255,255,0.65)' }}>
+                    <HeaderIcon size={18} color={iconColor} strokeWidth={2.5} />
                   </div>
                 </div>
 
@@ -1966,7 +1956,7 @@ export default function ScannerPage() {
                 <div className="px-3 py-1 text-[10px] italic flex items-center gap-1.5" style={{ color: '#1a1a1a' }}>
                   <span className="font-mono">Nr. 0404</span>
                   <span>·</span>
-                  <span>Fehler-Pokémon</span>
+                  <span>Unbekannt-Pokémon</span>
                   <span>·</span>
                   <span>Größe ?,? m</span>
                 </div>
@@ -1975,7 +1965,7 @@ export default function ScannerPage() {
                 <div className="px-3 py-2 flex-grow-0">
                   <div className="flex items-baseline justify-between gap-2 mb-1">
                     <span className="text-sm font-bold" style={{ color: '#1a1a1a' }}>{attackTitle}</span>
-                    <span className="text-xs font-extrabold" style={{ color: 'var(--pokedex-red)' }}>HTTP</span>
+                    <span className="text-xs font-extrabold" style={{ color: normalDark }}>●</span>
                   </div>
                   <p className="text-[11px] leading-snug" style={{ color: '#3a3a3a' }}>
                     {attackText}
@@ -1988,22 +1978,13 @@ export default function ScannerPage() {
                   style={{ background: 'rgba(0,0,0,0.06)', color: '#1a1a1a' }}
                 >
                   <span className="flex items-center gap-1">
-                    <span className="font-bold" style={{ color: 'var(--pokedex-red)' }}>ERR</span>
-                    <span>404/404</span>
+                    <span className="font-bold" style={{ color: normalDark }}>???</span>
+                    <span>0/0</span>
                   </span>
                   <span className="text-[9px]">©Pokédex Error-Edition</span>
                 </div>
               </div>
             </div>
-
-            {/* Erneut-scannen-Button */}
-            <button
-              onClick={retry}
-              className="pointer-events-auto w-full h-12 rounded-full text-white font-semibold flex items-center justify-center gap-2 shadow-lg"
-              style={{ background: 'var(--pokedex-red)' }}
-            >
-              Erneut scannen
-            </button>
           </div>
         );
       })()}
@@ -2599,33 +2580,32 @@ function ScannedCardTile({
             <div
               className="w-full h-full flex flex-col"
               style={{
-                background: 'linear-gradient(180deg, #f5d97c 0%, #e8b942 100%)',
+                background: 'linear-gradient(180deg, #d9d4b0 0%, #b8b287 100%)',
                 padding: 3,
               }}
             >
               <div
                 className="flex-1 flex flex-col"
                 style={{
-                  background: 'linear-gradient(180deg, #fef5d2 0%, #fce8a8 100%)',
+                  background: 'linear-gradient(180deg, #f7f4e4 0%, #ece5c4 100%)',
                   borderRadius: 3,
                   overflow: 'hidden',
                 }}
               >
                 <div
                   className="flex items-center justify-between px-1 py-0.5 gap-0.5"
-                  style={{ background: 'rgba(220,38,38,0.12)' }}
+                  style={{ background: 'rgba(111,109,78,0.16)' }}
                 >
                   <span className="text-[8px] font-extrabold truncate" style={{ color: '#1a1a1a' }}>
                     {ec.cardName}
                   </span>
-                  <span className="text-[8px] font-extrabold shrink-0" style={{ color: 'var(--pokedex-red)' }}>
-                    404
+                  <span className="text-[8px] font-extrabold shrink-0" style={{ color: '#6f6d4e' }}>
+                    ???
                   </span>
                 </div>
                 <div
                   className="flex-1 mx-0.5 my-0.5 relative overflow-hidden"
                   style={{
-                    background: 'linear-gradient(135deg, rgba(220,38,38,0.18) 0%, rgba(220,38,38,0.05) 100%)',
                     border: '1.5px solid rgba(0,0,0,0.55)',
                     borderRadius: 2,
                   }}
@@ -2634,17 +2614,15 @@ function ScannedCardTile({
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img src={snapSrc} alt="Scan" className="w-full h-full object-cover" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <MissingNoArtwork size={48} color="#1a1a1a" tint={ec.iconColor} />
-                    </div>
+                    <ErrorLandscapeArtwork className="w-full h-full" />
                   )}
                 </div>
                 <div
                   className="px-1 py-0.5 text-[7px] font-mono flex items-center justify-between"
                   style={{ background: 'rgba(0,0,0,0.06)', color: '#1a1a1a' }}
                 >
-                  <span className="font-bold" style={{ color: 'var(--pokedex-red)' }}>ERR</span>
-                  <span>404</span>
+                  <span className="font-bold" style={{ color: '#6f6d4e' }}>???</span>
+                  <span>0/0</span>
                 </div>
               </div>
             </div>
