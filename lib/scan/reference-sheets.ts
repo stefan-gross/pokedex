@@ -16,11 +16,16 @@ export interface ReferenceSheet {
 // ist dort nicht nötig.
 const ERA_ORDER = SYMBOL_ONLY_SERIES;
 
-const MAX_ICONS_PER_SHEET = 20;
-const COLS = 5;
-const CELL_W = 220;
-const CELL_H = 260;
-const ICON_BOX = 150;
+// Alle Sets passen auf 1 Blatt (~140 Sets) — spart Gemini den Fixkosten-Overhead
+// pro Einzelbild ggü. vorher 7 Blättern. 12 statt 5 Spalten hält das Format
+// kompakt/quadratisch statt eines sehr langen, schmalen Streifens. Zellen/Icons
+// verkleinert + niedrigere JPEG-Qualität senken die Bilddatenmenge zusätzlich,
+// bleiben für ein Vision-Modell bei reinen Icon+Text-Grafiken klar lesbar.
+const MAX_ICONS_PER_SHEET = 200;
+const COLS = 12;
+const CELL_W = 150;
+const CELL_H = 180;
+const ICON_BOX = 100;
 
 interface SetForSheet {
   ptcgoCode: string;
@@ -57,7 +62,10 @@ async function buildReferenceSheets(): Promise<ReferenceSheet[]> {
   const sheets = await Promise.all(
     buckets.map((bucket, i) => buildSheet(bucket, i + 1, buckets.length)),
   );
-  return sheets.filter((s): s is ReferenceSheet => s !== null);
+  const result = sheets.filter((s): s is ReferenceSheet => s !== null);
+  const totalKb = Math.round(result.reduce((sum, s) => sum + s.buffer.length, 0) / 1024);
+  console.log(`[reference-sheets] ${result.length} Blatt/Blätter, ${totalKb} KB gesamt (${sets.length} Sets)`);
+  return result;
 }
 
 let eligibleSetsCache: Promise<SetForSheet[]> | null = null;
@@ -81,7 +89,9 @@ async function loadEligibleSetsUncached(): Promise<SetForSheet[]> {
       series: d.series,
     });
   }
-  sets.sort((a, b) => ERA_ORDER.indexOf(a.series) - ERA_ORDER.indexOf(b.series));
+  // Neueste Ära zuerst (oben links) statt älteste — Schwert&Schild-Karten werden
+  // erfahrungsgemäß weit häufiger gescannt als Base-Set-Karten.
+  sets.sort((a, b) => ERA_ORDER.indexOf(b.series) - ERA_ORDER.indexOf(a.series));
   return sets;
 }
 
@@ -155,7 +165,7 @@ async function buildSheet(sets: SetForSheet[], index: number, total: number): Pr
 
   const buffer = await sharp(Buffer.from(svg))
     .flatten({ background: '#f2f2f2' })
-    .jpeg({ quality: 85 })
+    .jpeg({ quality: 65 })
     .toBuffer();
 
   return { label: title, buffer, mimeType: 'image/jpeg' };

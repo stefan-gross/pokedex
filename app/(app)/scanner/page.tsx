@@ -55,22 +55,43 @@ interface GeminiResponse {
   fakeRisk?: 'low' | 'medium' | 'high';
   fakeReasons?: string[];
   error?: string;
+  // Direkter Server-seitiger Katalog-Lookup (number+dex, vor Schritt 2) — siehe
+  // tryDirectCatalogLookup in app/api/scan/route.ts.
+  _preLookup?: {
+    attempted: boolean;
+    matched: boolean;
+    via?: string;
+    cardId?: string;
+    candidateCount?: number;
+  };
+  // Kandidaten aus dem Symbolabgleich (Schritt 2), ORDER nach Wahrscheinlichkeit —
+  // der Client probiert sie der Reihe nach durch und verifiziert per Dex-Nr./
+  // Gesamtzahl-Gegenprobe, statt Gemini's Top-1-Rang blind zu vertrauen.
+  candidateSetCodes?: string[];
   // Debug-Info zum Schritt-2-Symbolabgleich — IMMER gesetzt (auch wenn nicht ausgelöst),
   // damit im Debug-Modal sichtbar ist, warum ein Match ggf. nicht versucht wurde.
   _symbolMatch?: {
     triggered: boolean;
     reason?: string;                       // gesetzt wenn triggered=false
     error?: string;                        // gesetzt wenn Schritt 2 fehlgeschlagen ist
-    matchedSetCode?: string | null;
-    rejectedMatch?: string;                // gesetzt wenn Gemini einen Code lieferte, der auf keinem Blatt existiert
+    candidateSetCodes?: string[];
+    rejectedMatches?: string[];            // Codes, die Gemini lieferte, die aber auf keinem Blatt existieren
     matchConfidence?: string | null;
     matchAmbiguous?: boolean;
     sheetsUsed?: string[];
     sheetBuildMs?: number;                 // Kaltstart-Kosten (Icon-Fetch + Sharp-Komposition)
     model?: string;
     ms?: number;                           // reine Gemini-Zeit für Schritt 2
+    attempts?: FallbackAttempt[];          // alle Versuche inkl. fehlgeschlagener 503-Retries
     rawText?: string;
   };
+}
+
+interface FallbackAttempt {
+  model: string;
+  ms: number;
+  ok: boolean;
+  error?: string;
 }
 
 interface ScanState {
@@ -89,7 +110,9 @@ interface ScanDebug {
   imageSizeKb?: number;
   geminiModel?: string;          // Welches Gemini-Modell hat geantwortet
   geminiMs?: number;             // Reines Gemini-Modell (server-gemessen)
-  uploadMs?: number;             // Wire-Time: fetch-Roundtrip minus Gemini-Modell
+  geminiAttempts?: FallbackAttempt[]; // alle Versuche Schritt 1 inkl. fehlgeschlagener 503-Retries
+  uploadMs?: number;             // echte Netzwerk-/Server-Zeit: fetch-Roundtrip minus ALLER
+                                  // Gemini-Versuche (Schritt 1 + 2, auch fehlgeschlagene) + Sheets
   lookupMs?: number;             // Catalog-Lookups (setCode/number + dexNr-Fallback)
   ownedMs?: number;              // getCardsByTcgId Owned-Count (asynchron)
   totalMs?: number;              // Gesamtdauer Scan→Render (ohne ownedMs)
@@ -686,20 +709,25 @@ export default function ScannerPage() {
       });
       uploadChainRef.current = myUpload.catch(() => {}); // Chain-Bruch verhindern
       const res = await myUpload;
-      const gemini: GeminiResponse & { _debug?: { model: string; ms: number; rawText: string } }
+      const gemini: GeminiResponse & { _debug?: { model: string; ms: number; attempts?: FallbackAttempt[]; rawText: string } }
         = await res.json();
       const fetchMs = Date.now() - tFetch;
 
-      debug.geminiModel = gemini._debug?.model;
-      debug.geminiMs    = gemini._debug?.ms ?? fetchMs;
-      // Reine Netzwerk-/Server-Overhead-Zeit (Upload+Parse+Download) — Schritt-2-
-      // Symbolabgleich (Gemini-Zeit + Referenzblätter-Bau) MUSS hier rausgerechnet
-      // werden, sonst wird bei alten Karten (Schritt 2 ausgelöst) fälschlich eine
-      // riesige "Upload"-Zeit angezeigt, die in Wahrheit Schritt 2 ist.
+      debug.geminiModel    = gemini._debug?.model;
+      debug.geminiMs       = gemini._debug?.ms ?? fetchMs;
+      debug.geminiAttempts = gemini._debug?.attempts;
+      // Reine Netzwerk-/Server-Overhead-Zeit (Upload+Parse+Download) — ALLE
+      // Gemini-Versuche müssen rausgerechnet werden, nicht nur der erfolgreiche:
+      // schlägt z.B. gemini-2.5-flash-lite mit 503 fehl und Schritt 1 fällt auf
+      // gemini-2.5-flash zurück, verschwand die Zeit des fehlgeschlagenen
+      // Versuchs bisher unsichtbar in diesem Bucket. Gleiches gilt für Schritt 2
+      // (Symbolabgleich) inkl. Referenzblätter-Bau.
+      const sumAttempts = (attempts?: FallbackAttempt[]) => (attempts ?? []).reduce((sum, a) => sum + a.ms, 0);
+      const step1TotalMs = gemini._debug?.attempts ? sumAttempts(gemini._debug.attempts) : gemini._debug?.ms;
       const step2TotalMs = gemini._symbolMatch?.triggered
-        ? (gemini._symbolMatch.ms ?? 0) + (gemini._symbolMatch.sheetBuildMs ?? 0)
+        ? (gemini._symbolMatch.attempts ? sumAttempts(gemini._symbolMatch.attempts) : (gemini._symbolMatch.ms ?? 0)) + (gemini._symbolMatch.sheetBuildMs ?? 0)
         : 0;
-      debug.uploadMs    = gemini._debug?.ms != null ? fetchMs - gemini._debug.ms - step2TotalMs : undefined;
+      debug.uploadMs    = step1TotalMs != null ? fetchMs - step1TotalMs - step2TotalMs : undefined;
       debug.geminiRaw   = gemini._debug?.rawText;
       debug.geminiParsed = { ...gemini, _debug: undefined };
       console.log('[scanner] Gemini response:', { fetchMs, uploadMs: debug.uploadMs, gemini });
@@ -708,7 +736,7 @@ export default function ScannerPage() {
       const fakeTag = gemini.fakeRisk && gemini.fakeRisk !== 'low' ? ` ⚠️${gemini.fakeRisk}` : '';
       const geminiSummary = gemini.error
         ? `Gemini: ${gemini.error}`
-        : `Gemini: ${gemini.setCode ?? '?'}/${gemini.number ?? '?'} ${gemini.language ?? '?'} (${gemini.confidence ?? '?'})${fakeTag}`;
+        : `Gemini: ${gemini.setCode ?? (gemini.candidateSetCodes?.length ? `[${gemini.candidateSetCodes.join('/')}]` : '?')}/${gemini.number ?? '?'} ${gemini.language ?? '?'} (${gemini.confidence ?? '?'})${fakeTag}`;
 
       // Im Mehrere-Modus: "No card detected" stillschweigend verwerfen, statt
       // den Slider mit nutzlosen Error-Tiles zu fluten. Im Einzeln-Modus zeigen
@@ -752,49 +780,64 @@ export default function ScannerPage() {
         return setTotalCache.get(setId) ?? null;
       };
 
-      // 1) Direkter SetCode+Number-Lookup (nur wenn beide vorhanden)
-      if (gemini.setCode && rawNumber) {
-        debug.lookupSteps!.push(`getCardBySetCodeAndNumber("${gemini.setCode}", "${rawNumber}")`);
-        catalogCard = await getCardBySetCodeAndNumber(gemini.setCode, rawNumber);
-        debug.lookupSteps![debug.lookupSteps!.length - 1] += catalogCard ? ` → ${catalogCard.id}` : ' → null';
+      // 1) Direkter SetCode+Number-Lookup — probiert entweder Gemini's direkt
+      //    gelesenes Klartext-Kürzel (S&V, ein einzelner Wert), oder — wenn das
+      //    fehlt — der Reihe nach ALLE Symbolabgleich-Kandidaten (`candidateSetCodes`,
+      //    von Schritt 2, nach Wahrscheinlichkeit sortiert), bis einer die Dex-Nr.-/
+      //    Gesamtzahl-Gegenprobe besteht. So muss Gemini's Symbol-Ranking nicht auf
+      //    Anhieb stimmen — es reicht, wenn der richtige Code IRGENDWO in der Liste
+      //    steht, die deterministische Katalog-Gegenprobe entscheidet dann.
+      const tryCatalogLookupBySetCode = async (setCode: string) => {
+        let result = null as Awaited<ReturnType<typeof getCardBySetCodeAndNumber>>;
+        debug.lookupSteps!.push(`getCardBySetCodeAndNumber("${setCode}", "${rawNumber}")`);
+        result = await getCardBySetCodeAndNumber(setCode, rawNumber);
+        debug.lookupSteps![debug.lookupSteps!.length - 1] += result ? ` → ${result.id}` : ' → null';
 
-        // 2) Nummernformat-Variante: "005" ↔ "5"
-        if (!catalogCard) {
+        // Nummernformat-Variante: "005" ↔ "5"
+        if (!result) {
           const alt = /^\d+$/.test(rawNumber)
             ? String(parseInt(rawNumber, 10))
             : rawNumber.padStart(3, '0');
           if (alt !== rawNumber) {
-            debug.lookupSteps!.push(`getCardBySetCodeAndNumber("${gemini.setCode}", "${alt}")`);
-            catalogCard = await getCardBySetCodeAndNumber(gemini.setCode, alt);
-            debug.lookupSteps![debug.lookupSteps!.length - 1] += catalogCard ? ` → ${catalogCard.id}` : ' → null';
+            debug.lookupSteps!.push(`getCardBySetCodeAndNumber("${setCode}", "${alt}")`);
+            result = await getCardBySetCodeAndNumber(setCode, alt);
+            debug.lookupSteps![debug.lookupSteps!.length - 1] += result ? ` → ${result.id}` : ' → null';
           }
         }
 
         // Dex-Nummer-Gegenprobe: Gemini liest Dex-Nr. unabhängig vom setCode
         // (eigenes Feld im Prompt). Weicht sie von der gefundenen Karte ab, war
         // der setCode falsch (z.B. Symbolabgleich hat ein ähnliches, aber
-        // falsches Set getroffen) — verwerfen und auf Name/Dex-Fallback
-        // unten durchfallen lassen, statt der falschen Karte zu vertrauen.
-        if (catalogCard && gemini.nationalDexNumber && catalogCard.nationalDexNumber
-            && catalogCard.nationalDexNumber !== gemini.nationalDexNumber) {
+        // falsches Set getroffen) — verwerfen und nächsten Kandidaten probieren.
+        if (result && gemini.nationalDexNumber && result.nationalDexNumber
+            && result.nationalDexNumber !== gemini.nationalDexNumber) {
           debug.lookupSteps!.push(
-            `verworfen: Dex-Nr. passt nicht (Katalog=${catalogCard.nationalDexNumber}, Gemini=${gemini.nationalDexNumber})`,
+            `verworfen: Dex-Nr. passt nicht (Katalog=${result.nationalDexNumber}, Gemini=${gemini.nationalDexNumber})`,
           );
-          catalogCard = null;
+          result = null;
         }
 
         // Gesamtzahl-Gegenprobe: dieselbe Idee wie die Dex-Gegenprobe, aber mit der
         // unabhängig gelesenen `printedTotal` ("053/172" → 172). Fängt z.B. den Fall
         // ab, dass ein setCode-Treffer zwar denselben Namen+Nummer hat, aber aus dem
         // falschen Set stammt (unterschiedliche Gesamtzahl verrät das zuverlässig).
-        if (catalogCard && gemini.printedTotal) {
-          const setTotal = await getSetPrintedTotal(catalogCard.setId);
+        if (result && gemini.printedTotal) {
+          const setTotal = await getSetPrintedTotal(result.setId);
           if (setTotal && setTotal !== gemini.printedTotal) {
             debug.lookupSteps!.push(
               `verworfen: Set-Gesamtzahl passt nicht (Katalog=${setTotal}, Gemini=${gemini.printedTotal})`,
             );
-            catalogCard = null;
+            result = null;
           }
+        }
+        return result;
+      };
+
+      if (rawNumber) {
+        const codesToTry = gemini.setCode ? [gemini.setCode] : (gemini.candidateSetCodes ?? []);
+        for (const code of codesToTry) {
+          catalogCard = await tryCatalogLookupBySetCode(code);
+          if (catalogCard) break;
         }
       }
 
@@ -2118,8 +2161,8 @@ export default function ScannerPage() {
                     <span className="text-muted-foreground">Set-Code</span>
                     <span>
                       {gp.setCode ?? <span className="text-muted-foreground">— (Symbol)</span>}
-                      {gp.setCode && gp._symbolMatch?.triggered && (
-                        <span className="text-muted-foreground text-[10px]"> (Symbol-Abgleich, {gp._symbolMatch.matchConfidence ?? '?'}{gp._symbolMatch.matchAmbiguous ? ', mehrdeutig' : ''})</span>
+                      {!gp.setCode && gp._symbolMatch?.triggered && (gp._symbolMatch.candidateSetCodes?.length ?? 0) > 0 && (
+                        <span className="text-muted-foreground text-[10px]"> (Symbol-Abgleich: {gp._symbolMatch.candidateSetCodes!.join(', ')}, {gp._symbolMatch.matchConfidence ?? '?'}{gp._symbolMatch.matchAmbiguous ? ', mehrdeutig' : ''})</span>
                       )}
                     </span>
                     <span className="text-muted-foreground">Nummer</span>
@@ -2231,6 +2274,15 @@ export default function ScannerPage() {
               <div>Payload: <span className="text-blue-300">{debugJob.debug.imageSizeKb ?? '—'} KB</span></div>
               <div>Netzwerk/Server-Overhead: <span className="text-blue-300">{debugJob.debug.uploadMs ?? '—'} ms</span></div>
               <div>Gemini (Schritt 1): <span className="text-blue-300">{debugJob.debug.geminiMs ?? '—'} ms</span></div>
+              {debugJob.debug.geminiAttempts && debugJob.debug.geminiAttempts.length > 1 && (
+                <div className="pl-3 text-white/50">
+                  {debugJob.debug.geminiAttempts.map((a, i) => (
+                    <div key={i}>
+                      {a.ok ? '✓' : '✗'} {a.model}: {a.ms} ms{!a.ok && a.error ? ` (${a.error.slice(0, 60)})` : ''}
+                    </div>
+                  ))}
+                </div>
+              )}
               <div>Lookup: <span className="text-blue-300">{debugJob.debug.lookupMs ?? '—'} ms</span></div>
               <div>Owned: <span className="text-blue-300">{debugJob.debug.ownedMs ?? '—'} ms</span> <span className="text-white/40">(async)</span></div>
               <div className="pt-1 border-t border-white/10 mt-1">
@@ -2240,6 +2292,24 @@ export default function ScannerPage() {
                 <div className="text-red-300 mt-1">Fehler: {debugJob.debug.error}</div>
               )}
             </div>
+
+            {/* Direkter Katalog-Lookup (number+dex) — vor Schritt 2, spart ggf. den
+                kompletten Symbolabgleich */}
+            {(() => {
+              const pl = (debugJob.debug.geminiParsed as { _preLookup?: GeminiResponse['_preLookup'] } | undefined)?._preLookup;
+              if (!pl?.attempted) return null;
+              return (
+                <div className="mb-4">
+                  <p className="text-white/60 text-xs mb-2 font-mono">Direkter Katalog-Lookup (vor Schritt 2)</p>
+                  <div className="p-3 rounded-lg bg-white/5 text-xs font-mono text-white/80 space-y-0.5">
+                    <div>Treffer: <span className={pl.matched ? 'text-green-300' : 'text-white/40'}>{pl.matched ? 'ja' : 'nein'}</span></div>
+                    {pl.via && <div>Methode: <span className="text-blue-300">{pl.via}</span></div>}
+                    {pl.candidateCount != null && <div>Kandidaten: <span className="text-blue-300">{pl.candidateCount}</span></div>}
+                    {pl.cardId && <div>Karte: <span className="text-blue-300">{pl.cardId}</span></div>}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Symbol-Abgleich (Schritt 2) — immer sichtbar, auch wenn nicht ausgelöst */}
             {(() => {
@@ -2256,11 +2326,20 @@ export default function ScannerPage() {
                       <>
                         <div>Modell: <span className="text-blue-300">{sm.model ?? '—'}</span></div>
                         <div>Gemini (Schritt 2): <span className="text-blue-300">{sm.ms ?? '—'} ms</span></div>
+                        {sm.attempts && sm.attempts.length > 1 && (
+                          <div className="pl-3 text-white/50">
+                            {sm.attempts.map((a, i) => (
+                              <div key={i}>
+                                {a.ok ? '✓' : '✗'} {a.model}: {a.ms} ms{!a.ok && a.error ? ` (${a.error.slice(0, 60)})` : ''}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         <div>Referenzblätter bauen: <span className="text-blue-300">{sm.sheetBuildMs ?? '—'} ms</span> <span className="text-white/40">(0 ms = bereits gecacht)</span></div>
                         <div>Blätter geprüft: <span className="text-blue-300">{sm.sheetsUsed?.length ?? 0}</span></div>
-                        <div>Match: <span className="text-blue-300">{sm.matchedSetCode ?? '— (kein Match)'}</span></div>
-                        {sm.rejectedMatch && (
-                          <div className="text-orange-300">Verworfen: &quot;{sm.rejectedMatch}&quot; ist auf keinem Blatt ein echter Set-Code (vermutlich Typ-Icon verwechselt)</div>
+                        <div>Kandidaten: <span className="text-blue-300">{sm.candidateSetCodes && sm.candidateSetCodes.length > 0 ? sm.candidateSetCodes.join(', ') : '— (kein Match)'}</span></div>
+                        {sm.rejectedMatches && sm.rejectedMatches.length > 0 && (
+                          <div className="text-orange-300">Verworfen: {sm.rejectedMatches.map(c => `"${c}"`).join(', ')} — auf keinem Blatt ein echter Set-Code (vermutlich Typ-Icon verwechselt)</div>
                         )}
                         <div>Confidence: <span className="text-blue-300">{sm.matchConfidence ?? '—'}</span>{sm.matchAmbiguous && <span className="text-orange-300"> · mehrdeutig</span>}</div>
                         {sm.error && <div className="text-red-300">Fehler: {sm.error}</div>}

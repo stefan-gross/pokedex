@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI, SchemaType, Part } from '@google/generative-ai';
 import { getReferenceSheets, getValidSymbolSetCodes } from '@/lib/scan/reference-sheets';
+import { getAdminDb } from '@/lib/firebase/admin';
+import type { Firestore, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 // Zwei sequenzielle Gemini-Calls (Text-OCR + ggf. Symbol-Abgleich) + Sheet-Aufbau
 // beim Kaltstart brauchen mehr als das Vercel-Default-Timeout.
@@ -165,21 +167,22 @@ and set name.
 
 Look closely at the small stamp symbol next to the collector number on the ORIGINAL
 card (image 1) — it is usually near the bottom of the card, next to the number and a
-rarity dot. Compare it visually against the symbols on the reference sheets and find
-the one that matches.
+rarity dot. Compare it visually against the symbols on the reference sheets.
 
-Return the set code label of the best-matching symbol. If two or more symbols look
-nearly identical (e.g. similar abstract shapes from the same era) and you cannot
-confidently pick one, set matchAmbiguous to true and still return your best guess —
-or matchedSetCode: null if truly indistinguishable.`;
+Return your top candidates as "candidateSetCodes", ORDERED from most to least likely
+(best guess first). Include every symbol that looks plausibly similar, not just one —
+a downstream check will pick the correct one using the card's printed number, so it's
+fine (and preferred) to list 2-5 candidates when symbols from the same era look alike,
+instead of forcing a single guess. Return just one entry if you are fully confident.
+Set matchAmbiguous to true if you are not confident about the top candidate.`;
 
 const SYMBOL_MATCH_SCHEMA = {
   type: SchemaType.OBJECT,
   properties: {
-    matchedSetCode: {
-      type: SchemaType.STRING,
-      nullable: true,
-      description: 'ptcgoCode of the set whose symbol on the reference sheet(s) best matches the stamp icon on the card, or null if no confident match',
+    candidateSetCodes: {
+      type: SchemaType.ARRAY,
+      items: { type: SchemaType.STRING },
+      description: 'ptcgoCodes of sets whose symbol plausibly matches the stamp icon on the card, ordered from most to least likely. Empty array if no confident match at all.',
     },
     matchConfidence: {
       type: SchemaType.STRING,
@@ -210,12 +213,23 @@ const MODEL_FALLBACKS = [
   'gemini-flash-latest',
 ];
 
+interface FallbackAttempt {
+  model: string;
+  ms: number;
+  ok: boolean;
+  error?: string;
+}
+
 interface GenerateResult {
   parsed: Record<string, unknown>;
   modelName: string;
   modelIndex: number;
   ms: number;
   rawText: string;
+  /** ALLE Versuche (auch fehlgeschlagene 503-Retries) — sonst verschwindet
+   *  die Zeit für fehlgeschlagene Versuche unsichtbar im Client-seitig
+   *  berechneten "Netzwerk/Server-Overhead" (siehe scanner/page.tsx). */
+  attempts: FallbackAttempt[];
 }
 
 /** Ruft Gemini mit Fallback-Kette auf (ab startIndex), bricht bei nicht-503-Fehlern sofort ab. */
@@ -225,6 +239,7 @@ async function generateWithFallback(
   startIndex: number,
 ): Promise<GenerateResult> {
   let lastError = 'Scan failed';
+  const attempts: FallbackAttempt[] = [];
   for (let i = startIndex; i < MODEL_FALLBACKS.length; i++) {
     const modelName = MODEL_FALLBACKS[i];
     const t0 = Date.now();
@@ -239,6 +254,7 @@ async function generateWithFallback(
       });
       const result = await model.generateContent(parts);
       const ms = Date.now() - t0;
+      attempts.push({ model: modelName, ms, ok: true });
 
       const rawText = result.response.text().trim();
       let parsed: Record<string, unknown>;
@@ -251,17 +267,80 @@ async function generateWithFallback(
       }
 
       console.log(`[scan] ${modelName} OK in ${ms}ms`);
-      return { parsed, modelName, modelIndex: i, ms, rawText };
+      return { parsed, modelName, modelIndex: i, ms, rawText, attempts };
     } catch (err) {
       const ms = Date.now() - t0;
       console.warn(`[scan] ${modelName} failed after ${ms}ms:`, err);
       lastError = err instanceof Error ? err.message : String(err);
       const is503 = lastError.includes('503') || lastError.includes('high demand') || lastError.includes('overloaded');
+      attempts.push({ model: modelName, ms, ok: false, error: lastError });
       if (!is503) throw new Error(lastError);
       console.warn(`${modelName} unavailable (503), trying fallback...`);
     }
   }
   throw new Error(lastError);
+}
+
+interface PreLookupResult {
+  attempted: boolean;
+  matched: boolean;
+  via?: 'number+dex' | 'number+dex+printedTotal';
+  cardId?: string;
+  candidateCount?: number;
+}
+
+/** Versucht die Karte direkt per (number, nationalDexNumber) im Katalog zu finden,
+ *  bevor der teure Symbolabgleich (Schritt 2) überhaupt in Betracht gezogen wird.
+ *  Setzt bei eindeutigem Treffer `parsed.setCode`, wodurch Schritt 2 unten entfällt. */
+async function tryDirectCatalogLookup(parsed: Record<string, unknown>): Promise<PreLookupResult> {
+  if (parsed.setCode != null || parsed.error) return { attempted: false, matched: false };
+  const number = typeof parsed.number === 'string' ? parsed.number : null;
+  const dexNumber = typeof parsed.nationalDexNumber === 'number' ? parsed.nationalDexNumber : null;
+  if (!number || dexNumber == null) return { attempted: false, matched: false };
+
+  try {
+    const db: Firestore = getAdminDb();
+    const numberVariants = new Set([number]);
+    numberVariants.add(/^\d+$/.test(number) ? String(parseInt(number, 10)) : number.padStart(3, '0'));
+
+    let candidates: QueryDocumentSnapshot[] = [];
+    for (const num of numberVariants) {
+      const snap = await db.collection('tcg_catalog')
+        .where('nationalDexNumber', '==', dexNumber)
+        .where('number', '==', num)
+        .limit(10)
+        .get();
+      if (!snap.empty) { candidates = snap.docs; break; }
+    }
+
+    if (candidates.length === 1) {
+      const setCode = candidates[0].data().setCode;
+      if (typeof setCode === 'string') {
+        parsed.setCode = setCode;
+        return { attempted: true, matched: true, via: 'number+dex', cardId: candidates[0].id };
+      }
+      return { attempted: true, matched: false, via: 'number+dex', candidateCount: 1 };
+    }
+
+    if (candidates.length > 1 && typeof parsed.printedTotal === 'number') {
+      for (const c of candidates) {
+        const setId = c.data().setId;
+        if (typeof setId !== 'string') continue;
+        const setDoc = await db.collection('tcg_sets').doc(setId).get();
+        if (setDoc.data()?.printedTotal === parsed.printedTotal) {
+          const setCode = c.data().setCode;
+          if (typeof setCode === 'string') {
+            parsed.setCode = setCode;
+            return { attempted: true, matched: true, via: 'number+dex+printedTotal', cardId: c.id, candidateCount: candidates.length };
+          }
+        }
+      }
+    }
+    return { attempted: true, matched: false, candidateCount: candidates.length };
+  } catch (err) {
+    console.warn('[scan] Direkter Katalog-Lookup (number+dex) fehlgeschlagen:', err);
+    return { attempted: true, matched: false };
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -298,6 +377,18 @@ export async function POST(req: NextRequest) {
       parsed.number = parsed.number.split('/')[0];
     }
 
+    // Direkter Katalog-Lookup per Nummer+Dex-Nummer, BEVOR über Schritt 2 (teurer
+    // Symbolabgleich, +1 Gemini-Call +Referenzblätter) entschieden wird — beide
+    // Felder liest Gemini in Schritt 1 bereits unabhängig voneinander. Die Nummer
+    // allein wiederholt sich in jedem Set (z.B. "053"), aber Nummer+Dex-Nummer
+    // zusammen trifft über den ganzen Katalog praktisch immer nur die eine Karte.
+    // Findet das einen — bei Mehrdeutigkeit per Gesamtzahl verifizierten —
+    // eindeutigen Treffer, wird `setCode` direkt gesetzt: das macht `looksSymbolOnly`
+    // unten false und Schritt 2 entfällt komplett. Rein additiv: schlägt der
+    // Lookup fehl, läuft alles wie bisher weiter (Schritt 2 → Client-Fallback-Kette).
+    const preLookup = await tryDirectCatalogLookup(parsed);
+    parsed._preLookup = preLookup;
+
     // Schritt 2: Symbol-Abgleich per Referenzblatt, nur wenn Schritt 1 eine echte
     // Karte mit reinem Grafik-Stempel (setCode=null) gemeldet hat. Läuft komplett
     // isoliert — jeder Fehler hier degradiert stillschweigend auf das heutige
@@ -315,9 +406,11 @@ export async function POST(req: NextRequest) {
         triggered: false,
         reason: parsed.error
           ? 'Schritt 1 meldete einen Fehler'
-          : parsed.setCode != null
-            ? `Schritt 1 lieferte bereits setCode="${parsed.setCode}" (Text-OCR, ungeprüft)`
-            : 'Schritt 1 hatte keine verwertbaren Identifier (number/name/dex)',
+          : preLookup.matched
+            ? `Direkter Katalog-Lookup (${preLookup.via}) fand eindeutigen Treffer → setCode="${parsed.setCode}"`
+            : parsed.setCode != null
+              ? `Schritt 1 lieferte bereits setCode="${parsed.setCode}" (Text-OCR, ungeprüft)`
+              : 'Schritt 1 hatte keine verwertbaren Identifier (number/name/dex)',
       };
     } else {
       const t1 = Date.now();
@@ -335,30 +428,35 @@ export async function POST(req: NextRequest) {
             `${PROMPT_SYMBOL_MATCH}\n\n${contextLine}`,
           ];
           const step2 = await generateWithFallback(step2Parts, SYMBOL_MATCH_SCHEMA, step1.modelIndex);
-          const rawMatch = step2.parsed.matchedSetCode;
+          const rawCandidates = Array.isArray(step2.parsed.candidateSetCodes) ? step2.parsed.candidateSetCodes as unknown[] : [];
           // Validierung: Gemini verwechselt gelegentlich das Energie-Typ-Icon neben der
           // Kartennummer (z.B. "F" für Fighting) mit dem Set-Symbol und gibt dessen Buchstaben
           // zurück — ein Code, der auf keinem Referenzblatt existiert. Nur echte, auf den
-          // Blättern abgebildete ptcgoCodes werden akzeptiert.
+          // Blättern abgebildete ptcgoCodes werden akzeptiert. Statt uns auf EINEN Treffer
+          // zu verlassen (der bei visuell ähnlichen Symbolen derselben Ära leicht daneben
+          // liegt), reichen wir ALLE plausiblen Kandidaten an den Client durch — der probiert
+          // sie der Reihe nach durch und verifiziert per Dex-Nr./Gesamtzahl-Gegenprobe gegen
+          // den Katalog (siehe scanner/page.tsx), statt Gemini's Top-1-Rang blind zu vertrauen.
           const validCodes = await getValidSymbolSetCodes();
-          const isValidMatch = typeof rawMatch === 'string' && validCodes.has(rawMatch);
-          const matched = isValidMatch ? rawMatch : null;
-          if (matched) {
-            parsed.setCode = matched;
+          const rejected = rawCandidates.filter(c => typeof c !== 'string' || !validCodes.has(c));
+          const candidates = rawCandidates.filter((c): c is string => typeof c === 'string' && validCodes.has(c));
+          if (candidates.length > 0) {
+            parsed.candidateSetCodes = candidates;
           }
           parsed._symbolMatch = {
             triggered: true,
-            matchedSetCode: matched,
+            candidateSetCodes: candidates,
             matchConfidence: step2.parsed.matchConfidence ?? null,
             matchAmbiguous: step2.parsed.matchAmbiguous ?? false,
             sheetsUsed: sheets.map(s => s.label),
             sheetBuildMs,
             model: step2.modelName,
             ms: step2.ms,
+            attempts: step2.attempts,
             rawText: step2.rawText,
-            ...(typeof rawMatch === 'string' && !isValidMatch ? { rejectedMatch: rawMatch } : {}),
+            ...(rejected.length > 0 ? { rejectedMatches: rejected } : {}),
           };
-          console.log(`[scan] symbol-match ${step2.modelName} OK in ${step2.ms}ms (sheets built in ${sheetBuildMs}ms) → ${matched ?? (rawMatch ? `verworfen: "${rawMatch}" (kein echter Set-Code)` : 'no match')}`);
+          console.log(`[scan] symbol-match ${step2.modelName} OK in ${step2.ms}ms (sheets built in ${sheetBuildMs}ms) → Kandidaten: [${candidates.join(', ')}]${rejected.length ? `, verworfen: [${rejected.join(', ')}]` : ''}`);
         } else {
           parsed._symbolMatch = { triggered: false, reason: 'Keine Referenzblätter verfügbar (0 Sets geladen)', sheetBuildMs };
         }
@@ -369,7 +467,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    parsed._debug = { model: step1.modelName, ms: step1.ms, rawText: step1.rawText };
+    parsed._debug = { model: step1.modelName, ms: step1.ms, attempts: step1.attempts, rawText: step1.rawText };
     return NextResponse.json(parsed);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
