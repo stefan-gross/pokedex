@@ -107,11 +107,17 @@ export const pokemontcgProvider: IPriceProvider = {
         next: { revalidate: 3600 },
         signal: abort.signal,
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        console.warn(`[prices] pokemontcg.io HTTP ${res.status} für ${tcgId} — gebe null zurück (wird als empty gecacht)`);
+        return null;
+      }
 
       const json = await res.json();
       const card = json.data;
-      if (!card) return null;
+      if (!card) {
+        console.warn(`[prices] pokemontcg.io lieferte kein "data"-Feld für ${tcgId}`);
+        return null;
+      }
 
       // 1. Cardmarket bevorzugt
       const cm: CardmarketData | undefined = card.cardmarket;
@@ -125,6 +131,7 @@ export const pokemontcgProvider: IPriceProvider = {
             variants,
           };
         }
+        console.warn(`[prices] ${tcgId}: cardmarket.prices vorhanden, aber alle Felder leer/null`);
       }
 
       // 2. TCGplayer als Fallback (typisch bei brandneuen Sets, deren Cardmarket-Sync verzögert ist)
@@ -139,10 +146,13 @@ export const pokemontcgProvider: IPriceProvider = {
             variants,
           };
         }
+        console.warn(`[prices] ${tcgId}: tcgplayer.prices vorhanden, aber alle Felder leer/null`);
       }
 
+      console.warn(`[prices] ${tcgId}: weder cardmarket noch tcgplayer liefern Preisdaten (cardmarket=${!!cm}, tcgplayer=${!!tp})`);
       return null;
-    } catch {
+    } catch (e) {
+      console.warn(`[prices] Fetch für ${tcgId} fehlgeschlagen:`, e instanceof Error ? e.message : e);
       return null;
     } finally {
       clearTimeout(timeout);

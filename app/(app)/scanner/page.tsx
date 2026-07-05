@@ -786,20 +786,24 @@ export default function ScannerPage() {
       //    steht, die deterministische Katalog-Gegenprobe entscheidet dann.
       const tryCatalogLookupBySetCode = async (setCode: string) => {
         let result = null as Awaited<ReturnType<typeof getCardBySetCodeAndNumber>>;
-        debug.lookupSteps!.push(`getCardBySetCodeAndNumber("${setCode}", "${rawNumber}")`);
-        result = await getCardBySetCodeAndNumber(setCode, rawNumber);
+
+        // pokemontcg.io speichert "number" grundsätzlich OHNE führende Nullen
+        // (auch wenn die Karte selbst "005" aufgedruckt hat) — unser Katalog
+        // übernimmt dieses Feld 1:1 (lib/sync-catalog.ts). Die von Gemini
+        // gelesene, gepolsterte Zahl ("062") trifft also so gut wie nie; zuerst
+        // die normalisierte (führende Nullen entfernt) probieren spart in der
+        // Mehrheit der Fälle einen Firestore-Roundtrip.
+        const normalized = /^\d+$/.test(rawNumber) ? String(parseInt(rawNumber, 10)) : rawNumber;
+        debug.lookupSteps!.push(`getCardBySetCodeAndNumber("${setCode}", "${normalized}")`);
+        result = await getCardBySetCodeAndNumber(setCode, normalized);
         debug.lookupSteps![debug.lookupSteps!.length - 1] += result ? ` → ${result.id}` : ' → null';
 
-        // Nummernformat-Variante: "005" ↔ "5"
-        if (!result) {
-          const alt = /^\d+$/.test(rawNumber)
-            ? String(parseInt(rawNumber, 10))
-            : rawNumber.padStart(3, '0');
-          if (alt !== rawNumber) {
-            debug.lookupSteps!.push(`getCardBySetCodeAndNumber("${setCode}", "${alt}")`);
-            result = await getCardBySetCodeAndNumber(setCode, alt);
-            debug.lookupSteps![debug.lookupSteps!.length - 1] += result ? ` → ${result.id}` : ' → null';
-          }
+        // Fallback: gepolsterte Schreibweise (falls der Katalog für dieses Set
+        // doch mit führenden Nullen gespeichert ist).
+        if (!result && normalized !== rawNumber) {
+          debug.lookupSteps!.push(`getCardBySetCodeAndNumber("${setCode}", "${rawNumber}")`);
+          result = await getCardBySetCodeAndNumber(setCode, rawNumber);
+          debug.lookupSteps![debug.lookupSteps!.length - 1] += result ? ` → ${result.id}` : ' → null';
         }
 
         // Dex-Nummer-Gegenprobe: Gemini liest Dex-Nr. unabhängig vom setCode

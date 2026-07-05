@@ -18,6 +18,8 @@ export async function GET(req: NextRequest) {
       const snap = await docRef.get();
       const cached = snap.data()?.prices as CachedPrices | undefined;
       if (cached && isFresh(cached)) {
+        const ageMin = Math.round((Date.now() - cached.cachedAt.toMillis()) / 60000);
+        console.log(`[prices] Cache-Hit ${tcgId}: ${cached.empty ? 'empty' : (cached.provider ?? 'cardmarket')}, ${ageMin}min alt`);
         const result = toResult(cached);
         if (result) return NextResponse.json(result);
         return NextResponse.json({ error: 'No price data available' }, { status: 404 });

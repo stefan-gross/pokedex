@@ -96,6 +96,9 @@ export async function refreshAndCache(tcgId: string): Promise<PriceResult | null
   const db = getAdminDb();
   const docRef = db.collection('tcg_catalog').doc(tcgId);
   const live = await activeProvider.fetchPrices(tcgId);
+  console.log(`[prices] Live-Refresh ${tcgId}:`, live
+    ? `${live.provider} ${live.variants[0]?.trend ?? live.variants[0]?.market ?? '?'} ${live.currency}`
+    : 'kein Preis gefunden → wird als empty gecacht');
   try {
     const cachedAt = Timestamp.now();
     if (live) {
