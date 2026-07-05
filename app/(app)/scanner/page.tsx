@@ -1789,11 +1789,11 @@ export default function ScannerPage() {
             <div
               className="flex p-1 rounded-full"
               style={{
-                background: 'rgba(255,255,255,0.12)',
-                backdropFilter: 'blur(18px) saturate(1.5)',
-                WebkitBackdropFilter: 'blur(18px) saturate(1.5)',
-                border: '1px solid rgba(255,255,255,0.24)',
-                boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.35)',
+                background: 'rgba(255,255,255,0.13)',
+                backdropFilter: 'blur(22px) saturate(1.4)',
+                WebkitBackdropFilter: 'blur(22px) saturate(1.4)',
+                border: '1px solid rgba(255,255,255,0.22)',
+                boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.28), 0 8px 26px rgba(0,0,0,0.32)',
               }}
             >
               {(['recognize', 'add'] as const).map(m => (
@@ -1820,11 +1820,11 @@ export default function ScannerPage() {
               className="w-[46px] h-[46px] flex items-center justify-center rounded-full"
               aria-label="Scanner schließen"
               style={{
-                background: 'rgba(255,255,255,0.14)',
-                backdropFilter: 'blur(16px)',
-                WebkitBackdropFilter: 'blur(16px)',
-                border: '1px solid rgba(255,255,255,0.28)',
-                boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.4)',
+                background: 'rgba(255,255,255,0.13)',
+                backdropFilter: 'blur(22px) saturate(1.4)',
+                WebkitBackdropFilter: 'blur(22px) saturate(1.4)',
+                border: '1px solid rgba(255,255,255,0.22)',
+                boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.28), 0 8px 26px rgba(0,0,0,0.32)',
               }}
             >
               <X size={20} color="#fff" />
@@ -2920,10 +2920,11 @@ function RecognizedCardLarge({
         className="absolute top-0 right-0 w-[38px] h-[38px] flex items-center justify-center rounded-full"
         aria-label="Debug-Infos anzeigen"
         style={{
-          background: 'rgba(255,255,255,0.12)',
-          backdropFilter: 'blur(14px)',
-          WebkitBackdropFilter: 'blur(14px)',
+          background: 'rgba(255,255,255,0.13)',
+          backdropFilter: 'blur(22px) saturate(1.4)',
+          WebkitBackdropFilter: 'blur(22px) saturate(1.4)',
           border: '1px solid rgba(255,255,255,0.22)',
+          boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.28), 0 8px 26px rgba(0,0,0,0.32)',
         }}
       >
         <Bug size={17} color="#fff" />
@@ -2999,20 +3000,21 @@ function RecognizedCardLarge({
       {/* Unterhalb der Karte: Glas-Info-Sheet mit Set-Zeile, Pokémon-Name,
           Nummer/Dex und Preis — Aufbau unverändert, nur die Chrome wird zu
           getöntem Glas (Handoff design_handoff_scanner_glass, "Info-Sheet").
-          Gleiche Transparenz wie die Top-Controls (Blitz/X/Segmented) —
-          feste rgba()-Werte statt der globalen .glass-Klasse, da der Scanner
-          immer über dem (dunklen) Kamerabild liegt, unabhängig vom Light/
-          Dark-Theme der restlichen App. */}
+          Feste rgba()-Werte identisch zur Dark-Variante der globalen .glass-
+          Klasse (app/globals.css) — der Scanner liegt immer über dem
+          (dunklen) Kamerabild, unabhängig vom Light/Dark-Theme der
+          restlichen App, daher immer die Dark-Werte statt der Theme-
+          abhängigen .glass-Klasse. */}
       {card && (
         <div
           className="w-full flex flex-col items-start gap-2 px-4 py-4"
           style={{
             borderRadius: 24,
-            background: 'rgba(255,255,255,0.14)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255,255,255,0.28)',
-            boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.4)',
+            background: 'rgba(255,255,255,0.13)',
+            backdropFilter: 'blur(22px) saturate(1.4)',
+            WebkitBackdropFilter: 'blur(22px) saturate(1.4)',
+            border: '1px solid rgba(255,255,255,0.22)',
+            boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.28), 0 8px 26px rgba(0,0,0,0.32)',
           }}
         >
           {/* Logo + Zyklus/Setname als ein Block — Logo links, rechts daneben

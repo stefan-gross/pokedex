@@ -852,11 +852,11 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
               onClick={toggleTorch}
               className="w-[46px] h-[46px] rounded-full flex items-center justify-center"
               style={{
-                background: 'rgba(255,255,255,0.14)',
-                backdropFilter: 'blur(16px)',
-                WebkitBackdropFilter: 'blur(16px)',
-                border: '1px solid rgba(255,255,255,0.28)',
-                boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.4)',
+                background: 'rgba(255,255,255,0.13)',
+                backdropFilter: 'blur(22px) saturate(1.4)',
+                WebkitBackdropFilter: 'blur(22px) saturate(1.4)',
+                border: '1px solid rgba(255,255,255,0.22)',
+                boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.28), 0 8px 26px rgba(0,0,0,0.32)',
               }}
             >
               {torch ? <Zap size={20} color="#facc15" /> : <ZapOff size={20} color="#fff" />}
