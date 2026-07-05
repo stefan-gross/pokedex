@@ -80,38 +80,20 @@ export function BottomNav() {
     background: 'var(--pokedex-red)',
     boxShadow: '0 4px 20px rgba(220,38,38,0.45)',
   };
-  // Scanner-Aktionsknöpfe: getöntes Glas statt deckender Flächen (Handoff
-  // design_handoff_scanner_glass, "Aktions-Buttons") — Kamera lila (primär,
-  // am größten), Löschen rot, Hinzufügen grün. Gemeinsames Rezept: blur(10px)
-  // saturate(1.4), helle Lichtkante, farbiger Glow.
-  const SCAN_CAM_SIZE = 82;
-  const SCAN_SIDE_SIZE = 66;
-  const SCAN_GAP = 26;
-  const scanGlassBase: React.CSSProperties = {
+  // Scanner-Aktionsleiste "12a" (Handoff design_handoff_scanner_bar):
+  // schwebende Glas-Leiste im Footernav-Stil, Kamera als überstehender FAB
+  // in der Mitte (lila, getöntes Glas, identisch zum Home-FAB-Rezept),
+  // −/+ als reine getönte Icons ohne Kreisfläche links/rechts.
+  const SCAN_CAM_SIZE = 70;
+  const scanCameraStyle: React.CSSProperties = {
+    width: SCAN_CAM_SIZE, height: SCAN_CAM_SIZE,
+    marginTop: -30,
+    borderRadius: 999,
+    background: 'rgba(139,92,246,0.85)',
     backdropFilter: 'blur(10px) saturate(1.4)',
     WebkitBackdropFilter: 'blur(10px) saturate(1.4)',
-    borderRadius: 999,
-  };
-  const scanCameraStyle: React.CSSProperties = {
-    ...scanGlassBase,
-    width: SCAN_CAM_SIZE, height: SCAN_CAM_SIZE,
-    background: 'rgba(139,92,246,0.82)',
     border: '1.5px solid rgba(255,255,255,0.5)',
     boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.6), 0 0 26px rgba(139,92,246,0.55), 0 6px 20px rgba(0,0,0,0.4)',
-  };
-  const scanDeleteStyle: React.CSSProperties = {
-    ...scanGlassBase,
-    width: SCAN_SIDE_SIZE, height: SCAN_SIDE_SIZE,
-    background: 'rgba(239,68,68,0.82)',
-    border: '1.5px solid rgba(255,255,255,0.45)',
-    boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.55), 0 6px 18px rgba(200,40,40,0.45)',
-  };
-  const scanAddStyle: React.CSSProperties = {
-    ...scanGlassBase,
-    width: SCAN_SIDE_SIZE, height: SCAN_SIDE_SIZE,
-    background: 'rgba(34,197,94,0.82)',
-    border: '1.5px solid rgba(255,255,255,0.45)',
-    boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.55), 0 6px 18px rgba(20,150,70,0.45)',
   };
 
   // Kompaktere Höhe: 56 px Inhalt + Safe-Area
@@ -145,104 +127,97 @@ export function BottomNav() {
   // Off-Scanner: Kamera-Icon. Auf /scanner: Pause wenn laufend, Kamera wenn pausiert.
   const FabIcon = !isScanner ? Camera : (scanState.paused ? Camera : Pause);
 
-  // ── Scanner-Modus: Flex-Layout (links Grid, Mitte FAB, rechts Switch) ──
-  // Vorteil ggü. 5-col-Grid: FAB ist garantiert horizontal zentriert
-  // (zwischen zwei flex-1-Zonen), Switch kollidiert auf Mobile nicht mit der FAB.
+  // ── Scanner-Modus: schwebende Glas-Leiste "12a" (Handoff
+  // design_handoff_scanner_bar) — Footernav-Stil, 3 Spalten: −-Icon links,
+  // Kamera als überstehender FAB in der Mitte, +-Icon rechts. Ersetzt die
+  // vorherige freischwebende Kreis-Kapsel. Grid-Button (Mehrere-Modus-
+  // Übersicht) sitzt als eigener kleiner Glas-Chip über der Leiste, da er
+  // im 12a-Handoff nicht Teil der 3-Spalten-Leiste ist. */}
   if (isScanner) {
     return (
-      <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-end" style={navStyle}>
-        {/* Links: Grid-Button (nur Mehrere-Modus mit Karten). Reine Symmetrie-
-            Zone zur rechten Seite — die FAB-Kapsel zentriert sich unabhängig
-            davon selbst (feste Breite, Löschen/Hinzufügen docken per Gooey-
-            Effekt absolut positioniert an, siehe unten). */}
-        <div
-          className="flex-1 flex justify-start items-end relative"
-          style={{ paddingLeft: 16, paddingBottom: 10, alignSelf: 'stretch' }}
-        >
-          {scanState.gridVisible && (
-            <button
-              onClick={() => window.dispatchEvent(new Event(SCAN_GRID_TOGGLE_EVENT))}
-              className="relative w-11 h-11 flex items-center justify-center rounded-full bg-white/10 backdrop-blur-sm"
-              aria-label="Übersicht öffnen"
-            >
-              <LayoutGrid size={20} color="#fff" />
-              {scanState.jobsCount > 0 && (
-                <span
-                  className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center"
-                  style={{ background: 'var(--pokedex-red)', color: '#fff' }}
-                >
-                  {scanState.jobsCount}
-                </span>
-              )}
-            </button>
-          )}
-        </div>
-
-        {/* Mitte: drei unabhängige getönte Glas-Kreise (Handoff
-            design_handoff_scanner_glass) — Kamera/Pause-Button immer
-            sichtbar, roter Löschen- (links) und grüner Hinzufügen-Button
-            (rechts) erscheinen animiert daneben, sobald nutzbar. Kein
-            Rahmen/Goo mehr dahinter — jeder Kreis trägt sein eigenes
-            getöntes Glas mit Lichtkante + farbigem Glow. */}
-        <div
-          className="relative flex items-center justify-center transition-all duration-300"
-          style={{ marginTop: -20, width: SCAN_CAM_SIZE, height: SCAN_CAM_SIZE }}
-        >
-          <div
-            className="absolute top-1/2 flex items-center justify-center overflow-visible"
-            style={{
-              width: SCAN_SIDE_SIZE, height: SCAN_SIDE_SIZE, right: '100%', marginRight: SCAN_GAP,
-              opacity: scanState.canDelete ? 1 : 0,
-              transform: `translateY(-50%) scale(${scanState.canDelete ? 1 : 0.4})`,
-              transition: 'opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
-              pointerEvents: scanState.canDelete ? 'auto' : 'none',
-            }}
-          >
-            <button
-              onClick={() => window.dispatchEvent(new Event(SCAN_REMOVE_EVENT))}
-              aria-label="Aus Sammlung entfernen"
-              className="flex items-center justify-center"
-              style={scanDeleteStyle}
-            >
-              <Minus size={28} color="#fff" strokeWidth={3} />
-            </button>
-          </div>
+      <>
+        {scanState.gridVisible && (
           <button
-            onClick={handleFabClick}
-            className="relative flex items-center justify-center"
-            style={scanCameraStyle}
-            aria-label={scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren'}
-          >
-            <FabIcon size={34} color={fabIconColor} fill={!scanState.paused ? '#fff' : 'none'} />
-          </button>
-          <div
-            className="absolute top-1/2 flex items-center justify-center overflow-visible"
+            onClick={() => window.dispatchEvent(new Event(SCAN_GRID_TOGGLE_EVENT))}
+            className="fixed z-50 flex items-center justify-center rounded-full"
+            aria-label="Übersicht öffnen"
             style={{
-              width: SCAN_SIDE_SIZE, height: SCAN_SIDE_SIZE, left: '100%', marginLeft: SCAN_GAP,
-              opacity: scanState.canAdd ? 1 : 0,
-              transform: `translateY(-50%) scale(${scanState.canAdd ? 1 : 0.4})`,
-              transition: 'opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
-              pointerEvents: scanState.canAdd ? 'auto' : 'none',
+              bottom: 90, left: 14, width: 44, height: 44,
+              background: 'rgba(255,255,255,0.13)',
+              backdropFilter: 'blur(22px) saturate(1.4)',
+              WebkitBackdropFilter: 'blur(22px) saturate(1.4)',
+              border: '1px solid rgba(255,255,255,0.22)',
+              boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.28), 0 8px 26px rgba(0,0,0,0.32)',
             }}
           >
-            <button
-              onClick={() => window.dispatchEvent(new Event(SCAN_ADD_EVENT))}
-              aria-label="Zur Sammlung hinzufügen"
-              className="flex items-center justify-center"
-              style={scanAddStyle}
-            >
-              <Plus size={28} color="#fff" strokeWidth={3} />
+            <LayoutGrid size={19} color="#fff" />
+            {scanState.jobsCount > 0 && (
+              <span
+                className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center"
+                style={{ background: 'var(--pokedex-red)', color: '#fff' }}
+              >
+                {scanState.jobsCount}
+              </span>
+            )}
+          </button>
+        )}
+
+        <nav
+          className="fixed z-50 grid items-center"
+          style={{
+            bottom: 14, left: 14, right: 14, height: 64,
+            borderRadius: 26,
+            gridTemplateColumns: '1fr 1fr 1fr',
+            background: 'rgba(255,255,255,0.12)',
+            backdropFilter: 'blur(28px) saturate(1.6)',
+            WebkitBackdropFilter: 'blur(28px) saturate(1.6)',
+            border: '1px solid rgba(255,255,255,0.22)',
+            boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.3), 0 8px 26px rgba(0,0,0,0.42)',
+          }}
+        >
+          {/* Slot links — Entfernen, nur Icon (kein Kreis), nur sichtbar wenn im Besitz */}
+          <div
+            className="flex justify-end"
+            style={{
+              paddingRight: 22,
+              opacity: scanState.canDelete ? 1 : 0,
+              pointerEvents: scanState.canDelete ? 'auto' : 'none',
+              transition: 'opacity 200ms ease',
+            }}
+          >
+            <button onClick={() => window.dispatchEvent(new Event(SCAN_REMOVE_EVENT))} aria-label="Aus Sammlung entfernen">
+              <Minus size={27} color="#ff8a8a" strokeWidth={3} />
             </button>
           </div>
-        </div>
 
-        {/* Rechts: reine Symmetrie-Zone (Dex/Preis sitzen jetzt unter dem
-            Kartennamen in RecognizedCardLarge, Mode-Switch oben im Header). */}
-        <div
-          className="flex-1 flex justify-end items-end relative"
-          style={{ paddingRight: 16, paddingBottom: 10, alignSelf: 'stretch' }}
-        />
-      </nav>
+          {/* Slot Mitte — Kamera, überstehender FAB (lila Glas) */}
+          <div className="flex items-center justify-center">
+            <button
+              onClick={handleFabClick}
+              className="flex items-center justify-center"
+              style={scanCameraStyle}
+              aria-label={scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren'}
+            >
+              <FabIcon size={30} color={fabIconColor} fill={!scanState.paused ? '#fff' : 'none'} />
+            </button>
+          </div>
+
+          {/* Slot rechts — Hinzufügen, nur Icon (kein Kreis), nur sichtbar wenn Karte erkannt */}
+          <div
+            className="flex justify-start"
+            style={{
+              paddingLeft: 22,
+              opacity: scanState.canAdd ? 1 : 0,
+              pointerEvents: scanState.canAdd ? 'auto' : 'none',
+              transition: 'opacity 200ms ease',
+            }}
+          >
+            <button onClick={() => window.dispatchEvent(new Event(SCAN_ADD_EVENT))} aria-label="Zur Sammlung hinzufügen">
+              <Plus size={27} color="#8ff0b0" strokeWidth={3} />
+            </button>
+          </div>
+        </nav>
+      </>
     );
   }
 
