@@ -34,9 +34,7 @@ interface ScannerNavState {
   canAdd?: boolean;       // Einzeln-Modus: erkannte Karte kann hinzugefügt werden → grüner +-Button erscheint über der FAB
   canDelete?: boolean;    // Einzeln-Modus: erkannte Karte ist bereits im Besitz → roter Löschen-Button erscheint neben dem +-Button
   recognizedCardId?: string | null;    // tcgId der erkannten Karte, für Preis rechts neben dem +-Button
-  recognizedNumBase?: string | null;   // "053" (Nummer der Karte im Set), fett/größer
-  recognizedNumTotal?: string | null;  // "172" (Gesamtzahl des Sets), kleiner
-  recognizedDex?: string | null;       // "#035", darunter
+  recognizedDex?: string | null;       // "#035", eng neben dem Preis
 }
 
 export function BottomNav() {
@@ -127,10 +125,10 @@ export function BottomNav() {
   if (isScanner) {
     return (
       <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-end" style={navStyle}>
-        {/* Links: Grid-Button (nur Mehrere-Modus mit Karten) — außerdem Nummer/Dex
-            der erkannten Karte (Einzeln-Modus), mittig in dieser Zone (= horizontal
-            zentriert zwischen Bildschirmrand und +-Button) und vertikal zentriert
-            in dem Bereich, in dem die Kapsel über die Toolbar hinausragt. */}
+        {/* Links: Grid-Button (nur Mehrere-Modus mit Karten). Reine Symmetrie-
+            Zone zur rechten Seite — die FAB-Kapsel zentriert sich unabhängig
+            davon selbst (feste Breite, Löschen/Hinzufügen docken per Gooey-
+            Effekt absolut positioniert an, siehe unten). */}
         <div
           className="flex-1 flex justify-start items-end relative"
           style={{ paddingLeft: 16, paddingBottom: 10, alignSelf: 'stretch' }}
@@ -152,24 +150,6 @@ export function BottomNav() {
               )}
             </button>
           )}
-          {scanState.recognizedNumBase && (
-            <div
-              className="absolute inset-x-0 flex flex-col items-center justify-center font-mono text-white/80 text-lg"
-              style={{ top: -92, height: 92 }}
-            >
-              <span>
-                <span className="font-bold" style={{ fontSize: 'calc(1em + 1px)' }}>{scanState.recognizedNumBase}</span>
-                {scanState.recognizedNumTotal && (
-                  <>
-                    /<span style={{ fontSize: 'calc(1em - 4px)' }}>{scanState.recognizedNumTotal}</span>
-                  </>
-                )}
-              </span>
-              {scanState.recognizedDex && (
-                <span className="text-sm text-white/60">{scanState.recognizedDex}</span>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Mitte: FAB-Kapsel — Kamera/Pause-Button immer sichtbar, roter Löschen-
@@ -182,8 +162,8 @@ export function BottomNav() {
             ihren normalen Farben (Rot/Grün/Lila), keine Weichzeichnung auf den
             Buttons selbst. */}
         <div
-          className="relative flex items-center transition-all duration-300"
-          style={{ marginTop: -20 }}
+          className="relative flex items-center justify-center transition-all duration-300"
+          style={{ marginTop: -20, width: FRAME_SIZE_CAM, height: FRAME_SIZE_CAM }}
         >
           {/* SVG-Goo-Filter statt CSS blur+contrast — sauberere, kontrolliertere
               Metaball-Verschmelzung (klassische "Gooey"-Technik). */}
@@ -195,94 +175,103 @@ export function BottomNav() {
               </filter>
             </defs>
           </svg>
-          {/* Rahmen-Schicht — verschmilzt per Goo-Filter zu einer Form */}
+          {/* Rahmen-Schicht — verschmilzt per Goo-Filter zu einer Form. Löschen-
+              und Hinzufügen-Kreis docken ABSOLUT links/rechts an den Kamera-
+              Kreis an, statt als Flex-Geschwister Breite einzunehmen — so
+              bleibt die Kapsel (und damit der Kamera-Button) immer exakt
+              FRAME_SIZE_CAM breit und dadurch stets zentriert, unabhängig
+              davon, ob gerade 0, 1 oder 2 Zusatz-Buttons sichtbar sind. */}
           <div
-            className="absolute inset-0 flex items-center justify-center pointer-events-none"
+            className="absolute inset-0 pointer-events-none"
             style={{ filter: 'url(#fab-goo)' }}
           >
-            <div className="flex items-center justify-center" style={{ gap: -4 }}>
-              <div
-                className="flex items-center justify-center"
-                style={{ width: scanState.canDelete ? FRAME_SIZE : 0, height: FRAME_SIZE, opacity: scanState.canDelete ? 1 : 0, transition: 'width 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease' }}
-              >
-                <div className="rounded-full" style={{ width: FRAME_SIZE, height: FRAME_SIZE, background: 'rgba(0,0,0,0.55)' }} />
-              </div>
-              <div className="rounded-full" style={{ width: FRAME_SIZE_CAM, height: FRAME_SIZE_CAM, background: 'rgba(0,0,0,0.55)' }} />
-              <div
-                className="flex items-center justify-center"
-                style={{ width: scanState.canAdd ? FRAME_SIZE : 0, height: FRAME_SIZE, opacity: scanState.canAdd ? 1 : 0, transition: 'width 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease' }}
-              >
-                <div className="rounded-full" style={{ width: FRAME_SIZE, height: FRAME_SIZE, background: 'rgba(0,0,0,0.55)' }} />
-              </div>
-            </div>
+            <div
+              className="absolute top-1/2 rounded-full"
+              style={{
+                width: FRAME_SIZE, height: FRAME_SIZE, right: '100%', marginRight: -4,
+                transform: `translateY(-50%) scale(${scanState.canDelete ? 1 : 0})`,
+                opacity: scanState.canDelete ? 1 : 0,
+                background: 'rgba(0,0,0,0.55)',
+                transition: 'transform 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease',
+              }}
+            />
+            <div className="rounded-full" style={{ width: FRAME_SIZE_CAM, height: FRAME_SIZE_CAM, background: 'rgba(0,0,0,0.55)' }} />
+            <div
+              className="absolute top-1/2 rounded-full"
+              style={{
+                width: FRAME_SIZE, height: FRAME_SIZE, left: '100%', marginLeft: -4,
+                transform: `translateY(-50%) scale(${scanState.canAdd ? 1 : 0})`,
+                opacity: scanState.canAdd ? 1 : 0,
+                background: 'rgba(0,0,0,0.55)',
+                transition: 'transform 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease',
+              }}
+            />
           </div>
 
-          {/* Icon-Schicht — scharf, Originalfarben */}
-          <div className="relative flex items-center justify-center" style={{ gap: -4 }}>
-            <div
-              className="relative flex items-center justify-center overflow-visible"
-              style={{
-                width: scanState.canDelete ? FRAME_SIZE : 0,
-                height: FRAME_SIZE,
-                opacity: scanState.canDelete ? 1 : 0,
-                transform: scanState.canDelete ? 'scale(1)' : 'scale(0.4)',
-                transition: 'width 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
-                pointerEvents: scanState.canDelete ? 'auto' : 'none',
-              }}
+          {/* Icon-Schicht — scharf, Originalfarben, ebenfalls absolut angedockt */}
+          <div
+            className="absolute top-1/2 flex items-center justify-center overflow-visible"
+            style={{
+              width: FRAME_SIZE, height: FRAME_SIZE, right: '100%', marginRight: -4,
+              opacity: scanState.canDelete ? 1 : 0,
+              transform: `translateY(-50%) scale(${scanState.canDelete ? 1 : 0.4})`,
+              transition: 'opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
+              pointerEvents: scanState.canDelete ? 'auto' : 'none',
+            }}
+          >
+            <button
+              onClick={() => window.dispatchEvent(new Event(SCAN_REMOVE_EVENT))}
+              aria-label="Aus Sammlung entfernen"
+              className="flex items-center justify-center rounded-full shadow-xl"
+              style={{ width: 56, height: 56, background: '#ef4444' }}
             >
-              <button
-                onClick={() => window.dispatchEvent(new Event(SCAN_REMOVE_EVENT))}
-                aria-label="Aus Sammlung entfernen"
-                className="flex items-center justify-center rounded-full shadow-xl"
-                style={{ width: 56, height: 56, background: '#ef4444' }}
-              >
-                <Minus size={26} color="#fff" strokeWidth={3} />
-              </button>
-            </div>
-            <div className="flex items-center justify-center" style={{ width: FRAME_SIZE_CAM, height: FRAME_SIZE_CAM }}>
-              <button
-                onClick={handleFabClick}
-                className="flex items-center justify-center rounded-full shadow-xl"
-                style={{ ...fabStyle, width: FAB_SIZE, height: FAB_SIZE, marginTop: 0, background: scannerCameraColor }}
-                aria-label={scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren'}
-              >
-                <FabIcon size={28} color={fabIconColor} fill={!scanState.paused ? '#fff' : 'none'} />
-              </button>
-            </div>
-            <div
-              className="relative flex items-center justify-center overflow-visible"
-              style={{
-                width: scanState.canAdd ? FRAME_SIZE : 0,
-                height: FRAME_SIZE,
-                opacity: scanState.canAdd ? 1 : 0,
-                transform: scanState.canAdd ? 'scale(1)' : 'scale(0.4)',
-                transition: 'width 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
-                pointerEvents: scanState.canAdd ? 'auto' : 'none',
-              }}
+              <Minus size={26} color="#fff" strokeWidth={3} />
+            </button>
+          </div>
+          <button
+            onClick={handleFabClick}
+            className="relative flex items-center justify-center rounded-full shadow-xl"
+            style={{ ...fabStyle, width: FAB_SIZE, height: FAB_SIZE, marginTop: 0, background: scannerCameraColor }}
+            aria-label={scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren'}
+          >
+            <FabIcon size={28} color={fabIconColor} fill={!scanState.paused ? '#fff' : 'none'} />
+          </button>
+          <div
+            className="absolute top-1/2 flex items-center justify-center overflow-visible"
+            style={{
+              width: FRAME_SIZE, height: FRAME_SIZE, left: '100%', marginLeft: -4,
+              opacity: scanState.canAdd ? 1 : 0,
+              transform: `translateY(-50%) scale(${scanState.canAdd ? 1 : 0.4})`,
+              transition: 'opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
+              pointerEvents: scanState.canAdd ? 'auto' : 'none',
+            }}
+          >
+            <button
+              onClick={() => window.dispatchEvent(new Event(SCAN_ADD_EVENT))}
+              aria-label="Zur Sammlung hinzufügen"
+              className="flex items-center justify-center rounded-full shadow-xl"
+              style={{ width: 56, height: 56, background: 'var(--action-add)' }}
             >
-              <button
-                onClick={() => window.dispatchEvent(new Event(SCAN_ADD_EVENT))}
-                aria-label="Zur Sammlung hinzufügen"
-                className="flex items-center justify-center rounded-full shadow-xl"
-                style={{ width: 56, height: 56, background: 'var(--action-add)' }}
-              >
-                <Plus size={26} color="#fff" strokeWidth={3} />
-              </button>
-            </div>
+              <Plus size={26} color="#fff" strokeWidth={3} />
+            </button>
           </div>
         </div>
 
-        {/* Rechts: Preis der erkannten Karte (Mode-Switch sitzt jetzt oben im Header) */}
+        {/* Rechts: Pokédex-Nummer + Preis der erkannten Karte in einer Zeile,
+            eng beieinander (Mode-Switch sitzt jetzt oben im Header). */}
         <div
           className="flex-1 flex justify-end items-end relative"
           style={{ paddingRight: 16, paddingBottom: 10, alignSelf: 'stretch' }}
         >
           {scanState.recognizedCardId && (
             <div
-              className="absolute inset-x-0 flex items-center justify-center"
-              style={{ top: -92, height: 92 }}
+              className="absolute inset-x-0 flex items-center justify-end gap-1.5"
+              style={{ top: -92, height: 92, paddingRight: 16 }}
             >
-              <div style={{ transform: 'scale(2)' }}>
+              {scanState.recognizedDex && (
+                <span className="text-sm font-mono text-white/60">{scanState.recognizedDex}</span>
+              )}
+              <div style={{ zoom: 2 }}>
                 <CardPrice tcgId={scanState.recognizedCardId} className="text-blue-400!" />
               </div>
             </div>

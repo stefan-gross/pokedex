@@ -447,12 +447,8 @@ export default function ScannerPage() {
   // unten) — dieselbe Ansicht, die auch beim Antippen der Karte selbst aufgeht,
   // inkl. bestehender Lösch-UI pro Exemplar (auch bei mehreren Exemplaren).
   const canDeleteRecognized = !!recognizedCard && (recognizedJob?.result?.ownedCount ?? 0) > 0;
-  // Für die Nummern-Anzeige links neben dem +-Button (BottomNav) — dieselbe
-  // Quelle wie in RecognizedCardLarge (printedTotal aus tcg_sets, nicht aus
-  // dem Scan-Ergebnis, siehe useSetMeta).
-  const recognizedSetMeta = useSetMeta(recognizedCard?.setId, undefined, recognizedCard?.setName);
-  const recognizedNumBase = canAddRecognized && recognizedCard ? recognizedCard.number.split('/')[0].padStart(3, '0') : null;
-  const recognizedNumTotal = canAddRecognized && recognizedSetMeta?.printedTotal ? String(recognizedSetMeta.printedTotal).padStart(3, '0') : null;
+  // Pokédex-Nummer neben dem Preis (BottomNav) — die Setnummer ("111/159")
+  // steht jetzt stattdessen direkt unter dem Namen in RecognizedCardLarge.
   const recognizedDex = canAddRecognized && recognizedCard?.nationalDexNumber != null
     ? `#${String(recognizedCard.nationalDexNumber).padStart(3, '0')}`
     : null;
@@ -498,12 +494,10 @@ export default function ScannerPage() {
         canAdd: canAddRecognized,
         canDelete: canDeleteRecognized,
         recognizedCardId,
-        recognizedNumBase,
-        recognizedNumTotal,
         recognizedDex,
       },
     }));
-  }, [streamPaused, scanMode, addJobsCount, mode, canAddRecognized, canDeleteRecognized, recognizedCardId, recognizedNumBase, recognizedNumTotal, recognizedDex]);
+  }, [streamPaused, scanMode, addJobsCount, mode, canAddRecognized, canDeleteRecognized, recognizedCardId, recognizedDex]);
 
   // Beim Unmount: Reset, damit andere Seiten nicht den Scan-Pause-FAB sehen
   useEffect(() => {
@@ -2834,6 +2828,10 @@ function RecognizedCardLarge({
 
   const setCode  = card?.setCode ?? card?.setId?.toUpperCase();
   const seriesDe = card?.series ? (SERIES_NAMES_DE[card.series] ?? card.series) : null;
+  // Setnummer ("111/159") — direkt unter dem Namen, printedTotal aus tcg_sets
+  // (nicht aus dem Scan-Ergebnis, siehe useSetMeta).
+  const cardNumBase  = card ? card.number.split('/')[0].padStart(3, '0') : null;
+  const cardNumTotal = setMeta?.printedTotal ? String(setMeta.printedTotal).padStart(3, '0') : null;
   const showLogo = !!setMeta?.logoUrl && !logoFailed;
   // Sets vor Scarlet & Violet tragen KEINEN echten Kürzel-Aufdruck auf der Karte —
   // nur ein grafisches Symbol. `setCode` ist dort nur ein internes pokemontcg.io-
@@ -2988,6 +2986,11 @@ function RecognizedCardLarge({
           <h2 className="text-white font-bold text-3xl truncate text-center max-w-full">
             {card.name}
           </h2>
+          {cardNumBase && (
+            <p className="text-white/60 text-sm font-mono tabular-nums -mt-1.5">
+              {cardNumBase}{cardNumTotal && `/${cardNumTotal}`}
+            </p>
+          )}
         </div>
       )}
 
