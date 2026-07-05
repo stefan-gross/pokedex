@@ -474,10 +474,15 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
             />
             {openSec.has('details') && (
               <div className="px-4 pb-4 border-t border-border/50">
+                {card.artist && (
+                  <p className="text-[13px] text-muted-foreground pt-3">
+                    Illustration: <span className="font-medium text-foreground">{card.artist}</span>
+                  </p>
+                )}
                 {species ? (
                   <>
                     {species.genus && (
-                      <p className="text-[13px] text-muted-foreground mb-3 pt-3">{species.genus}</p>
+                      <p className={`text-[13px] text-muted-foreground mb-3 ${card.artist ? '' : 'pt-3'}`}>{species.genus}</p>
                     )}
                     <div className="grid grid-cols-2 gap-2 mb-3">
                       {species.height > 0 && (
@@ -512,17 +517,17 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                     )}
                   </>
                 ) : speciesLoaded ? (
-                  <div className="pt-3">
+                  <div className={card.artist ? '' : 'pt-3'}>
                     {card.nationalDexNumber && (
                       <div className="bg-secondary rounded-xl px-3 py-2.5 w-fit mb-3">
                         <div className="text-[15px] font-bold">#{String(card.nationalDexNumber).padStart(3, '0')}</div>
                         <div className="text-[11px] text-muted-foreground mt-0.5">Pokédex</div>
                       </div>
                     )}
-                    <p className="text-[13px] text-muted-foreground">Keine Details verfügbar</p>
+                    {!card.artist && <p className="text-[13px] text-muted-foreground">Keine Details verfügbar</p>}
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 pt-3">
+                  <div className={`flex items-center gap-2 ${card.artist ? '' : 'pt-3'}`}>
                     <div className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin shrink-0" />
                     <p className="text-[13px] text-muted-foreground">Lade Details…</p>
                   </div>

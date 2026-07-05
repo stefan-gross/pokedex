@@ -8,6 +8,7 @@ export interface TcgApiCard {
   types?: string[];
   set: { id: string; name: string; series: string; total: number; printedTotal: number; ptcgoCode?: string };
   images: { small: string; large: string };
+  artist?: string;
 }
 
 export async function searchCards(query: string, page = 1, pageSize = 20): Promise<{ data: TcgApiCard[]; totalCount: number }> {

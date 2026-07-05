@@ -36,6 +36,7 @@ export interface CatalogCard {
   weightHg?: number;           // Gewicht in Hektogramm (60 = 6,0 kg)
   region?: string;             // z.B. "Kanto", "Johto"
   variants?: CardVariant[];    // mögliche Varianten, abgeleitet aus rarity
+  artist?: string;             // Illustrator, direkt von pokemontcg.io (kein separates Enrichment nötig)
 }
 
 export interface SyncMeta {

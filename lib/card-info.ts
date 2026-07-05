@@ -35,6 +35,7 @@ export interface CardInfo {
   hp?: number;
   nationalDexNumber?: number;
   evolutionFamily?: number[];
+  artist?: string;
 }
 
 export function catalogCardToInfo(c: CatalogCard): CardInfo {
@@ -63,6 +64,7 @@ export function catalogCardToInfo(c: CatalogCard): CardInfo {
     hp: c.hp,
     nationalDexNumber: c.nationalDexNumber,
     evolutionFamily: c.evolutionFamily,
+    artist: c.artist,
   };
 }
 
@@ -83,6 +85,7 @@ export function tcgApiCardToInfo(c: TcgApiCard): CardInfo {
     imgSmall: c.images.small,
     imgLarge: c.images.large,
     setCode: c.set.ptcgoCode,
+    artist: c.artist,
   };
 }
 

@@ -71,6 +71,8 @@ function CollectionContent() {
   const [activeSupertype,  setActiveSupertype]  = useState<Supertype | 'all'>('all');
   const [ownedFilter,      setOwnedFilter]      = useState<OwnedFilter>('all');
   const [activeRarity,     setActiveRarity]     = useState<string | null>(null);
+  const [artistInput,      setArtistInput]      = useState('');
+  const [activeArtist,     setActiveArtist]     = useState('');
   const [activeEvolutions, setActiveEvolutions] = useState<Set<string>>(new Set());
   const [evoLineActive,    setEvoLineActive]    = useState(false);
   const baseResultsRef = useRef<CardInfo[]>([]); // Suchergebnisse vor Evo-Line-Erweiterung
@@ -100,7 +102,15 @@ function CollectionContent() {
   const scrollLockRef    = useRef(false);
   const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const artistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sentinelRef    = useRef<HTMLDivElement>(null);
+
+  // ── Künstler-Suche (debounced, wie das Haupt-Suchfeld) ─────────
+  useEffect(() => {
+    if (artistTimerRef.current) clearTimeout(artistTimerRef.current);
+    artistTimerRef.current = setTimeout(() => setActiveArtist(artistInput.trim()), 350);
+    return () => { if (artistTimerRef.current) clearTimeout(artistTimerRef.current); };
+  }, [artistInput]);
 
   // ── Init ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -127,7 +137,7 @@ function CollectionContent() {
 
   // ── Exakte Gesamtzahl für aktuellen Browse-Filter ─────────────
   const activeEvolutionsKey = useMemo(() => [...activeEvolutions].sort().join(','), [activeEvolutions]);
-  const hasActiveFilterForCount = !!(activeTypes.size || activeSupertype !== 'all' || activeEvolutions.size || ownedFilter !== 'all' || activeRarity);
+  const hasActiveFilterForCount = !!(activeTypes.size || activeSupertype !== 'all' || activeEvolutions.size || ownedFilter !== 'all' || activeRarity || activeArtist);
   useEffect(() => {
     if (!hasActiveFilterForCount) { setBrowseTotal(null); return; }
     const browseFilter = activeTypes.size > 0
@@ -195,9 +205,10 @@ function CollectionContent() {
     types:           activeTypes.size > 0 ? [...activeTypes] : undefined,
     evolutionStages: activeEvolutions.size > 0 ? [...activeEvolutions] : undefined,
     rarity:          activeRarity ?? undefined,
+    artistQuery:     activeArtist || undefined,
     ownedFilter: ownedFilter === 'review' ? 'all' : ownedFilter,
     ownedIds,
-  }), [activeSupertype, activeTypesKey, activeEvolutionsKey, activeRarity, ownedFilter, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [activeSupertype, activeTypesKey, activeEvolutionsKey, activeRarity, activeArtist, ownedFilter, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const {
     cards: browseCards, loading: browseLoading,
@@ -343,6 +354,10 @@ function CollectionContent() {
     if (activeRarity) {
       r = r.filter(c => (getRarityGroup(c.rarity ?? '')?.label ?? 'Sonstige') === activeRarity);
     }
+    if (activeArtist) {
+      const q = activeArtist.toLowerCase();
+      r = r.filter(c => c.artist?.toLowerCase().includes(q));
+    }
     const d = searchSortDir === 'desc' ? -1 : 1;
     r.sort((a, b) =>
       searchSort === 'name'
@@ -354,12 +369,12 @@ function CollectionContent() {
             : d * ((parseInt(a.number) || 0) - (parseInt(b.number) || 0)),
     );
     return r;
-  }, [results, ownedFilter, activeSupertype, activeTypesKey, activeEvolutionsKey, activeRarity, ownedIds, reviewTcgIds, searchSort, searchSortDir]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [results, ownedFilter, activeSupertype, activeTypesKey, activeEvolutionsKey, activeRarity, activeArtist, ownedIds, reviewTcgIds, searchSort, searchSortDir]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Review-Mode: kein Suchbegriff + "Zu prüfen" Filter → eigene Karten laden
   const isReviewMode = !inputValue && ownedFilter === 'review';
   const isBrowseMode = !inputValue && ownedFilter !== 'review';
-  const hasActiveFilter = !!(activeTypes.size || activeSupertype !== 'all' || ownedFilter !== 'all' || activeRarity || activeEvolutions.size);
+  const hasActiveFilter = !!(activeTypes.size || activeSupertype !== 'all' || ownedFilter !== 'all' || activeRarity || activeEvolutions.size || activeArtist);
 
   // Review-Mode: Catalog-Karten für alle ungeprüften Einträge laden
   useEffect(() => {
@@ -494,6 +509,9 @@ function CollectionContent() {
               {activeRarity && (
                 <FilterChip label={activeRarity} onRemove={() => setActiveRarity(null)} />
               )}
+              {activeArtist && (
+                <FilterChip label={`Künstler: ${activeArtist}`} onRemove={() => { setArtistInput(''); setActiveArtist(''); }} />
+              )}
             </div>
           ) : null
         ) : (
@@ -588,6 +606,24 @@ function CollectionContent() {
               onToggle={label => setActiveRarity(prev => prev === label ? null : label)}
               rarityCounts={isBrowseMode ? filterCounts?.rarities : undefined}
             />
+
+            {/* Zeile 6: Künstler — Freitext-Suche, client-seitig gefiltert */}
+            <div className="relative">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <input
+                type="search"
+                value={artistInput}
+                onChange={e => setArtistInput(e.target.value)}
+                placeholder="Künstler / Illustrator suchen…"
+                className="w-full h-8 pl-7 pr-7 rounded-lg bg-secondary border border-border text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              {artistInput && (
+                <button type="button" onClick={() => { setArtistInput(''); setActiveArtist(''); }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">
+                  <X size={12} />
+                </button>
+              )}
+            </div>
           </>
         )}
 

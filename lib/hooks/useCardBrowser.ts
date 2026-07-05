@@ -20,6 +20,7 @@ export type CardBrowserFilter = {
   types?:           string[];       // Mehrfachauswahl, OR-Verknüpfung (englisch: 'Fire', 'Water', …)
   evolutionStages?: string[];       // ['Basic'] | ['Stage 1', 'Stage 2'] etc. — leer = alle
   rarity?:          string;         // Rarity-Label aus RARITY_GROUPS
+  artistQuery?:     string;         // Freitext, case-insensitive Teilstring-Suche auf artist
   ownedFilter?:     'all' | 'owned' | 'missing';
   ownedIds?:        Set<string>;
 };
@@ -56,6 +57,10 @@ function applyClientFilters(cards: CatalogCard[], f: CardBrowserFilter): Catalog
   if (f.rarity) {
     r = r.filter(c => (getRarityGroup(c.rarity ?? '')?.label ?? 'Sonstige') === f.rarity);
   }
+  if (f.artistQuery) {
+    const q = f.artistQuery.toLowerCase();
+    r = r.filter(c => c.artist?.toLowerCase().includes(q));
+  }
   if (f.ownedFilter === 'owned')   r = r.filter(c => f.ownedIds?.has(c.id));
   if (f.ownedFilter === 'missing') r = r.filter(c => !f.ownedIds?.has(c.id));
   return r;
@@ -89,7 +94,8 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
     filter.supertype ||
     filter.evolutionStages?.length ||
     (filter.ownedFilter && filter.ownedFilter !== 'all') ||
-    filter.rarity
+    filter.rarity ||
+    filter.artistQuery
   );
 
   // Stabile Dep-Keys für array-ähnliche Filter
@@ -125,7 +131,7 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
     run();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typesKey, filter.supertype, evolutionStagesKey, filter.rarity, filter.ownedFilter, sort, desc]);
+  }, [typesKey, filter.supertype, evolutionStagesKey, filter.rarity, filter.artistQuery, filter.ownedFilter, sort, desc]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore || !cursorRef.current) return;
