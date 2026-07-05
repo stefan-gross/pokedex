@@ -1762,31 +1762,60 @@ export default function ScannerPage() {
       })()}
 
       {/* ── Header (schwebt oben) ──────────────────────────────────
-          Im Review-Modus links Back-Arrow zurück zum Scan,
-          rechts X-Close zum vollständigen Schließen. */}
+          Im Review-Modus links Back-Arrow zurück zum Scan, rechts X-Close
+          zum vollständigen Schließen. Im Scanning-Modus zusätzlich mittig
+          (zwischen Blitz-Button links und Schließen rechts) der Einzeln/
+          Mehrere-Umschalter — drei flex-1-Zonen garantieren echte
+          Zentrierung unabhängig von der Breite der Rand-Elemente. */}
       <div
-        className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 pb-3"
+        className="absolute top-0 left-0 right-0 z-20 flex items-center px-4 pb-3"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
       >
-        {mode === 'review' ? (
-          <button
-            onClick={() => setMode('scanning')}
-            className="flex items-center gap-1 h-9 px-3 rounded-full bg-white/10 backdrop-blur-sm text-white text-sm font-medium"
-            aria-label="Zurück zum Scannen"
-          >
-            <ChevronLeft size={18} color="#fff" />
-            Scannen
-          </button>
-        ) : <span />}
-        {mode === 'scanning' && (
-          <button
-            onClick={handleClose}
-            className="w-9 h-9 flex items-center justify-center rounded-full bg-black/55 backdrop-blur-sm"
-            aria-label="Scanner schließen"
-          >
-            <X size={18} color="#fff" />
-          </button>
-        )}
+        <div className="flex-1 flex justify-start">
+          {mode === 'review' && (
+            <button
+              onClick={() => setMode('scanning')}
+              className="flex items-center gap-1 h-9 px-3 rounded-full bg-white/10 backdrop-blur-sm text-white text-sm font-medium"
+              aria-label="Zurück zum Scannen"
+            >
+              <ChevronLeft size={18} color="#fff" />
+              Scannen
+            </button>
+          )}
+        </div>
+        <div className="flex-1 flex justify-center">
+          {mode === 'scanning' && (
+            <div
+              className="flex rounded-full p-0.5 bg-black/55 backdrop-blur-sm"
+              style={{ border: '1px solid rgba(255,255,255,0.12)' }}
+            >
+              {(['recognize', 'add'] as const).map(m => (
+                <button
+                  key={m}
+                  onClick={() => { if (m !== scanMode) switchScanMode(m); }}
+                  className="px-3 py-1.5 rounded-full text-xs font-semibold transition-colors"
+                  style={{
+                    background: scanMode === m ? 'var(--pokedex-red)' : 'transparent',
+                    color:      scanMode === m ? '#fff' : 'rgba(255,255,255,0.65)',
+                  }}
+                >
+                  {m === 'add' ? 'Mehrere' : 'Einzeln'}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex-1 flex justify-end">
+          {mode === 'scanning' && (
+            <button
+              onClick={handleClose}
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-black/55 backdrop-blur-sm"
+              aria-label="Scanner schließen"
+            >
+              <X size={18} color="#fff" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Memory-Wächter-Banner — sichtbar wenn der Stapel zu groß wird */}
@@ -2787,13 +2816,17 @@ function RecognizedCardLarge({
   const ownedCount = job.result?.ownedCount;
   const isOwned    = (ownedCount ?? 0) > 0;
 
-  // Rahmenfarbe: Fehler/pHash-Mismatch/Fake-Risk haben Vorrang (wie Slider/Review-Grid,
-  // siehe computeBorderStatus/borderStyleFor) — erst wenn davon nichts greift, zeigt
-  // der Rahmen stattdessen den Besitz-Status an (grün = schon in der Sammlung, sonst
-  // keiner) statt eines separaten Info-Textes.
-  const statusFlagged = computeBorderStatus(job) !== 'none' || !!job.result?.fakeRisk;
+  // Rahmenfarbe: nur Fake-Risk hat Vorrang (wie Slider/Review-Grid). Der
+  // pHash-Mismatch-Rahmen (auto-yellow/auto-red) wird HIER bewusst NICHT
+  // angezeigt — im Einzeln-Modus sieht der Nutzer Foto, Name und Nummer
+  // direkt nebeneinander und beurteilt selbst, ob die Karte stimmt; anders
+  // als im Slider (Mehrere-Modus), wo der Warnrahmen als Hinweis beim
+  // schnellen Durchscannen ohne Einzelprüfung dient (siehe ScannedCardTile).
+  // Erst wenn nichts davon greift, zeigt der Rahmen stattdessen den
+  // Besitz-Status an (grün = schon in der Sammlung, sonst keiner).
+  const statusFlagged = !!job.result?.fakeRisk;
   const cardBorder = statusFlagged
-    ? borderStyleFor(computeBorderStatus(job), job.result?.fakeRisk).border
+    ? borderStyleFor('none', job.result?.fakeRisk).border
     : isOwned ? '4px solid #22c55e' : '2.5px solid transparent';
   // Zusätzlicher Glow beim grünen Besitz-Rahmen — reiner Farbrand geht auf bunten
   // Kartenmotiven schnell unter, der Schein macht "schon vorhanden" unmissverständlich.

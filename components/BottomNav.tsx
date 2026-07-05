@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, BookOpen, Heart, Camera, Pause, LayoutGrid, IdCard, Layers, Plus, Minus } from 'lucide-react';
+import { Home, Search, BookOpen, Heart, Camera, Pause, LayoutGrid, Plus, Minus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { CardPrice } from '@/components/card/CardPrice';
 
@@ -173,16 +173,17 @@ export function BottomNav() {
         </div>
 
         {/* Mitte: FAB-Kapsel — Kamera/Pause-Button immer sichtbar, roter Löschen-
-            und grüner Hinzufügen-Button erscheinen animiert daneben, sobald
-            nutzbar. Zwei übereinanderliegende Schichten mit identischem Slot-
-            Raster: eine geblurrte "Rahmen"-Schicht (dunkle Kreise, etwas größer
-            als die Buttons) darunter erzeugt per Gooey-Effekt den Eindruck von
-            drei überlappenden, ineinander übergehenden Kreisen — die eigentlichen
-            Buttons obendrüber bleiben scharf und in ihren normalen Farben
-            (Rot/Grün/Lila), keine Weichzeichnung auf den Buttons selbst. */}
+            (links) und grüner Hinzufügen-Button (rechts) erscheinen animiert
+            daneben, sobald nutzbar. Zwei übereinanderliegende Schichten mit
+            identischem Slot-Raster: eine geblurrte "Rahmen"-Schicht (dunkle
+            Kreise, etwas größer als die Buttons) darunter erzeugt per Gooey-
+            Effekt den Eindruck von drei überlappenden, ineinander übergehenden
+            Kreisen — die eigentlichen Buttons obendrüber bleiben scharf und in
+            ihren normalen Farben (Rot/Grün/Lila), keine Weichzeichnung auf den
+            Buttons selbst. */}
         <div
-          className="relative flex flex-col items-center transition-all duration-300"
-          style={{ marginTop: -26 }}
+          className="relative flex items-center transition-all duration-300"
+          style={{ marginTop: -20 }}
         >
           {/* SVG-Goo-Filter statt CSS blur+contrast — sauberere, kontrolliertere
               Metaball-Verschmelzung (klassische "Gooey"-Technik). */}
@@ -196,75 +197,47 @@ export function BottomNav() {
           </svg>
           {/* Rahmen-Schicht — verschmilzt per Goo-Filter zu einer Form */}
           <div
-            className="absolute inset-0 flex flex-col items-center pointer-events-none"
+            className="absolute inset-0 flex items-center justify-center pointer-events-none"
             style={{ filter: 'url(#fab-goo)' }}
           >
-            <div
-              className="flex items-center justify-center"
-              style={{ gap: -4, marginBottom: -4 }}
-            >
+            <div className="flex items-center justify-center" style={{ gap: -4 }}>
               <div
                 className="flex items-center justify-center"
-                style={{ width: FRAME_SIZE, height: scanState.canDelete ? FRAME_SIZE : 0, opacity: scanState.canDelete ? 1 : 0, transition: 'height 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease' }}
+                style={{ width: scanState.canDelete ? FRAME_SIZE : 0, height: FRAME_SIZE, opacity: scanState.canDelete ? 1 : 0, transition: 'width 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease' }}
               >
                 <div className="rounded-full" style={{ width: FRAME_SIZE, height: FRAME_SIZE, background: 'rgba(0,0,0,0.55)' }} />
               </div>
+              <div className="rounded-full" style={{ width: FRAME_SIZE_CAM, height: FRAME_SIZE_CAM, background: 'rgba(0,0,0,0.55)' }} />
               <div
                 className="flex items-center justify-center"
-                style={{ width: FRAME_SIZE, height: scanState.canAdd ? FRAME_SIZE : 0, opacity: scanState.canAdd ? 1 : 0, transition: 'height 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease' }}
+                style={{ width: scanState.canAdd ? FRAME_SIZE : 0, height: FRAME_SIZE, opacity: scanState.canAdd ? 1 : 0, transition: 'width 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease' }}
               >
                 <div className="rounded-full" style={{ width: FRAME_SIZE, height: FRAME_SIZE, background: 'rgba(0,0,0,0.55)' }} />
               </div>
             </div>
-            <div className="rounded-full" style={{ width: FRAME_SIZE_CAM, height: FRAME_SIZE_CAM, background: 'rgba(0,0,0,0.55)' }} />
           </div>
 
           {/* Icon-Schicht — scharf, Originalfarben */}
-          <div className="relative flex flex-col items-center">
+          <div className="relative flex items-center justify-center" style={{ gap: -4 }}>
             <div
-              className="flex items-center justify-center"
-              style={{ gap: -4, marginBottom: -4 }}
+              className="relative flex items-center justify-center overflow-visible"
+              style={{
+                width: scanState.canDelete ? FRAME_SIZE : 0,
+                height: FRAME_SIZE,
+                opacity: scanState.canDelete ? 1 : 0,
+                transform: scanState.canDelete ? 'scale(1)' : 'scale(0.4)',
+                transition: 'width 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
+                pointerEvents: scanState.canDelete ? 'auto' : 'none',
+              }}
             >
-              <div
-                className="relative flex items-center justify-center overflow-visible"
-                style={{
-                  width: FRAME_SIZE,
-                  height: scanState.canDelete ? FRAME_SIZE : 0,
-                  opacity: scanState.canDelete ? 1 : 0,
-                  transform: scanState.canDelete ? 'scale(1)' : 'scale(0.4)',
-                  transition: 'height 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
-                  pointerEvents: scanState.canDelete ? 'auto' : 'none',
-                }}
+              <button
+                onClick={() => window.dispatchEvent(new Event(SCAN_REMOVE_EVENT))}
+                aria-label="Aus Sammlung entfernen"
+                className="flex items-center justify-center rounded-full shadow-xl"
+                style={{ width: 56, height: 56, background: '#ef4444' }}
               >
-                <button
-                  onClick={() => window.dispatchEvent(new Event(SCAN_REMOVE_EVENT))}
-                  aria-label="Aus Sammlung entfernen"
-                  className="flex items-center justify-center rounded-full shadow-xl"
-                  style={{ width: 56, height: 56, background: '#ef4444' }}
-                >
-                  <Minus size={26} color="#fff" strokeWidth={3} />
-                </button>
-              </div>
-              <div
-                className="relative flex items-center justify-center overflow-visible"
-                style={{
-                  width: FRAME_SIZE,
-                  height: scanState.canAdd ? FRAME_SIZE : 0,
-                  opacity: scanState.canAdd ? 1 : 0,
-                  transform: scanState.canAdd ? 'scale(1)' : 'scale(0.4)',
-                  transition: 'height 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
-                  pointerEvents: scanState.canAdd ? 'auto' : 'none',
-                }}
-              >
-                <button
-                  onClick={() => window.dispatchEvent(new Event(SCAN_ADD_EVENT))}
-                  aria-label="Zur Sammlung hinzufügen"
-                  className="flex items-center justify-center rounded-full shadow-xl"
-                  style={{ width: 56, height: 56, background: 'var(--action-add)' }}
-                >
-                  <Plus size={26} color="#fff" strokeWidth={3} />
-                </button>
-              </div>
+                <Minus size={26} color="#fff" strokeWidth={3} />
+              </button>
             </div>
             <div className="flex items-center justify-center" style={{ width: FRAME_SIZE_CAM, height: FRAME_SIZE_CAM }}>
               <button
@@ -276,40 +249,34 @@ export function BottomNav() {
                 <FabIcon size={28} color={fabIconColor} fill={!scanState.paused ? '#fff' : 'none'} />
               </button>
             </div>
+            <div
+              className="relative flex items-center justify-center overflow-visible"
+              style={{
+                width: scanState.canAdd ? FRAME_SIZE : 0,
+                height: FRAME_SIZE,
+                opacity: scanState.canAdd ? 1 : 0,
+                transform: scanState.canAdd ? 'scale(1)' : 'scale(0.4)',
+                transition: 'width 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
+                pointerEvents: scanState.canAdd ? 'auto' : 'none',
+              }}
+            >
+              <button
+                onClick={() => window.dispatchEvent(new Event(SCAN_ADD_EVENT))}
+                aria-label="Zur Sammlung hinzufügen"
+                className="flex items-center justify-center rounded-full shadow-xl"
+                style={{ width: 56, height: 56, background: 'var(--action-add)' }}
+              >
+                <Plus size={26} color="#fff" strokeWidth={3} />
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Rechts: Mode-Switch */}
+        {/* Rechts: Preis der erkannten Karte (Mode-Switch sitzt jetzt oben im Header) */}
         <div
           className="flex-1 flex justify-end items-end relative"
           style={{ paddingRight: 16, paddingBottom: 10, alignSelf: 'stretch' }}
         >
-          <div
-            className="flex rounded-full p-0.5 bg-black/55 backdrop-blur-sm"
-            style={{ border: '1px solid rgba(255,255,255,0.12)' }}
-          >
-            {(['recognize', 'add'] as const).map(m => {
-              const Icon = m === 'add' ? Layers : IdCard;
-              const isActive = scanState.scanMode === m;
-              return (
-                <button
-                  key={m}
-                  onClick={() => {
-                    if (isActive) return;
-                    window.dispatchEvent(new CustomEvent(SCAN_MODE_TOGGLE_EVENT, { detail: m }));
-                  }}
-                  className="w-9 h-9 rounded-full flex items-center justify-center transition-colors"
-                  aria-label={m === 'add' ? 'Mehrere' : 'Einzeln'}
-                  style={{
-                    background: isActive ? 'var(--pokedex-red)' : 'transparent',
-                    color:      isActive ? '#fff' : 'rgba(255,255,255,0.65)',
-                  }}
-                >
-                  <Icon size={18} />
-                </button>
-              );
-            })}
-          </div>
           {scanState.recognizedCardId && (
             <div
               className="absolute inset-x-0 flex items-center justify-center"
