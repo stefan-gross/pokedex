@@ -46,6 +46,7 @@ export function BottomNav() {
   });
 
   const isScanner = pathname === '/scanner';
+  const isHome = pathname === '/';
 
   // Scanner-State-Sync — Scanner-Page postet ihren Status hierher (muss VOR dem
   // early-return stehen, damit Hook-Reihenfolge konsistent bleibt)
@@ -251,6 +252,67 @@ export function BottomNav() {
           className="flex-1 flex justify-end items-end relative"
           style={{ paddingRight: 16, paddingBottom: 10, alignSelf: 'stretch' }}
         />
+      </nav>
+    );
+  }
+
+  // ── Home: schwebende Glas-Tab-Bar (iOS "Liquid Glass") ──────────────────
+  // Nur auf `/`, da der Glas-Look einen bunten Verlaufs-Hintergrund dahinter
+  // braucht (existiert nur auf dem Dashboard). Andere Routen behalten die
+  // normale bg-card-Leiste weiter unten.
+  if (isHome) {
+    const homeFabStyle: React.CSSProperties = {
+      width: 70,
+      height: 70,
+      marginTop: -30,
+      borderRadius: 999,
+      flexShrink: 0,
+      background: 'rgba(229,62,62,0.82)',
+      backdropFilter: 'blur(10px) saturate(1.4)',
+      WebkitBackdropFilter: 'blur(10px) saturate(1.4)',
+      border: '1.5px solid rgba(255,255,255,0.5)',
+      boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.65), 0 6px 20px rgba(220,38,38,0.5)',
+    };
+    return (
+      <nav
+        className="fixed z-50 grid items-center justify-items-center glass"
+        style={{
+          bottom: 12, left: 14, right: 14, height: 64,
+          borderRadius: 26,
+          gridTemplateColumns: 'repeat(5, 1fr)',
+          backdropFilter: 'blur(28px) saturate(1.55)',
+          WebkitBackdropFilter: 'blur(28px) saturate(1.55)',
+        }}
+      >
+        {navItems.map((item, i) => {
+          if (item === null) {
+            return (
+              <div key="fab" className="relative flex items-center justify-center" style={{ width: FAB_SIZE }}>
+                <Link
+                  href="/scanner"
+                  className="flex items-center justify-center"
+                  style={homeFabStyle}
+                  aria-label="Karte scannen"
+                >
+                  <Camera size={28} color="#fff" />
+                </Link>
+              </div>
+            );
+          }
+          const Icon = item.icon;
+          const active = isActive(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="flex flex-col items-center gap-0.5 px-3 min-w-[56px]"
+              style={{ color: '#fff', opacity: active ? 1 : 0.75 }}
+            >
+              <Icon size={22} strokeWidth={active ? 2.6 : 1.8} fill={active ? '#fff' : 'none'} />
+              <span className="text-[10px]" style={{ fontWeight: active ? 700 : 500 }}>{item.label}</span>
+            </Link>
+          );
+        })}
       </nav>
     );
   }

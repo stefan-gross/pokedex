@@ -145,16 +145,38 @@ export default function DashboardPage() {
   const heroCard = totalValue.loading ? null : (totalValue.topCard ?? rarestCard);
 
   return (
-    <div className="px-4 pt-6 pb-4 space-y-5">
+    <div className="relative min-h-screen">
+      {/* iOS "Liquid Glass"-Hintergrund — bunter Verlauf + 3 weiche Glows,
+          fix hinter dem scrollenden Inhalt. Eigene Light-/Dark-Variante
+          (Handoff design_handoff_home_glass), da Glas nur auf farbigem
+          Untergrund wirkt — siehe .glass in globals.css. */}
+      <div className="fixed inset-0 -z-10 overflow-hidden dark:hidden" aria-hidden="true">
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(160deg,#ff9d6c 0%,#e53e3e 30%,#8b3bd4 62%,#3b6fe0 100%)' }} />
+        <div className="absolute rounded-full" style={{ top: -60, left: -40, width: 280, height: 280, background: 'radial-gradient(circle,#ffd27e,transparent 70%)', opacity: .8 }} />
+        <div className="absolute rounded-full" style={{ bottom: 60, right: -60, width: 300, height: 300, background: 'radial-gradient(circle,#54d6ff,transparent 70%)', opacity: .7 }} />
+        <div className="absolute rounded-full" style={{ top: 340, left: 120, width: 220, height: 220, background: 'radial-gradient(circle,#ff7ac1,transparent 70%)', opacity: .6 }} />
+      </div>
+      <div className="fixed inset-0 -z-10 overflow-hidden hidden dark:block" aria-hidden="true">
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(160deg,#1c0f26 0%,#2c0f16 34%,#1a1030 64%,#0a1230 100%)' }} />
+        <div className="absolute rounded-full" style={{ top: -60, left: -40, width: 280, height: 280, background: 'radial-gradient(circle,#c0392b,transparent 70%)', opacity: .5 }} />
+        <div className="absolute rounded-full" style={{ bottom: 60, right: -60, width: 300, height: 300, background: 'radial-gradient(circle,#2f7fd6,transparent 70%)', opacity: .5 }} />
+        <div className="absolute rounded-full" style={{ top: 340, left: 120, width: 220, height: 220, background: 'radial-gradient(circle,#a03fb0,transparent 70%)', opacity: .45 }} />
+      </div>
+
+      <div className="px-4 pt-6 pb-4 space-y-5">
 
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Pokédex</h1>
-          <p className="text-sm text-muted-foreground">Deine Sammlung</p>
+          <h1 className="text-2xl font-bold text-white" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.18)' }}>Pokédex</h1>
+          <p className="text-sm text-white/85">Deine Sammlung</p>
         </div>
-        <Link href="/settings" className="text-muted-foreground p-1">
-          <Settings size={22} strokeWidth={1.8} />
+        <Link
+          href="/settings"
+          className="glass w-[38px] h-[38px] rounded-full flex items-center justify-center text-white"
+          style={{ backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' }}
+        >
+          <Settings size={20} strokeWidth={1.8} />
         </Link>
       </div>
 
@@ -193,9 +215,9 @@ export default function DashboardPage() {
       {!loading && (
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-bold">Sets</h2>
+            <h2 className="text-base font-bold text-white" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>Sets</h2>
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-0.5 p-1 rounded-full bg-secondary">
+              <div className="flex items-center gap-0.5 p-1 rounded-full bg-white/20 dark:bg-white/10">
                 <ViewBtn active={setView === 'favorites'} onClick={() => setSetView('favorites')} label="Meiste Karten">
                   <Star size={17} />
                 </ViewBtn>
@@ -206,12 +228,18 @@ export default function DashboardPage() {
                   <Percent size={17} />
                 </ViewBtn>
               </div>
-              <Link href="/sets" className="text-sm font-medium" style={{ color: 'var(--pokedex-red)' }}>Alle</Link>
+              <Link
+                href="/sets"
+                className="text-sm font-medium text-white rounded-full bg-white/20 dark:bg-white/10"
+                style={{ padding: '5px 12px', border: '1px solid rgba(255,255,255,.35)' }}
+              >
+                Alle
+              </Link>
             </div>
           </div>
 
           {displayedSets.length > 0 ? (
-            <div className="bg-card rounded-2xl shadow-card overflow-hidden">
+            <div className="glass rounded-[20px] overflow-hidden">
               {displayedSets.map((s, i) => (
                 <SetListItem
                   key={s.setId}
@@ -226,12 +254,13 @@ export default function DashboardPage() {
                   series={setMeta[s.setId]?.series}
                   href={`/sets/${s.setId}?from=dashboard`}
                   separator={i < displayedSets.length - 1}
+                  variant="glass"
                 />
               ))}
             </div>
           ) : (
-            <div className="bg-card rounded-2xl shadow-card px-4 py-6 flex flex-col items-center gap-3 text-center">
-              <p className="text-sm text-muted-foreground">
+            <div className="glass rounded-[20px] px-4 py-6 flex flex-col items-center gap-3 text-center">
+              <p className="text-sm text-white/85 dark:text-white/70">
                 {setView === 'favorites'
                   ? 'Noch keine Favoriten — scanne Karten um Sets zu befüllen.'
                   : 'Noch keine Karten in deiner Sammlung.'}
@@ -252,7 +281,7 @@ export default function DashboardPage() {
       {loading && <RecentCardsSkeleton />}
       {!loading && recentCards.length > 0 && (
         <section>
-          <h2 className="text-base font-bold mb-3">Zuletzt hinzugefügt</h2>
+          <h2 className="text-base font-bold mb-3 text-white" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>Zuletzt hinzugefügt</h2>
           <div className="grid grid-cols-3 gap-2.5">
             {recentCards.map(card => (
               <RecentCard key={card.id} name={card.name} img={card.tcgImageUrl!} onClick={() => openDetail(card)} />
@@ -280,14 +309,15 @@ export default function DashboardPage() {
       {!loading && (cards?.length ?? 0) === 0 && (
         <div className="flex flex-col items-center justify-center pt-16 gap-3 text-center">
           <div className="text-4xl">📦</div>
-          <p className="text-sm font-medium">Noch keine Karten</p>
-          <p className="text-xs text-muted-foreground max-w-[220px]">Scanne deine erste Karte oder suche sie in der Kartendatenbank.</p>
+          <p className="text-sm font-medium text-white" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.18)' }}>Noch keine Karten</p>
+          <p className="text-xs text-white/80 max-w-[220px]">Scanne deine erste Karte oder suche sie in der Kartendatenbank.</p>
           <Link href="/scanner" className="mt-2 px-4 py-2 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--pokedex-red)' }}>
             Karte scannen
           </Link>
         </div>
       )}
 
+      </div>
     </div>
   );
 }
@@ -307,11 +337,7 @@ function ValueHero({ totalOwned, thisWeek, totalValue, heroCard }: {
       : '—';
 
   return (
-    <div className="bg-card rounded-[22px] shadow-card p-5 relative overflow-hidden">
-      <div
-        className="absolute pointer-events-none"
-        style={{ top: -30, right: -30, width: 130, height: 130, borderRadius: 999, background: 'rgba(229,62,62,0.06)' }}
-      />
+    <div className="glass rounded-[24px] p-5 relative overflow-hidden">
       {heroCard?.tcgImageUrl && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -334,20 +360,20 @@ function ValueHero({ totalOwned, thisWeek, totalValue, heroCard }: {
         />
       )}
       <div className="relative">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="text-xs font-semibold uppercase text-white/90" style={{ letterSpacing: '.05em' }}>
           Karten in der Sammlung
         </span>
         <div className="flex items-baseline gap-2 mt-1">
           <span
-            className="tabular-nums"
-            style={{ fontSize: 46, fontWeight: 800, lineHeight: 1, color: 'var(--pokedex-red)', letterSpacing: '-.03em' }}
+            className="tabular-nums text-white"
+            style={{ fontSize: 46, fontWeight: 800, lineHeight: 1, letterSpacing: '-.03em', textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}
           >
             {(totalOwned ?? 0).toLocaleString('de')}
           </span>
           {thisWeek != null && thisWeek > 0 && (
             <span
-              className="inline-flex items-center gap-0.5 text-xs font-bold rounded-full"
-              style={{ background: '#E7F4EC', color: 'var(--action-add)', padding: '4px 9px' }}
+              className="inline-flex items-center gap-0.5 text-xs font-bold rounded-full text-white bg-white/28 dark:bg-[rgba(74,222,128,.16)] dark:text-[#7ee6a0]"
+              style={{ padding: '4px 9px', border: '1px solid rgba(255,255,255,.35)' }}
             >
               <ArrowUp size={12} strokeWidth={3} />
               {thisWeek} diese Woche
@@ -355,9 +381,9 @@ function ValueHero({ totalOwned, thisWeek, totalValue, heroCard }: {
           )}
         </div>
 
-        <div className="flex items-baseline gap-1.5 mt-3.5 pt-3.5 border-t border-border/40">
-          <span className="text-[13px] text-muted-foreground">Geschätzter Wert</span>
-          <span className="text-lg font-extrabold">{valueLabel}</span>
+        <div className="flex items-baseline gap-1.5 mt-3.5 pt-3.5 border-t border-white/28 dark:border-white/[.12]">
+          <span className="text-[13px] text-white/85 dark:text-white/70">Geschätzter Wert</span>
+          <span className="text-lg font-extrabold text-white" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{valueLabel}</span>
         </div>
       </div>
     </div>
@@ -367,9 +393,9 @@ function ValueHero({ totalOwned, thisWeek, totalValue, heroCard }: {
 /** Kompakter Stat-Chip im 3er-Streifen (Sammlungen · Sets · Wunschliste). */
 function StatChip({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-card rounded-[14px] shadow-card px-2 py-3 flex flex-col items-center gap-0.5">
-      <span className="text-[22px] font-extrabold leading-none tabular-nums">{value}</span>
-      <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
+    <div className="glass rounded-[16px] px-2 py-3 flex flex-col items-center gap-0.5">
+      <span className="text-[22px] font-extrabold leading-none tabular-nums text-white">{value}</span>
+      <span className="text-[11px] font-medium text-white/85 dark:text-white/70">{label}</span>
     </div>
   );
 }
@@ -381,12 +407,7 @@ function ViewBtn({ active, onClick, label, children }: {
     <button
       onClick={onClick}
       title={label}
-      className="w-9 h-9 flex items-center justify-center rounded-full transition-colors"
-      style={{
-        background: active ? 'var(--card)' : undefined,
-        boxShadow: active ? '0 1px 3px rgba(30,40,80,0.12)' : undefined,
-        color: active ? 'var(--pokedex-red)' : 'var(--muted-foreground)',
-      }}
+      className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${active ? 'bg-white text-[#e53e3e]' : 'text-white/75'}`}
     >
       {children}
     </button>
@@ -397,11 +418,14 @@ function ViewBtn({ active, onClick, label, children }: {
 function RecentCard({ name, img, onClick }: { name: string; img: string; onClick: () => void }) {
   return (
     <button onClick={onClick} className="flex flex-col items-center gap-1 text-left w-full">
-      <div className="w-full aspect-[63/88] rounded-[11px] overflow-hidden bg-secondary shadow-card">
+      <div
+        className="w-full aspect-[63/88] rounded-[11px] overflow-hidden bg-white/10"
+        style={{ border: '1px solid rgba(255,255,255,.4)', boxShadow: '0 6px 18px rgba(0,0,0,.25)' }}
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={img} alt={name} className="w-full h-full object-cover" />
       </div>
-      <span className="text-[11px] font-semibold text-center truncate w-full mt-0.5">{name}</span>
+      <span className="text-[11px] font-semibold text-center truncate w-full mt-0.5 text-white">{name}</span>
     </button>
   );
 }
@@ -412,16 +436,16 @@ function RecentCard({ name, img, onClick }: { name: string; img: string; onClick
  *  iOS-PWA kann der erste Verbindungsaufbau (Cold-Start), besonders direkt
  *  nach "App aktualisieren" (Service-Worker-Reset), spürbar dauern. */
 function Skel({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-secondary rounded ${className ?? ''}`} />;
+  return <div className={`animate-pulse bg-white/25 dark:bg-white/15 rounded ${className ?? ''}`} />;
 }
 
 /** Skeleton für ValueHero — gleiche Maße/Form wie die echte Karte. */
 function ValueHeroSkeleton() {
   return (
-    <div className="bg-card rounded-[22px] shadow-card p-5">
+    <div className="glass rounded-[24px] p-5">
       <Skel className="h-3 w-32 rounded-full" />
       <Skel className="h-11 w-40 rounded-lg mt-2" />
-      <div className="mt-3.5 pt-3.5 border-t border-border/40 flex items-center gap-2">
+      <div className="mt-3.5 pt-3.5 border-t border-white/28 dark:border-white/[.12] flex items-center gap-2">
         <Skel className="h-3.5 w-24 rounded-full" />
         <Skel className="h-4 w-16 rounded-full ml-auto" />
       </div>
@@ -432,7 +456,7 @@ function ValueHeroSkeleton() {
 /** Skeleton für StatChip. */
 function StatChipSkeleton() {
   return (
-    <div className="bg-card rounded-[14px] shadow-card px-2 py-3 flex flex-col items-center gap-1.5">
+    <div className="glass rounded-[16px] px-2 py-3 flex flex-col items-center gap-1.5">
       <Skel className="h-5 w-8 rounded-md" />
       <Skel className="h-2.5 w-14 rounded-full" />
     </div>
@@ -447,11 +471,11 @@ function SetsSkeleton() {
         <Skel className="h-5 w-14 rounded-md" />
         <Skel className="h-8 w-28 rounded-full" />
       </div>
-      <div className="bg-card rounded-2xl shadow-card overflow-hidden">
+      <div className="glass rounded-[20px] overflow-hidden">
         {[0, 1, 2].map(i => (
           <div
             key={i}
-            className={`flex items-center gap-3 px-4 py-[13px]${i < 2 ? ' border-b border-border/30' : ''}`}
+            className={`flex items-center gap-3 px-4 py-[13px]${i < 2 ? ' border-b border-white/20 dark:border-white/[.12]' : ''}`}
           >
             <Skel className="w-10 h-10 rounded-lg shrink-0" />
             <div className="flex-1 space-y-1.5">
@@ -476,7 +500,7 @@ function RecentCardsSkeleton() {
       <div className="grid grid-cols-3 gap-2.5">
         {[0, 1, 2, 3, 4, 5].map(i => (
           <div key={i} className="flex flex-col items-center gap-1">
-            <div className="w-full aspect-[63/88] rounded-[11px] overflow-hidden shadow-card">
+            <div className="w-full aspect-[63/88] rounded-[11px] overflow-hidden">
               <Skel className="w-full h-full rounded-[11px]" />
             </div>
             <Skel className="h-2.5 w-3/4 rounded-full mt-0.5" />
