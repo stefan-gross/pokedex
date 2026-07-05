@@ -172,10 +172,16 @@ export function BottomNav() {
               </filter>
             </defs>
           </svg>
-          {/* Rahmen-Schicht — verschmilzt per Goo-Filter zu einer Form. Löschen-
-              und Hinzufügen-Kreis docken ABSOLUT links/rechts an den Kamera-
-              Kreis an, statt als Flex-Geschwister Breite einzunehmen — so
-              bleibt die Kapsel (und damit der Kamera-Button) immer exakt
+          {/* Rahmen-Schicht — schwarze, 50% transparente abgerundete Rechtecke
+              hinter Löschen/Hinzufügen (kein Hintergrund hinter der Kamera).
+              Äußere Ecke (weg von der Kamera) = voller Button-Radius (Stadion-
+              Form), innere Ecke (Richtung Kamera) leicht abgerundet. Der
+              Goo-Filter bleibt aktiv, damit die Form beim Ein-/Ausblenden
+              optisch aus dem Kamera-Kreis herausquillt — im Ruhezustand
+              erzeugt derselbe Filter dank Kontrast-Nachschärfung wieder
+              scharfe Kanten. Docken ABSOLUT links/rechts an den Kamera-Kreis
+              an, statt als Flex-Geschwister Breite einzunehmen — so bleibt
+              die Kapsel (und damit der Kamera-Button) immer exakt
               FRAME_SIZE_CAM breit und dadurch stets zentriert, unabhängig
               davon, ob gerade 0, 1 oder 2 Zusatz-Buttons sichtbar sind. */}
           <div
@@ -183,23 +189,24 @@ export function BottomNav() {
             style={{ filter: 'url(#fab-goo)' }}
           >
             <div
-              className="absolute top-1/2 rounded-full"
+              className="absolute top-1/2"
               style={{
-                width: FRAME_SIZE, height: FRAME_SIZE, right: '100%', marginRight: 6,
+                width: 90, height: FRAME_SIZE, right: '100%', marginRight: 6,
+                borderRadius: '29px 6px 6px 29px',
                 transform: `translateY(-50%) scale(${scanState.canDelete ? 1 : 0})`,
                 opacity: scanState.canDelete ? 1 : 0,
-                background: 'rgba(0,0,0,0.55)',
+                background: 'rgba(0,0,0,0.5)',
                 transition: 'transform 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease',
               }}
             />
-            <div className="rounded-full" style={{ width: FRAME_SIZE_CAM, height: FRAME_SIZE_CAM, background: 'rgba(0,0,0,0.55)' }} />
             <div
-              className="absolute top-1/2 rounded-full"
+              className="absolute top-1/2"
               style={{
-                width: FRAME_SIZE, height: FRAME_SIZE, left: '100%', marginLeft: 6,
+                width: 90, height: FRAME_SIZE, left: '100%', marginLeft: 6,
+                borderRadius: '6px 29px 29px 6px',
                 transform: `translateY(-50%) scale(${scanState.canAdd ? 1 : 0})`,
                 opacity: scanState.canAdd ? 1 : 0,
-                background: 'rgba(0,0,0,0.55)',
+                background: 'rgba(0,0,0,0.5)',
                 transition: 'transform 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease',
               }}
             />
