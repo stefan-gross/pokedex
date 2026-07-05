@@ -10,11 +10,14 @@ interface Props {
   /** Reiner Text ohne Pill-Hintergrund/-Padding — nur Farbe + Fettschrift. */
   plain?: boolean;
   className?: string;
+  /** Schriftgröße in px (nur `plain`) — direkte font-size statt CSS `zoom`,
+   *  da `zoom` auf älteren iOS-Versionen nicht unterstützt wird. */
+  fontSize?: number;
 }
 
 /** Einzelner Preis-Pill mit Trend-Preis (Cardmarket) oder Market (TCGplayer).
  *  Hintergrund-Farbe = Wert-Tier (grau / weiß / gelb / orange / rot). */
-export function CardPrice({ tcgId, compact = false, plain = false, className }: Props) {
+export function CardPrice({ tcgId, compact = false, plain = false, className, fontSize }: Props) {
   const { data, loading } = usePrice(tcgId);
   const price = pickTrendPrice(data);
   const tier = classifyValue(price);
@@ -32,7 +35,10 @@ export function CardPrice({ tcgId, compact = false, plain = false, className }: 
 
   if (price == null) {
     return compact ? null : (
-      <span className={(className ?? '') + ' text-[11px] text-muted-foreground'}>
+      <span
+        className={(className ?? '') + (plain ? '' : ' text-[11px]') + ' text-muted-foreground'}
+        style={plain ? { fontSize } : undefined}
+      >
         — €
       </span>
     );
@@ -51,7 +57,7 @@ export function CardPrice({ tcgId, compact = false, plain = false, className }: 
           : ' inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap')
       }
       style={plain
-        ? { color: tier.textColor }
+        ? { color: tier.textColor, fontSize }
         : { background: tier.badgeColor, color: tier.textColor, boxShadow: tier.glow }
       }
     >

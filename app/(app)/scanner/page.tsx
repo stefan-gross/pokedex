@@ -2852,8 +2852,10 @@ function RecognizedCardLarge({
         top: 'calc(env(safe-area-inset-top, 0px) + 64px)',
         // Muss über den grünen +-Button hinausragen, der animiert über die
         // Scanner-FAB hinaus nach oben pokt (siehe BottomNav-Kapsel) — sonst
-        // verdeckt der Button den Pokémon-Namen.
-        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 160px)',
+        // verdeckt der Button den Pokémon-Namen. `bottom` um denselben Betrag
+        // reduziert, um den der `top`-Wert erhöht wurde — sonst schrumpft die
+        // Karte, weil weniger Flex-Höhe für den Bild-Slot übrig bleibt.
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 148px)',
       }}
     >
       {/* Debug-Zugang — oben rechts über allem, unabhängig vom Namen (der jetzt
@@ -2992,9 +2994,7 @@ function RecognizedCardLarge({
               )}
             </div>
           )}
-          <div style={{ zoom: 4 }}>
-            <CardPrice tcgId={card.id} plain className="text-blue-400!" />
-          </div>
+          <CardPrice tcgId={card.id} plain fontSize={44} className="text-blue-400!" />
         </div>
       )}
 
