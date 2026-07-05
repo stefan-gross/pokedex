@@ -301,9 +301,9 @@ function ValueHero({ totalOwned, thisWeek, totalValue, heroCard }: {
           aria-hidden="true"
           className="absolute pointer-events-none select-none"
           style={{
-            top: -28,
-            right: -28,
-            height: '135%',
+            top: -20,
+            right: -22,
+            height: '112%',
             width: 'auto',
             aspectRatio: '63/88',
             objectFit: 'cover',
