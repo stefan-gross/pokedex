@@ -197,6 +197,20 @@ function cardImgUrlLarge(job: ScanJob): string | null {
   return card.imgSmall ?? null;
 }
 
+/** Wie cardImgUrlLarge, aber liefert ALLE Bild-Kandidaten in Prioritäts-
+ *  reihenfolge statt nur den ersten Treffer — RecognizedCardLarge probiert
+ *  bei einem 404/Ladefehler automatisch den nächsten (z.B. TCGdex-DE-Bild
+ *  fehlt → pokemontcg.io-Bild als Fallback), bevor sie aufgibt. */
+function cardImgUrlsLarge(job: ScanJob): string[] {
+  const card = job.result?.card;
+  if (!card) return [];
+  const lang = job.result?.language ?? 'en';
+  const candidates = lang === 'de'
+    ? [card.imgLargeDe, card.imgLarge, card.imgSmallDe, card.imgSmall]
+    : [card.imgLarge, card.imgSmall, card.imgLargeDe, card.imgSmallDe];
+  return candidates.filter((u): u is string => !!u);
+}
+
 /** Klassifiziert einen Error-Job und gibt thematische Karten-Daten zurück.
  *  Wird sowohl vom großen Error-Sheet (Einzelmodus) als auch von der
  *  Mini-Error-Karte im Review-Grid genutzt. */
@@ -2774,8 +2788,17 @@ interface RecognizedCardLargeProps {
 function RecognizedCardLarge({
   job, onCardTap, onDebugTap,
 }: RecognizedCardLargeProps) {
-  const img       = cardImgUrlLarge(job);
   const card      = job.result?.card;
+  // Bild-Kandidaten in Prioritätsreihenfolge — bei 404/Ladefehler eines
+  // Kandidaten (z.B. fehlendes TCGdex-DE-Bild) probiert onError automatisch
+  // den nächsten, bevor der Platzhalter gezeigt wird (siehe img-Rendering
+  // unten). Während des Scans (processing) gibt's nur das lokale Foto.
+  const imgCandidates = job.status === 'processing' && job.debug?.imageBase64
+    ? [`data:${job.debug.mimeType ?? 'image/jpeg'};base64,${job.debug.imageBase64}`]
+    : cardImgUrlsLarge(job);
+  const [imgIdx, setImgIdx] = useState(0);
+  useEffect(() => { setImgIdx(0); }, [job.id]);
+  const img = imgCandidates[imgIdx];
   const setMeta   = useSetMeta(card?.setId, undefined, card?.setName);
   const [logoFailed, setLogoFailed] = useState(false);
   useEffect(() => { setLogoFailed(false); }, [setMeta?.logoUrl]);
@@ -2784,21 +2807,45 @@ function RecognizedCardLarge({
   // Fotos/Scans weichen leicht vom exakten Kartenformat ab (Zuschnitt-Ränder),
   // die Annahme führte sonst zu Zuschneiden (object-cover) oder Rand (object-contain).
   const [imgAspect, setImgAspect] = useState<number | null>(null);
-  // Gerenderte Kartenbreite live per ResizeObserver — Basis für Logo-/Text-
-  // Größen und Ecken-Radius, die proportional zur tatsächlichen Kartenbreite
-  // skalieren sollen (siehe sizeBasePx unten).
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [containerSize, setContainerSize] = useState<{ w: number; h: number } | null>(null);
+  // Bis das Foto geladen ist, mit dem Standard-Kartenformat rechnen (verhindert
+  // Layout-Sprung) — danach exakt mit dem echten Verhältnis des Fotos.
+  const cardRatio = imgAspect ?? 63 / 88;
+
+  // Verfügbarer Platz für die Karte (der Slot, NICHT die Karte selbst) —
+  // gemessen per ResizeObserver auf dem umgebenden flex-1-Slot. Vorher wurde
+  // die Kartengröße rein per CSS (aspect-ratio + max-width/max-height, ohne
+  // explizite width/height) aus dem *Bildinhalt* abgeleitet — das brach
+  // zusammen, sobald das Bild nicht lud (404/Netzwerkfehler): ohne Bild-
+  // Eigengröße schrumpfte die Box auf die winzige "kaputtes Bild"-Anzeige,
+  // wodurch auch Logo/Setname (die proportional zu sizeBasePx skalieren)
+  // viel zu klein wurden. Jetzt wird die Kartengröße unabhängig vom Bild aus
+  // dem verfügbaren Slot berechnet (klassische object-fit:contain-Mathematik)
+  // und als expliziter px-Wert gesetzt — stabil, egal ob das Bild lädt.
+  const slotRef = useRef<HTMLDivElement>(null);
+  const [slotSize, setSlotSize] = useState<{ w: number; h: number } | null>(null);
   useEffect(() => {
-    const target = containerRef.current;
+    const target = slotRef.current;
     if (!target) return;
     const ro = new ResizeObserver(entries => {
       const { width, height } = entries[0].contentRect;
-      setContainerSize({ w: Math.round(width), h: Math.round(height) });
+      setSlotSize({ w: Math.round(width), h: Math.round(height) });
     });
     ro.observe(target);
     return () => ro.disconnect();
   }, []);
+  const fittedSize = (() => {
+    if (!slotSize || slotSize.w <= 0 || slotSize.h <= 0) return null;
+    const slotRatio = slotSize.w / slotSize.h;
+    return slotRatio > cardRatio
+      ? { w: Math.round(slotSize.h * cardRatio), h: slotSize.h }
+      : { w: slotSize.w, h: Math.round(slotSize.w / cardRatio) };
+  })();
+
+  // Gerenderte Kartenbreite — Basis für Logo-/Text-Größen und Ecken-Radius,
+  // die proportional zur tatsächlichen Kartenbreite skalieren sollen (siehe
+  // sizeBasePx unten). Kommt jetzt direkt aus fittedSize (kein separater
+  // ResizeObserver auf dem Container mehr nötig).
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const ownedCount = job.result?.ownedCount;
   const isOwned    = (ownedCount ?? 0) > 0;
@@ -2831,18 +2878,9 @@ function RecognizedCardLarge({
   // nur ein grafisches Symbol. `setCode` ist dort nur ein internes pokemontcg.io-
   // Kürzel (z.B. "BS", "JU"), niemals als vermeintlicher Kartendruck anzeigen.
   const isSymbolOnlySet = !!card?.series && SYMBOL_ONLY_SERIES.includes(card.series);
-  // Bis das Foto geladen ist, mit dem Standard-Kartenformat rechnen (verhindert
-  // Layout-Sprung) — danach exakt mit dem echten Verhältnis des Fotos.
-  const cardRatio = imgAspect ?? 63 / 88;
-  // Kartenbreite kommt NICHT mehr aus einer geschätzten vh/dvh-Formel (schätzte
-  // die verfügbare Höhe daneben und brach dann per maxHeight das Seiten-
-  // verhältnis) — stattdessen füllt die Karte per Flexbox (flex-1/min-h-0,
-  // siehe unten) nativ den verbleibenden Platz in der Spalte, das ist die
-  // tatsächliche, vom Browser selbst berechnete verfügbare Höhe. Die Breite
-  // wird per aspect-ratio + maxWidth aus dieser Höhe abgeleitet.
-  // sizeBasePx: die real gerenderte Kartenbreite (aus dem ResizeObserver oben)
-  // — Basis für Logo/Text-Größen darunter, damit die proportional mitskalieren.
-  const sizeBasePx = containerSize?.w ?? null;
+  // sizeBasePx: die berechnete Kartenbreite (fittedSize, s.o.) — Basis für
+  // Logo/Text-Größen darunter, damit die proportional mitskalieren.
+  const sizeBasePx = fittedSize?.w ?? null;
   const logoHeight = sizeBasePx != null ? `${sizeBasePx * 0.15}px` : '40px';
 
   return (
@@ -2869,20 +2907,20 @@ function RecognizedCardLarge({
 
       {/* Karten-Body — die Slot-Zelle (flex-1/min-h-0) füllt per nativer
           Flexbox-Berechnung exakt den verbleibenden Platz in der Spalte (statt
-          eine Höhe per vh/dvh zu schätzen). Darin bekommt die Karte weder feste
-          Breite noch Höhe, sondern aspect-ratio + maxWidth/maxHeight — der
-          Browser wählt selbst die größtmögliche Größe, die in beide Richtungen
-          passt (wie object-fit:contain, nur für die Box selbst statt fürs Bild).
-          Varianten-/Zustand-Auswahl passiert nicht mehr hier, sondern beim
-          Hinzufügen im AddToCollectionModal. */}
-      <div className="w-full flex-1 min-h-0 flex items-center justify-center">
+          eine Höhe per vh/dvh zu schätzen). fittedSize berechnet daraus per
+          object-fit:contain-Mathematik eine explizite Breite/Höhe für die
+          Karten-Box — UNABHÄNGIG vom Bildinhalt (vorher: aspect-ratio +
+          max-width/max-height ohne explizite Größe, das die Box anhand des
+          *Bildes* auf Inhaltsgröße schrumpfen ließ — brach zusammen, wenn das
+          Bild nicht lud). Varianten-/Zustand-Auswahl passiert nicht mehr hier,
+          sondern beim Hinzufügen im AddToCollectionModal. */}
+      <div ref={slotRef} className="w-full flex-1 min-h-0 flex items-center justify-center">
       <div
         ref={containerRef}
         className="relative overflow-hidden"
         style={{
-          aspectRatio: String(cardRatio),
-          maxWidth: '100%',
-          maxHeight: '100%',
+          width: fittedSize?.w,
+          height: fittedSize?.h,
           // Fester px-Wert statt % — bei % skaliert die Ecke elliptisch (Breite
           // und Höhe getrennt), auf einer Hochformat-Karte sieht die Rundung
           // dadurch oben/unten anders aus als links/rechts. Ein px-Wert relativ
@@ -2898,6 +2936,7 @@ function RecognizedCardLarge({
         {img ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
+            key={img}
             src={img}
             alt={card?.name ?? ''}
             className="w-full h-full object-fill"
@@ -2905,6 +2944,10 @@ function RecognizedCardLarge({
               const el = e.currentTarget;
               if (el.naturalWidth && el.naturalHeight) setImgAspect(el.naturalWidth / el.naturalHeight);
             }}
+            // Kandidat 404/Ladefehler → nächsten Kandidaten aus imgCandidates
+            // probieren (siehe cardImgUrlsLarge oben), statt das native
+            // "kaputtes Bild"-Icon zu zeigen.
+            onError={() => setImgIdx(i => i + 1)}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-red-500/10">
