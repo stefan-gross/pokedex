@@ -2998,11 +2998,22 @@ function RecognizedCardLarge({
 
       {/* Unterhalb der Karte: Glas-Info-Sheet mit Set-Zeile, Pokémon-Name,
           Nummer/Dex und Preis — Aufbau unverändert, nur die Chrome wird zu
-          getöntem Glas (Handoff design_handoff_scanner_glass, "Info-Sheet"). */}
+          getöntem Glas (Handoff design_handoff_scanner_glass, "Info-Sheet").
+          Gleiche Transparenz wie die Top-Controls (Blitz/X/Segmented) —
+          feste rgba()-Werte statt der globalen .glass-Klasse, da der Scanner
+          immer über dem (dunklen) Kamerabild liegt, unabhängig vom Light/
+          Dark-Theme der restlichen App. */}
       {card && (
         <div
-          className="w-full glass flex flex-col items-start gap-2 px-4 py-4"
-          style={{ borderRadius: 24 }}
+          className="w-full flex flex-col items-start gap-2 px-4 py-4"
+          style={{
+            borderRadius: 24,
+            background: 'rgba(255,255,255,0.14)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255,255,255,0.28)',
+            boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.4)',
+          }}
         >
           {/* Logo + Zyklus/Setname als ein Block — Logo links, rechts daneben
               Zyklus- und Setname linksbündig in zwei Zeilen übereinander,
