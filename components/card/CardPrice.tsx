@@ -7,12 +7,14 @@ interface Props {
   tcgId: string | undefined;
   /** Kompakte Variante ohne Tier-Färbung, ohne Platzhalter wenn leer. */
   compact?: boolean;
+  /** Reiner Text ohne Pill-Hintergrund/-Padding — nur Farbe + Fettschrift. */
+  plain?: boolean;
   className?: string;
 }
 
 /** Einzelner Preis-Pill mit Trend-Preis (Cardmarket) oder Market (TCGplayer).
  *  Hintergrund-Farbe = Wert-Tier (grau / weiß / gelb / orange / rot). */
-export function CardPrice({ tcgId, compact = false, className }: Props) {
+export function CardPrice({ tcgId, compact = false, plain = false, className }: Props) {
   const { data, loading } = usePrice(tcgId);
   const price = pickTrendPrice(data);
   const tier = classifyValue(price);
@@ -44,13 +46,14 @@ export function CardPrice({ tcgId, compact = false, className }: Props) {
     <span
       className={
         (className ?? '') +
-        ' inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap'
+        (plain
+          ? ' font-semibold whitespace-nowrap'
+          : ' inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap')
       }
-      style={{
-        background: tier.badgeColor,
-        color: tier.textColor,
-        boxShadow: tier.glow,
-      }}
+      style={plain
+        ? { color: tier.textColor }
+        : { background: tier.badgeColor, color: tier.textColor, boxShadow: tier.glow }
+      }
     >
       {text}
     </span>

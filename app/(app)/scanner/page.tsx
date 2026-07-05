@@ -13,6 +13,7 @@ import { addCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { addCardToBinder, ensureDefaultBinder, ensureInboxBinder } from '@/lib/firestore/binders';
 import { BulkAddToCollectionModal } from '@/components/scanner/BulkAddToCollectionModal';
 import { ValueBadge } from '@/components/card/ValueBadge';
+import { CardPrice } from '@/components/card/CardPrice';
 import { catalogCardToInfo } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition as PersistedCondition, CardDoc, CardLanguage, CardVariant } from '@/types';
@@ -441,17 +442,11 @@ export default function ScannerPage() {
   const canAddRecognized = !!recognizedCard
     && !recognizedJob.added
     && recognizedJob.result!.ownedCount !== undefined;
-  const recognizedCardId = canAddRecognized ? recognizedCard!.id : null;
   // Löschen-Button neben dem +-Button: erscheint nur, wenn die erkannte Karte
   // bereits im Besitz ist. Tap öffnet CardDetailSheet (siehe onRemoveRecognized
   // unten) — dieselbe Ansicht, die auch beim Antippen der Karte selbst aufgeht,
   // inkl. bestehender Lösch-UI pro Exemplar (auch bei mehreren Exemplaren).
   const canDeleteRecognized = !!recognizedCard && (recognizedJob?.result?.ownedCount ?? 0) > 0;
-  // Pokédex-Nummer neben dem Preis (BottomNav) — die Setnummer ("111/159")
-  // steht jetzt stattdessen direkt unter dem Namen in RecognizedCardLarge.
-  const recognizedDex = canAddRecognized && recognizedCard?.nationalDexNumber != null
-    ? `#${String(recognizedCard.nationalDexNumber).padStart(3, '0')}`
-    : null;
 
   // Events vom BottomNav abonnieren
   useEffect(() => {
@@ -493,11 +488,9 @@ export default function ScannerPage() {
         reviewMode: mode === 'review',
         canAdd: canAddRecognized,
         canDelete: canDeleteRecognized,
-        recognizedCardId,
-        recognizedDex,
       },
     }));
-  }, [streamPaused, scanMode, addJobsCount, mode, canAddRecognized, canDeleteRecognized, recognizedCardId, recognizedDex]);
+  }, [streamPaused, scanMode, addJobsCount, mode, canAddRecognized, canDeleteRecognized]);
 
   // Beim Unmount: Reset, damit andere Seiten nicht den Scan-Pause-FAB sehen
   useEffect(() => {
@@ -2832,6 +2825,7 @@ function RecognizedCardLarge({
   // (nicht aus dem Scan-Ergebnis, siehe useSetMeta).
   const cardNumBase  = card ? card.number.split('/')[0].padStart(3, '0') : null;
   const cardNumTotal = setMeta?.printedTotal ? String(setMeta.printedTotal).padStart(3, '0') : null;
+  const cardDex = card?.nationalDexNumber != null ? `#${String(card.nationalDexNumber).padStart(3, '0')}` : null;
   const showLogo = !!setMeta?.logoUrl && !logoFailed;
   // Sets vor Scarlet & Violet tragen KEINEN echten Kürzel-Aufdruck auf der Karte —
   // nur ein grafisches Symbol. `setCode` ist dort nur ein internes pokemontcg.io-
@@ -2986,11 +2980,21 @@ function RecognizedCardLarge({
           <h2 className="text-white font-bold text-3xl truncate text-center max-w-full">
             {card.name}
           </h2>
-          {cardNumBase && (
-            <p className="text-white/60 text-sm font-mono tabular-nums -mt-1.5">
-              {cardNumBase}{cardNumTotal && `/${cardNumTotal}`}
-            </p>
+          {(cardNumBase || cardDex) && (
+            <div className="flex items-baseline justify-center gap-2 -mt-1.5 font-mono tabular-nums">
+              {cardNumBase && (
+                <span className="text-white text-sm font-bold">
+                  {cardNumBase}{cardNumTotal && <span className="text-white/60 font-normal">/{cardNumTotal}</span>}
+                </span>
+              )}
+              {cardDex && (
+                <span className="text-white/60 text-sm">{cardDex}</span>
+              )}
+            </div>
           )}
+          <div style={{ zoom: 2 }}>
+            <CardPrice tcgId={card.id} plain className="text-blue-400!" />
+          </div>
         </div>
       )}
 

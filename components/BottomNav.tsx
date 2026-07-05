@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, Search, BookOpen, Heart, Camera, Pause, LayoutGrid, Plus, Minus } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { CardPrice } from '@/components/card/CardPrice';
 
 const FAB_SIZE = 72;
 
@@ -33,8 +32,6 @@ interface ScannerNavState {
   reviewMode?: boolean;   // Scanner ist im Review-Grid → BottomNav komplett ausblenden
   canAdd?: boolean;       // Einzeln-Modus: erkannte Karte kann hinzugefügt werden → grüner +-Button erscheint über der FAB
   canDelete?: boolean;    // Einzeln-Modus: erkannte Karte ist bereits im Besitz → roter Löschen-Button erscheint neben dem +-Button
-  recognizedCardId?: string | null;    // tcgId der erkannten Karte, für Preis rechts neben dem +-Button
-  recognizedDex?: string | null;       // "#035", eng neben dem Preis
 }
 
 export function BottomNav() {
@@ -188,7 +185,7 @@ export function BottomNav() {
             <div
               className="absolute top-1/2 rounded-full"
               style={{
-                width: FRAME_SIZE, height: FRAME_SIZE, right: '100%', marginRight: -4,
+                width: FRAME_SIZE, height: FRAME_SIZE, right: '100%', marginRight: 6,
                 transform: `translateY(-50%) scale(${scanState.canDelete ? 1 : 0})`,
                 opacity: scanState.canDelete ? 1 : 0,
                 background: 'rgba(0,0,0,0.55)',
@@ -199,7 +196,7 @@ export function BottomNav() {
             <div
               className="absolute top-1/2 rounded-full"
               style={{
-                width: FRAME_SIZE, height: FRAME_SIZE, left: '100%', marginLeft: -4,
+                width: FRAME_SIZE, height: FRAME_SIZE, left: '100%', marginLeft: 6,
                 transform: `translateY(-50%) scale(${scanState.canAdd ? 1 : 0})`,
                 opacity: scanState.canAdd ? 1 : 0,
                 background: 'rgba(0,0,0,0.55)',
@@ -212,7 +209,7 @@ export function BottomNav() {
           <div
             className="absolute top-1/2 flex items-center justify-center overflow-visible"
             style={{
-              width: FRAME_SIZE, height: FRAME_SIZE, right: '100%', marginRight: -4,
+              width: FRAME_SIZE, height: FRAME_SIZE, right: '100%', marginRight: 6,
               opacity: scanState.canDelete ? 1 : 0,
               transform: `translateY(-50%) scale(${scanState.canDelete ? 1 : 0.4})`,
               transition: 'opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
@@ -239,7 +236,7 @@ export function BottomNav() {
           <div
             className="absolute top-1/2 flex items-center justify-center overflow-visible"
             style={{
-              width: FRAME_SIZE, height: FRAME_SIZE, left: '100%', marginLeft: -4,
+              width: FRAME_SIZE, height: FRAME_SIZE, left: '100%', marginLeft: 6,
               opacity: scanState.canAdd ? 1 : 0,
               transform: `translateY(-50%) scale(${scanState.canAdd ? 1 : 0.4})`,
               transition: 'opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
@@ -257,26 +254,12 @@ export function BottomNav() {
           </div>
         </div>
 
-        {/* Rechts: Pokédex-Nummer + Preis der erkannten Karte in einer Zeile,
-            eng beieinander (Mode-Switch sitzt jetzt oben im Header). */}
+        {/* Rechts: reine Symmetrie-Zone (Dex/Preis sitzen jetzt unter dem
+            Kartennamen in RecognizedCardLarge, Mode-Switch oben im Header). */}
         <div
           className="flex-1 flex justify-end items-end relative"
           style={{ paddingRight: 16, paddingBottom: 10, alignSelf: 'stretch' }}
-        >
-          {scanState.recognizedCardId && (
-            <div
-              className="absolute inset-x-0 flex items-center justify-end gap-1.5"
-              style={{ top: -92, height: 92, paddingRight: 16 }}
-            >
-              {scanState.recognizedDex && (
-                <span className="text-sm font-mono text-white/60">{scanState.recognizedDex}</span>
-              )}
-              <div style={{ zoom: 2 }}>
-                <CardPrice tcgId={scanState.recognizedCardId} className="text-blue-400!" />
-              </div>
-            </div>
-          )}
-        </div>
+        />
       </nav>
     );
   }
