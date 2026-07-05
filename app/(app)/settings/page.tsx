@@ -11,6 +11,7 @@ import Link from 'next/link';
 import type { SyncMeta } from '@/lib/firestore/catalog';
 import { getCards, deleteCard } from '@/lib/firestore/cards';
 import { getBinders, updateBinder } from '@/lib/firestore/binders';
+import { GlassBackground } from '@/components/GlassBackground';
 
 const THEMES = [
   { value: 'system', label: 'System', icon: Smartphone },
@@ -253,28 +254,30 @@ export default function SettingsPage() {
   const busy       = runningAll || syncing;
 
   return (
-    <div className="min-h-screen pb-16">
-      <div className="sticky top-safe z-20 bg-background shadow-header px-4 pt-4 pb-3 flex items-center gap-3">
-        <Link href="/" className="text-muted-foreground">
+    <div className="relative min-h-screen pb-16">
+      <GlassBackground />
+
+      <div className="sticky top-safe z-20 glass px-4 pt-4 pb-3 flex items-center gap-3">
+        <Link href="/" className="text-white">
           <ChevronLeft size={22} />
         </Link>
-        <h1 className="font-semibold text-base">Einstellungen</h1>
+        <h1 className="font-semibold text-base text-white" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.2)' }}>Einstellungen</h1>
       </div>
 
       <div className="px-4 py-5 space-y-6">
 
         {/* 1. App */}
         <section>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">App</p>
-          <div className="bg-card shadow-card rounded-2xl overflow-hidden">
+          <p className="text-xs font-semibold text-white/80 uppercase tracking-wide mb-3">App</p>
+          <div className="glass rounded-[20px] overflow-hidden">
             <button
               onClick={handleAppUpdate}
-              className="w-full flex items-center gap-3 px-4 py-4 text-left active:bg-secondary transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors"
             >
-              <RefreshCw size={18} className="text-muted-foreground shrink-0" />
+              <RefreshCw size={18} className="text-white/85 shrink-0" />
               <div>
-                <p className="text-sm font-medium">App aktualisieren</p>
-                <p className="text-xs text-muted-foreground">Lädt die neueste Version — Cache wird geleert</p>
+                <p className="text-sm font-medium text-white">App aktualisieren</p>
+                <p className="text-xs text-white/70">Lädt die neueste Version — Cache wird geleert</p>
               </div>
             </button>
           </div>
@@ -282,48 +285,48 @@ export default function SettingsPage() {
 
         {/* 2. Karten-Catalog */}
         <section>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Karten-Catalog</p>
-          <div className="bg-card shadow-card rounded-2xl overflow-hidden">
+          <p className="text-xs font-semibold text-white/80 uppercase tracking-wide mb-3">Karten-Catalog</p>
+          <div className="glass rounded-[20px] overflow-hidden">
 
             {syncLoading ? (
               <div className="flex justify-center py-6">
-                <div className="w-6 h-6 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
+                <div className="w-6 h-6 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
               </div>
             ) : (
               <>
                 {/* Status */}
                 <div className="px-4 py-3 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Database size={16} className="text-muted-foreground shrink-0" />
-                    <p className="text-sm font-medium">Sync-Status</p>
+                    <Database size={16} className="text-white/85 shrink-0" />
+                    <p className="text-sm font-medium text-white">Sync-Status</p>
                   </div>
                   {isComplete
-                    ? <span className="flex items-center gap-1 text-xs text-green-500"><CheckCircle size={12} /> Aktuell</span>
+                    ? <span className="flex items-center gap-1 text-xs text-green-300"><CheckCircle size={12} /> Aktuell</span>
                     : hasNew
-                      ? <span className="flex items-center gap-1 text-xs text-yellow-500"><Clock size={12} /> Update verfügbar</span>
+                      ? <span className="flex items-center gap-1 text-xs text-yellow-300"><Clock size={12} /> Update verfügbar</span>
                       : (syncStatus?.syncedTotal ?? 0) === 0
-                        ? <span className="text-xs text-muted-foreground">Noch nicht gestartet</span>
-                        : <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--pokedex-red)' }}><Clock size={12} /> Unvollständig</span>
+                        ? <span className="text-xs text-white/70">Noch nicht gestartet</span>
+                        : <span className="flex items-center gap-1 text-xs text-orange-200"><Clock size={12} /> Unvollständig</span>
                   }
                 </div>
 
                 {/* Fortschrittsbalken */}
                 <div className="px-4 pb-3 space-y-2">
-                  <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+                  <div className="h-1.5 rounded-full bg-white/25 overflow-hidden">
                     <div className="h-full rounded-full transition-all"
-                      style={{ width: `${pct}%`, background: isComplete ? '#48bb78' : 'var(--pokedex-red)' }} />
+                      style={{ width: `${pct}%`, background: isComplete ? '#48bb78' : '#fff' }} />
                   </div>
-                  <div className="flex justify-between text-xs text-muted-foreground">
+                  <div className="flex justify-between text-xs text-white/70">
                     <span>{(syncStatus?.syncedTotal ?? 0).toLocaleString('de-DE')} gecacht</span>
                     <span>{pct}% · {(syncStatus?.currentTotal ?? 0).toLocaleString('de-DE')} gesamt</span>
                   </div>
                   {syncStatus?.lastSynced && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-white/70">
                       Letzter Sync: {new Date(syncStatus.lastSynced).toLocaleString('de-DE')}
                     </p>
                   )}
                   {hasNew && (
-                    <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg bg-yellow-500/10 text-yellow-600">
+                    <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg text-yellow-100" style={{ background: 'rgba(255,255,255,.12)' }}>
                       <AlertCircle size={12} />
                       {syncStatus!.newCards.toLocaleString('de-DE')} neue Karten verfügbar
                     </div>
@@ -333,11 +336,8 @@ export default function SettingsPage() {
                 {/* Fortschritt kombinierter Lauf */}
                 {allProgress && (
                   <div
-                    className="px-4 py-2.5 text-xs font-medium"
-                    style={{
-                      color: allProgress.startsWith('✅') ? '#48bb78' : allProgress.startsWith('Fehler') ? 'var(--pokedex-red)' : 'var(--foreground)',
-                      background: 'color-mix(in srgb, var(--foreground) 4%, transparent)',
-                    }}
+                    className="px-4 py-2.5 text-xs font-medium text-white"
+                    style={{ background: 'rgba(255,255,255,.10)' }}
                   >
                     {allProgress}
                   </div>
@@ -345,7 +345,7 @@ export default function SettingsPage() {
 
                 {/* Ergebnis letzter Sync */}
                 {syncResult && !runningAll && (
-                  <div className="px-4 py-2.5 text-xs text-muted-foreground">
+                  <div className="px-4 py-2.5 text-xs text-white/70">
                     {syncResult}
                   </div>
                 )}
@@ -354,19 +354,18 @@ export default function SettingsPage() {
                 <button
                   onClick={() => runAllSteps(false)}
                   disabled={busy}
-                  className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors active:bg-secondary disabled:opacity-40"
-                  style={{ background: runningAll ? 'color-mix(in srgb, var(--pokedex-red) 6%, transparent)' : undefined }}
+                  className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors disabled:opacity-40 border-t border-white/20 dark:border-white/[.12]"
+                  style={{ background: runningAll ? 'rgba(255,255,255,.10)' : undefined }}
                 >
                   <RefreshCw
                     size={18}
-                    className={`shrink-0 ${runningAll ? 'animate-spin' : ''}`}
-                    style={{ color: 'var(--pokedex-red)' }}
+                    className={`shrink-0 text-white ${runningAll ? 'animate-spin' : ''}`}
                   />
                   <div>
-                    <p className="text-sm font-medium" style={{ color: 'var(--pokedex-red)' }}>
+                    <p className="text-sm font-medium text-white">
                       {runningAll ? 'Läuft…' : 'Daten aktualisieren'}
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-white/70">
                       Neue Karten holen und alle Felder anreichern
                     </p>
                   </div>
@@ -376,12 +375,12 @@ export default function SettingsPage() {
                 <button
                   onClick={() => runAllSteps(true)}
                   disabled={busy}
-                  className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors active:bg-secondary disabled:opacity-40"
+                  className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors disabled:opacity-40 border-t border-white/20 dark:border-white/[.12]"
                 >
-                  <RotateCcw size={18} className="text-orange-500 shrink-0" />
+                  <RotateCcw size={18} className="text-orange-200 shrink-0" />
                   <div>
-                    <p className="text-sm font-medium text-orange-500">Daten neu aufbauen</p>
-                    <p className="text-xs text-muted-foreground">Reset + alle Schritte komplett neu — z. B. nach Schema-Änderung</p>
+                    <p className="text-sm font-medium text-orange-200">Daten neu aufbauen</p>
+                    <p className="text-xs text-white/70">Reset + alle Schritte komplett neu — z. B. nach Schema-Änderung</p>
                   </div>
                 </button>
 
@@ -389,18 +388,18 @@ export default function SettingsPage() {
                 <button
                   onClick={handleRefreshPrices}
                   disabled={refreshingPrices}
-                  className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors active:bg-secondary disabled:opacity-40 border-t border-border"
+                  className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors disabled:opacity-40 border-t border-white/20 dark:border-white/[.12]"
                 >
-                  <RefreshCw size={18} className={`shrink-0 text-blue-500 ${refreshingPrices ? 'animate-spin' : ''}`} />
+                  <RefreshCw size={18} className={`shrink-0 text-blue-200 ${refreshingPrices ? 'animate-spin' : ''}`} />
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-blue-500">
+                    <p className="text-sm font-medium text-blue-200">
                       {refreshingPrices ? 'Preise werden aktualisiert…' : 'Preise jetzt aktualisieren'}
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-white/70">
                       Holt aktuelle Cardmarket/TCGplayer-Preise für deine Sammlung
                     </p>
                     {refreshPricesResult && (
-                      <p className="text-xs text-muted-foreground mt-1 font-mono">{refreshPricesResult}</p>
+                      <p className="text-xs text-white/70 mt-1 font-mono">{refreshPricesResult}</p>
                     )}
                   </div>
                 </button>
@@ -411,13 +410,13 @@ export default function SettingsPage() {
 
         {/* 3. Erscheinungsbild */}
         <section>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Erscheinungsbild</p>
-          <div className="bg-card shadow-card rounded-2xl px-4 py-3 flex items-center justify-between gap-3">
-            <p className="text-sm font-medium">Farbschema</p>
+          <p className="text-xs font-semibold text-white/80 uppercase tracking-wide mb-3">Erscheinungsbild</p>
+          <div className="glass rounded-[20px] px-4 py-3 flex items-center justify-between gap-3">
+            <p className="text-sm font-medium text-white">Farbschema</p>
             {mounted && (
               <div
                 className="flex rounded-full p-0.5"
-                style={{ background: 'var(--secondary)' }}
+                style={{ background: 'rgba(255,255,255,.18)' }}
               >
                 {THEMES.map(({ value, label, icon: Icon }) => {
                   const active = theme === value;
@@ -428,9 +427,9 @@ export default function SettingsPage() {
                       aria-label={label}
                       className="w-9 h-9 rounded-full flex items-center justify-center transition-colors"
                       style={{
-                        background: active ? 'var(--background)' : 'transparent',
-                        color: active ? 'var(--pokedex-red)' : 'var(--muted-foreground)',
-                        boxShadow: active ? '0 1px 3px rgba(0,0,0,0.12)' : undefined,
+                        background: active ? '#fff' : 'transparent',
+                        color: active ? 'var(--pokedex-red)' : 'rgba(255,255,255,.75)',
+                        boxShadow: active ? '0 1px 3px rgba(0,0,0,0.2)' : undefined,
                       }}
                     >
                       <Icon size={18} strokeWidth={active ? 2.5 : 1.8} />
@@ -444,34 +443,34 @@ export default function SettingsPage() {
 
         {/* 4. Gefahren-Zone */}
         <section>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Gefahren-Zone</p>
-          <div className="bg-card shadow-card rounded-2xl overflow-hidden">
+          <p className="text-xs font-semibold text-white/80 uppercase tracking-wide mb-3">Gefahren-Zone</p>
+          <div className="glass rounded-[20px] overflow-hidden">
             <button
               onClick={handleResetCollection}
               disabled={resetting}
-              className="w-full flex items-center gap-3 px-4 py-4 text-left active:bg-secondary transition-colors disabled:opacity-50"
+              className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors disabled:opacity-50"
             >
-              <Trash2 size={18} className="text-red-500 shrink-0" />
+              <Trash2 size={18} className="text-red-300 shrink-0" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-red-500">
+                <p className="text-sm font-medium text-red-300">
                   {confirmStage === 0
                     ? 'Sammlung zurücksetzen'
                     : resetting
                       ? 'Wird gelöscht…'
                       : 'Wirklich? Tippe nochmal zum Bestätigen'}
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-white/70">
                   Löscht alle Karten aus deiner Sammlung. Sammlungs-/Binder-Struktur bleibt erhalten.
                 </p>
                 {resetProgress && (
-                  <p className="text-xs text-muted-foreground mt-1 font-mono">{resetProgress}</p>
+                  <p className="text-xs text-white/70 mt-1 font-mono">{resetProgress}</p>
                 )}
               </div>
             </button>
             {confirmStage === 1 && !resetting && (
               <button
                 onClick={() => setConfirmStage(0)}
-                className="w-full px-4 py-3 text-sm text-muted-foreground border-t border-border active:bg-secondary"
+                className="w-full px-4 py-3 text-sm text-white/70 border-t border-white/20 dark:border-white/[.12]"
               >
                 Abbrechen
               </button>
@@ -481,13 +480,13 @@ export default function SettingsPage() {
 
         {/* 5. Account */}
         <section>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Account</p>
-          <div className="bg-card shadow-card rounded-2xl overflow-hidden">
+          <p className="text-xs font-semibold text-white/80 uppercase tracking-wide mb-3">Account</p>
+          <div className="glass rounded-[20px] overflow-hidden">
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-4 text-left active:bg-secondary transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors"
             >
-              <div className="text-sm font-medium text-red-500">Abmelden</div>
+              <div className="text-sm font-medium text-red-300">Abmelden</div>
             </button>
           </div>
         </section>

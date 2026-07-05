@@ -46,7 +46,9 @@ export function BottomNav() {
   });
 
   const isScanner = pathname === '/scanner';
-  const isHome = pathname === '/';
+  // Glas-Tab-Bar auf allen Screens mit buntem Verlaufs-Hintergrund
+  // (Home + Einstellungen, siehe GlassBackground.tsx).
+  const isHome = pathname === '/' || pathname === '/settings';
 
   // Scanner-State-Sync — Scanner-Page postet ihren Status hierher (muss VOR dem
   // early-return stehen, damit Hook-Reihenfolge konsistent bleibt)
