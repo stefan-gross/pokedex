@@ -46,9 +46,10 @@ export function BottomNav() {
   });
 
   const isScanner = pathname === '/scanner';
-  // Glas-Tab-Bar auf allen Screens mit buntem Verlaufs-Hintergrund
-  // (Home + Einstellungen, siehe GlassBackground.tsx).
-  const isHome = pathname === '/' || pathname === '/settings';
+  // Glas-Tab-Bar auf allen Screens mit buntem Verlaufs-Hintergrund — das ist
+  // inzwischen jede Route außer /scanner (eigenes dunkles Kamera-Chrome),
+  // siehe GlassBackground.tsx / app/(app)/layout.tsx.
+  const isHome = !isScanner;
 
   // Scanner-State-Sync — Scanner-Page postet ihren Status hierher (muss VOR dem
   // early-return stehen, damit Hook-Reihenfolge konsistent bleibt)
@@ -294,10 +295,10 @@ export function BottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              className="flex flex-col items-center gap-0.5 px-3 min-w-[56px]"
-              style={{ color: '#fff', opacity: active ? 1 : 0.75 }}
+              className="flex flex-col items-center gap-0.5 px-3 min-w-[56px] text-[#1E2024] dark:text-white"
+              style={{ opacity: active ? 1 : 0.75 }}
             >
-              <Icon size={22} strokeWidth={active ? 2.6 : 1.8} fill={active ? '#fff' : 'none'} />
+              <Icon size={22} strokeWidth={active ? 2.6 : 1.8} fill={active ? 'currentColor' : 'none'} />
               <span className="text-[10px]" style={{ fontWeight: active ? 700 : 500 }}>{item.label}</span>
             </Link>
           );

@@ -48,7 +48,7 @@ export function SetListItem({
       href={href}
       className={
         isGlass
-          ? `flex items-center gap-3 px-4 py-[13px] transition-colors${separator ? ' border-b border-white/20 dark:border-white/[.12]' : ''}`
+          ? `flex items-center gap-3 px-4 py-[13px] transition-colors${separator ? ' border-b border-[rgba(46,46,50,0.1)] dark:border-white/[.14]' : ''}`
           : `flex items-center gap-3 px-4 py-[13px] active:bg-secondary transition-colors${separator ? ' border-b border-border/30' : ''}`
       }
     >
@@ -75,15 +75,17 @@ export function SetListItem({
       <div className="flex-1 min-w-0 space-y-1.5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0">
-            <span className={`text-sm font-medium truncate ${isGlass ? 'text-white' : ''}`}>{displayName}</span>
+            <span className={`text-sm font-medium truncate ${isGlass ? 'text-[#1E2024] dark:text-white' : ''}`}>{displayName}</span>
             {isSymbolOnlySet && symbolUrl ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img src={symbolUrl} alt={ptcgoCode ?? ''} className="w-[16px] h-[16px] object-contain shrink-0" />
             ) : ptcgoCode && (
               <span
-                className="text-[10px] font-bold rounded-[5px] shrink-0"
+                className={`text-[10px] font-bold rounded-[5px] shrink-0 ${
+                  isGlass ? 'text-[#1E2024] dark:text-white bg-[rgba(30,40,80,0.10)] dark:bg-white/24' : ''
+                }`}
                 style={isGlass
-                  ? { color: '#fff', background: 'rgba(255,255,255,.24)', padding: '1px 5px', letterSpacing: '.03em' }
+                  ? { padding: '1px 5px', letterSpacing: '.03em' }
                   : { color: '#9A9DA6', background: '#F2F2F2', padding: '1px 5px', letterSpacing: '.03em' }
                 }
               >
@@ -93,26 +95,22 @@ export function SetListItem({
           </div>
           {pct != null && (
             <span
-              className="text-[13px] font-bold shrink-0 tabular-nums"
-              style={{ color: isGlass ? '#fff' : 'var(--action-add)' }}
+              className={`text-[13px] font-bold shrink-0 tabular-nums ${isGlass ? 'text-[#1E2024] dark:text-white' : ''}`}
+              style={!isGlass ? { color: 'var(--action-add)' } : undefined}
             >
               {pct}%
             </span>
           )}
         </div>
         <div
-          className={`h-2 rounded-full overflow-hidden ${isGlass ? '' : 'bg-secondary'}`}
-          style={isGlass ? { background: 'rgba(255,255,255,.25)' } : undefined}
+          className={`h-2 rounded-full overflow-hidden ${isGlass ? 'bg-[rgba(30,40,80,0.10)] dark:bg-white/25' : 'bg-secondary'}`}
         >
           <div
-            className="h-full rounded-full transition-all"
-            style={isGlass
-              ? { width: `${pct ?? 0}%`, background: '#fff', boxShadow: '0 0 8px rgba(255,255,255,.6)' }
-              : { width: `${pct ?? 0}%`, background: 'var(--pokedex-red)' }
-            }
+            className={`h-full rounded-full transition-all ${isGlass ? 'bg-[#e53e3e] dark:bg-white dark:shadow-[0_0_8px_rgba(255,255,255,0.6)]' : ''}`}
+            style={{ width: `${pct ?? 0}%`, ...(isGlass ? {} : { background: 'var(--pokedex-red)' }) }}
           />
         </div>
-        <div className={`text-[11px] tabular-nums ${isGlass ? 'text-white/80' : 'text-muted-foreground'}`}>
+        <div className={`text-[11px] tabular-nums ${isGlass ? 'text-[#6B6E77] dark:text-white/80' : 'text-muted-foreground'}`}>
           {owned} / {total ?? '?'} Karten
         </div>
       </div>

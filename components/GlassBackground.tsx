@@ -1,21 +1,34 @@
-/** iOS "Liquid Glass"-Hintergrund — bunter Verlauf + 3 weiche Glows, fix
- *  hinter dem scrollenden Inhalt. Eigene Light-/Dark-Variante (Handoff
- *  design_handoff_home_glass). Wiederverwendet auf allen Glas-Screens
- *  (Dashboard, Login, Einstellungen) — siehe .glass in globals.css. */
+/** iOS "Liquid Glass"-Hintergrund — "Holo-Schimmer" (Handoff
+ *  design_handoff_home_glass, Variante 7c): Grundfläche + diagonaler
+ *  Regenbogen-Sheen (wie TCG-Holo-Folie) + weicher Radial-Glow unten links.
+ *  Fix hinter dem scrollenden Inhalt. Der Sheen ist in Light/Dark identisch
+ *  aufgebaut, nur Grundfläche und Glow-Deckkraft wechseln — siehe .glass in
+ *  globals.css für die dazugehörigen Panel-Werte. Wiederverwendet auf allen
+ *  Screens außer /scanner (eigenes dunkles Kamera-Chrome). */
 export function GlassBackground() {
   return (
     <>
       <div className="fixed inset-0 -z-10 overflow-hidden dark:hidden" aria-hidden="true">
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(160deg,#ff9d6c 0%,#e53e3e 30%,#8b3bd4 62%,#3b6fe0 100%)' }} />
-        <div className="absolute rounded-full" style={{ top: -60, left: -40, width: 280, height: 280, background: 'radial-gradient(circle,#ffd27e,transparent 70%)', opacity: .8 }} />
-        <div className="absolute rounded-full" style={{ bottom: 60, right: -60, width: 300, height: 300, background: 'radial-gradient(circle,#54d6ff,transparent 70%)', opacity: .7 }} />
-        <div className="absolute rounded-full" style={{ top: 340, left: 120, width: 220, height: 220, background: 'radial-gradient(circle,#ff7ac1,transparent 70%)', opacity: .6 }} />
+        <div className="absolute inset-0" style={{ background: '#eef0f7' }} />
+        <div
+          className="absolute inset-0"
+          style={{ background: 'linear-gradient(115deg, transparent 20%, rgba(120,200,255,0.28) 38%, rgba(180,130,255,0.28) 50%, rgba(255,140,200,0.28) 62%, transparent 80%)' }}
+        />
+        <div
+          className="absolute rounded-full"
+          style={{ bottom: -120, left: -120, width: 420, height: 420, background: 'radial-gradient(circle, rgba(150,190,255,0.40), transparent 70%)' }}
+        />
       </div>
       <div className="fixed inset-0 -z-10 overflow-hidden hidden dark:block" aria-hidden="true">
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(160deg,#1c0f26 0%,#2c0f16 34%,#1a1030 64%,#0a1230 100%)' }} />
-        <div className="absolute rounded-full" style={{ top: -60, left: -40, width: 280, height: 280, background: 'radial-gradient(circle,#c0392b,transparent 70%)', opacity: .5 }} />
-        <div className="absolute rounded-full" style={{ bottom: 60, right: -60, width: 300, height: 300, background: 'radial-gradient(circle,#2f7fd6,transparent 70%)', opacity: .5 }} />
-        <div className="absolute rounded-full" style={{ top: 340, left: 120, width: 220, height: 220, background: 'radial-gradient(circle,#a03fb0,transparent 70%)', opacity: .45 }} />
+        <div className="absolute inset-0" style={{ background: '#14121c' }} />
+        <div
+          className="absolute inset-0"
+          style={{ background: 'linear-gradient(115deg, transparent 20%, rgba(120,200,255,0.24) 38%, rgba(180,130,255,0.24) 50%, rgba(255,140,200,0.24) 62%, transparent 80%)' }}
+        />
+        <div
+          className="absolute rounded-full"
+          style={{ bottom: -120, left: -120, width: 420, height: 420, background: 'radial-gradient(circle, rgba(90,180,255,0.35), transparent 70%)' }}
+        />
       </div>
     </>
   );

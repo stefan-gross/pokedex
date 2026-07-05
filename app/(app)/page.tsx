@@ -15,7 +15,6 @@ import { getCountFromServer, collection, query, where } from 'firebase/firestore
 import { db } from '@/lib/firebase/client';
 import { SetListItem } from '@/components/set/SetListItem';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
-import { GlassBackground } from '@/components/GlassBackground';
 import type { CardDoc, BinderDoc } from '@/types';
 
 type SetView = 'recent' | 'complete' | 'favorites';
@@ -147,19 +146,17 @@ export default function DashboardPage() {
 
   return (
     <div className="relative min-h-screen">
-      <GlassBackground />
-
       <div className="px-4 pt-6 pb-4 space-y-5">
 
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.18)' }}>Pokédex</h1>
-          <p className="text-sm text-white/85">Deine Sammlung</p>
+          <h1 className="text-2xl font-bold text-[#1E2024] dark:text-white dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Pokédex</h1>
+          <p className="text-sm text-[#6B6E77] dark:text-white/85">Deine Sammlung</p>
         </div>
         <Link
           href="/settings"
-          className="glass w-[38px] h-[38px] rounded-full flex items-center justify-center text-white"
+          className="glass w-[38px] h-[38px] rounded-full flex items-center justify-center text-[#1E2024] dark:text-white"
           style={{ backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' }}
         >
           <Settings size={20} strokeWidth={1.8} />
@@ -201,9 +198,9 @@ export default function DashboardPage() {
       {!loading && (
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-bold text-white" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>Sets</h2>
+            <h2 className="text-base font-bold text-[#1E2024] dark:text-white dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.25)]">Sets</h2>
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-0.5 p-1 rounded-full bg-white/20 dark:bg-white/10">
+              <div className="flex items-center gap-0.5 p-1 rounded-full bg-[rgba(30,40,80,0.07)] dark:bg-white/10">
                 <ViewBtn active={setView === 'favorites'} onClick={() => setSetView('favorites')} label="Meiste Karten">
                   <Star size={17} />
                 </ViewBtn>
@@ -216,8 +213,8 @@ export default function DashboardPage() {
               </div>
               <Link
                 href="/sets"
-                className="text-sm font-medium text-white rounded-full bg-white/20 dark:bg-white/10"
-                style={{ padding: '5px 12px', border: '1px solid rgba(255,255,255,.35)' }}
+                className="text-sm font-medium text-[#1E2024] dark:text-white rounded-full bg-[rgba(30,40,80,0.06)] dark:bg-white/10 border border-[rgba(30,40,80,0.15)] dark:border-white/35"
+                style={{ padding: '5px 12px' }}
               >
                 Alle
               </Link>
@@ -246,7 +243,7 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="glass rounded-[20px] px-4 py-6 flex flex-col items-center gap-3 text-center">
-              <p className="text-sm text-white/85 dark:text-white/70">
+              <p className="text-sm text-[#6B6E77] dark:text-white/70">
                 {setView === 'favorites'
                   ? 'Noch keine Favoriten — scanne Karten um Sets zu befüllen.'
                   : 'Noch keine Karten in deiner Sammlung.'}
@@ -267,7 +264,7 @@ export default function DashboardPage() {
       {loading && <RecentCardsSkeleton />}
       {!loading && recentCards.length > 0 && (
         <section>
-          <h2 className="text-base font-bold mb-3 text-white" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>Zuletzt hinzugefügt</h2>
+          <h2 className="text-base font-bold mb-3 text-[#1E2024] dark:text-white dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.25)]">Zuletzt hinzugefügt</h2>
           <div className="grid grid-cols-3 gap-2.5">
             {recentCards.map(card => (
               <RecentCard key={card.id} name={card.name} img={card.tcgImageUrl!} onClick={() => openDetail(card)} />
@@ -295,8 +292,8 @@ export default function DashboardPage() {
       {!loading && (cards?.length ?? 0) === 0 && (
         <div className="flex flex-col items-center justify-center pt-16 gap-3 text-center">
           <div className="text-4xl">📦</div>
-          <p className="text-sm font-medium text-white" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.18)' }}>Noch keine Karten</p>
-          <p className="text-xs text-white/80 max-w-[220px]">Scanne deine erste Karte oder suche sie in der Kartendatenbank.</p>
+          <p className="text-sm font-medium text-[#1E2024] dark:text-white dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Noch keine Karten</p>
+          <p className="text-xs text-[#6B6E77] dark:text-white/80 max-w-[220px]">Scanne deine erste Karte oder suche sie in der Kartendatenbank.</p>
           <Link href="/scanner" className="mt-2 px-4 py-2 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--pokedex-red)' }}>
             Karte scannen
           </Link>
@@ -346,20 +343,20 @@ function ValueHero({ totalOwned, thisWeek, totalValue, heroCard }: {
         />
       )}
       <div className="relative">
-        <span className="text-xs font-semibold uppercase text-white/90" style={{ letterSpacing: '.05em' }}>
+        <span className="text-xs font-semibold uppercase text-[#6B6E77] dark:text-white/90" style={{ letterSpacing: '.05em' }}>
           Karten in der Sammlung
         </span>
         <div className="flex items-baseline gap-2 mt-1">
           <span
-            className="tabular-nums text-white"
-            style={{ fontSize: 46, fontWeight: 800, lineHeight: 1, letterSpacing: '-.03em', textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}
+            className="tabular-nums text-[#e53e3e] dark:text-white dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.25)]"
+            style={{ fontSize: 46, fontWeight: 800, lineHeight: 1, letterSpacing: '-.03em' }}
           >
             {(totalOwned ?? 0).toLocaleString('de')}
           </span>
           {thisWeek != null && thisWeek > 0 && (
             <span
-              className="inline-flex items-center gap-0.5 text-xs font-bold rounded-full text-white bg-white/28 dark:bg-[rgba(74,222,128,.16)] dark:text-[#7ee6a0]"
-              style={{ padding: '4px 9px', border: '1px solid rgba(255,255,255,.35)' }}
+              className="inline-flex items-center gap-0.5 text-xs font-bold rounded-full text-[#1E2024] bg-white/60 border border-[rgba(30,40,80,0.15)] dark:bg-[rgba(74,222,128,.16)] dark:text-[#7ee6a0] dark:border-[rgba(126,230,160,0.35)]"
+              style={{ padding: '4px 9px' }}
             >
               <ArrowUp size={12} strokeWidth={3} />
               {thisWeek} diese Woche
@@ -367,9 +364,9 @@ function ValueHero({ totalOwned, thisWeek, totalValue, heroCard }: {
           )}
         </div>
 
-        <div className="flex items-baseline gap-1.5 mt-3.5 pt-3.5 border-t border-white/28 dark:border-white/[.12]">
-          <span className="text-[13px] text-white/85 dark:text-white/70">Geschätzter Wert</span>
-          <span className="text-lg font-extrabold text-white" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}>{valueLabel}</span>
+        <div className="flex items-baseline gap-1.5 mt-3.5 pt-3.5 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]">
+          <span className="text-[13px] text-[#6B6E77] dark:text-white/70">Geschätzter Wert</span>
+          <span className="text-lg font-extrabold text-[#1E2024] dark:text-white dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.25)]">{valueLabel}</span>
         </div>
       </div>
     </div>
@@ -380,8 +377,8 @@ function ValueHero({ totalOwned, thisWeek, totalValue, heroCard }: {
 function StatChip({ label, value }: { label: string; value: string }) {
   return (
     <div className="glass rounded-[16px] px-2 py-3 flex flex-col items-center gap-0.5">
-      <span className="text-[22px] font-extrabold leading-none tabular-nums text-white">{value}</span>
-      <span className="text-[11px] font-medium text-white/85 dark:text-white/70">{label}</span>
+      <span className="text-[22px] font-extrabold leading-none tabular-nums text-[#1E2024] dark:text-white">{value}</span>
+      <span className="text-[11px] font-medium text-[#6B6E77] dark:text-white/70">{label}</span>
     </div>
   );
 }
@@ -393,7 +390,7 @@ function ViewBtn({ active, onClick, label, children }: {
     <button
       onClick={onClick}
       title={label}
-      className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${active ? 'bg-white text-[#e53e3e]' : 'text-white/75'}`}
+      className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${active ? 'bg-white text-[#e53e3e]' : 'text-[#6B6E77] dark:text-white/75'}`}
     >
       {children}
     </button>
@@ -405,13 +402,13 @@ function RecentCard({ name, img, onClick }: { name: string; img: string; onClick
   return (
     <button onClick={onClick} className="flex flex-col items-center gap-1 text-left w-full">
       <div
-        className="w-full aspect-[63/88] rounded-[11px] overflow-hidden bg-white/10"
-        style={{ border: '1px solid rgba(255,255,255,.4)', boxShadow: '0 6px 18px rgba(0,0,0,.25)' }}
+        className="w-full aspect-[63/88] rounded-[11px] overflow-hidden bg-black/5 dark:bg-white/10 border border-[rgba(30,40,80,0.12)] dark:border-white/40"
+        style={{ boxShadow: '0 6px 18px rgba(0,0,0,.18)' }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={img} alt={name} className="w-full h-full object-cover" />
       </div>
-      <span className="text-[11px] font-semibold text-center truncate w-full mt-0.5 text-white">{name}</span>
+      <span className="text-[11px] font-semibold text-center truncate w-full mt-0.5 text-[#1E2024] dark:text-white">{name}</span>
     </button>
   );
 }
@@ -422,7 +419,7 @@ function RecentCard({ name, img, onClick }: { name: string; img: string; onClick
  *  iOS-PWA kann der erste Verbindungsaufbau (Cold-Start), besonders direkt
  *  nach "App aktualisieren" (Service-Worker-Reset), spürbar dauern. */
 function Skel({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-white/25 dark:bg-white/15 rounded ${className ?? ''}`} />;
+  return <div className={`animate-pulse bg-[rgba(30,40,80,0.12)] dark:bg-white/15 rounded ${className ?? ''}`} />;
 }
 
 /** Skeleton für ValueHero — gleiche Maße/Form wie die echte Karte. */
@@ -431,7 +428,7 @@ function ValueHeroSkeleton() {
     <div className="glass rounded-[24px] p-5">
       <Skel className="h-3 w-32 rounded-full" />
       <Skel className="h-11 w-40 rounded-lg mt-2" />
-      <div className="mt-3.5 pt-3.5 border-t border-white/28 dark:border-white/[.12] flex items-center gap-2">
+      <div className="mt-3.5 pt-3.5 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14] flex items-center gap-2">
         <Skel className="h-3.5 w-24 rounded-full" />
         <Skel className="h-4 w-16 rounded-full ml-auto" />
       </div>
@@ -461,7 +458,7 @@ function SetsSkeleton() {
         {[0, 1, 2].map(i => (
           <div
             key={i}
-            className={`flex items-center gap-3 px-4 py-[13px]${i < 2 ? ' border-b border-white/20 dark:border-white/[.12]' : ''}`}
+            className={`flex items-center gap-3 px-4 py-[13px]${i < 2 ? ' border-b border-[rgba(46,46,50,0.1)] dark:border-white/[.14]' : ''}`}
           >
             <Skel className="w-10 h-10 rounded-lg shrink-0" />
             <div className="flex-1 space-y-1.5">

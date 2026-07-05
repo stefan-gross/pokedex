@@ -3001,13 +3001,13 @@ function RecognizedCardLarge({
           getöntem Glas (Handoff design_handoff_scanner_glass, "Info-Sheet"). */}
       {card && (
         <div
-          className="w-full glass flex flex-col items-center gap-2 px-4 py-4"
+          className="w-full glass flex flex-col items-start gap-2 px-4 py-4"
           style={{ borderRadius: 24 }}
         >
-          {/* Logo + Zyklus/Setname als ein Block, zentriert unter der Karte —
-              Logo links, rechts daneben Zyklus- und Setname linksbündig in
-              zwei Zeilen übereinander, beide zusammen so hoch wie das Logo. */}
-          <div className="flex items-center justify-center gap-2.5 max-w-full">
+          {/* Logo + Zyklus/Setname als ein Block — Logo links, rechts daneben
+              Zyklus- und Setname linksbündig in zwei Zeilen übereinander,
+              beide zusammen so hoch wie das Logo. */}
+          <div className="flex items-center justify-start gap-2.5 max-w-full">
             {showLogo ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
@@ -3053,29 +3053,33 @@ function RecognizedCardLarge({
           </div>
 
           <h2
-            className="text-white font-bold text-3xl truncate text-center max-w-full"
+            className="text-white font-bold text-3xl truncate text-left max-w-full"
             style={{ textShadow: '0 2px 12px rgba(0,0,0,0.3)' }}
           >
             {card.name}
           </h2>
-          {(cardNumBase || cardDex) && (
-            <div className="flex items-baseline justify-center gap-2 -mt-1.5 font-mono tabular-nums">
-              {cardNumBase && (
-                <span className="text-white text-sm font-bold">
-                  {cardNumBase}{cardNumTotal && <span className="text-white/60 font-normal">/{cardNumTotal}</span>}
-                </span>
-              )}
-              {cardDex && (
-                <span className="text-white/60 text-sm">{cardDex}</span>
-              )}
-            </div>
-          )}
-          <CardPrice
-            tcgId={card.id}
-            plain
-            fontSize={44}
-            className="text-[#6cb0ff]! [text-shadow:0_2px_12px_rgba(0,0,0,.25)]"
-          />
+          {/* Nummer/Dex links, Preis rechts — eine Zeile, wie im Handoff-
+              Referenzbild (design_handoff_scanner_glass, Info-Sheet). */}
+          <div className="w-full flex items-baseline justify-between gap-2 -mt-1.5">
+            {(cardNumBase || cardDex) && (
+              <div className="flex items-baseline gap-2 font-mono tabular-nums">
+                {cardNumBase && (
+                  <span className="text-white text-sm font-bold">
+                    {cardNumBase}{cardNumTotal && <span className="text-white/60 font-normal">/{cardNumTotal}</span>}
+                  </span>
+                )}
+                {cardDex && (
+                  <span className="text-white/60 text-sm">{cardDex}</span>
+                )}
+              </div>
+            )}
+            <CardPrice
+              tcgId={card.id}
+              plain
+              fontSize={44}
+              className="text-[#6cb0ff]! [text-shadow:0_2px_12px_rgba(0,0,0,.25)] ml-auto"
+            />
+          </div>
         </div>
       )}
 
