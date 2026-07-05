@@ -79,14 +79,39 @@ export function BottomNav() {
     background: 'var(--pokedex-red)',
     boxShadow: '0 4px 20px rgba(220,38,38,0.45)',
   };
-  // Kamera/Pause-Button in der Scanner-FAB-Kapsel: lila statt rot, damit er sich
-  // klar von Löschen (rot) und Hinzufügen (grün) daneben abhebt.
-  const scannerCameraColor = '#8b5cf6';
-  // Rahmen-Kreise (Gooey-Schicht) sind etwas größer als die eigentlichen Buttons
-  // (56px / FAB_SIZE) — der Überstand ergibt den sichtbaren "Ring" pro Kreis.
-  const FRAME_PAD = 1;
-  const FRAME_SIZE = 56 + FRAME_PAD * 2;
-  const FRAME_SIZE_CAM = FAB_SIZE + FRAME_PAD * 2;
+  // Scanner-Aktionsknöpfe: getöntes Glas statt deckender Flächen (Handoff
+  // design_handoff_scanner_glass, "Aktions-Buttons") — Kamera lila (primär,
+  // am größten), Löschen rot, Hinzufügen grün. Gemeinsames Rezept: blur(10px)
+  // saturate(1.4), helle Lichtkante, farbiger Glow.
+  const SCAN_CAM_SIZE = 82;
+  const SCAN_SIDE_SIZE = 66;
+  const SCAN_GAP = 26;
+  const scanGlassBase: React.CSSProperties = {
+    backdropFilter: 'blur(10px) saturate(1.4)',
+    WebkitBackdropFilter: 'blur(10px) saturate(1.4)',
+    borderRadius: 999,
+  };
+  const scanCameraStyle: React.CSSProperties = {
+    ...scanGlassBase,
+    width: SCAN_CAM_SIZE, height: SCAN_CAM_SIZE,
+    background: 'rgba(139,92,246,0.82)',
+    border: '1.5px solid rgba(255,255,255,0.5)',
+    boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.6), 0 0 26px rgba(139,92,246,0.55), 0 6px 20px rgba(0,0,0,0.4)',
+  };
+  const scanDeleteStyle: React.CSSProperties = {
+    ...scanGlassBase,
+    width: SCAN_SIDE_SIZE, height: SCAN_SIDE_SIZE,
+    background: 'rgba(239,68,68,0.82)',
+    border: '1.5px solid rgba(255,255,255,0.45)',
+    boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.55), 0 6px 18px rgba(200,40,40,0.45)',
+  };
+  const scanAddStyle: React.CSSProperties = {
+    ...scanGlassBase,
+    width: SCAN_SIDE_SIZE, height: SCAN_SIDE_SIZE,
+    background: 'rgba(34,197,94,0.82)',
+    border: '1.5px solid rgba(255,255,255,0.45)',
+    boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.55), 0 6px 18px rgba(20,150,70,0.45)',
+  };
 
   // Kompaktere Höhe: 56 px Inhalt + Safe-Area
   const navStyle: React.CSSProperties = {
@@ -152,58 +177,20 @@ export function BottomNav() {
           )}
         </div>
 
-        {/* Mitte: FAB-Kapsel — Kamera/Pause-Button immer sichtbar, roter Löschen-
-            (links) und grüner Hinzufügen-Button (rechts) erscheinen animiert
-            daneben, sobald nutzbar. Zwei übereinanderliegende Schichten mit
-            identischem Slot-Raster: eine geblurrte "Rahmen"-Schicht (dunkle
-            Kreise, etwas größer als die Buttons) darunter erzeugt per Gooey-
-            Effekt den Eindruck von drei überlappenden, ineinander übergehenden
-            Kreisen — die eigentlichen Buttons obendrüber bleiben scharf und in
-            ihren normalen Farben (Rot/Grün/Lila), keine Weichzeichnung auf den
-            Buttons selbst. */}
+        {/* Mitte: drei unabhängige getönte Glas-Kreise (Handoff
+            design_handoff_scanner_glass) — Kamera/Pause-Button immer
+            sichtbar, roter Löschen- (links) und grüner Hinzufügen-Button
+            (rechts) erscheinen animiert daneben, sobald nutzbar. Kein
+            Rahmen/Goo mehr dahinter — jeder Kreis trägt sein eigenes
+            getöntes Glas mit Lichtkante + farbigem Glow. */}
         <div
           className="relative flex items-center justify-center transition-all duration-300"
-          style={{ marginTop: -20, width: FRAME_SIZE_CAM, height: FRAME_SIZE_CAM }}
+          style={{ marginTop: -20, width: SCAN_CAM_SIZE, height: SCAN_CAM_SIZE }}
         >
-          {/* Rahmen-Schicht — schwarze, 50% transparente Rechtecke hinter
-              Löschen/Hinzufügen, klare (scharfe) Kanten, kein Blur/Goo mehr.
-              Genauso hoch wie die Buttons (56px). Beginnen am äußeren Rand
-              von Löschen/Hinzufügen und reichen bis zur Mitte der Kamera —
-              verschwinden dort unter dem Kamera-Button, der ohne eigenen
-              Hintergrund bleibt. Beide Rechtecke zusammen bilden dadurch bei
-              Sichtbarkeit einen durchgehenden Streifen unter der Kapsel. */}
-          <div
-            className="absolute top-1/2"
-            style={{
-              left: -(6 + FRAME_SIZE), right: FRAME_SIZE_CAM / 2, height: 56,
-              borderRadius: '28px 0 0 28px',
-              transform: `translateY(-50%) scale(${scanState.canDelete ? 1 : 0})`,
-              transformOrigin: 'right center',
-              opacity: scanState.canDelete ? 1 : 0,
-              background: 'rgba(0,0,0,0.5)',
-              pointerEvents: 'none',
-              transition: 'transform 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease',
-            }}
-          />
-          <div
-            className="absolute top-1/2"
-            style={{
-              right: -(6 + FRAME_SIZE), left: FRAME_SIZE_CAM / 2, height: 56,
-              borderRadius: '0 28px 28px 0',
-              transform: `translateY(-50%) scale(${scanState.canAdd ? 1 : 0})`,
-              transformOrigin: 'left center',
-              opacity: scanState.canAdd ? 1 : 0,
-              background: 'rgba(0,0,0,0.5)',
-              pointerEvents: 'none',
-              transition: 'transform 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease',
-            }}
-          />
-
-          {/* Icon-Schicht — scharf, Originalfarben, ebenfalls absolut angedockt */}
           <div
             className="absolute top-1/2 flex items-center justify-center overflow-visible"
             style={{
-              width: FRAME_SIZE, height: FRAME_SIZE, right: '100%', marginRight: 6,
+              width: SCAN_SIDE_SIZE, height: SCAN_SIDE_SIZE, right: '100%', marginRight: SCAN_GAP,
               opacity: scanState.canDelete ? 1 : 0,
               transform: `translateY(-50%) scale(${scanState.canDelete ? 1 : 0.4})`,
               transition: 'opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
@@ -213,24 +200,24 @@ export function BottomNav() {
             <button
               onClick={() => window.dispatchEvent(new Event(SCAN_REMOVE_EVENT))}
               aria-label="Aus Sammlung entfernen"
-              className="flex items-center justify-center rounded-full shadow-xl"
-              style={{ width: 56, height: 56, background: '#ef4444' }}
+              className="flex items-center justify-center"
+              style={scanDeleteStyle}
             >
-              <Minus size={26} color="#fff" strokeWidth={3} />
+              <Minus size={28} color="#fff" strokeWidth={3} />
             </button>
           </div>
           <button
             onClick={handleFabClick}
-            className="relative flex items-center justify-center rounded-full shadow-xl"
-            style={{ ...fabStyle, width: FAB_SIZE, height: FAB_SIZE, marginTop: 0, background: scannerCameraColor }}
+            className="relative flex items-center justify-center"
+            style={scanCameraStyle}
             aria-label={scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren'}
           >
-            <FabIcon size={28} color={fabIconColor} fill={!scanState.paused ? '#fff' : 'none'} />
+            <FabIcon size={34} color={fabIconColor} fill={!scanState.paused ? '#fff' : 'none'} />
           </button>
           <div
             className="absolute top-1/2 flex items-center justify-center overflow-visible"
             style={{
-              width: FRAME_SIZE, height: FRAME_SIZE, left: '100%', marginLeft: 6,
+              width: SCAN_SIDE_SIZE, height: SCAN_SIDE_SIZE, left: '100%', marginLeft: SCAN_GAP,
               opacity: scanState.canAdd ? 1 : 0,
               transform: `translateY(-50%) scale(${scanState.canAdd ? 1 : 0.4})`,
               transition: 'opacity 220ms ease, transform 280ms cubic-bezier(.34,1.56,.64,1)',
@@ -240,10 +227,10 @@ export function BottomNav() {
             <button
               onClick={() => window.dispatchEvent(new Event(SCAN_ADD_EVENT))}
               aria-label="Zur Sammlung hinzufügen"
-              className="flex items-center justify-center rounded-full shadow-xl"
-              style={{ width: 56, height: 56, background: 'var(--action-add)' }}
+              className="flex items-center justify-center"
+              style={scanAddStyle}
             >
-              <Plus size={26} color="#fff" strokeWidth={3} />
+              <Plus size={28} color="#fff" strokeWidth={3} />
             </button>
           </div>
         </div>

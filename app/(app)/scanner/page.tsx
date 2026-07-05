@@ -1787,17 +1787,24 @@ export default function ScannerPage() {
         <div className="flex-1 flex justify-center">
           {mode === 'scanning' && (
             <div
-              className="flex rounded-full p-0.5 bg-black/55 backdrop-blur-sm"
-              style={{ border: '1px solid rgba(255,255,255,0.12)' }}
+              className="flex p-1 rounded-full"
+              style={{
+                background: 'rgba(255,255,255,0.12)',
+                backdropFilter: 'blur(18px) saturate(1.5)',
+                WebkitBackdropFilter: 'blur(18px) saturate(1.5)',
+                border: '1px solid rgba(255,255,255,0.24)',
+                boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.35)',
+              }}
             >
               {(['recognize', 'add'] as const).map(m => (
                 <button
                   key={m}
                   onClick={() => { if (m !== scanMode) switchScanMode(m); }}
-                  className="px-3 py-1.5 rounded-full text-xs font-semibold transition-colors"
+                  className="px-[18px] py-2 rounded-full text-sm font-semibold transition-colors"
                   style={{
-                    background: scanMode === m ? 'var(--pokedex-red)' : 'transparent',
-                    color:      scanMode === m ? '#fff' : 'rgba(255,255,255,0.65)',
+                    background: scanMode === m ? 'rgba(229,62,62,0.85)' : 'transparent',
+                    color:      scanMode === m ? '#fff' : 'rgba(255,255,255,0.75)',
+                    boxShadow:  scanMode === m ? 'inset 0 1px 1px rgba(255,255,255,0.5), 0 2px 8px rgba(220,38,38,0.4)' : undefined,
                   }}
                 >
                   {m === 'add' ? 'Mehrere' : 'Einzeln'}
@@ -1810,10 +1817,17 @@ export default function ScannerPage() {
           {mode === 'scanning' && (
             <button
               onClick={handleClose}
-              className="w-9 h-9 flex items-center justify-center rounded-full bg-black/55 backdrop-blur-sm"
+              className="w-[46px] h-[46px] flex items-center justify-center rounded-full"
               aria-label="Scanner schließen"
+              style={{
+                background: 'rgba(255,255,255,0.14)',
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
+                border: '1px solid rgba(255,255,255,0.28)',
+                boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.4)',
+              }}
             >
-              <X size={18} color="#fff" />
+              <X size={20} color="#fff" />
             </button>
           )}
         </div>
@@ -2861,10 +2875,13 @@ function RecognizedCardLarge({
   const statusFlagged = !!job.result?.fakeRisk;
   const cardBorder = statusFlagged
     ? borderStyleFor('none', job.result?.fakeRisk).border
-    : isOwned ? '4px solid #22c55e' : '2.5px solid transparent';
+    : isOwned ? '3px solid #35d15a' : '2.5px solid transparent';
   // Zusätzlicher Glow beim grünen Besitz-Rahmen — reiner Farbrand geht auf bunten
   // Kartenmotiven schnell unter, der Schein macht "schon vorhanden" unmissverständlich.
-  const cardGlow = !statusFlagged && isOwned ? '0 0 0 3px rgba(34,197,94,0.35)' : undefined;
+  // Farbe/Glow-Werte aus dem Glas-Handoff (design_handoff_scanner_glass, Match-Rahmen).
+  const cardGlow = !statusFlagged && isOwned
+    ? '0 0 0 4px rgba(255,255,255,0.2), 0 12px 36px rgba(53,209,90,0.4)'
+    : undefined;
 
   const setCode  = card?.setCode ?? card?.setId?.toUpperCase();
   const seriesDe = card?.series ? (SERIES_NAMES_DE[card.series] ?? card.series) : null;
@@ -2896,13 +2913,20 @@ function RecognizedCardLarge({
       }}
     >
       {/* Debug-Zugang — oben rechts über allem, unabhängig vom Namen (der jetzt
-          unterhalb der Karte steht statt darüber). */}
+          unterhalb der Karte steht statt darüber). Glas-Chip (Handoff
+          design_handoff_scanner_glass, "Bug"-Chip 38px). */}
       <button
         onClick={onDebugTap}
-        className="absolute top-0 right-0 w-8 h-8 flex items-center justify-center rounded-full bg-white/10"
+        className="absolute top-0 right-0 w-[38px] h-[38px] flex items-center justify-center rounded-full"
         aria-label="Debug-Infos anzeigen"
+        style={{
+          background: 'rgba(255,255,255,0.12)',
+          backdropFilter: 'blur(14px)',
+          WebkitBackdropFilter: 'blur(14px)',
+          border: '1px solid rgba(255,255,255,0.22)',
+        }}
       >
-        <Bug size={16} color="#fff" />
+        <Bug size={17} color="#fff" />
       </button>
 
       {/* Karten-Body — die Slot-Zelle (flex-1/min-h-0) füllt per nativer
@@ -2960,8 +2984,11 @@ function RecognizedCardLarge({
             nicht immer auffällt. */}
         {isOwned && ownedCount && (
           <div
-            className="absolute top-2 right-2 flex items-center justify-center min-w-[52px] h-[52px] px-2.5 rounded-full text-xl font-bold"
-            style={{ background: 'rgba(34,197,94,0.9)', color: '#fff' }}
+            className="absolute -top-2 -right-2 flex items-center justify-center min-w-[64px] h-[64px] px-2.5 rounded-full text-[22px] font-bold"
+            style={{
+              background: '#22c55e', color: '#fff',
+              boxShadow: '0 4px 14px rgba(34,197,94,0.5), 0 0 0 4px rgba(0,0,0,0.12)',
+            }}
           >
             ×{ownedCount}
           </div>
@@ -2969,10 +2996,14 @@ function RecognizedCardLarge({
       </div>
       </div>
 
-      {/* Unterhalb der Karte: Set-Zeile, Pokémon-Name — zentriert. Nummer/Dex
-          und Preis stehen links/rechts neben dem +-Button (BottomNav). */}
+      {/* Unterhalb der Karte: Glas-Info-Sheet mit Set-Zeile, Pokémon-Name,
+          Nummer/Dex und Preis — Aufbau unverändert, nur die Chrome wird zu
+          getöntem Glas (Handoff design_handoff_scanner_glass, "Info-Sheet"). */}
       {card && (
-        <div className="w-full flex flex-col items-center gap-2 px-1 -mt-1">
+        <div
+          className="w-full glass flex flex-col items-center gap-2 px-4 py-4"
+          style={{ borderRadius: 24 }}
+        >
           {/* Logo + Zyklus/Setname als ein Block, zentriert unter der Karte —
               Logo links, rechts daneben Zyklus- und Setname linksbündig in
               zwei Zeilen übereinander, beide zusammen so hoch wie das Logo. */}
@@ -3021,7 +3052,10 @@ function RecognizedCardLarge({
             </div>
           </div>
 
-          <h2 className="text-white font-bold text-3xl truncate text-center max-w-full">
+          <h2
+            className="text-white font-bold text-3xl truncate text-center max-w-full"
+            style={{ textShadow: '0 2px 12px rgba(0,0,0,0.3)' }}
+          >
             {card.name}
           </h2>
           {(cardNumBase || cardDex) && (
@@ -3036,7 +3070,12 @@ function RecognizedCardLarge({
               )}
             </div>
           )}
-          <CardPrice tcgId={card.id} plain fontSize={44} className="text-blue-400!" />
+          <CardPrice
+            tcgId={card.id}
+            plain
+            fontSize={44}
+            className="text-[#6cb0ff]! [text-shadow:0_2px_12px_rgba(0,0,0,.25)]"
+          />
         </div>
       )}
 
