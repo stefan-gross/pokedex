@@ -2849,7 +2849,7 @@ function RecognizedCardLarge({
     <div
       className="absolute inset-x-0 z-10 flex flex-col items-center px-4 gap-3"
       style={{
-        top: 'calc(env(safe-area-inset-top, 0px) + 52px)',
+        top: 'calc(env(safe-area-inset-top, 0px) + 64px)',
         // Muss über den grünen +-Button hinausragen, der animiert über die
         // Scanner-FAB hinaus nach oben pokt (siehe BottomNav-Kapsel) — sonst
         // verdeckt der Button den Pokémon-Namen.
@@ -2992,7 +2992,7 @@ function RecognizedCardLarge({
               )}
             </div>
           )}
-          <div style={{ zoom: 2 }}>
+          <div style={{ zoom: 4 }}>
             <CardPrice tcgId={card.id} plain className="text-blue-400!" />
           </div>
         </div>
