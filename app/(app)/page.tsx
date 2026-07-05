@@ -3,10 +3,10 @@
 import Link from 'next/link';
 import { Settings, Star, Clock, Percent, ArrowUp } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
-import { getCards } from '@/lib/firestore/cards';
+import { getCardsRest } from '@/lib/firestore/cards-rest';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
-import { getBinders } from '@/lib/firestore/binders';
-import { getWishlists } from '@/lib/firestore/wishlists';
+import { getBindersRest } from '@/lib/firestore/binders-rest';
+import { getWishlistsRest } from '@/lib/firestore/wishlists-rest';
 import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
 import { getSetById } from '@/lib/firestore/sets';
 import { getRarityGroup } from '@/lib/card-constants';
@@ -40,9 +40,12 @@ export default function DashboardPage() {
   const [detailOwned, setDetailOwned] = useState<CardDoc[]>([]);
 
   useEffect(() => {
-    getCards().then(setCards).catch(() => setCards([]));
-    getBinders().then(setBinders).catch(() => {});
-    getWishlists()
+    // REST statt Firestore-Web-SDK — vermeidet den WebSocket-Cold-Start
+    // (10-20s auf iOS-PWA, besonders nach "App aktualisieren"), siehe
+    // lib/firestore/rest-shared.ts.
+    getCardsRest().then(setCards).catch(() => setCards([]));
+    getBindersRest().then(setBinders).catch(() => {});
+    getWishlistsRest()
       .then(wls => setWishlistCount(wls.reduce((s, w) => s + w.items.filter(i => !i.acquired).length, 0)))
       .catch(() => setWishlistCount(0));
   }, []);
@@ -157,21 +160,36 @@ export default function DashboardPage() {
 
       {/* Wert-Hero + Chip-Streifen */}
       <div className="space-y-3">
-        <ValueHero
-          totalOwned={loading ? null : (totalOwned ?? 0)}
-          thisWeek={thisWeek}
-          totalValue={totalValue}
-          heroCard={heroCard}
-        />
+        {loading ? (
+          <ValueHeroSkeleton />
+        ) : (
+          <ValueHero
+            totalOwned={totalOwned ?? 0}
+            thisWeek={thisWeek}
+            totalValue={totalValue}
+            heroCard={heroCard}
+          />
+        )}
 
         <div className="grid grid-cols-3 gap-2">
-          <StatChip label="Sammlungen" value={loading ? '—' : String(binders.length)} />
-          <StatChip label="Sets" value={loading ? '—' : String(uniqueSets ?? 0)} />
-          <StatChip label="Wunschliste" value={wishlistCount == null ? '—' : String(wishlistCount)} />
+          {loading ? (
+            <>
+              <StatChipSkeleton />
+              <StatChipSkeleton />
+              <StatChipSkeleton />
+            </>
+          ) : (
+            <>
+              <StatChip label="Sammlungen" value={String(binders.length)} />
+              <StatChip label="Sets" value={String(uniqueSets ?? 0)} />
+              <StatChip label="Wunschliste" value={wishlistCount == null ? '—' : String(wishlistCount)} />
+            </>
+          )}
         </div>
       </div>
 
-      {/* Set-Vollständigkeit — immer sichtbar */}
+      {/* Set-Vollständigkeit — Skeleton während des Ladens, danach immer sichtbar */}
+      {loading && <SetsSkeleton />}
       {!loading && (
         <section>
           <div className="flex items-center justify-between mb-3">
@@ -231,7 +249,8 @@ export default function DashboardPage() {
       )}
 
       {/* Zuletzt hinzugefügt */}
-      {recentCards.length > 0 && (
+      {loading && <RecentCardsSkeleton />}
+      {!loading && recentCards.length > 0 && (
         <section>
           <h2 className="text-base font-bold mb-3">Zuletzt hinzugefügt</h2>
           <div className="grid grid-cols-3 gap-2.5">
@@ -250,7 +269,7 @@ export default function DashboardPage() {
           binders={binders}
           onClose={() => setDetailCard(null)}
           onSaved={async () => {
-            const fresh = await getCards().catch(() => [] as CardDoc[]);
+            const fresh = await getCardsRest().catch(() => [] as CardDoc[]);
             setCards(fresh);
             if (detailCard) setDetailOwned(fresh.filter(c => c.tcgId === detailCard.id));
           }}
@@ -384,5 +403,86 @@ function RecentCard({ name, img, onClick }: { name: string; img: string; onClick
       </div>
       <span className="text-[11px] font-semibold text-center truncate w-full mt-0.5">{name}</span>
     </button>
+  );
+}
+
+/** Generischer pulsierender Platzhalter-Balken — Basis aller Skeletons unten.
+ *  Deckt die Ladephase ab, in der `getCards()`/`getBinders()`/`getWishlists()`
+ *  (Firestore-Web-SDK, websocket-basiert) noch keine Antwort haben — auf
+ *  iOS-PWA kann der erste Verbindungsaufbau (Cold-Start), besonders direkt
+ *  nach "App aktualisieren" (Service-Worker-Reset), spürbar dauern. */
+function Skel({ className }: { className?: string }) {
+  return <div className={`animate-pulse bg-secondary rounded ${className ?? ''}`} />;
+}
+
+/** Skeleton für ValueHero — gleiche Maße/Form wie die echte Karte. */
+function ValueHeroSkeleton() {
+  return (
+    <div className="bg-card rounded-[22px] shadow-card p-5">
+      <Skel className="h-3 w-32 rounded-full" />
+      <Skel className="h-11 w-40 rounded-lg mt-2" />
+      <div className="mt-3.5 pt-3.5 border-t border-border/40 flex items-center gap-2">
+        <Skel className="h-3.5 w-24 rounded-full" />
+        <Skel className="h-4 w-16 rounded-full ml-auto" />
+      </div>
+    </div>
+  );
+}
+
+/** Skeleton für StatChip. */
+function StatChipSkeleton() {
+  return (
+    <div className="bg-card rounded-[14px] shadow-card px-2 py-3 flex flex-col items-center gap-1.5">
+      <Skel className="h-5 w-8 rounded-md" />
+      <Skel className="h-2.5 w-14 rounded-full" />
+    </div>
+  );
+}
+
+/** Skeleton für die Sets-Sektion — 3 Zeilen im Stil von SetListItem. */
+function SetsSkeleton() {
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3">
+        <Skel className="h-5 w-14 rounded-md" />
+        <Skel className="h-8 w-28 rounded-full" />
+      </div>
+      <div className="bg-card rounded-2xl shadow-card overflow-hidden">
+        {[0, 1, 2].map(i => (
+          <div
+            key={i}
+            className={`flex items-center gap-3 px-4 py-[13px]${i < 2 ? ' border-b border-border/30' : ''}`}
+          >
+            <Skel className="w-10 h-10 rounded-lg shrink-0" />
+            <div className="flex-1 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <Skel className="h-3.5 w-28 rounded-full" />
+                <Skel className="h-3.5 w-8 rounded-full" />
+              </div>
+              <Skel className="h-2 w-full rounded-full" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** Skeleton für "Zuletzt hinzugefügt" — 6 Karten-Kacheln. */
+function RecentCardsSkeleton() {
+  return (
+    <section>
+      <Skel className="h-5 w-40 rounded-md mb-3" />
+      <div className="grid grid-cols-3 gap-2.5">
+        {[0, 1, 2, 3, 4, 5].map(i => (
+          <div key={i} className="flex flex-col items-center gap-1">
+            <div className="w-full aspect-[63/88] rounded-[11px] overflow-hidden shadow-card">
+              <Skel className="w-full h-full rounded-[11px]" />
+            </div>
+            <Skel className="h-2.5 w-3/4 rounded-full mt-0.5" />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
