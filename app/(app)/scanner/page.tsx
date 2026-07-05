@@ -2850,12 +2850,11 @@ function RecognizedCardLarge({
       className="absolute inset-x-0 z-10 flex flex-col items-center px-4 gap-3"
       style={{
         top: 'calc(env(safe-area-inset-top, 0px) + 64px)',
-        // Muss über den grünen +-Button hinausragen, der animiert über die
-        // Scanner-FAB hinaus nach oben pokt (siehe BottomNav-Kapsel) — sonst
-        // verdeckt der Button den Pokémon-Namen. `bottom` um denselben Betrag
-        // reduziert, um den der `top`-Wert erhöht wurde — sonst schrumpft die
-        // Karte, weil weniger Flex-Höhe für den Bild-Slot übrig bleibt.
-        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 148px)',
+        // Löschen/Hinzufügen erscheinen inzwischen LINKS/RECHTS neben der
+        // Kamera (nicht mehr darüber gestapelt) — der große Abstand von
+        // früher wird nicht mehr gebraucht, nur noch Platz für die FAB-
+        // Kapsel selbst (ragt per marginTop:-20 über die Toolbar hinaus).
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 96px)',
       }}
     >
       {/* Debug-Zugang — oben rechts über allem, unabhängig vom Namen (der jetzt

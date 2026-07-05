@@ -162,55 +162,39 @@ export function BottomNav() {
           className="relative flex items-center justify-center transition-all duration-300"
           style={{ marginTop: -20, width: FRAME_SIZE_CAM, height: FRAME_SIZE_CAM }}
         >
-          {/* SVG-Goo-Filter statt CSS blur+contrast — sauberere, kontrolliertere
-              Metaball-Verschmelzung (klassische "Gooey"-Technik). */}
-          <svg width="0" height="0" style={{ position: 'absolute' }}>
-            <defs>
-              <filter id="fab-goo">
-                <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur" />
-                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -10" result="goo" />
-              </filter>
-            </defs>
-          </svg>
-          {/* Rahmen-Schicht — schwarze, 50% transparente abgerundete Rechtecke
-              hinter Löschen/Hinzufügen (kein Hintergrund hinter der Kamera).
-              Äußere Ecke (weg von der Kamera) = voller Button-Radius (Stadion-
-              Form), innere Ecke (Richtung Kamera) leicht abgerundet. Der
-              Goo-Filter bleibt aktiv, damit die Form beim Ein-/Ausblenden
-              optisch aus dem Kamera-Kreis herausquillt — im Ruhezustand
-              erzeugt derselbe Filter dank Kontrast-Nachschärfung wieder
-              scharfe Kanten. Docken ABSOLUT links/rechts an den Kamera-Kreis
-              an, statt als Flex-Geschwister Breite einzunehmen — so bleibt
-              die Kapsel (und damit der Kamera-Button) immer exakt
-              FRAME_SIZE_CAM breit und dadurch stets zentriert, unabhängig
-              davon, ob gerade 0, 1 oder 2 Zusatz-Buttons sichtbar sind. */}
+          {/* Rahmen-Schicht — schwarze, 50% transparente Rechtecke hinter
+              Löschen/Hinzufügen, klare (scharfe) Kanten, kein Blur/Goo mehr.
+              Genauso hoch wie die Buttons (56px). Beginnen am äußeren Rand
+              von Löschen/Hinzufügen und reichen bis zur Mitte der Kamera —
+              verschwinden dort unter dem Kamera-Button, der ohne eigenen
+              Hintergrund bleibt. Beide Rechtecke zusammen bilden dadurch bei
+              Sichtbarkeit einen durchgehenden Streifen unter der Kapsel. */}
           <div
-            className="absolute inset-0 pointer-events-none"
-            style={{ filter: 'url(#fab-goo)' }}
-          >
-            <div
-              className="absolute top-1/2"
-              style={{
-                width: 90, height: FRAME_SIZE, right: '100%', marginRight: 6,
-                borderRadius: '29px 6px 6px 29px',
-                transform: `translateY(-50%) scale(${scanState.canDelete ? 1 : 0})`,
-                opacity: scanState.canDelete ? 1 : 0,
-                background: 'rgba(0,0,0,0.5)',
-                transition: 'transform 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease',
-              }}
-            />
-            <div
-              className="absolute top-1/2"
-              style={{
-                width: 90, height: FRAME_SIZE, left: '100%', marginLeft: 6,
-                borderRadius: '6px 29px 29px 6px',
-                transform: `translateY(-50%) scale(${scanState.canAdd ? 1 : 0})`,
-                opacity: scanState.canAdd ? 1 : 0,
-                background: 'rgba(0,0,0,0.5)',
-                transition: 'transform 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease',
-              }}
-            />
-          </div>
+            className="absolute top-1/2"
+            style={{
+              left: -(6 + FRAME_SIZE), right: FRAME_SIZE_CAM / 2, height: 56,
+              borderRadius: '28px 0 0 28px',
+              transform: `translateY(-50%) scale(${scanState.canDelete ? 1 : 0})`,
+              transformOrigin: 'right center',
+              opacity: scanState.canDelete ? 1 : 0,
+              background: 'rgba(0,0,0,0.5)',
+              pointerEvents: 'none',
+              transition: 'transform 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease',
+            }}
+          />
+          <div
+            className="absolute top-1/2"
+            style={{
+              right: -(6 + FRAME_SIZE), left: FRAME_SIZE_CAM / 2, height: 56,
+              borderRadius: '0 28px 28px 0',
+              transform: `translateY(-50%) scale(${scanState.canAdd ? 1 : 0})`,
+              transformOrigin: 'left center',
+              opacity: scanState.canAdd ? 1 : 0,
+              background: 'rgba(0,0,0,0.5)',
+              pointerEvents: 'none',
+              transition: 'transform 280ms cubic-bezier(.34,1.56,.64,1), opacity 220ms ease',
+            }}
+          />
 
           {/* Icon-Schicht — scharf, Originalfarben, ebenfalls absolut angedockt */}
           <div
