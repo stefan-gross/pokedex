@@ -71,14 +71,18 @@ export function BottomNav() {
     return pathname.startsWith(href);
   };
 
-  // FAB-Style: rot, ragt deutlich oben aus der Nav heraus
+  // FAB-Style: lila getöntes Glas, ragt deutlich oben aus der Nav heraus —
+  // identisch zum Kamera-Button im Scanmodus (scanCameraStyle).
   const fabStyle: React.CSSProperties = {
     width: FAB_SIZE,
     height: FAB_SIZE,
     marginTop: -20,
     flexShrink: 0,
-    background: 'var(--pokedex-red)',
-    boxShadow: '0 4px 20px rgba(220,38,38,0.45)',
+    background: 'rgba(139,92,246,0.85)',
+    backdropFilter: 'blur(10px) saturate(1.4)',
+    WebkitBackdropFilter: 'blur(10px) saturate(1.4)',
+    border: '1.5px solid rgba(255,255,255,0.5)',
+    boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.6), 0 0 26px rgba(139,92,246,0.55), 0 6px 20px rgba(0,0,0,0.4)',
   };
   // Scanner-Aktionsleiste "12a" (Handoff design_handoff_scanner_bar):
   // schwebende Glas-Leiste im Footernav-Stil, Kamera als überstehender FAB
@@ -232,11 +236,11 @@ export function BottomNav() {
       marginTop: -30,
       borderRadius: 999,
       flexShrink: 0,
-      background: 'rgba(229,62,62,0.82)',
+      background: 'rgba(139,92,246,0.85)',
       backdropFilter: 'blur(10px) saturate(1.4)',
       WebkitBackdropFilter: 'blur(10px) saturate(1.4)',
       border: '1.5px solid rgba(255,255,255,0.5)',
-      boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.65), 0 6px 20px rgba(220,38,38,0.5)',
+      boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.6), 0 0 26px rgba(139,92,246,0.55), 0 6px 20px rgba(0,0,0,0.4)',
     };
     return (
       <nav

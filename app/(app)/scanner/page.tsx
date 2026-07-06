@@ -6,6 +6,7 @@ import { X, Trash2, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangl
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
+import { DeleteFromCollectionModal } from '@/components/scanner/DeleteFromCollectionModal';
 import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
          getCardsByDexNumberRest      as getCardsByDexNumber,
          getCardsByNameAndNumberRest  as getCardsByNameAndNumber } from '@/lib/firestore/catalog-rest';
@@ -400,6 +401,11 @@ export default function ScannerPage() {
   const [quickAddJobId, setQuickAddJobId] = useState<string | null>(null);
   const quickAddJob = jobs.find(j => j.id === quickAddJobId) ?? null;
 
+  // Löschen via -Button: öffnet DeleteFromCollectionModal direkt (kein
+  // CardDetailSheet-Zwischenschritt), analog zum Quick-Add-Modal oben.
+  const [quickDeleteJobId, setQuickDeleteJobId] = useState<string | null>(null);
+  const quickDeleteJob = jobs.find(j => j.id === quickDeleteJobId) ?? null;
+
   // Fehler-Diagnose-Modal (tappbar im Slider + Review-Grid)
   const [errorDetailJobId, setErrorDetailJobId] = useState<string | null>(null);
   const errorDetailJob = jobs.find(j => j.id === errorDetailJobId) ?? null;
@@ -457,9 +463,9 @@ export default function ScannerPage() {
     && !recognizedJob.added
     && recognizedJob.result!.ownedCount !== undefined;
   // Löschen-Button neben dem +-Button: erscheint nur, wenn die erkannte Karte
-  // bereits im Besitz ist. Tap öffnet CardDetailSheet (siehe onRemoveRecognized
-  // unten) — dieselbe Ansicht, die auch beim Antippen der Karte selbst aufgeht,
-  // inkl. bestehender Lösch-UI pro Exemplar (auch bei mehreren Exemplaren).
+  // bereits im Besitz ist. Tap öffnet DeleteFromCollectionModal (siehe
+  // onRemoveRecognized unten) — kompakter Löschen-Drawer mit einer Zeile pro
+  // Exemplar (auch bei mehreren Exemplaren).
   const canDeleteRecognized = !!recognizedCard && (recognizedJob?.result?.ownedCount ?? 0) > 0;
 
   // Events vom BottomNav abonnieren
@@ -474,7 +480,7 @@ export default function ScannerPage() {
       if (recognizedJobId) setQuickAddJobId(recognizedJobId);
     };
     const onRemoveRecognized = () => {
-      if (recognizedJobId) setActiveJobId(recognizedJobId);
+      if (recognizedJobId) setQuickDeleteJobId(recognizedJobId);
     };
     window.addEventListener('scanner-toggle-pause', onTogglePause);
     window.addEventListener('scanner-toggle-mode',  onToggleMode as EventListener);
@@ -1567,7 +1573,7 @@ export default function ScannerPage() {
                             className="text-xs font-bold px-2 py-1.5 rounded inline-block"
                             style={{ background: jCondColor.bg, color: jCondColor.text }}
                           >
-                            {jCurCondition}
+                            {CONDITIONS.find(c => c.value === jCurCondition)?.label ?? jCurCondition}
                           </span>
                           <select
                             value={jCurCondition}
@@ -1578,7 +1584,7 @@ export default function ScannerPage() {
                             aria-label="Zustand ändern"
                           >
                             {CONDITIONS.map(c => (
-                              <option key={c.value} value={c.value}>{c.short}</option>
+                              <option key={c.value} value={c.value}>{c.label}</option>
                             ))}
                           </select>
                         </div>
@@ -2508,6 +2514,27 @@ export default function ScannerPage() {
         />
       )}
 
+      {/* ── Löschen-Drawer (via - Button auf der Tile) ─────────────────
+          Zeigt alle Sammlungen, in denen die Karte steckt, mit Löschen pro
+          Zeile + „Überall löschen" — kein CardDetailSheet-Zwischenschritt. */}
+      {quickDeleteJob?.result?.card && (
+        <DeleteFromCollectionModal
+          card={quickDeleteJob.result.card}
+          fromScanner
+          onClose={() => setQuickDeleteJobId(null)}
+          onDeleted={() => {
+            const tcgId = quickDeleteJob.result!.card!.id;
+            getCardsByTcgId(tcgId).then(copies => {
+              setJobs(prev => prev.map(j =>
+                j.id === quickDeleteJob.id && j.result
+                  ? { ...j, result: { ...j.result, ownedCount: copies.length } }
+                  : j
+              ));
+            });
+          }}
+        />
+      )}
+
       {/* ── Fake-Reasons-Sheet (warum Gemini Fake/Verdacht meldet) ─────── */}
       {fakeReasonsJob?.result && (fakeReasonsJob.result.fakeRisk === 'medium' || fakeReasonsJob.result.fakeRisk === 'high') && (
         <div
@@ -2753,7 +2780,12 @@ function ScannedCardTile({
           </div>
         )}
 
-        {/* Condition-Pill (top-right) */}
+        {/* Condition-Pill (top-right) — Kurzcode statt Vollname: die Pille sitzt
+            frei schwebend in der linken oberen bzw. hier rechten oberen Ecke
+            einer sehr schmalen Slider-Kachel (~80-170px) neben der ebenfalls
+            frei schwebenden Varianten-Pille; "Near Mint" würde mit "Standard"
+            kollidieren. Das ausgeschriebene Label steht trotzdem im nativen
+            Auswahl-Menü (Vollbild-Picker, kein Platzproblem). */}
         {card && (
           <div className="absolute top-0.5 right-0.5">
             <span
@@ -2770,7 +2802,7 @@ function ScannedCardTile({
               aria-label="Zustand ändern"
             >
               {CONDITIONS.map(c => (
-                <option key={c.value} value={c.value}>{c.short}</option>
+                <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
           </div>
@@ -2875,12 +2907,12 @@ function RecognizedCardLarge({
   const statusFlagged = !!job.result?.fakeRisk;
   const cardBorder = statusFlagged
     ? borderStyleFor('none', job.result?.fakeRisk).border
-    : isOwned ? '3px solid #35d15a' : '2.5px solid transparent';
+    : isOwned ? '1.5px solid #35d15a' : '2.5px solid transparent';
   // Zusätzlicher Glow beim grünen Besitz-Rahmen — reiner Farbrand geht auf bunten
   // Kartenmotiven schnell unter, der Schein macht "schon vorhanden" unmissverständlich.
   // Farbe/Glow-Werte aus dem Glas-Handoff (design_handoff_scanner_glass, Match-Rahmen).
   const cardGlow = !statusFlagged && isOwned
-    ? '0 0 0 4px rgba(255,255,255,0.2), 0 12px 36px rgba(53,209,90,0.4)'
+    ? '0 0 0 1.5px rgba(255,255,255,0.2), 0 8px 24px rgba(53,209,90,0.35)'
     : undefined;
 
   const setCode  = card?.setCode ?? card?.setId?.toUpperCase();

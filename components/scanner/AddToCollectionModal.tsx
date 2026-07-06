@@ -2,48 +2,82 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Search, ChevronDown, Check } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import type { CardInfo } from '@/lib/card-info';
-import type { CardCondition, CardLanguage, CardVariant } from '@/types';
-import { addCard } from '@/lib/firestore/cards';
+import type { CardCondition, CardLanguage, CardVariant, CardDoc, BinderDoc } from '@/types';
+import { addCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { getBinders, addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
 import { LANGUAGES, CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
 import { CardPrice } from '@/components/card/CardPrice';
-import type { BinderDoc } from '@/types';
+import { BinderIcon } from '@/lib/binder-icons';
 
 const CLOSE_ANIM_MS = 250;
+
+const CONDITION_COLOR: Record<string, string> = {
+  NM: '#48bb78', LP: '#facc15', MP: '#fb923c', HP: '#f87171', Poor: '#9ca3af',
+};
 
 interface Props {
   card: CardInfo;
   preVariant?: CardVariant;
   preCondition?: CardCondition;
   preLanguage?: CardLanguage;
+  /** Scanner liegt immer über dem Kamerabild — Drawer dort unabhängig vom
+   *  App-Theme immer dunkel darstellen (via erzwungener `.dark`-Klasse). */
   fromScanner?: boolean;
   onClose: () => void;
   onSaved: () => void;
 }
 
+/** Ein Hinzufügen-Drawer für die ganze App (Scanner, Suche, Kartendetail) —
+ *  Liquid-Glass-Design, folgt dem App-Theme; im Scanner per erzwungener
+ *  `.dark`-Klasse immer dunkel (siehe Handoff design_handoff_add_drawer). */
 export function AddToCollectionModal({
   card, preVariant, preCondition, preLanguage,
   fromScanner = false,
   onClose, onSaved,
 }: Props) {
-  // fromScanner = dunkles Liquid-Glass-Sheet (Handoff design_handoff_add_drawer,
-  // "13c") statt des normalen hellen Bottom-Sheets — der Scanner liegt immer
-  // über dem Kamerabild, deshalb hier immer Dark, unabhängig vom App-Theme.
-  const isGlass = fromScanner;
   const [variant, setVariant] = useState<CardVariant>(preVariant ?? (card.variants?.[0] as CardVariant) ?? 'standard');
   const variantOptions: CardVariant[] = (card.variants && card.variants.length > 0 ? card.variants : ['standard']) as CardVariant[];
   const [condition, setCondition] = useState<CardCondition>(preCondition ?? 'NM');
   const [language, setLanguage] = useState<CardLanguage>(preLanguage ?? 'de');
-  // Explizite Sammlungs-Auswahl (ohne Default). Leer = „Meine Sammlung" wird beim Speichern genutzt.
-  const [selectedBinders, setSelectedBinders] = useState<string[]>([]);
-  const [binders, setBinders] = useState<BinderDoc[]>([]);
+
+  const [allBinders, setAllBinders] = useState<BinderDoc[]>([]);
+  const [ownedCopies, setOwnedCopies] = useState<CardDoc[]>([]);
+
+  // Sammlungen, die genau dieses Exemplar (Zustand+Sprache+Variante) schon
+  // enthalten, werden nicht mehr angeboten — sonst könnte man ein exaktes
+  // Duplikat in dieselbe Sammlung doppelt einsortieren. '' = Default-Binder.
+  const matchingBinderIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const copy of ownedCopies) {
+      if (copy.variant !== variant || copy.condition !== condition || copy.language !== language) continue;
+      const binder = allBinders.find(b => b.cardIds.includes(copy.id));
+      // Der echte Default-Binder (isDefault) zählt genauso als Sentinel '' wie
+      // "in gar keinem Binder" — beides zeigt in der UI als "Meine Sammlung".
+      ids.add(binder && !binder.isDefault ? binder.id : '');
+    }
+    return ids;
+  }, [ownedCopies, allBinders, variant, condition, language]);
+
+  const binderOptions = useMemo(
+    () => allBinders.filter(b => !b.isDefault && !matchingBinderIds.has(b.id)),
+    [allBinders, matchingBinderIds]
+  );
+  // Fallback: Default-Option bleibt sichtbar, wenn sonst keine Sammlung übrig wäre
+  // (verhindert ein leeres Dropdown, falls jede Sammlung diese Kombination schon hat).
+  const showDefaultOption = !matchingBinderIds.has('') || binderOptions.length === 0;
+
+  // '' = Default-Binder „Meine Sammlung" (vorausgewählt)
+  const [selectedBinderId, setSelectedBinderId] = useState<string>('');
+  useEffect(() => {
+    const validIds = new Set([...(showDefaultOption ? [''] : []), ...binderOptions.map(b => b.id)]);
+    if (!validIds.has(selectedBinderId)) {
+      setSelectedBinderId(showDefaultOption ? '' : (binderOptions[0]?.id ?? ''));
+    }
+  }, [selectedBinderId, binderOptions, showDefaultOption]);
+
   const [saving, setSaving] = useState(false);
-  // Binder-Picker (Combobox): aufklappbarer Panel mit Suche + verfügbaren Sammlungen
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerSearch, setPickerSearch] = useState('');
-  const pickerInputRef = useRef<HTMLInputElement>(null);
 
   // Slide-In + Swipe-Down — gleiche Mechanik wie CardDetailSheet
   const [visible, setVisible] = useState(false);
@@ -51,22 +85,19 @@ export function AddToCollectionModal({
   const dragStartYRef = useRef<number | null>(null);
 
   useEffect(() => {
-    // Mount → next frame visible setzen, damit die Slide-In-Transition läuft
     const r = requestAnimationFrame(() => setVisible(true));
     return () => cancelAnimationFrame(r);
   }, []);
+
+  useEffect(() => {
+    getBinders().then(setAllBinders).catch(() => {});
+    getCardsByTcgId(card.id).then(setOwnedCopies).catch(() => {});
+  }, [card.id]);
 
   const handleClose = () => {
     setVisible(false);
     setTimeout(onClose, CLOSE_ANIM_MS);
   };
-
-  useEffect(() => {
-    // Nur echte Sammlungen laden — Default-Binder ist virtuell
-    getBinders()
-      .then(b => setBinders(b.filter(x => !x.isDefault)))
-      .catch(() => {});
-  }, []);
 
   const save = async () => {
     setSaving(true);
@@ -89,43 +120,14 @@ export function AddToCollectionModal({
         quantity: 1,
         tcgImageUrl: card.imgLargeDe || card.imgLarge,
       });
-      // Wenn explizite Sammlungen gewählt sind, NUR diese — sonst Default-Binder.
-      if (selectedBinders.length === 0) {
-        const defaultId = await ensureDefaultBinder();
-        await addCardToBinder(defaultId, cardId);
-      } else {
-        for (const id of selectedBinders) {
-          await addCardToBinder(id, cardId);
-        }
-      }
+      const binderId = selectedBinderId || await ensureDefaultBinder();
+      await addCardToBinder(binderId, cardId);
       onSaved();
     } catch (err) {
       console.error('Save error:', err);
     } finally {
       setSaving(false);
     }
-  };
-
-  // Picker zeigt nur echte Binder — der Default-Binder „Meine Sammlung" ist
-  // nicht selektierbar (er ist der Fallback, wenn die Liste leer ist).
-  const availableOptions = useMemo(() => {
-    const s = pickerSearch.trim().toLowerCase();
-    return binders
-      .filter(b => !selectedBinders.includes(b.id))
-      .filter(b => !s || b.name.toLowerCase().includes(s));
-  }, [binders, selectedBinders, pickerSearch]);
-  const selectedDocs = selectedBinders
-    .map(id => binders.find(b => b.id === id))
-    .filter(Boolean) as BinderDoc[];
-
-  const addBinder = (id: string) => {
-    setSelectedBinders(prev => prev.includes(id) ? prev : [...prev, id]);
-    setPickerSearch('');
-    // Picker offen lassen, falls Stefan mehrere hinzufügen will — schließt erst per Tap außerhalb
-    pickerInputRef.current?.focus();
-  };
-  const removeBinder = (id: string) => {
-    setSelectedBinders(prev => prev.filter(x => x !== id));
   };
 
   const sheetTransition = dragStartYRef.current != null ? 'none' : `transform ${CLOSE_ANIM_MS}ms ease-out`;
@@ -136,36 +138,25 @@ export function AddToCollectionModal({
   // lokal verglichen und kann nie über Geschwister-Elemente wie die BottomNav
   // hinausragen, egal wie hoch der Wert ist).
   return createPortal((
-    <div className="fixed inset-0 z-[100] flex items-end">
+    <div className={fromScanner ? 'dark fixed inset-0 z-[100] flex items-end' : 'fixed inset-0 z-[100] flex items-end'}>
       <div
-        className={isGlass
-          ? 'absolute inset-0 transition-opacity duration-[250ms] [backdrop-filter:saturate(0.5)_brightness(0.42)_blur(2px)] [-webkit-backdrop-filter:saturate(0.5)_brightness(0.42)_blur(2px)]'
-          : 'absolute inset-0 bg-black/60 transition-opacity duration-[250ms]'}
-        style={{ opacity: visible ? 1 : 0, ...(isGlass ? { background: 'rgba(8,7,12,0.35)' } : {}) }}
+        className="absolute inset-0 transition-opacity duration-[250ms] bg-[rgba(240,242,248,0.5)] [backdrop-filter:saturate(0.55)_brightness(1.06)_blur(2px)] [-webkit-backdrop-filter:saturate(0.55)_brightness(1.06)_blur(2px)] dark:bg-[rgba(8,7,12,0.35)] dark:[backdrop-filter:saturate(0.5)_brightness(0.42)_blur(2px)] dark:[-webkit-backdrop-filter:saturate(0.5)_brightness(0.42)_blur(2px)]"
+        style={{ opacity: visible ? 1 : 0 }}
         onClick={handleClose}
       />
 
       <div
-        className={isGlass ? 'relative w-full' : 'relative w-full rounded-t-2xl bg-card border-t border-border p-4 pb-safe'}
+        className="relative w-full rounded-t-[26px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(28,29,38,0.4)] border-t border-[rgba(255,255,255,0.85)] dark:border-[rgba(255,255,255,0.18)] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] dark:shadow-[0_-12px_40px_rgba(0,0,0,0.5)] [backdrop-filter:blur(34px)_saturate(1.5)] [-webkit-backdrop-filter:blur(34px)_saturate(1.5)] max-h-[90dvh] flex flex-col text-foreground"
         style={{
           transform: visible ? `translateY(${dragY}px)` : 'translateY(100%)',
           transition: sheetTransition,
-          ...(isGlass
-            ? {
-                background: 'rgba(28,29,38,0.4)',
-                backdropFilter: 'blur(34px) saturate(1.5)',
-                WebkitBackdropFilter: 'blur(34px) saturate(1.5)',
-                borderTop: '1px solid rgba(255,255,255,0.18)',
-                borderRadius: '26px 26px 0 0',
-                boxShadow: '0 -12px 40px rgba(0,0,0,0.5)',
-                padding: '12px 18px calc(22px + env(safe-area-inset-bottom, 0px))',
-              }
-            : {}),
+          padding: '12px 18px calc(22px + env(safe-area-inset-bottom, 0px))',
+          colorScheme: fromScanner ? 'dark' : undefined,
         }}
       >
         {/* Handle — Swipe-Down zum Schließen */}
         <div
-          className="flex items-center justify-center -mt-1 mb-3 py-2 cursor-grab"
+          className="flex items-center justify-center -mt-1 mb-3 py-2 cursor-grab shrink-0"
           style={{ touchAction: 'none' }}
           onPointerDown={e => {
             dragStartYRef.current = e.clientY;
@@ -187,247 +178,100 @@ export function AddToCollectionModal({
           }}
           onPointerCancel={() => { dragStartYRef.current = null; setDragY(0); }}
         >
-          <div className={isGlass ? 'w-9 h-1 rounded-full bg-white/30' : 'w-10 h-1 rounded-full bg-border'} />
+          <div className="w-9 h-1 rounded-full bg-[rgba(46,46,50,0.2)] dark:bg-white/30" />
         </div>
 
-        {/* Karten-Zeile — nur im Scanner-Glas-Drawer (Handoff design_handoff_add_drawer) */}
-        {isGlass && (
-          <div
-            className="flex items-center gap-3 pb-[14px] mb-4"
-            style={{ borderBottom: '1px solid rgba(255,255,255,0.12)' }}
-          >
+        <div className="overflow-y-auto">
+          {/* Karten-Zeile */}
+          <div className="flex items-center gap-3 pb-[14px] mb-4 border-b border-[rgba(46,46,50,0.1)] dark:border-white/10">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={card.imgSmallDe || card.imgSmall}
               alt={card.name}
-              className="w-10 h-14 rounded-[6px] object-cover shrink-0"
+              className="w-10 h-14 rounded-[3px] object-cover shrink-0"
             />
             <div className="min-w-0">
-              <div className="text-base font-bold text-white truncate">{card.name}</div>
-              <div className="text-xs text-white/60 truncate">{card.setName} · {card.number}</div>
+              <div className="text-base font-bold truncate">{card.name}</div>
+              <div className="text-xs text-muted-foreground truncate">{card.setName} · {card.number}</div>
             </div>
             <CardPrice tcgId={card.id} plain fontSize={15} className="ml-auto text-[#6cb0ff]! font-extrabold shrink-0" />
           </div>
-        )}
 
-        {/* Variante + Zustand + Sprache */}
-        <div className="grid grid-cols-3 gap-2 mb-3" style={isGlass ? { gap: 10, marginBottom: 16 } : undefined}>
-          {isGlass ? (
-            <>
-              <GlassSelect label="Variante" value={variant} onChange={v => setVariant(v as CardVariant)} disabled={variantOptions.length <= 1}>
-                {variantOptions.map(v => <option key={v} value={v}>{VARIANT_LABELS[v]}</option>)}
-              </GlassSelect>
-              <GlassSelect label="Zustand" value={condition} onChange={v => setCondition(v as CardCondition)}>
-                {CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.short}</option>)}
-              </GlassSelect>
-              <GlassSelect label="Sprache" value={language} onChange={v => setLanguage(v as CardLanguage)}>
-                {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
-              </GlassSelect>
-            </>
-          ) : (
-            <>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">Variante</span>
-                <select
-                  value={variant}
-                  onChange={e => setVariant(e.target.value as CardVariant)}
-                  className="h-9 rounded-lg border border-border bg-secondary px-2 text-sm"
-                  disabled={variantOptions.length <= 1}
-                >
-                  {variantOptions.map(v => <option key={v} value={v}>{VARIANT_LABELS[v]}</option>)}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">Zustand</span>
-                <select
-                  value={condition}
-                  onChange={e => setCondition(e.target.value as CardCondition)}
-                  className="h-9 rounded-lg border border-border bg-secondary px-2 text-sm"
-                >
-                  {CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.short}</option>)}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">Sprache</span>
-                <select
-                  value={language}
-                  onChange={e => setLanguage(e.target.value as CardLanguage)}
-                  className="h-9 rounded-lg border border-border bg-secondary px-2 text-sm"
-                >
-                  {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
-                </select>
-              </label>
-            </>
-          )}
-        </div>
-
-        {/* Sammlung — Mehrfach-Auswahl mit Pills + Combobox-Picker.
-            Wenn nichts explizit gewählt ist, zeigt eine gedimmte „Meine Sammlung"-
-            Pill den Default-Fallback an. Diese Pill ist nicht entfernbar. */}
-        <div className="mb-4">
-          <div className={isGlass ? 'text-[12px] font-semibold text-white/60 mb-2' : 'text-xs text-muted-foreground mb-1.5'}>Sammlung</div>
-          <div className="flex flex-wrap items-center gap-1.5" style={isGlass ? { gap: 10 } : undefined}>
-            {selectedDocs.length === 0 ? (
-              isGlass ? (
-                <span
-                  className="inline-flex items-center gap-1.5 rounded-full text-sm font-semibold text-white"
-                  style={{ padding: '10px 16px', background: 'rgba(34,197,94,0.85)' }}
-                  title="Standard — wenn keine Sammlung gewählt ist"
-                >
-                  <Check size={14} strokeWidth={3} />
-                  <span>Meine Sammlung</span>
-                </span>
-              ) : (
-                <span
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-dashed text-sm"
-                  style={{
-                    borderColor: 'var(--border)',
-                    background: 'var(--secondary)',
-                    color: 'var(--muted-foreground)',
-                  }}
-                  title="Standard — wenn keine Sammlung gewählt ist"
-                >
-                  <span>Meine Sammlung</span>
-                </span>
-              )
-            ) : (
-              selectedDocs.map(b => (
-                isGlass ? (
-                  <span
-                    key={b.id}
-                    className="inline-flex items-center gap-1.5 rounded-full text-sm font-semibold text-white"
-                    style={{ padding: '10px 10px 10px 16px', background: 'rgba(34,197,94,0.85)' }}
-                  >
-                    {b.icon ? <span>{b.icon}</span> : <Check size={14} strokeWidth={3} />}
-                    <span>{b.name}</span>
-                    <button
-                      onClick={() => removeBinder(b.id)}
-                      className="rounded-full p-0.5 hover:bg-black/15"
-                      aria-label={`${b.name} entfernen`}
-                    >
-                      <X size={12} />
-                    </button>
-                  </span>
-                ) : (
-                  <span
-                    key={b.id}
-                    className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full border text-sm"
-                    style={{
-                      borderColor: 'var(--pokedex-red)',
-                      background: 'rgba(229,62,62,.1)',
-                      color: 'var(--pokedex-red)',
-                    }}
-                  >
-                    {b.icon && <span>{b.icon}</span>}
-                    <span>{b.name}</span>
-                    <button
-                      onClick={() => removeBinder(b.id)}
-                      className="rounded-full p-0.5 hover:bg-black/10"
-                      aria-label={`${b.name} entfernen`}
-                    >
-                      <X size={12} />
-                    </button>
-                  </span>
-                )
-              ))
-            )}
-            {availableOptions.length > 0 && (
-              isGlass ? (
-                <button
-                  onClick={() => setPickerOpen(o => !o)}
-                  className="inline-flex items-center gap-1 rounded-full text-sm text-white/70"
-                  style={{ padding: '10px 16px', border: '1.5px dashed rgba(255,255,255,0.3)' }}
-                  aria-label="Sammlung hinzufügen"
-                >
-                  <Plus size={14} />
-                  <span>Hinzufügen</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => setPickerOpen(o => !o)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-dashed border-border text-sm text-muted-foreground"
-                  aria-label="Sammlung hinzufügen"
-                >
-                  <Plus size={14} />
-                  <span>Hinzufügen</span>
-                </button>
-              )
-            )}
+          {/* Zustand + Sprache — je 50% */}
+          <div className="grid grid-cols-2 gap-2.5 mb-2.5">
+            <ThemedSelect label="Zustand" value={condition} onChange={v => setCondition(v as CardCondition)}>
+              {CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </ThemedSelect>
+            <ThemedSelect label="Sprache" value={language} onChange={v => setLanguage(v as CardLanguage)}>
+              {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+            </ThemedSelect>
           </div>
 
-          {pickerOpen && availableOptions.length > 0 && (
-            <div
-              className={isGlass ? 'mt-2 rounded-xl overflow-hidden' : 'mt-2 rounded-xl border border-border bg-secondary overflow-hidden'}
-              style={isGlass ? { background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.16)' } : undefined}
-              onPointerDown={e => e.stopPropagation()}
-            >
-              <div
-                className={isGlass ? 'flex items-center gap-2 px-3 py-2' : 'flex items-center gap-2 px-3 py-2 border-b border-border'}
-                style={isGlass ? { borderBottom: '1px solid rgba(255,255,255,0.12)' } : undefined}
-              >
-                <Search size={14} className={isGlass ? 'text-white/60 shrink-0' : 'text-muted-foreground shrink-0'} />
-                <input
-                  ref={pickerInputRef}
-                  type="text"
-                  value={pickerSearch}
-                  onChange={e => setPickerSearch(e.target.value)}
-                  placeholder="Sammlung suchen…"
-                  className={isGlass ? 'flex-1 bg-transparent text-sm outline-none text-white placeholder-white/40' : 'flex-1 bg-transparent text-sm outline-none'}
-                  autoFocus
-                />
-                <button
-                  onClick={() => { setPickerOpen(false); setPickerSearch(''); }}
-                  className={isGlass ? 'rounded-full p-1 text-white/60' : 'rounded-full p-1 text-muted-foreground'}
-                  aria-label="Picker schließen"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-              <div className="max-h-48 overflow-y-auto">
-                {availableOptions.length === 0 ? (
-                  <div className={isGlass ? 'px-3 py-3 text-sm text-white/60 text-center' : 'px-3 py-3 text-sm text-muted-foreground text-center'}>
-                    Keine weiteren Sammlungen
-                  </div>
-                ) : (
-                  availableOptions.map(o => (
-                    <button
-                      key={o.id}
-                      onClick={() => addBinder(o.id)}
-                      className={isGlass
-                        ? 'w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-white hover:bg-white/10 active:bg-white/10'
-                        : 'w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-card active:bg-card'}
+          {/* Variante — 100% */}
+          <div className="mb-4">
+            <ThemedSelect label="Variante" value={variant} onChange={v => setVariant(v as CardVariant)} disabled={variantOptions.length <= 1}>
+              {variantOptions.map(v => <option key={v} value={v}>{VARIANT_LABELS[v]}</option>)}
+            </ThemedSelect>
+          </div>
+
+          {/* Bereits vorhanden — eine Zeile pro Exemplar, ohne Anzahl-Badge */}
+          {ownedCopies.length > 0 && (
+            <div className="flex flex-col gap-1.5 mb-4">
+              {ownedCopies.map(copy => {
+                const binder = allBinders.find(b => b.cardIds.includes(copy.id));
+                const binderName = binder?.name ?? 'Meine Sammlung';
+                const binderColor = binder?.color ?? 'var(--muted-foreground)';
+                const condColor = CONDITION_COLOR[copy.condition] ?? 'var(--muted-foreground)';
+                return (
+                  <div
+                    key={copy.id}
+                    className="glass-inner flex items-center gap-2.5 rounded-xl px-3 py-2"
+                    style={{ background: `color-mix(in srgb, ${binderColor} 16%, transparent)` }}
+                  >
+                    <div
+                      className="w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0"
+                      style={{ background: `color-mix(in srgb, ${binderColor} 20%, transparent)` }}
                     >
-                      {o.icon && <span>{o.icon}</span>}
-                      <span>{o.name}</span>
-                    </button>
-                  ))
-                )}
-              </div>
+                      <BinderIcon name={binder?.icon ?? 'folder'} size={18} style={{ color: binderColor }} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold truncate">{binderName}</div>
+                      <div className="text-[12px] text-muted-foreground truncate">
+                        <span style={{ color: condColor, fontWeight: 600 }}>{CONDITIONS.find(c => c.value === copy.condition)?.label ?? copy.condition}</span>
+                        {' · '}{copy.language.toUpperCase()}{' · '}{VARIANT_LABELS[copy.variant]}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
+
+          {/* Sammlung — Single-Select, Default vorausgewählt */}
+          <div className="mb-4">
+            <ThemedSelect label="Sammlung" value={selectedBinderId} onChange={setSelectedBinderId}>
+              {showDefaultOption && <option value="">Meine Sammlung</option>}
+              {binderOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </ThemedSelect>
+          </div>
         </div>
 
         <button
           onClick={save}
           disabled={saving}
-          className={isGlass
-            ? 'w-full rounded-[15px] font-bold text-white disabled:opacity-50 transition-opacity'
-            : 'w-full h-11 rounded-md font-semibold text-sm text-white disabled:opacity-50 transition-opacity'}
-          style={isGlass
-            ? { height: 54, fontSize: 17, background: '#22c55e', boxShadow: '0 6px 20px rgba(34,197,94,0.4)' }
-            : { background: 'var(--action-add)' }}
+          className="w-full rounded-[15px] font-bold text-white disabled:opacity-50 transition-opacity shrink-0"
+          style={{ height: 54, fontSize: 17, background: '#22c55e', boxShadow: '0 6px 20px rgba(34,197,94,0.4)' }}
         >
-          {saving ? 'Wird gespeichert…' : 'Zur Sammlung hinzufügen'}
+          {saving ? 'Wird gespeichert…' : 'Hinzufügen'}
         </button>
       </div>
     </div>
   ), document.body);
 }
 
-/** Glas-Select fürs Scanner-Hinzufügen-Drawer — nativer <select> mit
- *  getöntem Glas-Look + eigenem Chevron (Browser-Pfeil per appearance:none
- *  ausgeblendet). Popup-Darstellung bleibt nativ (iOS-Radlist etc.). */
-function GlassSelect({ label, value, onChange, disabled, children }: {
+/** Themen-bewusster <select> — nutzt `.glass-inner` (folgt Light/Dark automatisch,
+ *  im Scanner via erzwungener `.dark`-Klasse immer dunkel). */
+function ThemedSelect({ label, value, onChange, disabled, children }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
@@ -435,23 +279,19 @@ function GlassSelect({ label, value, onChange, disabled, children }: {
   children: React.ReactNode;
 }) {
   return (
-    <label className="flex flex-col" style={{ gap: 7 }}>
-      <span className="text-[12px] font-semibold text-white/60">{label}</span>
+    <label className="flex flex-col gap-[7px]">
+      <span className="text-[12px] font-semibold text-muted-foreground">{label}</span>
       <div className="relative">
         <select
           value={value}
           onChange={e => onChange(e.target.value)}
           disabled={disabled}
-          className="w-full text-sm text-white appearance-none disabled:opacity-50"
-          style={{
-            height: 48, padding: '0 30px 0 12px', borderRadius: 12,
-            background: 'rgba(255,255,255,0.1)',
-            border: '1px solid rgba(255,255,255,0.16)',
-          }}
+          className="glass-inner w-full text-sm text-foreground appearance-none disabled:opacity-50 rounded-xl"
+          style={{ height: 48, padding: '0 30px 0 12px' }}
         >
           {children}
         </select>
-        <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 pointer-events-none" />
+        <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
       </div>
     </label>
   );
