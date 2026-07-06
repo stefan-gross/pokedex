@@ -17,6 +17,7 @@ import { useSetMeta, type SetMeta } from '@/lib/hooks/use-set-meta';
 import { getSetById } from '@/lib/firestore/sets';
 import { CardImage } from '@/components/card/CardImage';
 import { EvolutionTree } from '@/components/card/EvolutionTree';
+import { CardNameLabel } from '@/components/card/CardNameLabel';
 import type { CardDoc, BinderDoc, CardVariant } from '@/types';
 
 /* ── Helpers ─────────────────────────────────────────────────── */
@@ -481,7 +482,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
 
           {/* Mitte: Pokémon-Name */}
           <h2 className="flex-1 text-center text-[19px] font-extrabold leading-tight tracking-tight truncate">
-            {card.name}
+            <CardNameLabel card={card} />
           </h2>
 
           {/* Rechts: KP + Typ-Icons */}
@@ -728,7 +729,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                 </div>
                               </div>
                               <span className="text-[8px] text-center max-w-[52px] truncate text-muted-foreground">
-                                {sf.name}
+                                <CardNameLabel card={sf} secondaryClassName="opacity-80" />
                               </span>
                             </button>
                           ))}

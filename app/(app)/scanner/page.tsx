@@ -20,6 +20,7 @@ import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition as PersistedCondition, CardDoc, CardLanguage, CardVariant } from '@/types';
 import { CONDITIONS, VARIANT_LABELS, SERIES_NAMES_DE, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { useSetMeta } from '@/lib/hooks/use-set-meta';
+import { CardNameLabel } from '@/components/card/CardNameLabel';
 import { getSetById } from '@/lib/firestore/sets';
 
 // Gemini liefert Condition in Kurzform (lowercase). Für Persistence wird in
@@ -564,6 +565,17 @@ export default function ScannerPage() {
     setTimeout(() => {
       setJobs(prev => prev.filter(j => j.id !== id));
     }, 3000);
+  }, []);
+
+  // Nach dem Hinzufügen ist die Karte jetzt im Besitz — ownedCount neu laden,
+  // damit der Löschen-Button (FAB) sofort erscheint statt erst beim nächsten
+  // Scan (ownedCount wurde bisher nur einmal direkt nach dem Erkennen gesetzt).
+  const refreshOwnedCount = useCallback((jobId: string, tcgId: string) => {
+    getCardsByTcgId(tcgId).then(copies => {
+      setJobs(prev => prev.map(j =>
+        j.id === jobId && j.result ? { ...j, result: { ...j.result, ownedCount: copies.length } } : j
+      ));
+    });
   }, []);
 
   /** Memory-Cleanup: nach 60s wird das Base64-Bild aus einem Job entfernt (Error
@@ -1357,7 +1369,7 @@ export default function ScannerPage() {
                       );
                     })()}
                     <p className="text-xs text-white/90 truncate">
-                      {card?.name ?? (job.status === 'processing' ? '…' : 'Fehler')}
+                      {card ? <CardNameLabel card={card} secondaryClassName="opacity-70" /> : (job.status === 'processing' ? '…' : 'Fehler')}
                     </p>
                   </div>
                 </div>
@@ -1537,7 +1549,7 @@ export default function ScannerPage() {
                     })() : <div />}
 
                     <p className="text-sm font-semibold text-white text-center truncate">
-                      {jCard?.name ?? (jIsError ? classifyJobError(j).cardName : '…')}
+                      {jCard ? <CardNameLabel card={jCard} secondaryClassName="opacity-70" /> : (jIsError ? classifyJobError(j).cardName : '…')}
                     </p>
 
                     {jCard ? (
@@ -2121,7 +2133,11 @@ export default function ScannerPage() {
           <BulkAddToCollectionModal
             jobs={bulkJobs}
             onClose={() => setBulkModalOpen(false)}
-            onJobSaved={(id) => markAdded(id)}
+            onJobSaved={(id) => {
+              markAdded(id);
+              const tcgId = jobs.find(j => j.id === id)?.result?.card?.id;
+              if (tcgId) refreshOwnedCount(id, tcgId);
+            }}
             onAllSaved={() => setBulkModalOpen(false)}
           />
         );
@@ -2492,7 +2508,10 @@ export default function ScannerPage() {
         ownedCopies={activeOwnedCopies}
         onClose={() => setActiveJobId(null)}
         onSaved={() => {
-          if (activeJob) markAdded(activeJob.id);
+          if (activeJob) {
+            markAdded(activeJob.id);
+            if (activeJob.result?.card) refreshOwnedCount(activeJob.id, activeJob.result.card.id);
+          }
         }}
       />
 
@@ -2509,6 +2528,7 @@ export default function ScannerPage() {
           onClose={() => setQuickAddJobId(null)}
           onSaved={() => {
             markAdded(quickAddJob.id);
+            refreshOwnedCount(quickAddJob.id, quickAddJob.result!.card!.id);
             setQuickAddJobId(null);
           }}
         />
@@ -3101,7 +3121,7 @@ function RecognizedCardLarge({
             className="text-white font-bold text-3xl truncate text-left max-w-full"
             style={{ textShadow: '0 2px 12px rgba(0,0,0,0.3)' }}
           >
-            {card.name}
+            <CardNameLabel card={card} secondaryClassName="text-[0.6em] font-semibold text-white/70" />
           </h2>
           {/* Nummer/Dex links, Preis rechts — eine Zeile, wie im Handoff-
               Referenzbild (design_handoff_scanner_glass, Info-Sheet). */}

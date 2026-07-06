@@ -11,6 +11,9 @@ import type { CardVariant } from '@/types';
 export interface CardInfo {
   id: string;
   name: string;
+  /** Roher englischer Name — nur gesetzt, wenn `name` bereits die deutsche
+   *  Übersetzung ist (Anzeige app-weit: "Englisch (Deutsch)"). */
+  nameEn?: string;
   number: string;
   rarity?: string;
   supertype?: string;
@@ -42,6 +45,7 @@ export function catalogCardToInfo(c: CatalogCard): CardInfo {
   return {
     id: c.id,
     name: c.nameDe ?? c.name,
+    nameEn: c.nameDe ? c.name : undefined,
     number: c.number,
     rarity: c.rarity,
     supertype: c.supertype,

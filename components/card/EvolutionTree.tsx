@@ -3,6 +3,7 @@
 import { useId } from 'react';
 import type { CardInfo } from '@/lib/card-info';
 import type { EvolutionTreeNode } from '@/lib/pokeapi';
+import { CardNameLabel } from '@/components/card/CardNameLabel';
 
 /** Zeilenhöhe je Blatt-Knoten — gleicher Rhythmus wie der bisherige `h-[93px]`-Pfeil-Abstandshalter. */
 const ROW_H = 93;
@@ -55,7 +56,7 @@ function NodeThumb({ card, isCurrent, onSelect }: { card: CardInfo; isCurrent: b
         className="text-[10px] text-center max-w-[68px] truncate"
         style={{ color: isCurrent ? 'var(--pokedex-red)' : 'var(--muted-foreground)', fontWeight: isCurrent ? 700 : 400 }}
       >
-        {card.name}
+        <CardNameLabel card={card} secondaryClassName="opacity-80" />
       </span>
     </button>
   );

@@ -10,6 +10,8 @@ import { getBinders, removeCardFromBinderAndCleanup } from '@/lib/firestore/bind
 import { CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
 import { CardPrice } from '@/components/card/CardPrice';
 import { BinderIcon } from '@/lib/binder-icons';
+import { useSetMeta } from '@/lib/hooks/use-set-meta';
+import { CardNameLabel } from '@/components/card/CardNameLabel';
 
 const CLOSE_ANIM_MS = 250;
 
@@ -39,6 +41,13 @@ export function DeleteFromCollectionModal({ card, fromScanner = false, onClose, 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmAll, setConfirmAll] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
+
+  // DE-Setname + gedruckte Nummer/Gesamtzahl (z.B. "052/172") — exakt wie bei
+  // der gescannten Karte (RecognizedCardLarge), statt der rohen Katalog-Felder.
+  const setMeta = useSetMeta(card.setId, undefined, card.setName);
+  const cardNumBase = card.number.split('/')[0].padStart(3, '0');
+  const cardNumTotal = setMeta?.printedTotal ? String(setMeta.printedTotal).padStart(3, '0') : null;
+  const cardNumDisplay = cardNumTotal ? `${cardNumBase}/${cardNumTotal}` : card.number;
 
   const [visible, setVisible] = useState(false);
   const [dragY, setDragY] = useState(0);
@@ -152,8 +161,8 @@ export function DeleteFromCollectionModal({ card, fromScanner = false, onClose, 
               className="w-10 h-14 rounded-[3px] object-cover shrink-0"
             />
             <div className="min-w-0">
-              <div className="text-base font-bold truncate">{card.name}</div>
-              <div className="text-xs text-muted-foreground truncate">{card.setName} · {card.number}</div>
+              <div className="text-base font-bold truncate"><CardNameLabel card={card} /></div>
+              <div className="text-xs text-muted-foreground truncate">{setMeta?.nameDe ?? card.setName} · {cardNumDisplay}</div>
             </div>
             <CardPrice tcgId={card.id} plain fontSize={15} className="ml-auto text-[#6cb0ff]! font-extrabold shrink-0" />
           </div>
