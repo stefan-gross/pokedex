@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { X, Plus, Heart, CheckCircle2, ChevronDown, ChevronRight, ChevronLeft, Trash2, Info, Repeat2, LayoutGrid } from 'lucide-react';
@@ -12,10 +12,11 @@ import { getBinders, addCardToBinder, removeCardFromBinder, removeCardFromBinder
 import { getCardsByEvolutionFamily, getCardsByDexNumber } from '@/lib/firestore/catalog';
 import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
 import { CardVariantPrice } from '@/components/card/CardPriceDetail';
-import { fetchPokemonSpeciesDE, getEvolutionFamilyDexNumbers, type SpeciesDE, type PokemonStats } from '@/lib/pokeapi';
+import { fetchPokemonSpeciesDE, getEvolutionFamilyDexNumbers, getEvolutionTree, type SpeciesDE, type PokemonStats, type EvolutionTreeNode } from '@/lib/pokeapi';
 import { useSetMeta, type SetMeta } from '@/lib/hooks/use-set-meta';
 import { getSetById } from '@/lib/firestore/sets';
 import { CardImage } from '@/components/card/CardImage';
+import { EvolutionTree } from '@/components/card/EvolutionTree';
 import type { CardDoc, BinderDoc, CardVariant } from '@/types';
 
 /* ── Helpers ─────────────────────────────────────────────────── */
@@ -102,6 +103,12 @@ function getStage(subtypes: string[]): string | null {
   const found = subtypes.find(s => STAGE_KEYS.includes(s));
   return found ? getSubtypeDe(found) : null;
 }
+
+/** Sonderform-Mechaniken (Teilmenge von STAGE_KEYS ohne reine Stufen-Wörter) — Karten
+ *  wie „Glurak-EX"/„Glurak VMAX" sind keine eigenen Evolutions-Baumknoten (gleiche
+ *  Pokédex-Nummer wie die Basisform), werden aber als „Auch verfügbar als"-Zeile
+ *  unter dem Baum angezeigt. */
+const SPECIAL_MECHANIC_KEYS = ['GX','EX','V','VMAX','VSTAR','V-UNION','MEGA','BREAK','Radiant','Tera','ACE SPEC'];
 
 /** Leitet DE-Kartenbild aus Logo-URL ab: .../sv/sv04.5/logo.png → .../sv/sv04.5/027/high.webp */
 function imgFromLogoUrl(logoUrl: string, cardNumber: string): string | null {
@@ -220,7 +227,9 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   const card = cardStack.length > 0 ? cardStack[cardStack.length - 1] : initialCard;
   const [speciesLoaded,setSpeciesLoaded]= useState(false);
   const [evoCards,     setEvoCards]     = useState<CardInfo[]>([]);
+  const [evoTree,      setEvoTree]      = useState<EvolutionTreeNode | null>(null);
   const [evoLoaded,    setEvoLoaded]    = useState(false);
+  const [specialForms, setSpecialForms] = useState<CardInfo[]>([]);
   const [deletingId,   setDeletingId]   = useState<string | null>(null);
   const [confirmId,    setConfirmId]    = useState<string | null>(null);
   const resolvedMeta = useSetMeta(card?.setId, setMeta, card?.setName);
@@ -231,7 +240,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     let cancelled = false;
     if (!card) { setVisible(false); return; }
     setSpecies(null); setSpeciesLoaded(false);
-    setEvoCards([]); setEvoLoaded(false);
+    setEvoCards([]); setEvoLoaded(false); setEvoTree(null); setSpecialForms([]);
     // DE-Bild direkt aus Firestore, falls vorhanden (|| fängt auch leere Strings ab)
     setImgSrcDe(card.imgLargeDe || undefined);
     requestAnimationFrame(() => setVisible(true));
@@ -268,6 +277,10 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
       }
 
       if (card.nationalDexNumber) {
+        // Baumstruktur unabhängig von den Bilddaten laden — eigener, günstiger
+        // PokéAPI-Call, kein Sequenzierungs-Zwang mit dem Karten-Fetch unten.
+        getEvolutionTree(card.nationalDexNumber).then(t => { if (!cancelled) setEvoTree(t); });
+
         getCardsByEvolutionFamily(card.nationalDexNumber, 100)
           .then(async cards => {
             let source = cards.map(catalogCardToInfo);
@@ -291,6 +304,21 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
             if (cancelled) return;
             setEvoCards(picked);
             setEvoLoaded(true);
+
+            // Sonderformen der aktuell angezeigten Stufe (EX/GX/V/VMAX/…) — keine
+            // eigenen Baum-Knoten, aber unter dem Baum als kleine Kartenreihe gezeigt.
+            const currentPicked = picked.find(p => p.nationalDexNumber === card.nationalDexNumber);
+            const seenKeys = new Set<string>();
+            const forms: CardInfo[] = [];
+            for (const c of source) {
+              if (c.nationalDexNumber !== card.nationalDexNumber) continue;
+              if (currentPicked && c.id === currentPicked.id) continue;
+              const key = c.subtypes?.find(s => SPECIAL_MECHANIC_KEYS.includes(s));
+              if (!key || seenKeys.has(key)) continue;
+              seenKeys.add(key);
+              forms.push(c);
+            }
+            setSpecialForms(forms);
           });
       } else {
         setEvoLoaded(true);
@@ -367,16 +395,18 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   // hinausragen, egal wie hoch der Wert ist — siehe gleicher Fix in AddToCollectionModal).
   return createPortal((
     <div className="fixed inset-0 z-[60] flex items-end">
-      {/* Backdrop */}
+      {/* Backdrop — entsättigt & dimmt die Seite dahinter statt einer reinen
+          Schwarz-Abdunkelung, damit der Fokus aufs Sheet wandert, ohne die
+          bunte Karten-/Holo-Fläche komplett zu verdecken. */}
       <div
-        className="absolute inset-0 bg-black/60 transition-opacity duration-[250ms]"
+        className="absolute inset-0 transition-opacity duration-[250ms] bg-[rgba(240,242,248,0.5)] [backdrop-filter:saturate(0.55)_brightness(1.06)_blur(2px)] [-webkit-backdrop-filter:saturate(0.55)_brightness(1.06)_blur(2px)] dark:bg-[rgba(8,7,12,0.35)] dark:[backdrop-filter:saturate(0.5)_brightness(0.42)_blur(2px)] dark:[-webkit-backdrop-filter:saturate(0.5)_brightness(0.42)_blur(2px)]"
         style={{ opacity: visible ? 1 : 0 }}
         onClick={handleClose}
       />
 
       {/* Sheet */}
       <div
-        className="relative w-full rounded-t-2xl bg-card/50 backdrop-blur-xl max-h-[93dvh] flex flex-col"
+        className="relative w-full rounded-t-2xl bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(28,29,38,0.4)] border-t border-[rgba(255,255,255,0.85)] dark:border-[rgba(255,255,255,0.18)] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] dark:shadow-[0_-12px_40px_rgba(0,0,0,0.5)] [backdrop-filter:blur(34px)_saturate(1.5)] [-webkit-backdrop-filter:blur(34px)_saturate(1.5)] max-h-[93dvh] flex flex-col"
         style={{
           transform: visible
             ? `translateY(${dragY}px)`
@@ -384,7 +414,6 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           transition: dragStartYRef.current != null
             ? 'none'
             : 'transform 250ms ease-out',
-          boxShadow: '0 -8px 32px rgba(30,40,80,0.14), 0 -2px 8px rgba(30,40,80,0.07)',
         }}
       >
         {/* Handle — swipe-down zum Schließen + größeres Touch-Target */}
@@ -417,7 +446,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
             setDragY(0);
           }}
         >
-          <div className="w-10 h-1 rounded-full bg-border" />
+          <div className="w-9 h-1 rounded-full bg-[rgba(46,46,50,0.2)] dark:bg-white/30" />
         </div>
 
         {/* ── Karten-Header (wie echte Pokémon-Karte) ───────── */}
@@ -531,7 +560,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           </div>
 
           {/* ── 1 · Details (eigene Glas-Karte) ─────────────── */}
-          <div className="glass-solid mx-4 rounded-[20px] overflow-hidden mb-3">
+          <div className="drawer-panel mx-4 rounded-[18px] overflow-hidden mb-3">
             <AccHeader
               icon={<Info size={16} />}
               title="Details"
@@ -651,7 +680,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           </div>
 
           {/* ── 2 · Evolutionslinie (eigene Glas-Karte) ─────── */}
-          <div className="glass-solid mx-4 rounded-[20px] overflow-hidden mb-3">
+          <div className="drawer-panel mx-4 rounded-[18px] overflow-hidden mb-3">
             <AccHeader
               icon={<Repeat2 size={16} />}
               title="Evolutionslinie"
@@ -662,46 +691,43 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
             {openSec.has('evo') && (
               <div className="px-4 pb-4">
                 {evoCards.length > 1 ? (
-                  <div className="flex items-start pt-3 pb-1">
-                    {evoCards.map((ec, i) => {
-                      const isCurrent = ec.id === card.id;
-                      return (
-                        <Fragment key={ec.id}>
-                          {i > 0 && (
-                            <div key={`arrow-${ec.id}`} className="flex-1 flex items-center justify-center min-w-[12px] h-[93px]">
-                              <span className="text-muted-foreground text-lg">›</span>
-                            </div>
-                          )}
-                          <button
-                            onClick={() => { if (!isCurrent) setCardStack(s => [...s, ec]); }}
-                            disabled={isCurrent}
-                            className="flex flex-col items-center gap-1.5 shrink-0 active:scale-95 transition-transform disabled:cursor-default"
-                          >
-                            <div
-                              className="glass-inner rounded-[9px] p-[3px] w-[68px]"
-                              style={isCurrent ? { borderColor: 'var(--pokedex-red)', borderWidth: 2 } : undefined}
+                  <>
+                    <EvolutionTree
+                      tree={evoTree}
+                      cards={evoCards}
+                      currentCardId={card.id}
+                      onSelect={ec => setCardStack(s => [...s, ec])}
+                    />
+                    {specialForms.length > 0 && (
+                      <div className="mt-2 pt-3 border-t border-[rgba(255,255,255,0.1)]">
+                        <div className="text-[11px] text-muted-foreground mb-2">Auch verfügbar als</div>
+                        <div className="flex gap-2 overflow-x-auto">
+                          {specialForms.map(sf => (
+                            <button
+                              key={sf.id}
+                              onClick={() => setCardStack(s => [...s, sf])}
+                              className="flex flex-col items-center gap-1 shrink-0 active:scale-95 transition-transform"
                             >
-                              <div className="rounded-[6px] overflow-hidden">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={ec.imgSmall}
-                                  alt={ec.name}
-                                  className="w-full block"
-                                  style={{ aspectRatio: '2.5/3.5', objectFit: 'cover' }}
-                                />
+                              <div className="glass-inner rounded-[7px] p-[2px]">
+                                <div className="rounded-[4px] overflow-hidden w-10">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={sf.imgSmall}
+                                    alt={sf.name}
+                                    className="w-full block"
+                                    style={{ aspectRatio: '2.5/3.5', objectFit: 'cover' }}
+                                  />
+                                </div>
                               </div>
-                            </div>
-                            <span
-                              className="text-[10px] text-center max-w-[68px] truncate"
-                              style={{ color: isCurrent ? 'var(--pokedex-red)' : 'var(--muted-foreground)', fontWeight: isCurrent ? 700 : 400 }}
-                            >
-                              {ec.name}
-                            </span>
-                          </button>
-                        </Fragment>
-                      );
-                    })}
-                  </div>
+                              <span className="text-[8px] text-center max-w-[52px] truncate text-muted-foreground">
+                                {sf.name}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 ) : evoLoaded ? (
                   <p className="text-[13px] text-muted-foreground pt-3">Keine Evolutionslinie</p>
                 ) : (
@@ -715,7 +741,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           </div>
 
           {/* ── 3 · Karten & Preise (eigene Glas-Karte) ─────── */}
-          <div className="glass-solid mx-4 rounded-[20px] overflow-hidden mb-3">
+          <div className="drawer-panel mx-4 rounded-[18px] overflow-hidden mb-3">
             <AccHeader
               icon={<LayoutGrid size={16} />}
               title="Karten & Preise"
@@ -881,7 +907,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
 
           {/* ── Wunschliste — eigenständiger Glas-Button ────── */}
           <div className="mx-4 mb-4">
-            <button className="glass-solid w-full h-[54px] rounded-2xl flex items-center justify-center gap-2 text-[15px] font-semibold">
+            <button className="drawer-panel w-full h-[54px] rounded-[18px] flex items-center justify-center gap-2 text-[15px] font-semibold">
               <Heart size={19} />
               Auf Wunschliste setzen
             </button>

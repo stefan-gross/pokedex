@@ -138,8 +138,10 @@ export function AddToCollectionModal({
   return createPortal((
     <div className="fixed inset-0 z-[100] flex items-end">
       <div
-        className={isGlass ? 'absolute inset-0 transition-opacity duration-[250ms]' : 'absolute inset-0 bg-black/60 transition-opacity duration-[250ms]'}
-        style={{ opacity: visible ? 1 : 0, ...(isGlass ? { background: 'rgba(10,8,14,.5)' } : {}) }}
+        className={isGlass
+          ? 'absolute inset-0 transition-opacity duration-[250ms] [backdrop-filter:saturate(0.5)_brightness(0.42)_blur(2px)] [-webkit-backdrop-filter:saturate(0.5)_brightness(0.42)_blur(2px)]'
+          : 'absolute inset-0 bg-black/60 transition-opacity duration-[250ms]'}
+        style={{ opacity: visible ? 1 : 0, ...(isGlass ? { background: 'rgba(8,7,12,0.35)' } : {}) }}
         onClick={handleClose}
       />
 
@@ -150,10 +152,10 @@ export function AddToCollectionModal({
           transition: sheetTransition,
           ...(isGlass
             ? {
-                background: 'rgba(26,26,32,0.82)',
-                backdropFilter: 'blur(30px) saturate(1.4)',
-                WebkitBackdropFilter: 'blur(30px) saturate(1.4)',
-                borderTop: '1px solid rgba(255,255,255,0.16)',
+                background: 'rgba(28,29,38,0.4)',
+                backdropFilter: 'blur(34px) saturate(1.5)',
+                WebkitBackdropFilter: 'blur(34px) saturate(1.5)',
+                borderTop: '1px solid rgba(255,255,255,0.18)',
                 borderRadius: '26px 26px 0 0',
                 boxShadow: '0 -12px 40px rgba(0,0,0,0.5)',
                 padding: '12px 18px calc(22px + env(safe-area-inset-bottom, 0px))',

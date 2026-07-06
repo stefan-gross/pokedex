@@ -245,8 +245,6 @@ export function BottomNav() {
           bottom: 12, left: 14, right: 14, height: 64,
           borderRadius: 26,
           gridTemplateColumns: 'repeat(5, 1fr)',
-          backdropFilter: 'blur(28px) saturate(1.55)',
-          WebkitBackdropFilter: 'blur(28px) saturate(1.55)',
         }}
       >
         {navItems.map((item, i) => {
