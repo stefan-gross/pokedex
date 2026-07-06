@@ -319,6 +319,14 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
               forms.push(c);
             }
             setSpecialForms(forms);
+          })
+          .catch(() => {
+            // Firestore-/PokéAPI-Fehler (z.B. Netzwerk-Hänger) dürfen den Spinner
+            // nicht für immer drehen lassen — sauber auf "kein Ergebnis" fallen.
+            if (cancelled) return;
+            setEvoCards([]);
+            setSpecialForms([]);
+            setEvoLoaded(true);
           });
       } else {
         setEvoLoaded(true);
