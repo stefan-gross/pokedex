@@ -204,25 +204,44 @@ export interface EnrichResult {
   remaining: number;
 }
 
+// Cursor-Dokument merkt sich die zuletzt bearbeitete Karten-ID zwischen
+// einzelnen Aufrufen (Settings-Button feuert wiederholt POST-Requests, jeder
+// Request ist eine neue Function-Invocation ohne gemeinsamen Speicher).
+// Vorher: Query ohne orderBy/startAfter las bei jedem Aufruf dieselben ersten
+// `batchSize` Dokumente (Firestore ordnet implizit nach Dokument-ID) — nach
+// deren erster Anreicherung lieferte der `!evolutionFamily`-Filter dort immer
+// 0 Treffer, der Lauf meldete fälschlich "complete", der Rest des Katalogs
+// wurde nie erreicht.
+const EVO_CURSOR_DOC = 'sync_state/evolutionEnrichment';
+
 export async function enrichEvolutionFamilies(batchSize = 500): Promise<EnrichResult> {
   const db = getAdminDb();
+  const cursorRef = db.doc(EVO_CURSOR_DOC);
+  const cursorSnap = await cursorRef.get();
+  const lastId = cursorSnap.exists ? (cursorSnap.data()?.lastId as string | undefined) : undefined;
 
-  // Karten mit nationalDexNumber aber ohne evolutionFamily
-  const snap = await db.collection(COL)
+  // Firestore verlangt bei einer Ungleichheits-Filterung, dass die erste
+  // orderBy-Klausel auf demselben Feld liegt — __name__ nur als Tie-Breaker danach.
+  let q = db.collection(COL)
     .where('nationalDexNumber', '>', 0)
-    .limit(batchSize + 1)
-    .get();
+    .orderBy('nationalDexNumber')
+    .orderBy('__name__')
+    .limit(batchSize);
 
-  const toEnrich = snap.docs
-    .filter(d => !d.data().evolutionFamily)
-    .slice(0, batchSize);
+  if (lastId) {
+    const lastDocSnap = await db.collection(COL).doc(lastId).get();
+    if (lastDocSnap.exists) q = q.startAfter(lastDocSnap);
+  }
 
-  if (toEnrich.length === 0) {
-    return { status: 'up-to-date', message: 'Alle Evolutionsdaten sind bereits vorhanden', enriched: 0, remaining: 0 };
+  const snap = await q.get();
+
+  if (snap.empty) {
+    await cursorRef.delete().catch(() => {});
+    return { status: 'complete', message: '✅ Evolutionsdaten vollständig durchlaufen', enriched: 0, remaining: 0 };
   }
 
   // Unique Pokédex-Nummern sammeln
-  const uniqueDexNums = [...new Set(toEnrich.map(d => d.data().nationalDexNumber as number))];
+  const uniqueDexNums = [...new Set(snap.docs.map(d => d.data().nationalDexNumber as number))];
 
   // Evolutionsketten parallel (max 8 gleichzeitig) abrufen
   const CONCURRENCY = 8;
@@ -230,28 +249,31 @@ export async function enrichEvolutionFamilies(batchSize = 500): Promise<EnrichRe
     await Promise.all(uniqueDexNums.slice(i, i + CONCURRENCY).map(fetchEvoFamily));
   }
 
-  // Batch-Update
-  for (let i = 0; i < toEnrich.length; i += 500) {
-    const batch = db.batch();
-    toEnrich.slice(i, i + 500).forEach(doc => {
-      const dexNum = doc.data().nationalDexNumber as number;
-      const family = evoRunCache.get(dexNum) ?? [dexNum];
-      batch.update(doc.ref, { evolutionFamily: family });
-    });
-    await batch.commit();
-  }
+  // Batch-Update — unabhängig davon, ob evolutionFamily schon gesetzt war
+  // (idempotent, Cursor garantiert ohnehin, dass jede Karte nur einmal drankommt).
+  const batch = db.batch();
+  snap.docs.forEach(doc => {
+    const dexNum = doc.data().nationalDexNumber as number;
+    const family = evoRunCache.get(dexNum) ?? [dexNum];
+    batch.update(doc.ref, { evolutionFamily: family });
+  });
+  await batch.commit();
 
-  // Prüfen ob noch mehr zu tun ist
-  const remaining = snap.docs.filter(d => !d.data().evolutionFamily).length - toEnrich.length;
-  const done = remaining <= 0 && snap.docs.length <= batchSize;
+  const done = snap.docs.length < batchSize;
+  const newLastId = snap.docs[snap.docs.length - 1].id;
+  if (done) {
+    await cursorRef.delete().catch(() => {});
+  } else {
+    await cursorRef.set({ lastId: newLastId });
+  }
 
   return {
     status: done ? 'complete' : 'in-progress',
     message: done
-      ? `✅ Evolutionsdaten vollständig (${toEnrich.length} Karten angereichert)`
-      : `📥 ${toEnrich.length} Karten angereichert — weitere vorhanden`,
-    enriched: toEnrich.length,
-    remaining: Math.max(0, remaining),
+      ? `✅ Evolutionsdaten vollständig (${snap.docs.length} Karten im letzten Batch)`
+      : `📥 ${snap.docs.length} Karten angereichert — weitere vorhanden`,
+    enriched: snap.docs.length,
+    remaining: 0,
   };
 }
 

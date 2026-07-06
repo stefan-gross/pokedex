@@ -276,7 +276,10 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
             if (source.length === 0) {
               const familyNums = await getEvolutionFamilyDexNumbers(card.nationalDexNumber!);
               if (familyNums.length > 0) {
-                const batches = await Promise.all(familyNums.map(n => getCardsByDexNumber(n, 3)));
+                // Hohes Limit statt 3 — sonst fehlt der zum aktuellen Set passende
+                // Print evtl. in der (unsortierten) Firestore-Kappung, und
+                // pickEvolutionCards bekommt den richtigen Kandidaten nie zu sehen.
+                const batches = await Promise.all(familyNums.map(n => getCardsByDexNumber(n, 60)));
                 source = batches.flat().map(catalogCardToInfo);
               }
             }
