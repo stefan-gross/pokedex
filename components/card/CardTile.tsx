@@ -32,7 +32,7 @@ export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWis
         )}
         <div
           className="relative"
-          style={!isOwned ? { filter: 'grayscale(0.35) contrast(0.7) blur(1px)', opacity: 0.62 } : undefined}
+          style={!isOwned ? { filter: 'grayscale(0.35) contrast(0.7)', opacity: 0.62 } : undefined}
         >
           <CardImage
             srcDe={card.imgSmallDe}
