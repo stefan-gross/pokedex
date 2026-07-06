@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { Fragment, useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { X, Plus, Heart, CheckCircle2, ChevronDown, ChevronRight, ChevronLeft, Trash2, Info, Repeat2, LayoutGrid } from 'lucide-react';
@@ -12,7 +12,7 @@ import { getBinders, addCardToBinder, removeCardFromBinder, removeCardFromBinder
 import { getCardsByEvolutionFamily, getCardsByDexNumber } from '@/lib/firestore/catalog';
 import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
 import { CardVariantPrice } from '@/components/card/CardPriceDetail';
-import { fetchPokemonSpeciesDE, getEvolutionFamilyDexNumbers, type SpeciesDE } from '@/lib/pokeapi';
+import { fetchPokemonSpeciesDE, getEvolutionFamilyDexNumbers, type SpeciesDE, type PokemonStats } from '@/lib/pokeapi';
 import { useSetMeta, type SetMeta } from '@/lib/hooks/use-set-meta';
 import { CardImage } from '@/components/card/CardImage';
 import type { CardDoc, BinderDoc, CardVariant } from '@/types';
@@ -63,6 +63,15 @@ function LanguageFlag({ lang, size = 14 }: { lang: string; size?: number }) {
     );
   }
 }
+
+const STAT_ROWS: { key: keyof PokemonStats; label: string }[] = [
+  { key: 'hp',        label: 'KP' },
+  { key: 'attack',    label: 'Angriff' },
+  { key: 'defense',   label: 'Verteidigung' },
+  { key: 'spAttack',  label: 'Sp. Angriff' },
+  { key: 'spDefense', label: 'Sp. Verteidigung' },
+  { key: 'speed',     label: 'Initiative' },
+];
 
 const CONDITION_LABEL: Record<string, string> = {
   NM: 'Near Mint',
@@ -169,6 +178,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
 
   /* Reset + load on card change */
   useEffect(() => {
+    let cancelled = false;
     if (!card) { setVisible(false); return; }
     setSpecies(null); setSpeciesLoaded(false);
     setEvoCards([]); setEvoLoaded(false);
@@ -192,6 +202,15 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           region:     card.region ?? '',
         });
         setSpeciesLoaded(true);
+        // Basiswerte/Fähigkeiten/Legendär-Status sind (noch) nicht Teil des
+        // persistierten Enrichments — zusätzlich live nachladen und mergen,
+        // sobald verfügbar (kein Blocker für die schon vorhandenen Felder).
+        fetchPokemonSpeciesDE(card.name, card.supertype).then(extra => {
+          if (cancelled || !extra) return;
+          setSpecies(prev => prev
+            ? { ...prev, stats: extra.stats, abilities: extra.abilities, isLegendary: extra.isLegendary, isMythical: extra.isMythical }
+            : prev);
+        });
       } else {
         // Fallback: live von PokéAPI (vor Enrichment oder bei Karten ohne DE-Namen)
         fetchPokemonSpeciesDE(card.name, card.supertype)
@@ -231,6 +250,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
       setSpeciesLoaded(true);
       setEvoLoaded(true);
     }
+    return () => { cancelled = true; };
   }, [card?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fallback: DE-Bild aus Logo-URL ableiten, sobald Set-Metadaten geladen sind
@@ -307,7 +327,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
 
       {/* Sheet */}
       <div
-        className="relative w-full rounded-t-2xl bg-card max-h-[93dvh] flex flex-col"
+        className="relative w-full rounded-t-2xl bg-card/50 backdrop-blur-xl max-h-[93dvh] flex flex-col"
         style={{
           transform: visible
             ? `translateY(${dragY}px)`
@@ -396,7 +416,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           <div className="flex gap-3.5 px-4 pt-1 pb-4">
             {/* Kartenbild mit Zoom — kein Schatten */}
             <div
-              className="shrink-0 rounded-xl overflow-hidden cursor-zoom-in border"
+              className="shrink-0 rounded-[8px] overflow-hidden cursor-zoom-in border"
               style={{ width: 140, borderColor: rarityInfo?.color ?? 'var(--border)' }}
               onClick={() => setZoomed(true)}
             >
@@ -461,10 +481,8 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
             </div>
           </div>
 
-          {/* ── Akkordion ─────────────────────────────────── */}
-          <div className="mx-4 rounded-2xl shadow-card overflow-hidden mb-4">
-
-            {/* 1 · Details */}
+          {/* ── 1 · Details (eigene Glas-Karte) ─────────────── */}
+          <div className="glass-solid mx-4 rounded-[20px] overflow-hidden mb-3">
             <AccHeader
               icon={<Info size={16} />}
               title="Details"
@@ -473,7 +491,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
               border={false}
             />
             {openSec.has('details') && (
-              <div className="px-4 pb-4 border-t border-border/50">
+              <div className="px-4 pb-4">
                 {card.artist && (
                   <p className="text-[13px] text-muted-foreground pt-3">
                     Illustration: <span className="font-medium text-foreground">{card.artist}</span>
@@ -481,35 +499,82 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 )}
                 {species ? (
                   <>
-                    {species.genus && (
-                      <p className={`text-[13px] text-muted-foreground mb-3 ${card.artist ? '' : 'pt-3'}`}>{species.genus}</p>
+                    {(species.genus || species.isLegendary || species.isMythical) && (
+                      <div className={`flex items-center gap-2 mb-3 ${card.artist ? '' : 'pt-3'}`}>
+                        {species.genus && (
+                          <p className="text-[13px] text-muted-foreground">{species.genus}</p>
+                        )}
+                        {(species.isLegendary || species.isMythical) && (
+                          <span
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                            style={{ background: 'rgba(234,179,8,.15)', color: '#ca9a04' }}
+                          >
+                            {species.isMythical ? 'Mystisch' : 'Legendär'}
+                          </span>
+                        )}
+                      </div>
                     )}
                     <div className="grid grid-cols-2 gap-2 mb-3">
                       {species.height > 0 && (
-                        <div className="bg-secondary rounded-xl px-3 py-2.5">
+                        <div className="glass-inner rounded-[14px] px-3 py-2.5">
                           <div className="text-[15px] font-bold">{(species.height / 10).toFixed(1)} m</div>
                           <div className="text-[11px] text-muted-foreground mt-0.5">Größe</div>
                         </div>
                       )}
                       {species.weight > 0 && (
-                        <div className="bg-secondary rounded-xl px-3 py-2.5">
+                        <div className="glass-inner rounded-[14px] px-3 py-2.5">
                           <div className="text-[15px] font-bold">{(species.weight / 10).toFixed(1)} kg</div>
                           <div className="text-[11px] text-muted-foreground mt-0.5">Gewicht</div>
                         </div>
                       )}
                       {species.region && (
-                        <div className="bg-secondary rounded-xl px-3 py-2.5">
+                        <div className="glass-inner rounded-[14px] px-3 py-2.5">
                           <div className="text-[15px] font-bold">{species.region}</div>
                           <div className="text-[11px] text-muted-foreground mt-0.5">Region</div>
                         </div>
                       )}
                       {card.nationalDexNumber && (
-                        <div className="bg-secondary rounded-xl px-3 py-2.5">
+                        <div className="glass-inner rounded-[14px] px-3 py-2.5">
                           <div className="text-[15px] font-bold">#{String(card.nationalDexNumber).padStart(3, '0')}</div>
                           <div className="text-[11px] text-muted-foreground mt-0.5">Pokédex</div>
                         </div>
                       )}
                     </div>
+                    {species.abilities && species.abilities.length > 0 && (
+                      <div className="mb-3">
+                        <div className="text-[11px] font-semibold text-muted-foreground mb-1.5">Fähigkeiten</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {species.abilities.map(a => (
+                            <span key={a.name} className="glass-inner text-[12px] font-medium px-2.5 py-1 rounded-full">
+                              {a.name}
+                              {a.hidden && <span className="text-muted-foreground"> (Versteckt)</span>}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {species.stats && (
+                      <div className="mb-3">
+                        <div className="text-[11px] font-semibold text-muted-foreground mb-1.5">Basiswerte</div>
+                        <div className="flex flex-col gap-1.5">
+                          {STAT_ROWS.map(({ key, label }) => {
+                            const value = species.stats![key];
+                            return (
+                              <div key={key} className="flex items-center gap-2">
+                                <span className="text-[11px] text-muted-foreground w-[92px] shrink-0">{label}</span>
+                                <div className="flex-1 h-2 rounded-full bg-secondary overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full"
+                                    style={{ width: `${Math.min(100, (value / 255) * 100)}%`, background: 'var(--pokedex-red)' }}
+                                  />
+                                </div>
+                                <span className="text-[12px] font-bold tabular-nums w-[28px] text-right">{value}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                     {species.flavorText && (
                       <p className="text-[13px] text-muted-foreground leading-relaxed italic">
                         „{species.flavorText}"
@@ -519,7 +584,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 ) : speciesLoaded ? (
                   <div className={card.artist ? '' : 'pt-3'}>
                     {card.nationalDexNumber && (
-                      <div className="bg-secondary rounded-xl px-3 py-2.5 w-fit mb-3">
+                      <div className="glass-inner rounded-[14px] px-3 py-2.5 w-fit mb-3">
                         <div className="text-[15px] font-bold">#{String(card.nationalDexNumber).padStart(3, '0')}</div>
                         <div className="text-[11px] text-muted-foreground mt-0.5">Pokédex</div>
                       </div>
@@ -534,32 +599,37 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 )}
               </div>
             )}
+          </div>
 
-            {/* 2 · Evolutionslinie */}
+          {/* ── 2 · Evolutionslinie (eigene Glas-Karte) ─────── */}
+          <div className="glass-solid mx-4 rounded-[20px] overflow-hidden mb-3">
             <AccHeader
               icon={<Repeat2 size={16} />}
               title="Evolutionslinie"
               open={openSec.has('evo')}
               onToggle={() => toggle('evo')}
+              border={false}
             />
             {openSec.has('evo') && (
-              <div className="px-4 pb-4 border-t border-border/50">
+              <div className="px-4 pb-4">
                 {evoCards.length > 1 ? (
-                  <div className="flex items-center gap-0 overflow-x-auto pt-3 pb-1" style={{ scrollbarWidth: 'none' }}>
+                  <div className="flex items-start pt-3 pb-1">
                     {evoCards.map((ec, i) => {
                       const isCurrent = ec.id === card.id;
                       return (
-                        <div key={ec.id} className="flex items-center shrink-0">
+                        <Fragment key={ec.id}>
                           {i > 0 && (
-                            <span className="text-muted-foreground text-lg px-2 pb-4">›</span>
+                            <div key={`arrow-${ec.id}`} className="flex-1 flex items-center justify-center min-w-[12px] h-[87px]">
+                              <span className="text-muted-foreground text-lg">›</span>
+                            </div>
                           )}
                           <button
                             onClick={() => { if (!isCurrent) setCardStack(s => [...s, ec]); }}
                             disabled={isCurrent}
-                            className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform disabled:cursor-default"
+                            className="flex flex-col items-center gap-1.5 shrink-0 active:scale-95 transition-transform disabled:cursor-default"
                           >
                             <div
-                              className="rounded-lg overflow-hidden border-2 w-[62px]"
+                              className="rounded-[6px] overflow-hidden border-2 w-[62px]"
                               style={{ borderColor: isCurrent ? 'var(--pokedex-red)' : 'var(--border)' }}
                             >
                               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -577,7 +647,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                               {ec.name}
                             </span>
                           </button>
-                        </div>
+                        </Fragment>
                       );
                     })}
                   </div>
@@ -591,16 +661,19 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 )}
               </div>
             )}
+          </div>
 
-            {/* 3 · Karten & Preise */}
+          {/* ── 3 · Karten & Preise (eigene Glas-Karte) ─────── */}
+          <div className="glass-solid mx-4 rounded-[20px] overflow-hidden mb-3">
             <AccHeader
               icon={<LayoutGrid size={16} />}
               title="Karten & Preise"
               open={openSec.has('cards')}
               onToggle={() => toggle('cards')}
+              border={false}
             />
             {openSec.has('cards') && (
-              <div className="border-t border-border/50">
+              <div>
                 {variants.map((variant, vi) => {
                   const copies = ownedCopies.filter(c => c.variant === variant);
                   const isOwned = copies.length > 0;
@@ -610,7 +683,6 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                       className="px-3 py-2"
                       style={{
                         borderTop: vi > 0 ? '1px solid color-mix(in srgb, var(--border) 50%, transparent)' : 'none',
-                        background: isOwned ? 'rgba(72,187,120,.04)' : 'transparent',
                       }}
                     >
                       {/* Variant-Zeile: Name + Owned-Badge + Preis + + Button */}
@@ -628,13 +700,20 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <CardVariantPrice tcgId={card.id} variant={variant} />
+                          {/* Hinzufügen — getöntes grünes Glas (Handoff design_handoff_card_detail) */}
                           <button
                             onClick={() => setAddVariant(variant)}
-                            className="w-9 h-9 rounded-md flex items-center justify-center shrink-0 text-white"
-                            style={{ background: 'var(--action-add)' }}
+                            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                            style={{
+                              background: 'rgba(34,197,94,0.9)',
+                              backdropFilter: 'blur(8px) saturate(1.4)',
+                              WebkitBackdropFilter: 'blur(8px) saturate(1.4)',
+                              border: '1.5px solid rgba(255,255,255,0.55)',
+                              boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.6), 0 3px 12px rgba(34,197,94,0.4)',
+                            }}
                             aria-label="Hinzufügen"
                           >
-                            <Plus size={16} strokeWidth={2.5} />
+                            <Plus size={18} color="#fff" strokeWidth={3} />
                           </button>
                         </div>
                       </div>
@@ -653,8 +732,8 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                             return (
                               <div
                                 key={copy.id}
-                                className="flex items-center gap-2 rounded-lg px-2.5 py-2"
-                                style={{ background: 'var(--secondary)', minHeight: 48 }}
+                                className="glass-inner flex items-center gap-2 rounded-xl px-2.5 py-2"
+                                style={{ minHeight: 48 }}
                               >
                                 {/* Chips */}
                                 <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -717,14 +796,17 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                   </div>
                                 </div>
 
-                                {/* Löschen — roter Hintergrund, weißer Papierkorb */}
+                                {/* Löschen — "Ghost-Trash": dezent im Ruhezustand, erst bei
+                                    Bestätigung rot (Handoff design_handoff_card_detail). */}
                                 <button
                                   onClick={() => handleDelete(copy)}
                                   disabled={isDeleting}
-                                  className="shrink-0 w-10 h-10 rounded-md flex items-center justify-center transition-colors text-white"
-                                  style={{
-                                    background: isConfirm ? 'var(--action-delete-hover)' : 'var(--action-delete)',
-                                  }}
+                                  className={`shrink-0 w-10 h-10 rounded-[11px] flex items-center justify-center transition-colors ${
+                                    isConfirm
+                                      ? 'text-white'
+                                      : 'bg-[rgba(46,46,50,0.06)] dark:bg-white/8 border border-[rgba(46,46,50,0.12)] dark:border-white/15 text-[#9aa0ac] dark:text-white/50'
+                                  }`}
+                                  style={isConfirm ? { background: 'var(--action-delete)' } : undefined}
                                   aria-label="Karte löschen"
                                 >
                                   {isDeleting
@@ -742,19 +824,16 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                     </div>
                   );
                 })}
-
-                {/* Wunschliste */}
-                <div className="px-4 pt-2 pb-3 border-t border-border/50">
-                  <button
-                    className="w-full h-11 rounded-xl bg-secondary flex items-center justify-center gap-2 text-[13px] font-semibold text-muted-foreground"
-                  >
-                    <Heart size={15} />
-                    Auf Wunschliste setzen
-                  </button>
-                </div>
               </div>
             )}
+          </div>
 
+          {/* ── Wunschliste — eigenständiger Glas-Button ────── */}
+          <div className="mx-4 mb-4">
+            <button className="glass-solid w-full h-[54px] rounded-2xl flex items-center justify-center gap-2 text-[15px] font-semibold">
+              <Heart size={19} />
+              Auf Wunschliste setzen
+            </button>
           </div>
         </div>
       </div>

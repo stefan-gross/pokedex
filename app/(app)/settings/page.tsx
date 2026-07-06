@@ -254,7 +254,7 @@ export default function SettingsPage() {
 
   return (
     <div className="relative min-h-screen pb-16">
-      <div className="sticky top-safe z-20 glass px-4 pt-4 pb-3 flex items-center gap-3">
+      <div className="sticky top-safe z-20 px-4 pt-4 pb-3 flex items-center gap-3">
         <Link href="/" className="text-[#1E2024] dark:text-white">
           <ChevronLeft size={22} />
         </Link>

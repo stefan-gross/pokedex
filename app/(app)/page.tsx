@@ -402,7 +402,7 @@ function RecentCard({ name, img, onClick }: { name: string; img: string; onClick
   return (
     <button onClick={onClick} className="flex flex-col items-center gap-1 text-left w-full">
       <div
-        className="w-full aspect-[63/88] rounded-[11px] overflow-hidden bg-black/5 dark:bg-white/10 border border-[rgba(30,40,80,0.12)] dark:border-white/40"
+        className="w-full aspect-[63/88] rounded-[6px] overflow-hidden bg-black/5 dark:bg-white/10 border border-[rgba(30,40,80,0.12)] dark:border-white/40"
         style={{ boxShadow: '0 6px 18px rgba(0,0,0,.18)' }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -483,7 +483,7 @@ function RecentCardsSkeleton() {
       <div className="grid grid-cols-3 gap-2.5">
         {[0, 1, 2, 3, 4, 5].map(i => (
           <div key={i} className="flex flex-col items-center gap-1">
-            <div className="w-full aspect-[63/88] rounded-[11px] overflow-hidden">
+            <div className="w-full aspect-[63/88] rounded-[6px] overflow-hidden">
               <Skel className="w-full h-full rounded-[11px]" />
             </div>
             <Skel className="h-2.5 w-3/4 rounded-full mt-0.5" />

@@ -2499,7 +2499,7 @@ export default function ScannerPage() {
           preVariant={quickAddJob.editedVariant ?? quickAddJob.result.variant}
           preCondition={quickAddJob.editedCondition}
           preLanguage={quickAddJob.result.language}
-          fromScanner={quickAddJob.origin === 'add'}
+          fromScanner
           onClose={() => setQuickAddJobId(null)}
           onSaved={() => {
             markAdded(quickAddJob.id);

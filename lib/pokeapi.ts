@@ -1,11 +1,51 @@
 const BASE = 'https://pokeapi.co/api/v2';
 
+export interface PokemonStats {
+  hp: number;
+  attack: number;
+  defense: number;
+  spAttack: number;
+  spDefense: number;
+  speed: number;
+}
+
+export interface PokemonAbility {
+  name: string;    // deutscher Name, Fallback Englisch
+  hidden: boolean;
+}
+
 export interface SpeciesDE {
   genus: string;      // "Maus-Pokémon"
   flavorText: string; // Beschreibungstext auf Deutsch
   height: number;     // in dm (4 = 0,4 m)
   weight: number;     // in hg (60 = 6,0 kg)
   region: string;     // "Kanto", "Johto", …
+  stats?: PokemonStats;
+  abilities?: PokemonAbility[];
+  isLegendary?: boolean;
+  isMythical?: boolean;
+}
+
+const STAT_KEY_MAP: Record<string, keyof PokemonStats> = {
+  'hp': 'hp',
+  'attack': 'attack',
+  'defense': 'defense',
+  'special-attack': 'spAttack',
+  'special-defense': 'spDefense',
+  'speed': 'speed',
+};
+
+/** Deutsche Fähigkeiten-Namen — ein Zusatz-Call pro Fähigkeit (PokéAPI liefert
+ *  Namen nur pro Fähigkeit einzeln, nicht im Pokémon-Objekt selbst). */
+async function fetchAbilityNameDE(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.names?.find((n: { language: { name: string }; name: string }) => n.language.name === 'de')?.name ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function extractSpeciesName(cardName: string): string {
@@ -53,13 +93,34 @@ export async function fetchPokemonSpeciesDE(
     const region = GENERATION_REGIONS[generationId] ?? '';
 
     let height = 0, weight = 0;
+    let stats: PokemonStats | undefined;
+    let abilities: PokemonAbility[] | undefined;
     if (pokemonRes.ok) {
       const pd = await pokemonRes.json();
       height = pd.height ?? 0;
       weight = pd.weight ?? 0;
-    }
 
-    return { genus, flavorText, height, weight, region };
+      const rawStats = (pd.stats ?? []) as { base_stat: number; stat: { name: string } }[];
+      const statEntries = rawStats
+        .map(s => [STAT_KEY_MAP[s.stat.name], s.base_stat] as const)
+        .filter(([key]) => key);
+      if (statEntries.length === 6) {
+        stats = Object.fromEntries(statEntries) as unknown as PokemonStats;
+      }
+
+      const rawAbilities = (pd.abilities ?? []) as { ability: { name: string; url: string }; is_hidden: boolean }[];
+      if (rawAbilities.length > 0) {
+        const names = await Promise.all(rawAbilities.map(a => fetchAbilityNameDE(a.ability.url)));
+        abilities = rawAbilities.map((a, i) => ({
+          name: names[i] ?? a.ability.name,
+          hidden: a.is_hidden,
+        }));
+      }
+    }
+    const isLegendary = !!speciesData.is_legendary;
+    const isMythical  = !!speciesData.is_mythical;
+
+    return { genus, flavorText, height, weight, region, stats, abilities, isLegendary, isMythical };
   } catch {
     return null;
   }
