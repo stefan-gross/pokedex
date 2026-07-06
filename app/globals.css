@@ -278,6 +278,26 @@
     background: rgba(255,255,255,0.06);
     border: 1px solid rgba(255,255,255,0.1);
   }
+
+  /* Text auf .glass/farbigem Untergrund (Dashboard, Settings, Login, Home-
+     Tab-Bar) — bisher an jeder Stelle als `text-[#1E2024] dark:text-white`
+     bzw. `text-[#6B6E77] dark:text-white/70` dupliziert. Zwei Stufen reichen
+     app-weit: .text-glass = primär (Überschriften, Werte), .text-glass-muted
+     = sekundär (Labels, Hilfstext, Icons). Einzelne Stellen hatten leicht
+     abweichende Dark-Opazität (60–90%) — hier auf einen einheitlichen Wert
+     konsolidiert, siehe Session-Vorgabe „so viel wie möglich wiederverwenden". */
+  .text-glass {
+    color: #1E2024;
+  }
+  .dark .text-glass {
+    color: #fff;
+  }
+  .text-glass-muted {
+    color: #6B6E77;
+  }
+  .dark .text-glass-muted {
+    color: rgba(255,255,255,0.7);
+  }
 }
 
 /* Binder Edit-Mode: dezentes Wackeln à la iOS Home-Screen */

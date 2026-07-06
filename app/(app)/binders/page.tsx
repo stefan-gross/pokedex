@@ -8,7 +8,6 @@ import { getCards } from '@/lib/firestore/cards';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { BinderIcon } from '@/lib/binder-icons';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
-import { binderSizeLabel, type BinderSize } from '@/lib/binder-sizes';
 import type { BinderDoc, CardDoc } from '@/types';
 
 export default function BindersPage() {
@@ -45,10 +44,10 @@ export default function BindersPage() {
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <div className="px-4 pt-4 pb-4 flex items-center justify-between shadow-header bg-background">
+      <div className="px-4 pt-4 pb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Sammlungen</h1>
-          <p className="text-sm text-muted-foreground">{binders.length} {binders.length === 1 ? 'Sammlung' : 'Sammlungen'}</p>
+          <h1 className="text-2xl font-bold text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Sammlungen</h1>
+          <p className="text-sm text-glass-muted">{binders.length} {binders.length === 1 ? 'Sammlung' : 'Sammlungen'}</p>
         </div>
         <button
           onClick={() => setShowCreate(true)}
@@ -68,9 +67,9 @@ export default function BindersPage() {
 
         {!loading && binders.length === 0 && (
           <div className="text-center pt-16 space-y-3">
-            <div className="flex justify-center"><Folder size={48} className="text-muted-foreground" /></div>
-            <p className="font-semibold">Noch keine Sammlungen</p>
-            <p className="text-sm text-muted-foreground">Erstelle deinen ersten Binder oder eine Box, um Karten zu organisieren</p>
+            <div className="flex justify-center"><Folder size={48} className="text-glass-muted" /></div>
+            <p className="font-semibold text-glass">Noch keine Sammlungen</p>
+            <p className="text-sm text-glass-muted">Erstelle deinen ersten Binder oder eine Box, um Karten zu organisieren</p>
             <button
               onClick={() => setShowCreate(true)}
               className="mt-2 px-5 py-2.5 rounded-md text-sm font-semibold text-white"
@@ -81,7 +80,7 @@ export default function BindersPage() {
           </div>
         )}
 
-        <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-2 gap-3">
           {binders.map(binder => {
             const binderCards = binder.cardIds
               .map(id => cardsById.get(id))
@@ -108,63 +107,48 @@ export default function BindersPage() {
   );
 }
 
+/** Binder/Box als "Cover"-Kachel — zentrierter Name oben, großes Icon in
+ *  Sammlungsfarbe darunter (wie ein Ordner-/Boxen-Deckel), Wert unten links,
+ *  Kartenanzahl unten rechts. Boxen nutzen automatisch das Box-Icon statt
+ *  des Ordner-Icons (binder.icon-Fallback), sehen sonst identisch aus. */
 function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; binderCards: CardDoc[]; onDeleted: () => void }) {
   const cardCount = binder.cardIds.length;
   const bgColor   = binder.color ?? 'var(--pokedex-red)';
   const isBox     = binder.collectionType === 'box';
-  const subtitle  = isBox ? 'Box' : binderSizeLabel((binder.size ?? 9) as BinderSize);
   const totalValue = useTotalValue(binderCards);
+  const wishlistCount = binder.wishlistCardIds?.length ?? 0;
 
   return (
     <Link
       href={`/binders/${binder.id}`}
-      className="relative rounded-2xl bg-card shadow-card overflow-hidden flex items-stretch active:scale-[.99] transition-transform"
+      className="relative rounded-2xl glass overflow-hidden flex flex-col items-center p-4 gap-2 aspect-[3/4] active:scale-[.98] transition-transform"
     >
-      {/* Vertikale Color-Bar links (statt oben, passt besser auf volle Breite) */}
-      <div className="w-1.5 shrink-0" style={{ background: bgColor }} />
+      {wishlistCount > 0 && (
+        <span
+          className="absolute top-2.5 right-2.5 inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+          style={{ background: 'rgba(237,100,166,.18)', color: '#ed64a6' }}
+        >
+          +{wishlistCount} <Heart size={9} fill="currentColor" />
+        </span>
+      )}
 
-      <div className="flex-1 min-w-0 p-4 flex flex-col gap-2">
-        <div className="flex items-center gap-2 pb-2 border-b border-border/60 min-w-0">
-          <div className="shrink-0 h-6 flex items-center justify-center overflow-hidden">
-            <BinderIcon name={binder.icon ?? (isBox ? 'box' : 'folder')} size={24} style={{ color: bgColor }} />
-          </div>
-          <div className="font-semibold text-base leading-tight truncate min-w-0">
-            {binder.name}
-          </div>
-        </div>
+      <div className="text-sm font-bold text-center text-glass line-clamp-2 leading-tight px-1 mt-1">
+        {binder.name}
+      </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-            <div className="text-xs text-muted-foreground truncate flex items-center gap-2 min-w-0">
-              <span className="truncate">
-                {subtitle}
-                {!isBox && binder.capacity != null && ` · ${binder.capacity} Karten`}
-              </span>
-              {(binder.wishlistCardIds?.length ?? 0) > 0 && (
-                <span className="inline-flex items-center gap-0.5 shrink-0" style={{ color: '#ed64a6' }}>
-                  +{binder.wishlistCardIds.length} <Heart size={10} fill="currentColor" />
-                </span>
-              )}
-            </div>
-            {!totalValue.loading && totalValue.withPrice > 0 && (
-              <div className="text-[13px] font-bold truncate" style={{ color: bgColor }}>
-                ≈ {totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
-              </div>
-            )}
-          </div>
+      <div className="flex-1 flex items-center justify-center">
+        <BinderIcon name={binder.icon ?? (isBox ? 'box' : 'folder')} size={56} style={{ color: bgColor }} />
+      </div>
 
-          <div className="shrink-0 flex flex-col items-center justify-center min-w-[72px]">
-            <span
-              className="text-[32px] font-extrabold leading-none tabular-nums"
-              style={{ color: bgColor }}
-            >
-              {cardCount}
-            </span>
-            <span className="text-[10px] text-muted-foreground mt-1">
-              {cardCount === 1 ? 'Karte' : 'Karten'}
-            </span>
-          </div>
-        </div>
+      <div className="w-full flex items-end justify-between">
+        <span className="text-xs font-bold truncate" style={{ color: bgColor }}>
+          {!totalValue.loading && totalValue.withPrice > 0
+            ? `≈ ${totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
+            : ''}
+        </span>
+        <span className="text-xs text-glass-muted shrink-0 tabular-nums">
+          {cardCount} {cardCount === 1 ? 'Karte' : 'Karten'}
+        </span>
       </div>
     </Link>
   );

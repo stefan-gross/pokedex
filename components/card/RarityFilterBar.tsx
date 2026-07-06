@@ -78,7 +78,7 @@ export function RarityFilterBar({ cards, ownedIds, activeRarities, onToggle, rar
             key={group.label}
             onClick={() => !disabled && onToggle(group.label)}
             disabled={disabled}
-            className="flex items-center gap-1 rounded-full transition-all px-2 py-0.5 border disabled:opacity-30 disabled:cursor-not-allowed"
+            className={`flex items-center gap-1 rounded-full transition-all px-2 py-0.5 border disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'text-glass-muted'}`}
             style={active
               ? { background: activeBg, borderColor: activeBorder }
               : { borderColor: 'transparent' }
@@ -97,11 +97,11 @@ export function RarityFilterBar({ cards, ownedIds, activeRarities, onToggle, rar
                 {group.symbol}
               </span>
             ) : (
-              <span className="text-xs font-bold" style={{ color: disabled ? 'var(--muted-foreground)' : group.color }}>
+              <span className={`text-xs font-bold ${disabled ? 'text-glass-muted' : ''}`} style={!disabled ? { color: group.color } : undefined}>
                 {group.symbol}
               </span>
             )}
-            <span className="text-xs" style={{ color: active ? activeBorder : 'var(--muted-foreground)' }}>
+            <span className={`text-xs ${active ? '' : 'text-glass-muted'}`} style={active ? { color: activeBorder } : undefined}>
               {totalCount.toLocaleString('de')}
             </span>
           </button>

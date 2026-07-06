@@ -232,9 +232,9 @@ export default function BinderDetailPage({ params }: Props) {
     <div className="min-h-screen pb-24">
       <div className="h-1.5 w-full" style={{ background: binderColor }} />
 
-      <div className="sticky top-0 z-20 bg-background border-b border-border px-4 pt-3 pb-3">
+      <div className="sticky top-0 z-20 glass px-4 pt-3 pb-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.back()} className="text-muted-foreground" aria-label="Zurück">
+          <button onClick={() => router.back()} className="text-glass" aria-label="Zurück">
             <ChevronLeft size={22} />
           </button>
           <BinderIcon
@@ -244,22 +244,22 @@ export default function BinderDetailPage({ params }: Props) {
             className="shrink-0"
           />
           <div className="flex-1 min-w-0">
-            <h1 className="font-semibold truncate">{binder.name}</h1>
-            <p className="text-xs text-muted-foreground">{layoutLabel}</p>
+            <h1 className="font-semibold truncate text-glass">{binder.name}</h1>
+            <p className="text-xs text-glass-muted">{layoutLabel}</p>
           </div>
           <div className="flex flex-col items-end shrink-0 leading-none">
             <span className="text-[36px] font-extrabold tabular-nums" style={{ color: binderColor }}>
               {cards.length}
             </span>
             {totalCapacity != null && (
-              <span className="text-[11px] text-muted-foreground/70 mt-0.5 tabular-nums">
+              <span className="text-[11px] text-glass-muted opacity-70 mt-0.5 tabular-nums">
                 von {totalCapacity}
               </span>
             )}
           </div>
           <button
             onClick={() => setShowActions(a => !a)}
-            className="w-8 h-8 rounded-md bg-secondary flex items-center justify-center"
+            className="w-8 h-8 rounded-md glass-inner flex items-center justify-center text-glass"
             aria-label="Aktionen"
           >
             <Settings size={15} />
@@ -268,7 +268,7 @@ export default function BinderDetailPage({ params }: Props) {
 
         <div className="flex items-center justify-between gap-2 mt-3">
           {!isBox && (
-            <div className="flex rounded-full p-0.5 bg-secondary border border-border">
+            <div className="flex rounded-full p-0.5 glass-inner">
               <ViewBtn icon={<BookOpen size={15} />} active={view === 'binder'} onClick={() => { setView('binder'); setEditMode(false); }} color={binderColor} label="Blätter" />
               <ViewBtn icon={<FileText size={15} />} active={view === 'page'} onClick={() => { setView('page'); setEditMode(false); }} color={binderColor} label="Seite" />
               <ViewBtn icon={<LayoutGrid size={15} />} active={view === 'grid'} onClick={() => { setView('grid'); setEditMode(false); }} color={binderColor} label="Liste" />
@@ -277,12 +277,11 @@ export default function BinderDetailPage({ params }: Props) {
           {!isBox && view !== 'grid' && (
             <button
               onClick={() => setEditMode(e => !e)}
-              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-xs font-semibold transition-colors"
-              style={{
-                background: editMode ? binderColor : 'var(--secondary)',
-                color: editMode ? '#fff' : 'var(--muted-foreground)',
-                border: editMode ? 'none' : '1px solid var(--border)',
-              }}
+              className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-xs font-semibold transition-colors ${editMode ? '' : 'glass-inner text-glass-muted'}`}
+              style={editMode
+                ? { background: binderColor, color: '#fff', border: 'none' }
+                : undefined
+              }
             >
               {editMode ? <Eye size={13} /> : <Pencil size={13} />}
               {editMode ? 'Ansicht' : 'Bearbeiten'}
@@ -291,12 +290,12 @@ export default function BinderDetailPage({ params }: Props) {
         </div>
 
         {showActions && (
-          <div className="absolute right-4 top-[calc(100%-8px)] bg-card border border-border rounded-md shadow-lg overflow-hidden z-30 min-w-[160px]">
-            <button onClick={() => { setShowActions(false); setShowEdit(true); }} className="w-full px-4 py-3 text-sm text-left hover:bg-secondary">
+          <div className="absolute right-4 top-[calc(100%-8px)] glass rounded-md overflow-hidden z-30 min-w-[160px]">
+            <button onClick={() => { setShowActions(false); setShowEdit(true); }} className="w-full px-4 py-3 text-sm text-left text-glass hover:bg-white/10">
               Bearbeiten
             </button>
             {!binder.isDefault && (
-              <button onClick={() => { setShowActions(false); handleDelete(); }} className="w-full px-4 py-3 text-sm text-left text-destructive hover:bg-secondary">
+              <button onClick={() => { setShowActions(false); handleDelete(); }} className="w-full px-4 py-3 text-sm text-left text-destructive hover:bg-white/10">
                 Sammlung löschen
               </button>
             )}

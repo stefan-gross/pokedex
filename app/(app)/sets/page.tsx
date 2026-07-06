@@ -64,11 +64,11 @@ export default function SetsPage() {
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <div className="sticky top-safe z-20 bg-background shadow-header px-4 pt-4 pb-3 flex items-center gap-3">
-        <Link href="/" className="text-muted-foreground shrink-0">
+      <div className="sticky top-safe z-20 px-4 pt-4 pb-3 flex items-center gap-3">
+        <Link href="/" className="text-glass shrink-0">
           <ChevronLeft size={22} />
         </Link>
-        <h1 className="font-semibold text-base">Alle Sets</h1>
+        <h1 className="font-semibold text-base text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">Alle Sets</h1>
       </div>
 
       {loading ? (
@@ -83,14 +83,13 @@ export default function SetsPage() {
             const totalCards = group.sets.reduce((s, set) => s + set.total, 0);
 
             return (
-              <div key={group.name} className="bg-card rounded-2xl shadow-card overflow-hidden">
+              <div key={group.name} className="glass rounded-2xl overflow-hidden">
                 {/* Series-Header */}
-                <div className="px-4 py-3 flex items-center justify-between border-b border-border/30"
-                     style={{ background: 'rgba(255,255,255,0.025)' }}>
-                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                <div className="px-4 py-3 flex items-center justify-between border-b border-[rgba(46,46,50,0.1)] dark:border-white/10">
+                  <span className="text-xs font-bold text-glass-muted uppercase tracking-widest">
                     {seriesName}
                   </span>
-                  <span className="text-xs text-muted-foreground tabular-nums">
+                  <span className="text-xs text-glass-muted tabular-nums">
                     {totalOwned.toLocaleString('de-DE')}/{totalCards.toLocaleString('de-DE')}
                   </span>
                 </div>
@@ -110,6 +109,7 @@ export default function SetsPage() {
                     series={set.series}
                     href={`/sets/${set.id}?from=sets`}
                     separator={i < group.sets.length - 1}
+                    variant="glass"
                   />
                 ))}
               </div>

@@ -21,7 +21,7 @@ export function ButtonGroup<T extends string>({
 }: ButtonGroupProps<T>) {
   return (
     <div
-      className={`flex rounded-lg overflow-hidden border border-border bg-secondary ${className}`}
+      className={`glass-inner flex rounded-lg overflow-hidden ${className}`}
       role="group"
     >
       {options.map((opt, i) => {
@@ -30,13 +30,13 @@ export function ButtonGroup<T extends string>({
           <button
             key={opt.value}
             onClick={() => onChange(opt.value)}
-            className={`flex-1 px-2 py-1.5 text-xs font-medium transition-colors whitespace-nowrap flex items-center justify-center gap-1${
-              i > 0 ? ' border-l border-border' : ''
+            className={`flex-1 px-2 py-1.5 text-xs font-medium transition-colors whitespace-nowrap flex items-center justify-center gap-1 ${active ? '' : 'text-glass-muted'}${
+              i > 0 ? ' border-l border-[rgba(46,46,50,0.08)] dark:border-white/10' : ''
             }`}
             style={
               active
                 ? { background: 'var(--pokedex-red)', color: '#fff' }
-                : { color: 'var(--muted-foreground)' }
+                : undefined
             }
           >
             {opt.label}

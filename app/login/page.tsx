@@ -53,13 +53,13 @@ function LoginForm() {
       <div className="hidden lg:flex w-2/5 flex-col justify-between p-14">
         <div className="flex flex-col gap-2">
           <span className="text-8xl">🎴</span>
-          <span className="text-[#1E2024] dark:text-white font-bold text-6xl leading-none mt-2 dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.25)]">Pokédex</span>
+          <span className="text-glass font-bold text-6xl leading-none mt-2 dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.25)]">Pokédex</span>
         </div>
         <div>
-          <h1 className="text-4xl font-semibold text-[#1E2024] dark:text-white leading-snug mb-5 dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">
+          <h1 className="text-4xl font-semibold text-glass leading-snug mb-5 dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">
             Deine Sammlung.<br />Immer dabei.
           </h1>
-          <p className="text-[#6B6E77] dark:text-white/75 text-base leading-relaxed">
+          <p className="text-glass-muted text-base leading-relaxed">
             Karten scannen, in Mappen verwalten,<br />Marktpreise im Blick.
           </p>
           <div className="mt-10 flex flex-col gap-4">
@@ -77,7 +77,7 @@ function LoginForm() {
             ))}
           </div>
         </div>
-        <a href="https://hub.smartfamilyzone.de" className="text-[#6B6E77] hover:text-[#1E2024] dark:text-white/60 dark:hover:text-white/85 text-sm transition-colors">
+        <a href="https://hub.smartfamilyzone.de" className="text-glass-muted hover:text-[#1E2024] dark:text-white/60 dark:hover:text-white/85 text-sm transition-colors">
           ← Smart Family Zone
         </a>
       </div>
@@ -88,11 +88,11 @@ function LoginForm() {
           {/* Mobile logo */}
           <div className="flex items-center gap-3 mb-10 lg:hidden">
             <span className="text-3xl">🎴</span>
-            <span className="font-semibold text-[#1E2024] dark:text-white text-lg">Pokédex</span>
+            <span className="font-semibold text-glass text-lg">Pokédex</span>
           </div>
 
-          <h2 className="text-2xl md:text-3xl font-semibold text-[#1E2024] dark:text-white mb-2 dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">Willkommen zurück</h2>
-          <p className="text-base text-[#6B6E77] dark:text-white/75 mb-8">Melde dich mit deinem Familienkonto an.</p>
+          <h2 className="text-2xl md:text-3xl font-semibold text-glass mb-2 dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">Willkommen zurück</h2>
+          <p className="text-base text-glass-muted mb-8">Melde dich mit deinem Familienkonto an.</p>
 
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
@@ -104,7 +104,7 @@ function LoginForm() {
                 required
                 autoComplete="email"
                 placeholder="name@beispiel.de"
-                className="w-full px-4 py-3 rounded-xl text-base text-[#1E2024] dark:text-white placeholder-[#9096a0] dark:placeholder-white/45 bg-[rgba(30,40,80,0.05)] dark:bg-white/10 border border-[rgba(30,40,80,0.18)] dark:border-white/25 focus:outline-none focus:ring-2 focus:ring-[rgba(30,40,80,0.3)] dark:focus:ring-white/50 focus:border-transparent transition"
+                className="w-full px-4 py-3 rounded-xl text-base text-glass placeholder-[#9096a0] dark:placeholder-white/45 bg-[rgba(30,40,80,0.05)] dark:bg-white/10 border border-[rgba(30,40,80,0.18)] dark:border-white/25 focus:outline-none focus:ring-2 focus:ring-[rgba(30,40,80,0.3)] dark:focus:ring-white/50 focus:border-transparent transition"
               />
             </div>
             <div>
@@ -116,7 +116,7 @@ function LoginForm() {
                 required
                 autoComplete="current-password"
                 placeholder="••••••••"
-                className="w-full px-4 py-3 rounded-xl text-base text-[#1E2024] dark:text-white placeholder-[#9096a0] dark:placeholder-white/45 bg-[rgba(30,40,80,0.05)] dark:bg-white/10 border border-[rgba(30,40,80,0.18)] dark:border-white/25 focus:outline-none focus:ring-2 focus:ring-[rgba(30,40,80,0.3)] dark:focus:ring-white/50 focus:border-transparent transition"
+                className="w-full px-4 py-3 rounded-xl text-base text-glass placeholder-[#9096a0] dark:placeholder-white/45 bg-[rgba(30,40,80,0.05)] dark:bg-white/10 border border-[rgba(30,40,80,0.18)] dark:border-white/25 focus:outline-none focus:ring-2 focus:ring-[rgba(30,40,80,0.3)] dark:focus:ring-white/50 focus:border-transparent transition"
               />
             </div>
 

@@ -190,8 +190,8 @@ function SetDetailContent() {
     <div className="min-h-screen">
 
       {/* ── Sticky top bar ── */}
-      <div className="sticky top-safe z-20 bg-background shadow-header px-4 pt-4 pb-3">
-        <Link href={backHref} className="inline-flex items-center gap-1 text-sm text-muted-foreground">
+      <div className="sticky top-safe z-20 px-4 pt-4 pb-3">
+        <Link href={backHref} className="inline-flex items-center gap-1 text-sm text-glass-muted">
           <ChevronLeft size={18} strokeWidth={2} />
           {backLabel}
         </Link>
@@ -204,7 +204,7 @@ function SetDetailContent() {
       ) : (
         <>
           {/* ── Set info header (scrolls away) ── */}
-          <div className="px-4 pt-5 pb-4 space-y-4">
+          <div className="glass rounded-[20px] mx-4 mt-1 mb-4 p-4 space-y-4">
             {/* Logo + Meta */}
             <div className="flex items-center gap-4">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -222,20 +222,20 @@ function SetDetailContent() {
                 }}
               />
               <div className="min-w-0">
-                <h1 className="text-lg font-bold leading-tight truncate">
-                  {nameDe || <span className="text-muted-foreground">…</span>}
+                <h1 className="text-lg font-bold leading-tight truncate text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">
+                  {nameDe || <span className="text-glass-muted">…</span>}
                 </h1>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   {releaseYear && (
-                    <span className="text-xs text-muted-foreground">{releaseYear}</span>
+                    <span className="text-xs text-glass-muted">{releaseYear}</span>
                   )}
-                  {releaseYear && (ptcgoCode || symbolUrl) && <span className="text-muted-foreground/40 text-xs">·</span>}
+                  {releaseYear && (ptcgoCode || symbolUrl) && <span className="text-glass-muted opacity-40 text-xs">·</span>}
                   {isSymbolOnlySet && symbolUrl ? (
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img src={symbolUrl} alt={ptcgoCode ?? ''} className="w-[21px] h-[21px] object-contain" />
                   ) : ptcgoCode && (
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border"
-                          style={{ color: 'var(--foreground)', borderColor: 'var(--foreground)' }}>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border text-glass"
+                          style={{ borderColor: 'currentcolor' }}>
                       {ptcgoCode}
                     </span>
                   )}
@@ -246,10 +246,10 @@ function SetDetailContent() {
             {/* Progress */}
             <div className="space-y-1.5">
               <div className="flex justify-between items-baseline">
-                <span className="text-sm font-semibold">{ownedCount} / {totalCount} Karten</span>
-                <span className="text-xs text-muted-foreground">{pct}%</span>
+                <span className="text-sm font-semibold text-glass">{ownedCount} / {totalCount} Karten</span>
+                <span className="text-xs text-glass-muted">{pct}%</span>
               </div>
-              <div className="h-2 rounded-full bg-secondary overflow-hidden">
+              <div className="h-2 rounded-full glass-inner overflow-hidden">
                 <div className="h-full rounded-full transition-all"
                      style={{ width: `${pct}%`, background: pct === 100 ? '#48bb78' : 'var(--pokedex-red)' }} />
               </div>
@@ -265,7 +265,7 @@ function SetDetailContent() {
           </div>
 
           {/* ── Sticky filter + sort bar ── */}
-          <div className="sticky z-10 bg-background shadow-header px-4 py-2.5"
+          <div className="sticky z-10 glass rounded-[20px] mx-4 mb-3 px-4 py-2.5"
                style={{ top: 'calc(env(safe-area-inset-top, 0px) + 49px)' }}>
 
             {/* Row 1: filter + sort + count */}
@@ -280,16 +280,16 @@ function SetDetailContent() {
                 <select
                   value={sort}
                   onChange={e => setSort(e.target.value as SortKey)}
-                  className="text-xs rounded-lg pl-2.5 pr-6 py-1.5 border border-border bg-secondary text-foreground appearance-none cursor-pointer"
+                  className="text-xs rounded-lg pl-2.5 pr-6 py-1.5 glass-inner text-glass appearance-none cursor-pointer"
                 >
                   {SORT_OPTIONS.map(o => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
-                <ChevronDown size={12} className="absolute right-1.5 pointer-events-none text-muted-foreground" />
+                <ChevronDown size={12} className="absolute right-1.5 pointer-events-none text-glass-muted" />
               </div>
 
-              <span className="text-xs text-muted-foreground tabular-nums shrink-0 ml-auto">
+              <span className="text-xs text-glass-muted tabular-nums shrink-0 ml-auto">
                 {pluralKarten(displayed.length)}
               </span>
             </div>

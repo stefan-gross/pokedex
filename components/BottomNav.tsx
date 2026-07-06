@@ -272,7 +272,7 @@ export function BottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              className="flex flex-col items-center gap-0.5 px-3 min-w-[56px] text-[#1E2024] dark:text-white"
+              className="flex flex-col items-center gap-0.5 px-3 min-w-[56px] text-glass"
               style={{ opacity: active ? 1 : 0.75 }}
             >
               <Icon size={22} strokeWidth={active ? 2.6 : 1.8} fill={active ? 'currentColor' : 'none'} />

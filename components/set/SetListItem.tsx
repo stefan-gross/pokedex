@@ -75,14 +75,14 @@ export function SetListItem({
       <div className="flex-1 min-w-0 space-y-1.5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0">
-            <span className={`text-sm font-medium truncate ${isGlass ? 'text-[#1E2024] dark:text-white' : ''}`}>{displayName}</span>
+            <span className={`text-sm font-medium truncate ${isGlass ? 'text-glass' : ''}`}>{displayName}</span>
             {isSymbolOnlySet && symbolUrl ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img src={symbolUrl} alt={ptcgoCode ?? ''} className="w-[16px] h-[16px] object-contain shrink-0" />
             ) : ptcgoCode && (
               <span
                 className={`text-[10px] font-bold rounded-[5px] shrink-0 ${
-                  isGlass ? 'text-[#1E2024] dark:text-white bg-[rgba(30,40,80,0.10)] dark:bg-white/24' : ''
+                  isGlass ? 'text-glass bg-[rgba(30,40,80,0.10)] dark:bg-white/24' : ''
                 }`}
                 style={isGlass
                   ? { padding: '1px 5px', letterSpacing: '.03em' }
@@ -95,7 +95,7 @@ export function SetListItem({
           </div>
           {pct != null && (
             <span
-              className={`text-[13px] font-bold shrink-0 tabular-nums ${isGlass ? 'text-[#1E2024] dark:text-white' : ''}`}
+              className={`text-[13px] font-bold shrink-0 tabular-nums ${isGlass ? 'text-glass' : ''}`}
               style={!isGlass ? { color: 'var(--action-add)' } : undefined}
             >
               {pct}%
@@ -110,7 +110,7 @@ export function SetListItem({
             style={{ width: `${pct ?? 0}%`, ...(isGlass ? {} : { background: 'var(--pokedex-red)' }) }}
           />
         </div>
-        <div className={`text-[11px] tabular-nums ${isGlass ? 'text-[#6B6E77] dark:text-white/80' : 'text-muted-foreground'}`}>
+        <div className={`text-[11px] tabular-nums ${isGlass ? 'text-glass-muted' : 'text-muted-foreground'}`}>
           {owned} / {total ?? '?'} Karten
         </div>
       </div>

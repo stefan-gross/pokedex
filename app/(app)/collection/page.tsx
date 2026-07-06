@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Search, X, Database, ChevronDown, ArrowUpDown, SlidersHorizontal, GitMerge } from 'lucide-react';
-import { CardGrid } from '@/components/card/CardGrid';
+import { CardGrid, CardGridSkeleton } from '@/components/card/CardGrid';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { getCards } from '@/lib/firestore/cards';
@@ -50,10 +50,10 @@ function FilterChip({ label, onRemove, color, icon }: {
   return (
     <button
       onClick={onRemove}
-      className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border shrink-0 transition-colors"
+      className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border shrink-0 transition-colors ${color ? '' : 'glass-inner text-glass'}`}
       style={color
         ? { borderColor: color, background: `${color}22`, color }
-        : { borderColor: 'var(--border)', background: 'var(--secondary)', color: 'var(--foreground)' }
+        : undefined
       }
     >
       {icon}{label} <X size={10} />
@@ -456,21 +456,21 @@ function CollectionContent() {
     <div className="flex flex-col min-h-screen">
 
       {/* ── Sticky Header ──────────────────────────────────────── */}
-      <div className="sticky top-safe z-20 bg-background px-4 pt-4 pb-3 shadow-header space-y-2">
+      <div className="sticky top-safe z-20 glass px-4 pt-4 pb-3 space-y-2">
 
         {/* Suchfeld */}
         <div className="relative">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-glass-muted pointer-events-none" />
           <input
             type="search"
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             placeholder="Pokémon suchen… oder stöbern"
-            className="w-full h-10 pl-9 pr-8 rounded-xl bg-secondary shadow-card text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            className="w-full h-10 pl-9 pr-8 rounded-xl glass-inner text-glass text-sm placeholder:text-glass-muted focus:outline-none focus:ring-1 focus:ring-ring"
           />
           {inputValue && (
             <button type="button" onClick={clearSearch}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-glass-muted">
               <X size={14} />
             </button>
           )}
@@ -522,7 +522,7 @@ function CollectionContent() {
               <ButtonGroup options={OWNED_OPTIONS} value={ownedFilter} onChange={v => setOwnedFilter(v as OwnedFilter)} />
               {!isBrowseMode && sets.length > 1 && (
                 <select value={filterSet} onChange={e => setFilterSet(e.target.value)}
-                  className="h-8 px-2 rounded-lg bg-secondary border border-border text-xs max-w-[120px] ml-auto">
+                  className="h-8 px-2 rounded-lg glass-inner text-xs max-w-[120px] ml-auto">
                   <option value="">Alle Sets</option>
                   {sets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
@@ -549,11 +549,11 @@ function CollectionContent() {
                       key={t}
                       onClick={() => !isDisabled && toggleType(t)}
                       disabled={isDisabled}
-                      className="flex items-center gap-1.5 text-xs pl-1 pr-2.5 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                      className={`flex items-center gap-1.5 text-xs pl-1 pr-2.5 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
                       style={{
                         borderColor: active ? meta.bg : 'transparent',
-                        background:  active ? `${meta.bg}22` : 'var(--secondary)',
-                        color:       isDisabled ? 'var(--muted-foreground)' : active ? meta.bg : 'var(--muted-foreground)',
+                        background:  active ? `${meta.bg}22` : undefined,
+                        color:       active ? meta.bg : undefined,
                         fontWeight:  active ? 600 : 400,
                       }}
                     >
@@ -580,11 +580,11 @@ function CollectionContent() {
                       key={o.value}
                       onClick={() => !isDisabled && toggleEvolution(o.value!)}
                       disabled={isDisabled}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                      className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
                       style={{
                         borderColor: active ? 'var(--pokedex-red)' : 'transparent',
-                        background:  active ? 'color-mix(in srgb, var(--pokedex-red) 15%, transparent)' : 'var(--secondary)',
-                        color:       active ? 'var(--pokedex-red)' : 'var(--muted-foreground)',
+                        background:  active ? 'color-mix(in srgb, var(--pokedex-red) 15%, transparent)' : undefined,
+                        color:       active ? 'var(--pokedex-red)' : undefined,
                         fontWeight:  active ? 600 : 400,
                       }}
                     >
@@ -609,17 +609,17 @@ function CollectionContent() {
 
             {/* Zeile 6: Künstler — Freitext-Suche, client-seitig gefiltert */}
             <div className="relative">
-              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-glass-muted pointer-events-none" />
               <input
                 type="search"
                 value={artistInput}
                 onChange={e => setArtistInput(e.target.value)}
                 placeholder="Künstler / Illustrator suchen…"
-                className="w-full h-8 pl-7 pr-7 rounded-lg bg-secondary border border-border text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                className="w-full h-8 pl-7 pr-7 rounded-lg glass-inner text-glass text-xs placeholder:text-glass-muted focus:outline-none focus:ring-1 focus:ring-ring"
               />
               {artistInput && (
                 <button type="button" onClick={() => { setArtistInput(''); setActiveArtist(''); }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-glass-muted">
                   <X size={12} />
                 </button>
               )}
@@ -636,27 +636,27 @@ function CollectionContent() {
                   <select
                     value={browseSort}
                     onChange={e => setBrowseSort(e.target.value as BrowseSortKey)}
-                    className="h-7 pl-2 pr-6 rounded-lg bg-secondary border border-border text-xs appearance-none cursor-pointer"
+                    className="h-7 pl-2 pr-6 rounded-lg glass-inner text-xs appearance-none cursor-pointer"
                   >
                     {BROWSE_SORT_OPTIONS.map(o => (
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </select>
-                  <ChevronDown size={11} className="absolute right-1.5 pointer-events-none text-muted-foreground" />
+                  <ChevronDown size={11} className="absolute right-1.5 pointer-events-none text-glass-muted" />
                 </>
               ) : (
                 <>
                   <select
                     value={searchSort}
                     onChange={e => setSearchSort(e.target.value as SearchSortKey)}
-                    className="h-7 pl-2 pr-6 rounded-lg bg-secondary border border-border text-xs appearance-none cursor-pointer"
+                    className="h-7 pl-2 pr-6 rounded-lg glass-inner text-xs appearance-none cursor-pointer"
                   >
                     <option value="number">Nummer</option>
                     <option value="name">Name</option>
                     <option value="pokedex">Pokédex-Nr.</option>
                     <option value="hp">KP</option>
                   </select>
-                  <ChevronDown size={11} className="absolute right-1.5 pointer-events-none text-muted-foreground" />
+                  <ChevronDown size={11} className="absolute right-1.5 pointer-events-none text-glass-muted" />
                 </>
               )}
             </div>
@@ -666,7 +666,7 @@ function CollectionContent() {
                 ? setBrowseSortDir(d => d === 'asc' ? 'desc' : 'asc')
                 : setSearchSortDir(d => d === 'asc' ? 'desc' : 'asc')
               }
-              className="h-7 w-7 flex items-center justify-center rounded-lg bg-secondary border border-border transition-colors"
+              className="h-7 w-7 flex items-center justify-center rounded-lg glass-inner transition-colors"
               title={(isBrowseMode ? browseSortDir : searchSortDir) === 'asc' ? 'Aufsteigend' : 'Absteigend'}
             >
               <ArrowUpDown
@@ -679,11 +679,11 @@ function CollectionContent() {
             {!isBrowseMode && (
               <button
                 onClick={() => setEvoLineActive(p => !p)}
-                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-all"
+                className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-all ${evoLineActive ? '' : 'glass-inner text-glass-muted'}`}
                 style={{
-                  borderColor: evoLineActive ? 'var(--pokedex-red)' : 'var(--border)',
-                  background:  evoLineActive ? 'color-mix(in srgb, var(--pokedex-red) 12%, transparent)' : 'var(--secondary)',
-                  color:       evoLineActive ? 'var(--pokedex-red)' : 'var(--muted-foreground)',
+                  borderColor: evoLineActive ? 'var(--pokedex-red)' : 'transparent',
+                  background:  evoLineActive ? 'color-mix(in srgb, var(--pokedex-red) 12%, transparent)' : undefined,
+                  color:       evoLineActive ? 'var(--pokedex-red)' : undefined,
                   fontWeight:  evoLineActive ? 600 : 400,
                 }}
               >
@@ -691,7 +691,7 @@ function CollectionContent() {
               </button>
             )}
             {showResultCount && resultCount != null && (
-              <span className="text-xs text-muted-foreground">{resultCount} Karten</span>
+              <span className="text-xs text-glass-muted">{resultCount} Karten</span>
             )}
           </div>
         </div>
@@ -705,9 +705,9 @@ function CollectionContent() {
           <>
             {!hasAnyFilter && (
               <div className="flex flex-col items-center justify-center pt-16 gap-3 text-center">
-                <Search size={40} className="text-muted-foreground" />
+                <Search size={40} className="text-glass-muted" />
                 <p className="text-sm font-medium text-foreground">Filter wählen</p>
-                <p className="text-xs text-muted-foreground max-w-[220px]">
+                <p className="text-xs text-glass-muted max-w-[220px]">
                   Wähle einen Typ, eine Kategorie oder „Vorhanden / Fehlen" um Karten zu laden.
                 </p>
               </div>
@@ -715,13 +715,11 @@ function CollectionContent() {
 
             {hasAnyFilter && (
               browseLoading && browseCards.length === 0 ? (
-                <div className="flex justify-center pt-12">
-                  <div className="w-8 h-8 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
-                </div>
+                <CardGridSkeleton />
               ) : (
                 <>
                   {browseCards.length === 0 && !browseLoading && (
-                    <p className="text-center text-muted-foreground text-sm pt-12">
+                    <p className="text-center text-glass-muted text-sm pt-12">
                       Keine Karten für diesen Filter.
                     </p>
                   )}
@@ -741,23 +739,19 @@ function CollectionContent() {
         {/* Such-Modus */}
         {!isBrowseMode && (
           <>
-            {searchLoading && (
-              <div className="flex justify-center pt-12">
-                <div className="w-8 h-8 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
-              </div>
-            )}
+            {searchLoading && <CardGridSkeleton />}
             {!searchLoading && results.length === 0 && inputValue && (
               <div className="flex flex-col items-center gap-2 pt-16 text-center">
-                <Search size={40} className="text-muted-foreground" />
+                <Search size={40} className="text-glass-muted" />
                 <p className="font-medium text-sm">Keine Karten gefunden</p>
-                <p className="text-xs text-muted-foreground">Kein Ergebnis für „{inputValue}"</p>
+                <p className="text-xs text-glass-muted">Kein Ergebnis für „{inputValue}"</p>
               </div>
             )}
             {!searchLoading && results.length > 0 && displayed.length === 0 && inputValue && (
               <div className="flex flex-col items-center gap-2 pt-16 text-center">
-                <SlidersHorizontal size={40} className="text-muted-foreground" />
+                <SlidersHorizontal size={40} className="text-glass-muted" />
                 <p className="font-medium text-sm">Filter zu streng</p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-glass-muted">
                   {results.length} Karten gefunden, aber alle durch aktive Filter ausgeblendet.
                 </p>
               </div>
@@ -765,9 +759,9 @@ function CollectionContent() {
             {!searchLoading && displayed.length > 0 && (
               <>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-muted-foreground">{displayed.length} Karten</p>
+                  <p className="text-xs text-glass-muted">{displayed.length} Karten</p>
                   {source && (
-                    <p className="text-[10px] text-muted-foreground/50 flex items-center gap-1">
+                    <p className="text-[10px] text-glass-muted opacity-50 flex items-center gap-1">
                       {source === 'catalog' ? <><Database size={9} /> lokal</> : '↗ API'}
                     </p>
                   )}
