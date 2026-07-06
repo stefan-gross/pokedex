@@ -14,6 +14,7 @@ import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
 import { CardVariantPrice } from '@/components/card/CardPriceDetail';
 import { fetchPokemonSpeciesDE, getEvolutionFamilyDexNumbers, type SpeciesDE, type PokemonStats } from '@/lib/pokeapi';
 import { useSetMeta, type SetMeta } from '@/lib/hooks/use-set-meta';
+import { getSetById } from '@/lib/firestore/sets';
 import { CardImage } from '@/components/card/CardImage';
 import type { CardDoc, BinderDoc, CardVariant } from '@/types';
 
@@ -108,6 +109,55 @@ function imgFromLogoUrl(logoUrl: string, cardNumber: string): string | null {
   if (!base.includes('assets.tcgdex.net')) return null;
   const num = cardNumber.split('/')[0].padStart(3, '0');
   return `${base}/${num}/high.webp`;
+}
+
+/**
+ * Wählt pro Evolutionsstufe (Pokédex-Nummer) genau eine Karte aus — unabhängig
+ * für jede Stufe, nicht als eine Entscheidung für die ganze Linie. Priorität:
+ * 1. Gleiches Set wie die aktuell angezeigte Karte (stimmige Optik).
+ * 2. Eine Karte, die der Nutzer selbst besitzt.
+ * 3. Neuestes Erscheinungsdatum (Fallback, braucht ggf. `tcg_sets`-Lookup).
+ */
+async function pickEvolutionCards(
+  candidates: CardInfo[],
+  currentCard: CardInfo,
+  ownedTcgIds: Set<string>,
+): Promise<CardInfo[]> {
+  const byDex = new Map<number, CardInfo[]>();
+  for (const c of candidates) {
+    if (!c.nationalDexNumber) continue;
+    const arr = byDex.get(c.nationalDexNumber) ?? [];
+    arr.push(c);
+    byDex.set(c.nationalDexNumber, arr);
+  }
+
+  // Nur für Gruppen ohne Set-/Besitz-Treffer brauchen wir Erscheinungsdaten.
+  const groups = [...byDex.values()];
+  const dateLookupSetIds = new Set<string>();
+  for (const group of groups) {
+    const hasSameSet = group.some(c => c.setId === currentCard.setId);
+    const hasOwned   = group.some(c => ownedTcgIds.has(c.id));
+    if (!hasSameSet && !hasOwned) {
+      group.forEach(c => dateLookupSetIds.add(c.setId));
+    }
+  }
+  const setDates = new Map<string, string>();
+  await Promise.all([...dateLookupSetIds].map(async id => {
+    const set = await getSetById(id);
+    if (set?.releaseDate) setDates.set(id, set.releaseDate);
+  }));
+
+  const picked: CardInfo[] = [];
+  for (const group of groups) {
+    const sameSet = group.find(c => c.setId === currentCard.setId);
+    const owned   = group.find(c => ownedTcgIds.has(c.id));
+    const newest  = [...group].sort((a, b) =>
+      (setDates.get(b.setId) ?? '').localeCompare(setDates.get(a.setId) ?? '')
+    )[0];
+    const best = sameSet ?? owned ?? newest;
+    if (best) picked.push(best);
+  }
+  return picked.sort((a, b) => (a.nationalDexNumber ?? 0) - (b.nationalDexNumber ?? 0));
 }
 
 /* ── Props / Types ───────────────────────────────────────────── */
@@ -231,16 +281,12 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
               }
             }
 
-            // Eine Karte pro Pokédex-Nummer, sortiert nach Evo-Stufe
-            const seen = new Set<number>();
-            const deduped = source
-              .filter(c => {
-                if (!c.nationalDexNumber || seen.has(c.nationalDexNumber)) return false;
-                seen.add(c.nationalDexNumber);
-                return true;
-              })
-              .sort((a, b) => (a.nationalDexNumber ?? 0) - (b.nationalDexNumber ?? 0));
-            setEvoCards(deduped);
+            // Eine Karte pro Pokédex-Nummer, je Stufe unabhängig gewählt
+            // (gleiches Set → eigener Besitz → neuestes Datum, siehe pickEvolutionCards).
+            const ownedTcgIds = new Set(ownedCopies.map(o => o.tcgId).filter(Boolean) as string[]);
+            const picked = await pickEvolutionCards(source, card, ownedTcgIds);
+            if (cancelled) return;
+            setEvoCards(picked);
             setEvoLoaded(true);
           });
       } else {
@@ -619,7 +665,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                       return (
                         <Fragment key={ec.id}>
                           {i > 0 && (
-                            <div key={`arrow-${ec.id}`} className="flex-1 flex items-center justify-center min-w-[12px] h-[87px]">
+                            <div key={`arrow-${ec.id}`} className="flex-1 flex items-center justify-center min-w-[12px] h-[93px]">
                               <span className="text-muted-foreground text-lg">›</span>
                             </div>
                           )}
@@ -629,19 +675,21 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                             className="flex flex-col items-center gap-1.5 shrink-0 active:scale-95 transition-transform disabled:cursor-default"
                           >
                             <div
-                              className="rounded-[6px] overflow-hidden border-2 w-[62px]"
-                              style={{ borderColor: isCurrent ? 'var(--pokedex-red)' : 'var(--border)' }}
+                              className="glass-inner rounded-[9px] p-[3px] w-[68px]"
+                              style={isCurrent ? { borderColor: 'var(--pokedex-red)', borderWidth: 2 } : undefined}
                             >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={ec.imgSmall}
-                                alt={ec.name}
-                                className="w-full block"
-                                style={{ aspectRatio: '2.5/3.5', objectFit: 'cover' }}
-                              />
+                              <div className="rounded-[6px] overflow-hidden">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={ec.imgSmall}
+                                  alt={ec.name}
+                                  className="w-full block"
+                                  style={{ aspectRatio: '2.5/3.5', objectFit: 'cover' }}
+                                />
+                              </div>
                             </div>
                             <span
-                              className="text-[10px] text-center max-w-[64px] truncate"
+                              className="text-[10px] text-center max-w-[68px] truncate"
                               style={{ color: isCurrent ? 'var(--pokedex-red)' : 'var(--muted-foreground)', fontWeight: isCurrent ? 700 : 400 }}
                             >
                               {ec.name}
