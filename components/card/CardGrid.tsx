@@ -17,10 +17,12 @@ interface Props {
   emptyState?: React.ReactNode;
   /** Aktiver Sortierschlüssel — bestimmt das Label unter der Karte */
   sortKey?: string;
+  /** tcgId → Preis — nur nötig, wenn nach Preis sortiert wird */
+  priceMap?: Map<string, number>;
 }
 
 /** Gibt das passende Label zur aktiven Sortierung zurück */
-function getSublabel(card: CardInfo, sortKey?: string): string {
+function getSublabel(card: CardInfo, sortKey?: string, priceMap?: Map<string, number>): string {
   const key = sortKey?.replace(/-asc$|-desc$/, '') ?? 'number';
   switch (key) {
     case 'name':    return card.name;
@@ -28,12 +30,15 @@ function getSublabel(card: CardInfo, sortKey?: string): string {
       ? `#${String(card.nationalDexNumber).padStart(3, '0')}`
       : formatNumber(card);
     case 'hp':      return card.hp ? `KP ${card.hp}` : formatNumber(card);
+    case 'price': {
+      const price = priceMap?.get(card.id);
+      return price != null ? price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : '–';
+    }
     default:        return formatNumber(card);
   }
 }
 function formatNumber(card: CardInfo) {
-  const total = card.printedTotal ?? card.total;
-  return card.number + (total ? `/${total}` : '');
+  return card.number;
 }
 
 /** Animierter Platzhalter, solange Suchergebnisse/Browse-Karten laden — gleiche
@@ -58,6 +63,7 @@ export function CardGrid({
   setMeta,
   emptyState,
   sortKey,
+  priceMap,
 }: Props) {
   const [selected, setSelected] = useState<CardInfo | null>(null);
 
@@ -74,7 +80,7 @@ export function CardGrid({
             card={card}
             ownedCards={ownedMap.get(card.id)}
             onCardClick={() => setSelected(card)}
-            sublabel={getSublabel(card, sortKey)}
+            sublabel={getSublabel(card, sortKey, priceMap)}
           />
         ))}
       </div>

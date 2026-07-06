@@ -74,6 +74,23 @@ export async function searchCatalog(q: string, setId = '', maxResults = 80): Pro
   return enSnap.docs.map(d => d.data() as CatalogCard);
 }
 
+// Präfix-Suche auf dem Illustrator-Feld. Kein separates artistLower-Feld vorhanden —
+// pokemontcg.io liefert Künstlernamen aber durchgehend in Title-Case, daher wird die
+// Eingabe dafür normalisiert statt einer Migration aller Katalog-Dokumente.
+function toTitleCase(s: string): string {
+  return s.replace(/\S+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+
+export async function searchCatalogByArtistPrefix(q: string, maxResults = 80): Promise<CatalogCard[]> {
+  const prefix = toTitleCase(q.trim());
+  if (!prefix) return [];
+  const end = prefix + '';
+  const snap = await getDocs(
+    query(collection(db, COL), where('artist', '>=', prefix), where('artist', '<=', end), limit(maxResults)),
+  );
+  return snap.docs.map(d => d.data() as CatalogCard);
+}
+
 // Lookup mehrerer Karten per ID (für Deutsch-Suche via TCGdex)
 export async function getCatalogCardsByIds(ids: string[]): Promise<CatalogCard[]> {
   if (ids.length === 0) return [];

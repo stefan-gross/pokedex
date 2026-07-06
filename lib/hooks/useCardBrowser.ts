@@ -6,7 +6,7 @@
  * Server-seitig: types[0] > evolutionStage > supertype (Priorität, Composite-Indexes vermieden)
  * Client-seitig: OR-Logik für types, restliche Dimensionen (supertype wenn types aktiv, rarity, owned)
  * Pagination: Cursor-basiert (startAfter), PAGE_SIZE Karten pro Request
- * Kein Laden bis mindestens ein Filter aktiv ist
+ * Lädt immer — ohne aktiven Filter wird der gesamte Katalog seitenweise nachgeladen
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -20,7 +20,6 @@ export type CardBrowserFilter = {
   types?:           string[];       // Mehrfachauswahl, OR-Verknüpfung (englisch: 'Fire', 'Water', …)
   evolutionStages?: string[];       // ['Basic'] | ['Stage 1', 'Stage 2'] etc. — leer = alle
   rarity?:          string;         // Rarity-Label aus RARITY_GROUPS
-  artistQuery?:     string;         // Freitext, case-insensitive Teilstring-Suche auf artist
   ownedFilter?:     'all' | 'owned' | 'missing';
   ownedIds?:        Set<string>;
 };
@@ -57,10 +56,6 @@ function applyClientFilters(cards: CatalogCard[], f: CardBrowserFilter): Catalog
   if (f.rarity) {
     r = r.filter(c => (getRarityGroup(c.rarity ?? '')?.label ?? 'Sonstige') === f.rarity);
   }
-  if (f.artistQuery) {
-    const q = f.artistQuery.toLowerCase();
-    r = r.filter(c => c.artist?.toLowerCase().includes(q));
-  }
   if (f.ownedFilter === 'owned')   r = r.filter(c => f.ownedIds?.has(c.id));
   if (f.ownedFilter === 'missing') r = r.filter(c => !f.ownedIds?.has(c.id));
   return r;
@@ -94,8 +89,7 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
     filter.supertype ||
     filter.evolutionStages?.length ||
     (filter.ownedFilter && filter.ownedFilter !== 'all') ||
-    filter.rarity ||
-    filter.artistQuery
+    filter.rarity
   );
 
   // Stabile Dep-Keys für array-ähnliche Filter
@@ -103,13 +97,6 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
   const evolutionStagesKey = [...(filter.evolutionStages ?? [])].sort().join(',');
 
   useEffect(() => {
-    if (!hasAnyFilter) {
-      setCards([]);
-      setHasMore(false);
-      setLoading(false);
-      return;
-    }
-
     let cancelled = false;
     cursorRef.current = null;
     setCards([]);
@@ -131,7 +118,7 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
     run();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typesKey, filter.supertype, evolutionStagesKey, filter.rarity, filter.artistQuery, filter.ownedFilter, sort, desc]);
+  }, [typesKey, filter.supertype, evolutionStagesKey, filter.rarity, filter.ownedFilter, sort, desc]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore || !cursorRef.current) return;

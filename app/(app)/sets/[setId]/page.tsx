@@ -3,11 +3,13 @@
 import { useEffect, useState, useMemo, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ChevronLeft, ChevronDown } from 'lucide-react';
+import { ChevronLeft, ChevronDown, ArrowUpDown } from 'lucide-react';
 
 import { getCards } from '@/lib/firestore/cards';
 import { getCardsBySetId } from '@/lib/firestore/catalog';
 import { getBinders } from '@/lib/firestore/binders';
+import { getPricesByTcgIds } from '@/lib/firestore/prices';
+import { pickTrendPrice } from '@/lib/prices/value-tier';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { CardGrid } from '@/components/card/CardGrid';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
@@ -46,8 +48,9 @@ async function loadSetCards(setId: string): Promise<CatalogCard[]> {
 }
 
 /* ── Types ───────────────────────────────────────────────────── */
-type Filter  = 'all' | 'owned' | 'missing';
-type SortKey = 'number-asc' | 'number-desc' | 'name-asc' | 'name-desc';
+type Filter    = 'all' | 'owned' | 'missing';
+type SortField = 'number' | 'name' | 'pokedex' | 'hp' | 'price';
+type SortDir   = 'asc' | 'desc';
 
 const FILTER_OPTIONS: { value: Filter; label: string }[] = [
   { value: 'all',     label: 'Alle' },
@@ -55,11 +58,12 @@ const FILTER_OPTIONS: { value: Filter; label: string }[] = [
   { value: 'missing', label: 'Fehlen' },
 ];
 
-const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: 'number-asc',  label: 'Nummer ↑' },
-  { value: 'number-desc', label: 'Nummer ↓' },
-  { value: 'name-asc',    label: 'Name A–Z' },
-  { value: 'name-desc',   label: 'Name Z–A' },
+const SORT_OPTIONS: { value: SortField; label: string }[] = [
+  { value: 'number',  label: 'Nummer' },
+  { value: 'name',    label: 'Name' },
+  { value: 'pokedex', label: 'Pokédex-Nr.' },
+  { value: 'hp',      label: 'KP' },
+  { value: 'price',   label: 'Preis' },
 ];
 
 function pluralKarten(n: number) {
@@ -84,8 +88,10 @@ function SetDetailContent() {
   const cards = useMemo(() => rawCards.map(catalogCardToInfo), [rawCards]);
 
   const [filter, setFilter]           = useState<Filter>('all');
-  const [sort, setSort]               = useState<SortKey>('number-asc');
+  const [sortField, setSortField]     = useState<SortField>('number');
+  const [sortDir, setSortDir]         = useState<SortDir>('asc');
   const [rarityFilter, setRarityFilter] = useState<Set<string>>(new Set());
+  const [priceMap, setPriceMap]       = useState<Map<string, number>>(new Map());
 
   /* Set meta */
   const [nameDe, setNameDe]         = useState('');
@@ -125,6 +131,20 @@ function SetDetailContent() {
     }
     load();
   }, [setId]);
+
+  // Preise nur laden, wenn tatsächlich nach Preis sortiert wird — spart
+  // Firestore-Reads für den (häufigeren) Fall, dass niemand danach sortiert.
+  useEffect(() => {
+    if (sortField !== 'price' || rawCards.length === 0 || priceMap.size > 0) return;
+    getPricesByTcgIds(rawCards.map(c => c.id)).then(prices => {
+      const map = new Map<string, number>();
+      prices.forEach((data, id) => {
+        const price = pickTrendPrice(data);
+        if (price != null) map.set(id, price);
+      });
+      setPriceMap(map);
+    }).catch(() => {});
+  }, [sortField, rawCards, priceMap.size]);
 
   const logoUrl = logoDe ?? `https://images.pokemontcg.io/${setId}/logo.png`;
   // Sets vor Scarlet & Violet tragen keinen echten Kürzel-Aufdruck — nur ein
@@ -169,18 +189,32 @@ function SetDetailContent() {
     }
 
     result.sort((a, b) => {
+      // Preis: Karten ohne Preisdaten immer ans Ende, unabhängig von der Richtung.
+      if (sortField === 'price') {
+        const pa = priceMap.get(a.id);
+        const pb = priceMap.get(b.id);
+        if (pa == null && pb == null) return 0;
+        if (pa == null) return 1;
+        if (pb == null) return -1;
+        return sortDir === 'desc' ? pb - pa : pa - pb;
+      }
+
       let cmp = 0;
-      const key = sort.replace(/-asc|-desc/, '') as 'number' | 'name';
-      if (key === 'number') {
+      if (sortField === 'number') {
         const na = parseInt(a.number) || 0;
         const nb = parseInt(b.number) || 0;
         cmp = na !== nb ? na - nb : a.number.localeCompare(b.number);
+      } else if (sortField === 'name') {
+        cmp = a.name.localeCompare(b.name);
+      } else if (sortField === 'pokedex') {
+        cmp = (a.nationalDexNumber ?? 0) - (b.nationalDexNumber ?? 0);
+      } else if (sortField === 'hp') {
+        cmp = (a.hp ?? 0) - (b.hp ?? 0);
       }
-      if (key === 'name') cmp = a.name.localeCompare(b.name);
-      return sort.endsWith('-desc') ? -cmp : cmp;
+      return sortDir === 'desc' ? -cmp : cmp;
     });
     return result;
-  }, [cards, filter, sort, rarityFilter, ownedTcgIds, getRarityGroup]);
+  }, [cards, filter, sortField, sortDir, priceMap, rarityFilter, ownedTcgIds, getRarityGroup]);
 
   const ownedCount = useMemo(() => cards.filter(c => ownedTcgIds.has(c.id)).length, [cards, ownedTcgIds]);
   const totalCount = cards.length;
@@ -265,21 +299,22 @@ function SetDetailContent() {
           </div>
 
           {/* ── Sticky filter + sort bar ── */}
-          <div className="sticky z-10 glass rounded-[20px] mx-4 mb-3 px-4 py-2.5"
+          <div className="sticky z-10 glass rounded-[20px] mx-4 mb-3 px-4 py-2.5 space-y-2"
                style={{ top: 'calc(env(safe-area-inset-top, 0px) + 49px)' }}>
 
-            {/* Row 1: filter + sort + count */}
-            <div className="flex items-center gap-2">
-              <ButtonGroup
-                options={FILTER_OPTIONS}
-                value={filter}
-                onChange={setFilter}
-              />
+            {/* Row 1: Vorhanden/Fehlen-Filter */}
+            <ButtonGroup
+              options={FILTER_OPTIONS}
+              value={filter}
+              onChange={setFilter}
+            />
 
+            {/* Row 2: Sortierfeld + Richtung + Anzahl */}
+            <div className="flex items-center gap-2">
               <div className="relative flex items-center">
                 <select
-                  value={sort}
-                  onChange={e => setSort(e.target.value as SortKey)}
+                  value={sortField}
+                  onChange={e => setSortField(e.target.value as SortField)}
                   className="text-xs rounded-lg pl-2.5 pr-6 py-1.5 glass-inner text-glass appearance-none cursor-pointer"
                 >
                   {SORT_OPTIONS.map(o => (
@@ -288,6 +323,14 @@ function SetDetailContent() {
                 </select>
                 <ChevronDown size={12} className="absolute right-1.5 pointer-events-none text-glass-muted" />
               </div>
+
+              <button
+                onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                className="h-7 w-7 flex items-center justify-center rounded-lg glass-inner transition-colors"
+                title={sortDir === 'asc' ? 'Aufsteigend' : 'Absteigend'}
+              >
+                <ArrowUpDown size={12} style={{ color: sortDir === 'desc' ? 'var(--pokedex-red)' : undefined }} />
+              </button>
 
               <span className="text-xs text-glass-muted tabular-nums shrink-0 ml-auto">
                 {pluralKarten(displayed.length)}
@@ -303,7 +346,8 @@ function SetDetailContent() {
               ownedMap={ownedMap}
               binders={binders}
               setMeta={{ nameDe: (nameDe || cards[0]?.setName) ?? '', logoUrl, printedTotal: totalCount, total: totalCount }}
-              sortKey={sort}
+              sortKey={sortField}
+              priceMap={priceMap}
             />
           </div>
         </>

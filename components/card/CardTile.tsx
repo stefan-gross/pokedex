@@ -1,6 +1,5 @@
 'use client';
 
-import { Lock } from 'lucide-react';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardDoc } from '@/types';
 import { CardImage } from '@/components/card/CardImage';
@@ -25,25 +24,26 @@ export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWis
         className="relative rounded-[8px] overflow-hidden shadow-card cursor-pointer"
         onClick={onCardClick}
       >
-        <CardImage
-          srcDe={card.imgSmallDe}
-          src={card.imgSmall}
-          alt={card.name}
-          width={245}
-          height={342}
-          className="w-full aspect-[2.5/3.5] object-cover"
-          sizes="(max-width: 400px) 30vw, 120px"
-        />
-
-        {/* Unowned overlay + Lock */}
         {!isOwned && (
-          <>
-            <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.50)' }} />
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <Lock size={20} className="text-white/50" />
-            </div>
-          </>
+          // Feste neutrale Rückwand hinter dem transparent gemachten Bild — die
+          // echte opacity() darunter blendet dagegen statt gegen den (in Dark Mode
+          // sehr dunklen) Seitenhintergrund, der die Karte sonst abdunkeln würde.
+          <div className="absolute inset-0 bg-[#c9c9c9] dark:bg-[#5b5d63]" />
         )}
+        <div
+          className="relative"
+          style={!isOwned ? { filter: 'grayscale(0.35) contrast(0.7) blur(1px)', opacity: 0.62 } : undefined}
+        >
+          <CardImage
+            srcDe={card.imgSmallDe}
+            src={card.imgSmall}
+            alt={card.name}
+            width={245}
+            height={342}
+            className="w-full aspect-[2.5/3.5] object-cover"
+            sizes="(max-width: 400px) 30vw, 120px"
+          />
+        </div>
 
         {/* Owned badge — grün, analog zum Scan-Erkennungs-Rahmen */}
         {isOwned && (
@@ -55,29 +55,25 @@ export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWis
           </div>
         )}
 
-        {/* Bottom overlay: Wishlist */}
-        <div
-          className="absolute bottom-0 left-0 right-0 flex justify-end items-center px-1.5 pb-1.5 pt-4"
-          style={{ background: 'linear-gradient(to top, rgba(0,0,0,.7) 0%, transparent 100%)' }}
-          onClick={e => e.stopPropagation()} // Button stoppt Click-Bubbling zum Detail
-        >
-          {/* Wishlist button */}
+        {/* Wishlist — nur Herzform, kein Button-Hintergrund; nur bei nicht
+            vorhandenen Karten (bei vorhandenen ist die Wunschliste irrelevant) */}
+        {!isOwned && (
           <button
-            onClick={onWishlist}
-            className="w-7 h-7 rounded-lg flex items-center justify-center"
-            style={{ background: isWishlisted ? 'rgba(236,72,153,.85)' : 'rgba(0,0,0,.5)' }}
+            onClick={e => { e.stopPropagation(); onWishlist?.(); }} // stoppt Click-Bubbling zum Detail
+            className="absolute bottom-1.5 right-1.5 flex items-center justify-center"
+            style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.6))' }}
             aria-label="Zur Wunschliste"
           >
-            <svg width="14" height="13" viewBox="0 0 24 22" fill={isWishlisted ? '#fff' : 'none'} stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="20" height="18" viewBox="0 0 24 22" fill={isWishlisted ? '#ef4444' : 'none'} stroke={isWishlisted ? '#ef4444' : '#fff'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
             </svg>
           </button>
-        </div>
+        )}
       </div>
 
       {/* Sortierungsrelevantes Label */}
       {sublabel && (
-        <div className="text-[11px] text-muted-foreground text-center mt-1.5 truncate px-0.5 leading-tight">
+        <div className="text-[11px] text-glass text-center mt-1.5 truncate px-0.5 leading-tight">
           {sublabel}
         </div>
       )}

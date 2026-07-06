@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Search, X, Database, ChevronDown, ArrowUpDown, SlidersHorizontal, GitMerge } from 'lucide-react';
+import { Search, X, ChevronDown, ArrowUpDown, SlidersHorizontal, GitMerge } from 'lucide-react';
 import { CardGrid, CardGridSkeleton } from '@/components/card/CardGrid';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { getCards } from '@/lib/firestore/cards';
-import { searchCatalog, getCatalogCardsByIds, getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts } from '@/lib/firestore/catalog';
+import { searchCatalog, searchCatalogByArtistPrefix, getCatalogCardsByIds, getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts, type CatalogCard } from '@/lib/firestore/catalog';
 import { searchTcgdexDe } from '@/lib/tcgdex';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import { catalogCardToInfo, tcgApiCardToInfo, type CardInfo } from '@/lib/card-info';
@@ -21,6 +21,13 @@ import type { BrowseSortKey } from '@/lib/firestore/catalog';
 type OwnedFilter   = 'all' | 'owned' | 'missing' | 'review';
 type SearchSortKey = 'number' | 'name' | 'pokedex' | 'hp';
 type Supertype     = 'Pokémon' | 'Trainer' | 'Energy';
+
+// Mindestlänge pro Wort für Mehrwort- bzw. reine Illustrator-Suche — vermeidet
+// teure/false-positive-lastige Kombinationsversuche bei sehr kurzen Eingaben
+const MIN_COMBO_LEN = 3;
+
+// Anzahl Karten, die pro Scroll-Schritt zusätzlich sichtbar gemacht werden
+const SEARCH_REVEAL_CHUNK = 20;
 
 const OWNED_OPTIONS: { value: OwnedFilter; label: string }[] = [
   { value: 'all',     label: 'Alle'      },
@@ -71,8 +78,6 @@ function CollectionContent() {
   const [activeSupertype,  setActiveSupertype]  = useState<Supertype | 'all'>('all');
   const [ownedFilter,      setOwnedFilter]      = useState<OwnedFilter>('all');
   const [activeRarity,     setActiveRarity]     = useState<string | null>(null);
-  const [artistInput,      setArtistInput]      = useState('');
-  const [activeArtist,     setActiveArtist]     = useState('');
   const [activeEvolutions, setActiveEvolutions] = useState<Set<string>>(new Set());
   const [evoLineActive,    setEvoLineActive]    = useState(false);
   const baseResultsRef = useRef<CardInfo[]>([]); // Suchergebnisse vor Evo-Line-Erweiterung
@@ -92,7 +97,8 @@ function CollectionContent() {
   const [sets,          setSets]          = useState<{ id: string; name: string }[]>([]);
   const [catalogCount,  setCatalogCount]  = useState(0);
   const catalogCountRef = useRef(0);
-  const [source,        setSource]        = useState<'catalog' | 'api' | null>(null);
+  const [searchVisibleCount, setSearchVisibleCount] = useState(20);
+  const searchSentinelRef = useRef<HTMLDivElement>(null);
 
   // ── UI-State ──────────────────────────────────────────────────
   const [filterCounts,     setFilterCounts]     = useState<FilterCounts | null>(null);
@@ -102,15 +108,7 @@ function CollectionContent() {
   const scrollLockRef    = useRef(false);
   const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const artistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sentinelRef    = useRef<HTMLDivElement>(null);
-
-  // ── Künstler-Suche (debounced, wie das Haupt-Suchfeld) ─────────
-  useEffect(() => {
-    if (artistTimerRef.current) clearTimeout(artistTimerRef.current);
-    artistTimerRef.current = setTimeout(() => setActiveArtist(artistInput.trim()), 350);
-    return () => { if (artistTimerRef.current) clearTimeout(artistTimerRef.current); };
-  }, [artistInput]);
 
   // ── Init ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -137,7 +135,7 @@ function CollectionContent() {
 
   // ── Exakte Gesamtzahl für aktuellen Browse-Filter ─────────────
   const activeEvolutionsKey = useMemo(() => [...activeEvolutions].sort().join(','), [activeEvolutions]);
-  const hasActiveFilterForCount = !!(activeTypes.size || activeSupertype !== 'all' || activeEvolutions.size || ownedFilter !== 'all' || activeRarity || activeArtist);
+  const hasActiveFilterForCount = !!(activeTypes.size || activeSupertype !== 'all' || activeEvolutions.size || ownedFilter !== 'all' || activeRarity);
   useEffect(() => {
     if (!hasActiveFilterForCount) { setBrowseTotal(null); return; }
     const browseFilter = activeTypes.size > 0
@@ -205,14 +203,13 @@ function CollectionContent() {
     types:           activeTypes.size > 0 ? [...activeTypes] : undefined,
     evolutionStages: activeEvolutions.size > 0 ? [...activeEvolutions] : undefined,
     rarity:          activeRarity ?? undefined,
-    artistQuery:     activeArtist || undefined,
     ownedFilter: ownedFilter === 'review' ? 'all' : ownedFilter,
     ownedIds,
-  }), [activeSupertype, activeTypesKey, activeEvolutionsKey, activeRarity, activeArtist, ownedFilter, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [activeSupertype, activeTypesKey, activeEvolutionsKey, activeRarity, ownedFilter, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const {
     cards: browseCards, loading: browseLoading,
-    loadingMore, hasMore, loadMore, hasAnyFilter,
+    loadingMore, hasMore, loadMore,
   } = useCardBrowser(browseSort, browserFilter, browseSortDir === 'desc');
 
   // ── Infinite Scroll ───────────────────────────────────────────
@@ -226,9 +223,14 @@ function CollectionContent() {
     return () => observer.disconnect();
   }, [hasMore, loadingMore, browseLoading, loadMore, inputValue]);
 
+  // ── Such-Modus: nur einen sichtbaren Ausschnitt rendern, Rest beim
+  // Scrollen nachladen — die zugrundeliegenden Arrays (results/displayed)
+  // bleiben vollständig, Zähler/Filter-Counts bleiben also exakt ──
+  useEffect(() => { setSearchVisibleCount(SEARCH_REVEAL_CHUNK); }, [inputValue]);
+
   // ── Suche ─────────────────────────────────────────────────────
   const doSearch = useCallback(async (q: string) => {
-    if (!q.trim()) { setResults([]); setSets([]); setSource(null); return; }
+    if (!q.trim()) { setResults([]); setSets([]); return; }
     setSearchLoading(true);
 
     const setAndReturn = (cards: CardInfo[]) => {
@@ -237,7 +239,6 @@ function CollectionContent() {
       setSets(Array.from(setMap.entries()).map(([id, name]) => ({ id, name })));
       baseResultsRef.current = cards;
       setResults(cards);
-      setSource('catalog');
     };
 
     try {
@@ -255,19 +256,53 @@ function CollectionContent() {
 
       // catalogCountRef statt catalogCount — keine Re-Render durch nachladen
       if (catalogCountRef.current > 0) {
-        // 1. Firestore: erst Deutsch (nameDeLower), dann Englisch (nameLower)
-        const hits = await searchCatalog(q, filterSet, 80);
-        if (hits.length > 0) { setAndReturn(hits.map(catalogCardToInfo)); return; }
+        const words = q.trim().split(/\s+/).filter(Boolean);
 
-        // 2. TCGdex-Fallback (solange nameDe-Enrichment noch nicht vollständig)
-        const tcgdexIds = await searchTcgdexDe(q);
-        if (tcgdexIds.length > 0) {
-          const deHits = await getCatalogCardsByIds(tcgdexIds.slice(0, 80));
-          if (deHits.length > 0) { setAndReturn(deHits.map(catalogCardToInfo)); return; }
+        // Sucht einen Namensteil per Firestore-Präfix, mit TCGdex als Fallback.
+        // TCGdex macht serverseitig eine lockere Teilstring-Suche — bei mehrteiliger
+        // Eingabe würde das ein unpassendes zweites Wort stillschweigend ignorieren
+        // (z.B. "Knapfel Nonsense" trotzdem als "Knapfel" matchen), deshalb nur für
+        // echte Einzelwort-Namensteile, nie für die volle Mehrwort-Eingabe.
+        const findByName = async (namePart: string): Promise<CatalogCard[]> => {
+          const nameHits = await searchCatalog(namePart, filterSet, 80);
+          if (nameHits.length > 0) return nameHits;
+          if (namePart.trim().includes(' ')) return [];
+          const tcgdexIds = await searchTcgdexDe(namePart);
+          if (tcgdexIds.length === 0) return [];
+          return getCatalogCardsByIds(tcgdexIds.slice(0, 80));
+        };
+
+        // 1. Gesamte Eingabe als Name (deckt auch mehrteilige Namen ab)
+        let hits = await findByName(q);
+
+        // 2. Mehrwort-Eingabe ("Knapfel Morii" bzw. "Morii Knapfel") — ein Wort als
+        // Name, das andere client-seitig als Illustrator-Teilstring auf den gefundenen
+        // Kandidaten abgeglichen (kein artistLower-Feld für Server-Suche vorhanden).
+        // Erst ab MIN_COMBO_LEN Zeichen pro Wort, sonst zu viele False-Positives/Anfragen.
+        if (hits.length === 0 && words.length > 1 && words.every(w => w.length >= MIN_COMBO_LEN)) {
+          for (const { namePart, artistPart } of [
+            { namePart: words.slice(0, -1).join(' '), artistPart: words[words.length - 1] },
+            { namePart: words.slice(1).join(' '),     artistPart: words[0] },
+          ]) {
+            const nameHits = await findByName(namePart);
+            if (nameHits.length === 0) continue;
+            const artistLower = artistPart.toLowerCase();
+            const filtered = nameHits.filter(c => c.artist?.toLowerCase().includes(artistLower));
+            if (filtered.length > 0) { hits = filtered; break; }
+          }
         }
 
-        // Catalog vorhanden + Firestore + TCGdex fanden nichts → API hilft auch nicht
+        // 3. Reine Illustrator-Suche (ganze Eingabe = Künstlername/-präfix)
+        if (hits.length === 0 && q.trim().length >= MIN_COMBO_LEN) {
+          hits = await searchCatalogByArtistPrefix(q, 80);
+        }
+
+        if (hits.length > 0) { setAndReturn(hits.map(catalogCardToInfo)); return; }
+
+        // Catalog vorhanden + nichts gefunden → API hilft auch nicht
         // (pokemontcg.io kennt nur englische Namen; deutsche Suchen würden immer scheitern)
+        setResults([]);
+        setSets([]);
         return;
       }
 
@@ -281,7 +316,6 @@ function CollectionContent() {
       setSets(Array.from(setMap.entries()).map(([id, name]) => ({ id, name })));
       baseResultsRef.current = cards;
       setResults(cards);
-      setSource('api');
     } catch {
       setResults([]);
     } finally {
@@ -354,10 +388,6 @@ function CollectionContent() {
     if (activeRarity) {
       r = r.filter(c => (getRarityGroup(c.rarity ?? '')?.label ?? 'Sonstige') === activeRarity);
     }
-    if (activeArtist) {
-      const q = activeArtist.toLowerCase();
-      r = r.filter(c => c.artist?.toLowerCase().includes(q));
-    }
     const d = searchSortDir === 'desc' ? -1 : 1;
     r.sort((a, b) =>
       searchSort === 'name'
@@ -369,21 +399,30 @@ function CollectionContent() {
             : d * ((parseInt(a.number) || 0) - (parseInt(b.number) || 0)),
     );
     return r;
-  }, [results, ownedFilter, activeSupertype, activeTypesKey, activeEvolutionsKey, activeRarity, activeArtist, ownedIds, reviewTcgIds, searchSort, searchSortDir]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [results, ownedFilter, activeSupertype, activeTypesKey, activeEvolutionsKey, activeRarity, ownedIds, reviewTcgIds, searchSort, searchSortDir]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Review-Mode: kein Suchbegriff + "Zu prüfen" Filter → eigene Karten laden
   const isReviewMode = !inputValue && ownedFilter === 'review';
   const isBrowseMode = !inputValue && ownedFilter !== 'review';
-  const hasActiveFilter = !!(activeTypes.size || activeSupertype !== 'all' || ownedFilter !== 'all' || activeRarity || activeEvolutions.size || activeArtist);
+  const hasActiveFilter = !!(activeTypes.size || activeSupertype !== 'all' || ownedFilter !== 'all' || activeRarity || activeEvolutions.size);
+
+  useEffect(() => {
+    const el = searchSentinelRef.current;
+    if (!el || isBrowseMode) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) setSearchVisibleCount(n => n + SEARCH_REVEAL_CHUNK);
+    }, { rootMargin: '300px' });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isBrowseMode, displayed.length]);
 
   // Review-Mode: Catalog-Karten für alle ungeprüften Einträge laden
   useEffect(() => {
     if (!isReviewMode) return;
-    if (reviewTcgIds.size === 0) { setResults([]); setSource('catalog'); return; }
+    if (reviewTcgIds.size === 0) { setResults([]); return; }
     getCatalogCardsByIds([...reviewTcgIds]).then(cards => {
       baseResultsRef.current = cards.map(catalogCardToInfo);
       setResults(baseResultsRef.current);
-      setSource('catalog');
     }).catch(() => {});
   }, [isReviewMode, reviewTcgIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -391,7 +430,6 @@ function CollectionContent() {
     setInputValue('');
     setResults([]);
     setSets([]);
-    setSource(null);
     router.replace('/collection', { scroll: false });
   };
 
@@ -411,11 +449,16 @@ function CollectionContent() {
     });
   };
 
-  // Ergebniszahl — im Browse-Modus exakte Zahl aus Firestore, sonst geladene Anzahl
+  // Ergebniszahl — immer die exakte Gesamtzahl, unabhängig davon wie viele
+  // Karten aktuell tatsächlich geladen/gerendert sind (Lazy-Loading beim Scrollen)
   const resultCount = isBrowseMode
-    ? browseTotal != null ? fmt(browseTotal) : browseCards.length > 0 ? `${browseCards.length}${hasMore ? '+' : ''}` : null
+    ? browseTotal != null
+      ? fmt(browseTotal)
+      : !hasActiveFilterForCount && catalogCount > 0
+        ? fmt(catalogCount)
+        : browseCards.length > 0 ? `${browseCards.length}${hasMore ? '+' : ''}` : null
     : displayed.length > 0 ? fmt(displayed.length) : null;
-  const showResultCount = hasAnyFilter || !!inputValue;
+  const showResultCount = true;
 
   // Disabled-Logik für Type-Pills
   const typeCountInContext = useMemo(() => {
@@ -465,7 +508,7 @@ function CollectionContent() {
             type="search"
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
-            placeholder="Pokémon suchen… oder stöbern"
+            placeholder="Name, Illustrator … oder stöbern"
             className="w-full h-10 pl-9 pr-8 rounded-xl glass-inner text-glass text-sm placeholder:text-glass-muted focus:outline-none focus:ring-1 focus:ring-ring"
           />
           {inputValue && (
@@ -508,9 +551,6 @@ function CollectionContent() {
               )}
               {activeRarity && (
                 <FilterChip label={activeRarity} onRemove={() => setActiveRarity(null)} />
-              )}
-              {activeArtist && (
-                <FilterChip label={`Künstler: ${activeArtist}`} onRemove={() => { setArtistInput(''); setActiveArtist(''); }} />
               )}
             </div>
           ) : null
@@ -606,24 +646,6 @@ function CollectionContent() {
               onToggle={label => setActiveRarity(prev => prev === label ? null : label)}
               rarityCounts={isBrowseMode ? filterCounts?.rarities : undefined}
             />
-
-            {/* Zeile 6: Künstler — Freitext-Suche, client-seitig gefiltert */}
-            <div className="relative">
-              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-glass-muted pointer-events-none" />
-              <input
-                type="search"
-                value={artistInput}
-                onChange={e => setArtistInput(e.target.value)}
-                placeholder="Künstler / Illustrator suchen…"
-                className="w-full h-8 pl-7 pr-7 rounded-lg glass-inner text-glass text-xs placeholder:text-glass-muted focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-              {artistInput && (
-                <button type="button" onClick={() => { setArtistInput(''); setActiveArtist(''); }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-glass-muted">
-                  <X size={12} />
-                </button>
-              )}
-            </div>
           </>
         )}
 
@@ -700,40 +722,26 @@ function CollectionContent() {
       {/* ── Content ─────────────────────────────────────────────── */}
       <div className="flex-1 px-3 py-3">
 
-        {/* Browse-Modus */}
+        {/* Browse-Modus — zeigt initial den gesamten Katalog, dynamisches Nachladen beim Scrollen */}
         {isBrowseMode && (
-          <>
-            {!hasAnyFilter && (
-              <div className="flex flex-col items-center justify-center pt-16 gap-3 text-center">
-                <Search size={40} className="text-glass-muted" />
-                <p className="text-sm font-medium text-foreground">Filter wählen</p>
-                <p className="text-xs text-glass-muted max-w-[220px]">
-                  Wähle einen Typ, eine Kategorie oder „Vorhanden / Fehlen" um Karten zu laden.
+          browseLoading && browseCards.length === 0 ? (
+            <CardGridSkeleton />
+          ) : (
+            <>
+              {browseCards.length === 0 && !browseLoading && (
+                <p className="text-center text-glass-muted text-sm pt-12">
+                  Keine Karten für diesen Filter.
                 </p>
-              </div>
-            )}
-
-            {hasAnyFilter && (
-              browseLoading && browseCards.length === 0 ? (
-                <CardGridSkeleton />
-              ) : (
-                <>
-                  {browseCards.length === 0 && !browseLoading && (
-                    <p className="text-center text-glass-muted text-sm pt-12">
-                      Keine Karten für diesen Filter.
-                    </p>
-                  )}
-                  <CardGrid cards={browseCards} ownedMap={ownedMap} sortKey={browseSort} />
-                  <div ref={sentinelRef} className="h-1" />
-                  {loadingMore && (
-                    <div className="flex justify-center py-4">
-                      <div className="w-6 h-6 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  )}
-                </>
-              )
-            )}
-          </>
+              )}
+              <CardGrid cards={browseCards} ownedMap={ownedMap} sortKey={browseSort} />
+              <div ref={sentinelRef} className="h-1" />
+              {loadingMore && (
+                <div className="flex justify-center py-4">
+                  <div className="w-6 h-6 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+            </>
+          )
         )}
 
         {/* Such-Modus */}
@@ -758,15 +766,8 @@ function CollectionContent() {
             )}
             {!searchLoading && displayed.length > 0 && (
               <>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-glass-muted">{displayed.length} Karten</p>
-                  {source && (
-                    <p className="text-[10px] text-glass-muted opacity-50 flex items-center gap-1">
-                      {source === 'catalog' ? <><Database size={9} /> lokal</> : '↗ API'}
-                    </p>
-                  )}
-                </div>
-                <CardGrid cards={displayed} ownedMap={ownedMap} sortKey={searchSort} />
+                <CardGrid cards={displayed.slice(0, searchVisibleCount)} ownedMap={ownedMap} sortKey={searchSort} />
+                <div ref={searchSentinelRef} className="h-1" />
               </>
             )}
           </>
