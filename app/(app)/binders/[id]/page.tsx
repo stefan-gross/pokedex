@@ -32,7 +32,7 @@ import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
-import { findVariantPrice } from '@/lib/prices/value-tier';
+import { findVariantPrice, PRICE_COLOR } from '@/lib/prices/value-tier';
 import type { PriceResult } from '@/lib/prices/types';
 import type { BinderDoc, BinderPage, CardDoc } from '@/types';
 
@@ -504,7 +504,10 @@ function GridView({ cards, onCardTap, prices }: {
               </div>
             )}
             {price != null && (
-              <div className="absolute bottom-1 left-1 text-[9px] font-bold px-1 py-0.5 rounded bg-black/70 text-white">
+              <div
+                className="absolute bottom-1 left-1 text-[9px] font-bold px-1 py-0.5 rounded bg-black/70"
+                style={{ color: PRICE_COLOR }}
+              >
                 {price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
               </div>
             )}

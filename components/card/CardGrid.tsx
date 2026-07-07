@@ -5,6 +5,7 @@ import { CardTile } from '@/components/card/CardTile';
 import { CardDetailSheet, type SetMeta } from '@/components/card/CardDetailSheet';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardDoc, BinderDoc } from '@/types';
+import { PRICE_COLOR } from '@/lib/prices/value-tier';
 
 interface Props {
   cards: CardInfo[];
@@ -22,6 +23,10 @@ interface Props {
   /** Wird beim Schließen des Detail-Sheets aufgerufen (z.B. um einen dort frisch
    *  nachgeladenen Preis in die eigene priceMap zu übernehmen). */
   onDetailClose?: (card: CardInfo) => void;
+  /** tcgIds, die aktuell auf der Wunschliste stehen — für den Herz-Status. */
+  wishlistIds?: Set<string>;
+  /** Herz-Klick auf einer Kachel — togglet die Karte auf/von der Wunschliste. */
+  onToggleWishlist?: (card: CardInfo) => void;
 }
 
 /** Gibt das passende Label zur aktiven Sortierung zurück */
@@ -75,6 +80,8 @@ export function CardGrid({
   sortKey,
   priceMap,
   onDetailClose,
+  wishlistIds,
+  onToggleWishlist,
 }: Props) {
   const [selected, setSelected] = useState<CardInfo | null>(null);
 
@@ -97,6 +104,9 @@ export function CardGrid({
             ownedCards={ownedMap.get(card.id)}
             onCardClick={() => setSelected(card)}
             sublabel={getSublabel(card, sortKey, priceMap)}
+            sublabelColor={(sortKey?.replace(/-asc$|-desc$/, '') ?? 'number') === 'price' ? PRICE_COLOR : undefined}
+            isWishlisted={wishlistIds?.has(card.id)}
+            onWishlist={() => onToggleWishlist?.(card)}
           />
         ))}
       </div>

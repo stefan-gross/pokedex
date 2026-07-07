@@ -1,7 +1,7 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import { activeProvider } from '@/lib/prices';
 import { getAdminDb } from '@/lib/firebase/admin';
-import type { PriceResult, PriceProvider, PriceCurrency } from './types';
+import { TransientPriceError, type PriceResult, type PriceProvider, type PriceCurrency } from './types';
 
 /** TTL: nach 7 Tagen gilt der gecachte Preis als stale → Live-Refresh.
  *  Preise ändern sich selten stark genug, um öfter nachzufragen — siehe
@@ -119,11 +119,33 @@ export async function ensureFreshPrice(tcgId: string, force = false): Promise<Pr
   return refreshAndCache(tcgId);
 }
 
-/** Holt live von pokemontcg.io und schreibt in Firestore. */
+/** Holt live von pokemontcg.io und schreibt in Firestore. Bei einem
+ *  transienten Fehler (Netzwerk/Timeout/5xx) wird NICHTS gecacht — der
+ *  bestehende Cache-Stand (falls vorhanden) bleibt unangetastet, und der
+ *  nächste Zugriff versucht es erneut live, statt eine Stunde lang
+ *  fälschlich "kein Preis" anzuzeigen. Existiert bereits ein (ggf. leicht
+ *  abgelaufener) Preis, wird der bei einem transienten Fehler als bester
+ *  verfügbarer Wert zurückgegeben, statt gar keinen Preis zu zeigen. */
 export async function refreshAndCache(tcgId: string): Promise<PriceResult | null> {
   const db = getAdminDb();
   const docRef = db.collection('tcg_catalog').doc(tcgId);
-  const live = await activeProvider.fetchPrices(tcgId);
+
+  let live: PriceResult | null;
+  try {
+    live = await activeProvider.fetchPrices(tcgId);
+  } catch (e) {
+    if (e instanceof TransientPriceError) {
+      console.warn(`[prices] Live-Refresh ${tcgId}: transienter Fehler, Cache bleibt unverändert —`, e.message);
+      try {
+        const snap = await docRef.get();
+        const cached = snap.data()?.prices as CachedPrices | undefined;
+        if (cached) return toResult(cached);
+      } catch { /* kein Cache verfügbar — unten null zurückgeben */ }
+      return null;
+    }
+    throw e;
+  }
+
   console.log(`[prices] Live-Refresh ${tcgId}:`, live
     ? `${live.provider} ${live.variants[0]?.trend ?? live.variants[0]?.market ?? '?'} ${live.currency}`
     : 'kein Preis gefunden → wird als empty gecacht');

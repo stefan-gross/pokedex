@@ -1,4 +1,4 @@
-import type { IPriceProvider, PriceResult, PriceVariant } from './types';
+import { TransientPriceError, type IPriceProvider, type PriceResult, type PriceVariant } from './types';
 
 const TCG_BASE = 'https://api.pokemontcg.io/v2';
 
@@ -108,15 +108,20 @@ export const pokemontcgProvider: IPriceProvider = {
         signal: abort.signal,
       });
       if (!res.ok) {
-        console.warn(`[prices] pokemontcg.io HTTP ${res.status} für ${tcgId} — gebe null zurück (wird als empty gecacht)`);
+        // 4xx (außer 404) und 5xx sind API-seitige/transiente Probleme (z.B. Rate-Limit) —
+        // NICHT als "kein Preis" cachen. 404 bedeutet: pokemontcg.io kennt diese Karte
+        // gar nicht — das ist dauerhaft und darf als "empty" gelten.
+        if (res.status !== 404) {
+          throw new TransientPriceError(`HTTP ${res.status}`);
+        }
+        console.warn(`[prices] pokemontcg.io 404 für ${tcgId} — gebe null zurück (wird als empty gecacht)`);
         return null;
       }
 
       const json = await res.json();
       const card = json.data;
       if (!card) {
-        console.warn(`[prices] pokemontcg.io lieferte kein "data"-Feld für ${tcgId}`);
-        return null;
+        throw new TransientPriceError('kein "data"-Feld in der Antwort');
       }
 
       // 1. Cardmarket bevorzugt
@@ -152,8 +157,10 @@ export const pokemontcgProvider: IPriceProvider = {
       console.warn(`[prices] ${tcgId}: weder cardmarket noch tcgplayer liefern Preisdaten (cardmarket=${!!cm}, tcgplayer=${!!tp})`);
       return null;
     } catch (e) {
-      console.warn(`[prices] Fetch für ${tcgId} fehlgeschlagen:`, e instanceof Error ? e.message : e);
-      return null;
+      if (e instanceof TransientPriceError) throw e;
+      // Netzwerkfehler/Timeout/Abort — transient, NICHT als "kein Preis" cachen.
+      console.warn(`[prices] Fetch für ${tcgId} fehlgeschlagen (transient):`, e instanceof Error ? e.message : e);
+      throw new TransientPriceError(e instanceof Error ? e.message : String(e));
     } finally {
       clearTimeout(timeout);
     }

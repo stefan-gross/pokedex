@@ -16,6 +16,7 @@ import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { detectVariants, getRarityGroup, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
+import { useWishlist } from '@/lib/hooks/use-wishlist';
 import type { CatalogCard } from '@/lib/firestore/catalog';
 import type { CardDoc, BinderDoc } from '@/types';
 
@@ -99,6 +100,7 @@ function SetDetailContent() {
   const [rarityFilter, setRarityFilter] = useState<Set<string>>(new Set());
   const [priceMap, setPriceMap]       = useState<Map<string, number>>(new Map());
   const priceLoadedRef = useRef(false);
+  const { wishlistIds, toggle: toggleWishlist } = useWishlist();
 
   /* Set meta */
   const [nameDe, setNameDe]         = useState('');
@@ -352,6 +354,8 @@ function SetDetailContent() {
               sortKey={sortField}
               priceMap={priceMap}
               onDetailClose={refreshCardPrice}
+              wishlistIds={wishlistIds}
+              onToggleWishlist={toggleWishlist}
             />
           </div>
         </>

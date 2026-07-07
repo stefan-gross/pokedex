@@ -11,9 +11,11 @@ interface Props {
   onWishlist?: () => void;
   isWishlisted?: boolean;
   sublabel?: string;
+  /** Überschreibt die Sublabel-Textfarbe — z.B. Preis-Blau bei Preis-Sortierung. */
+  sublabelColor?: string;
 }
 
-export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWishlisted, sublabel }: Props) {
+export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWishlisted, sublabel, sublabelColor }: Props) {
   const totalOwned = ownedCards.reduce((s, c) => s + c.quantity, 0);
   const isOwned    = totalOwned > 0;
 
@@ -73,7 +75,10 @@ export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWis
 
       {/* Sortierungsrelevantes Label */}
       {sublabel && (
-        <div className="text-[11px] text-glass text-center mt-1.5 truncate px-0.5 leading-tight">
+        <div
+          className={`text-[11px] text-center mt-1.5 truncate px-0.5 leading-tight ${sublabelColor ? 'font-semibold' : 'text-glass'}`}
+          style={sublabelColor ? { color: sublabelColor } : undefined}
+        >
           {sublabel}
         </div>
       )}

@@ -1,7 +1,7 @@
 'use client';
 
 import { usePrice } from '@/lib/hooks/use-price';
-import { pickTrendPrice, classifyValue } from '@/lib/prices/value-tier';
+import { pickTrendPrice, PRICE_COLOR } from '@/lib/prices/value-tier';
 
 interface Props {
   tcgId: string | undefined;
@@ -16,11 +16,10 @@ interface Props {
 }
 
 /** Einzelner Preis-Pill mit Trend-Preis (Cardmarket) oder Market (TCGplayer).
- *  Hintergrund-Farbe = Wert-Tier (grau / weiß / gelb / orange / rot). */
+ *  Immer in der app-weit einheitlichen Preis-Farbe (`PRICE_COLOR`). */
 export function CardPrice({ tcgId, compact = false, plain = false, className, fontSize }: Props) {
   const { data, loading } = usePrice(tcgId);
   const price = pickTrendPrice(data);
-  const tier = classifyValue(price);
 
   if (loading) {
     return (
@@ -57,8 +56,8 @@ export function CardPrice({ tcgId, compact = false, plain = false, className, fo
           : ' inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap')
       }
       style={plain
-        ? { color: tier.textColor, fontSize }
-        : { background: tier.badgeColor, color: tier.textColor, boxShadow: tier.glow }
+        ? { color: PRICE_COLOR, fontSize }
+        : { background: 'rgba(255,255,255,0.12)', color: PRICE_COLOR }
       }
     >
       {text}

@@ -3,6 +3,11 @@ import type { CardVariant } from '@/types';
 
 export type ValueTier = 'standard' | 'schoen' | 'besonders' | 'wertvoll' | 'schatz';
 
+/** Einheitliche Preis-Farbe app-weit (Scanner, Kartendetail, Sammlung,
+ *  Wunschliste, Sortierung nach Preis) — bewusst unabhängig vom Wert-Tier,
+ *  das weiterhin nur für den separaten „Wertvoll"/„Schatz"-Badge gilt. */
+export const PRICE_COLOR = '#6cb0ff';
+
 /** Findet die Preis-Variante (Cardmarket/TCGplayer-Label), die zu einer
  *  Karten-Variante passt — einzige Stelle für dieses Mapping, genutzt von
  *  `CardPriceDetail`/`CardVariantPrice` und `useTotalValue`. */

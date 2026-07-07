@@ -2,7 +2,7 @@
 
 import { Loader2, Star, Gem } from 'lucide-react';
 import { usePrice } from '@/lib/hooks/use-price';
-import { classifyValue, pickTrendPrice, findVariantPrice } from '@/lib/prices/value-tier';
+import { classifyValue, pickTrendPrice, findVariantPrice, PRICE_COLOR } from '@/lib/prices/value-tier';
 import type { CardVariant } from '@/types';
 
 interface Props {
@@ -41,13 +41,10 @@ export function CardVariantPrice({
   const v = findVariantPrice(data.variants, variant);
   const price = v?.trend ?? v?.market;
   if (price == null) return empty;
-  const tier = classifyValue(price);
-  const priceColor =
-    tier.tier === 'standard' || tier.tier === 'schoen' ? undefined : tier.badgeColor;
   return (
     <span
       className={(className ?? '') + ' text-base font-bold tabular-nums'}
-      style={{ color: priceColor }}
+      style={{ color: PRICE_COLOR }}
       title={
         (data.provider === 'cardmarket' ? 'Cardmarket' : 'TCGplayer (USD)')
         + (data.updatedAt ? ` · Stand ${data.updatedAt}` : '')
@@ -114,14 +111,10 @@ export function CardPriceDetail({ tcgId }: Props) {
       <div className="space-y-1.5">
         {data.variants.map(v => {
           const price = v.trend ?? v.market;
-          const vTier = classifyValue(price);
           return (
             <div key={v.label} className="flex items-center justify-between rounded-xl bg-secondary px-3 py-2.5">
               <span className="text-sm font-medium">{v.label}</span>
-              <span
-                className="text-base font-bold"
-                style={{ color: vTier.tier === 'standard' || vTier.tier === 'schoen' ? undefined : vTier.badgeColor }}
-              >
+              <span className="text-base font-bold" style={{ color: PRICE_COLOR }}>
                 {fmt(price, data.currency)}
               </span>
             </div>

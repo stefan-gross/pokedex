@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Heart, X } from 'lucide-react';
 import { getWishlists, ensureDefaultWishlist, removeItemFromWishlist } from '@/lib/firestore/wishlists';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
-import { pickTrendPrice } from '@/lib/prices/value-tier';
+import { pickTrendPrice, PRICE_COLOR } from '@/lib/prices/value-tier';
 import type { WishlistDoc, WishlistItem } from '@/types';
 
 export default function WishlistPage() {
@@ -90,7 +90,7 @@ export default function WishlistPage() {
                   {price != null && (
                     <div
                       className="absolute bottom-1.5 left-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-md"
-                      style={{ background: 'rgba(53,209,90,.9)', color: '#fff' }}
+                      style={{ background: 'rgba(0,0,0,.7)', color: PRICE_COLOR }}
                     >
                       {price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
                     </div>

@@ -14,6 +14,7 @@ import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import { catalogCardToInfo, tcgApiCardToInfo, type CardInfo } from '@/lib/card-info';
 import { getRarityGroup } from '@/lib/card-constants';
 import { useCardBrowser, TCG_TYPES, type TcgType, type CardBrowserFilter } from '@/lib/hooks/useCardBrowser';
+import { useWishlist } from '@/lib/hooks/use-wishlist';
 import { EnergyIcon, ENERGY_META } from '@/components/ui/EnergyIcon';
 import type { TcgApiCard } from '@/lib/pokemon-tcg';
 import type { CardDoc } from '@/types';
@@ -219,6 +220,8 @@ function CollectionContent() {
     cards: browseCards, loading: browseLoading,
     loadingMore, hasMore, loadMore,
   } = useCardBrowser(browseSort, browserFilter, browseSortDir === 'desc');
+
+  const { wishlistIds, toggle: toggleWishlist } = useWishlist();
 
   // ── Infinite Scroll ───────────────────────────────────────────
   useEffect(() => {
@@ -707,7 +710,7 @@ function CollectionContent() {
                   Keine Karten für diesen Filter.
                 </p>
               )}
-              <CardGrid cards={browseCards} ownedMap={ownedMap} sortKey={browseSort} />
+              <CardGrid cards={browseCards} ownedMap={ownedMap} sortKey={browseSort} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} />
               <div ref={sentinelRef} className="h-1" />
               {loadingMore && (
                 <div className="flex justify-center py-4">
@@ -740,7 +743,7 @@ function CollectionContent() {
             )}
             {!searchLoading && displayed.length > 0 && (
               <>
-                <CardGrid cards={displayed.slice(0, searchVisibleCount)} ownedMap={ownedMap} sortKey={searchSort} />
+                <CardGrid cards={displayed.slice(0, searchVisibleCount)} ownedMap={ownedMap} sortKey={searchSort} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} />
                 <div ref={searchSentinelRef} className="h-1" />
               </>
             )}

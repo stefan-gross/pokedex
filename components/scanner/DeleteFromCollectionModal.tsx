@@ -164,7 +164,7 @@ export function DeleteFromCollectionModal({ card, fromScanner = false, onClose, 
               <div className="text-base font-bold truncate"><CardNameLabel card={card} /></div>
               <div className="text-xs text-muted-foreground truncate">{setMeta?.nameDe ?? card.setName} · {cardNumDisplay}</div>
             </div>
-            <CardPrice tcgId={card.id} plain fontSize={15} className="ml-auto text-[#6cb0ff]! font-extrabold shrink-0" />
+            <CardPrice tcgId={card.id} plain fontSize={15} className="ml-auto font-extrabold shrink-0" />
           </div>
 
           {/* Sammlungen, in denen die Karte ist — eine Zeile pro Exemplar */}

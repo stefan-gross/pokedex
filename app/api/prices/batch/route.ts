@@ -8,7 +8,11 @@ export const maxDuration = 60;
 /** Harte Kappung der tatsächlichen Live-Refreshes pro Aufruf — bereits
  *  frische Treffer zählen nicht dazu. Rest bleibt `null` und wird beim
  *  nächsten Aufruf der gleichen Stelle nachgeholt (z.B. erneutes Sortieren). */
-const MAX_LIVE_REFRESHES = 80;
+const MAX_LIVE_REFRESHES = 60;
+/** Etwas großzügigere Pause als bei Einzelkarten-Refreshes — bei vielen
+ *  Karten in Folge führt zu knappes Pacing sonst zu Timeouts/Rate-Limiting
+ *  beim Anbieter (beobachtet: viele "aborted"-Fehler bei 100ms). */
+const LIVE_REFRESH_DELAY_MS = 200;
 
 /** Batch-Variante derselben Regel wie `ensureFreshPrice` ("fehlt oder älter
  *  als die TTL → live nachholen, sonst Cache") — nur für viele Karten statt
@@ -44,7 +48,7 @@ export async function POST(req: NextRequest) {
     }
     prices[tcgId] = await refreshAndCache(tcgId);
     liveRefreshes++;
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, LIVE_REFRESH_DELAY_MS));
   }
 
   return NextResponse.json({ prices });

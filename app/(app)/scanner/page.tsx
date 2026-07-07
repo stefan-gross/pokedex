@@ -3142,7 +3142,7 @@ function RecognizedCardLarge({
               tcgId={card.id}
               plain
               fontSize={44}
-              className="text-[#6cb0ff]! [text-shadow:0_2px_12px_rgba(0,0,0,.25)] ml-auto"
+              className="[text-shadow:0_2px_12px_rgba(0,0,0,.25)] ml-auto"
             />
           </div>
         </div>
