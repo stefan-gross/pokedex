@@ -148,7 +148,7 @@ function SetDetailContent() {
     if (sortField !== 'price' || rawCards.length === 0 || priceLoadedRef.current) return;
     priceLoadedRef.current = true;
     setPricesLoading(true);
-    fetchPricesBatch(rawCards.map(c => c.id)).then(prices => {
+    fetchPricesBatch(rawCards.map(c => c.id), setId).then(prices => {
       const map = new Map<string, number>();
       prices.forEach((data, id) => {
         const price = pickTrendPrice(data);
@@ -156,7 +156,7 @@ function SetDetailContent() {
       });
       setPriceMap(map);
     }).catch(() => { priceLoadedRef.current = false; }).finally(() => setPricesLoading(false));
-  }, [sortField, rawCards]);
+  }, [sortField, rawCards, setId]);
 
   // Trifft die Batch-Route (`app/api/prices/batch`) ein Live-Refresh-Limit,
   // bekommt eine gerade im Detail-Sheet geöffnete Karte trotzdem sofort ihren

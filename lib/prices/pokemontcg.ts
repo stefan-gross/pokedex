@@ -39,7 +39,7 @@ interface TcgplayerPrices {
 interface TcgplayerData { url?: string; updatedAt?: string; prices?: TcgplayerPrices }
 
 // ── Parser: Cardmarket ─────────────────────────────────────────────────────
-function parseCardmarket(p: CardmarketPrices): PriceVariant[] {
+export function parseCardmarket(p: CardmarketPrices): PriceVariant[] {
   const out: PriceVariant[] = [];
   if (p.averageSellPrice != null || p.lowPrice != null || p.trendPrice != null || p.avg7 != null) {
     out.push({
@@ -73,7 +73,7 @@ const TCG_LABELS: Record<keyof TcgplayerPrices, string> = {
   unlimited:             'Unlimited',
 };
 
-function parseTcgplayer(p: TcgplayerPrices): PriceVariant[] {
+export function parseTcgplayer(p: TcgplayerPrices): PriceVariant[] {
   const out: PriceVariant[] = [];
   for (const key of Object.keys(TCG_LABELS) as (keyof TcgplayerPrices)[]) {
     const v = p[key];
@@ -90,20 +90,46 @@ function parseTcgplayer(p: TcgplayerPrices): PriceVariant[] {
   return out;
 }
 
+function apiHeaders(): Record<string, string> {
+  return process.env.POKEMON_TCG_API_KEY ? { 'X-Api-Key': process.env.POKEMON_TCG_API_KEY } : {};
+}
+
+/** Cardmarket bevorzugt, sonst TCGplayer-Fallback (typisch bei brandneuen
+ *  Sets, deren Cardmarket-Sync verzögert ist) — gemeinsame Auswertung für
+ *  Einzelkarten- UND Set-Bulk-Antworten, damit beide Pfade synchron bleiben. */
+function resolveCardPrice(tcgId: string, card: { cardmarket?: CardmarketData; tcgplayer?: TcgplayerData }): PriceResult | null {
+  const cm = card.cardmarket;
+  if (cm?.prices) {
+    const variants = parseCardmarket(cm.prices);
+    if (variants.length > 0) {
+      return { provider: 'cardmarket', currency: 'EUR', updatedAt: cm.updatedAt, variants };
+    }
+    console.warn(`[prices] ${tcgId}: cardmarket.prices vorhanden, aber alle Felder leer/null`);
+  }
+
+  const tp = card.tcgplayer;
+  if (tp?.prices) {
+    const variants = parseTcgplayer(tp.prices);
+    if (variants.length > 0) {
+      return { provider: 'tcgplayer', currency: 'USD', updatedAt: tp.updatedAt, variants };
+    }
+    console.warn(`[prices] ${tcgId}: tcgplayer.prices vorhanden, aber alle Felder leer/null`);
+  }
+
+  console.warn(`[prices] ${tcgId}: weder cardmarket noch tcgplayer liefern Preisdaten (cardmarket=${!!cm}, tcgplayer=${!!tp})`);
+  return null;
+}
+
 export const pokemontcgProvider: IPriceProvider = {
   name: 'pokemontcg',
 
   async fetchPrices(tcgId: string): Promise<PriceResult | null> {
-    const headers: Record<string, string> = process.env.POKEMON_TCG_API_KEY
-      ? { 'X-Api-Key': process.env.POKEMON_TCG_API_KEY }
-      : {};
-
     const abort = new AbortController();
     const timeout = setTimeout(() => abort.abort(), 8000);
 
     try {
       const res = await fetch(`${TCG_BASE}/cards/${tcgId}`, {
-        headers,
+        headers: apiHeaders(),
         next: { revalidate: 3600 },
         signal: abort.signal,
       });
@@ -124,38 +150,7 @@ export const pokemontcgProvider: IPriceProvider = {
         throw new TransientPriceError('kein "data"-Feld in der Antwort');
       }
 
-      // 1. Cardmarket bevorzugt
-      const cm: CardmarketData | undefined = card.cardmarket;
-      if (cm?.prices) {
-        const variants = parseCardmarket(cm.prices);
-        if (variants.length > 0) {
-          return {
-            provider: 'cardmarket',
-            currency: 'EUR',
-            updatedAt: cm.updatedAt,
-            variants,
-          };
-        }
-        console.warn(`[prices] ${tcgId}: cardmarket.prices vorhanden, aber alle Felder leer/null`);
-      }
-
-      // 2. TCGplayer als Fallback (typisch bei brandneuen Sets, deren Cardmarket-Sync verzögert ist)
-      const tp: TcgplayerData | undefined = card.tcgplayer;
-      if (tp?.prices) {
-        const variants = parseTcgplayer(tp.prices);
-        if (variants.length > 0) {
-          return {
-            provider: 'tcgplayer',
-            currency: 'USD',
-            updatedAt: tp.updatedAt,
-            variants,
-          };
-        }
-        console.warn(`[prices] ${tcgId}: tcgplayer.prices vorhanden, aber alle Felder leer/null`);
-      }
-
-      console.warn(`[prices] ${tcgId}: weder cardmarket noch tcgplayer liefern Preisdaten (cardmarket=${!!cm}, tcgplayer=${!!tp})`);
-      return null;
+      return resolveCardPrice(tcgId, card);
     } catch (e) {
       if (e instanceof TransientPriceError) throw e;
       // Netzwerkfehler/Timeout/Abort — transient, NICHT als "kein Preis" cachen.
@@ -166,3 +161,42 @@ export const pokemontcgProvider: IPriceProvider = {
     }
   },
 };
+
+/** Holt Preise für ein GANZES Set in einem (oder bei >250 Karten wenigen)
+ *  Bulk-Request(s) statt Karte für Karte — deutlich schneller beim ersten
+ *  Preis-Sortieren eines Sets. IDs, die in der Antwort fehlen, werden NICHT
+ *  in die Map geschrieben (Abwesenheit ist mehrdeutig, kein bestätigtes
+ *  "kein Preis" wie ein echtes 404 im Einzelkarten-Pfad). */
+export async function fetchPricesForSet(setId: string): Promise<Map<string, PriceResult | null>> {
+  const results = new Map<string, PriceResult | null>();
+  const abort = new AbortController();
+  const timeout = setTimeout(() => abort.abort(), 15000);
+
+  try {
+    let page = 1;
+    for (;;) {
+      const res = await fetch(
+        `${TCG_BASE}/cards?q=${encodeURIComponent(`set.id:${setId}`)}&page=${page}&pageSize=250&select=id,cardmarket,tcgplayer`,
+        { headers: apiHeaders(), signal: abort.signal },
+      );
+      if (!res.ok) throw new TransientPriceError(`HTTP ${res.status}`);
+
+      const json = await res.json();
+      if (!Array.isArray(json.data)) throw new TransientPriceError('kein "data"-Feld in der Antwort');
+
+      for (const card of json.data) {
+        results.set(card.id, resolveCardPrice(card.id, card));
+      }
+
+      if (page * 250 >= (json.totalCount ?? 0)) break;
+      page++;
+    }
+    return results;
+  } catch (e) {
+    if (e instanceof TransientPriceError) throw e;
+    console.warn(`[prices] Set-Fetch für ${setId} fehlgeschlagen (transient):`, e instanceof Error ? e.message : e);
+    throw new TransientPriceError(e instanceof Error ? e.message : String(e));
+  } finally {
+    clearTimeout(timeout);
+  }
+}

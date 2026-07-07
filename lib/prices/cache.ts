@@ -1,5 +1,6 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import { activeProvider } from '@/lib/prices';
+import { fetchPricesForSet } from './pokemontcg';
 import { getAdminDb } from '@/lib/firebase/admin';
 import { TransientPriceError, type PriceResult, type PriceProvider, type PriceCurrency } from './types';
 
@@ -171,4 +172,57 @@ export async function refreshAndCache(tcgId: string): Promise<PriceResult | null
     console.warn('[prices] cache write error', e);
   }
   return live;
+}
+
+/** Set-Bulk-Variante von `refreshAndCache` — holt Preise für ein ganzes Set
+ *  in einem Request (`fetchPricesForSet`) und schreibt sie in einem
+ *  gemeinsamen Batch, statt Karte für Karte sequenziell zu refreshen. Bei
+ *  einem transienten Fehler bleibt der Cache unangetastet (gleiches Prinzip
+ *  wie `refreshAndCache`) — die vorhandenen (ggf. leicht veralteten)
+ *  Cache-Werte werden stattdessen zurückgegeben. */
+export async function refreshAndCacheSet(setId: string, tcgIds: string[]): Promise<Map<string, PriceResult | null>> {
+  const db = getAdminDb();
+
+  let live: Map<string, PriceResult | null>;
+  try {
+    live = await fetchPricesForSet(setId);
+  } catch (e) {
+    if (e instanceof TransientPriceError) {
+      console.warn(`[prices] Live-Refresh Set ${setId}: transienter Fehler, Cache bleibt unverändert —`, e.message);
+      const out = new Map<string, PriceResult | null>();
+      try {
+        const refs = tcgIds.map(id => db.collection('tcg_catalog').doc(id));
+        const snaps = await db.getAll(...refs);
+        snaps.forEach((snap, i) => {
+          const cached = snap.data()?.prices as CachedPrices | undefined;
+          out.set(tcgIds[i], cached ? toResult(cached) : null);
+        });
+      } catch { /* kein Cache verfügbar — leere Map zurückgeben */ }
+      return out;
+    }
+    throw e;
+  }
+
+  console.log(`[prices] Live-Refresh Set ${setId}: ${live.size} Karten in der Antwort, ${tcgIds.length} angefragt`);
+
+  const cachedAt = Timestamp.now();
+  const batch = db.batch();
+  const out = new Map<string, PriceResult | null>();
+  for (const tcgId of tcgIds) {
+    if (!live.has(tcgId)) { out.set(tcgId, null); continue; } // fehlt in Antwort → nicht als "empty" cachen
+    const result = live.get(tcgId) ?? null;
+    const docRef = db.collection('tcg_catalog').doc(tcgId);
+    batch.set(docRef, {
+      prices: result
+        ? { cachedAt, provider: result.provider, currency: result.currency, updatedAt: result.updatedAt ?? null, variants: result.variants, empty: false }
+        : { cachedAt, empty: true },
+    }, { merge: true });
+    out.set(tcgId, result);
+  }
+  try {
+    await batch.commit();
+  } catch (e) {
+    console.warn('[prices] Set-Batch-Write error', setId, e);
+  }
+  return out;
 }
