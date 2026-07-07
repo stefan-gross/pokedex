@@ -27,6 +27,9 @@ interface Props {
   wishlistIds?: Set<string>;
   /** Herz-Klick auf einer Kachel — togglet die Karte auf/von der Wunschliste. */
   onToggleWishlist?: (card: CardInfo) => void;
+  /** Preise werden noch per Batch-Route nachgeladen — zeigt animierte
+   *  Platzhalter statt "–", solange nach Preis sortiert wird. */
+  pricesLoading?: boolean;
 }
 
 /** Gibt das passende Label zur aktiven Sortierung zurück */
@@ -82,6 +85,7 @@ export function CardGrid({
   onDetailClose,
   wishlistIds,
   onToggleWishlist,
+  pricesLoading,
 }: Props) {
   const [selected, setSelected] = useState<CardInfo | null>(null);
 
@@ -94,6 +98,8 @@ export function CardGrid({
     setSelected(null);
   };
 
+  const isPriceSort = (sortKey?.replace(/-asc$|-desc$/, '') ?? 'number') === 'price';
+
   return (
     <>
       <div className="grid grid-cols-2 gap-2">
@@ -104,7 +110,8 @@ export function CardGrid({
             ownedCards={ownedMap.get(card.id)}
             onCardClick={() => setSelected(card)}
             sublabel={getSublabel(card, sortKey, priceMap)}
-            sublabelColor={(sortKey?.replace(/-asc$|-desc$/, '') ?? 'number') === 'price' ? PRICE_COLOR : undefined}
+            sublabelColor={isPriceSort ? PRICE_COLOR : undefined}
+            sublabelLoading={isPriceSort && pricesLoading && priceMap?.get(card.id) == null}
             isWishlisted={wishlistIds?.has(card.id)}
             onWishlist={() => onToggleWishlist?.(card)}
           />

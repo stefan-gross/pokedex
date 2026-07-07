@@ -99,6 +99,7 @@ function SetDetailContent() {
   const [sortDir, setSortDir]         = useState<SortDir>('asc');
   const [rarityFilter, setRarityFilter] = useState<Set<string>>(new Set());
   const [priceMap, setPriceMap]       = useState<Map<string, number>>(new Map());
+  const [pricesLoading, setPricesLoading] = useState(false);
   const priceLoadedRef = useRef(false);
   const { wishlistIds, toggle: toggleWishlist } = useWishlist();
 
@@ -146,6 +147,7 @@ function SetDetailContent() {
   useEffect(() => {
     if (sortField !== 'price' || rawCards.length === 0 || priceLoadedRef.current) return;
     priceLoadedRef.current = true;
+    setPricesLoading(true);
     fetchPricesBatch(rawCards.map(c => c.id)).then(prices => {
       const map = new Map<string, number>();
       prices.forEach((data, id) => {
@@ -153,7 +155,7 @@ function SetDetailContent() {
         if (price != null) map.set(id, price);
       });
       setPriceMap(map);
-    }).catch(() => { priceLoadedRef.current = false; });
+    }).catch(() => { priceLoadedRef.current = false; }).finally(() => setPricesLoading(false));
   }, [sortField, rawCards]);
 
   // Trifft die Batch-Route (`app/api/prices/batch`) ein Live-Refresh-Limit,
@@ -356,6 +358,7 @@ function SetDetailContent() {
               onDetailClose={refreshCardPrice}
               wishlistIds={wishlistIds}
               onToggleWishlist={toggleWishlist}
+              pricesLoading={pricesLoading}
             />
           </div>
         </>

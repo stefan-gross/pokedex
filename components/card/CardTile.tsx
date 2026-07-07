@@ -13,9 +13,12 @@ interface Props {
   sublabel?: string;
   /** Überschreibt die Sublabel-Textfarbe — z.B. Preis-Blau bei Preis-Sortierung. */
   sublabelColor?: string;
+  /** Zeigt statt des Sublabels einen animierten Platzhalter — z.B. während
+   *  der Preis noch per Batch-Route nachgeladen wird. */
+  sublabelLoading?: boolean;
 }
 
-export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWishlisted, sublabel, sublabelColor }: Props) {
+export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWishlisted, sublabel, sublabelColor, sublabelLoading }: Props) {
   const totalOwned = ownedCards.reduce((s, c) => s + c.quantity, 0);
   const isOwned    = totalOwned > 0;
 
@@ -74,7 +77,9 @@ export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWis
       </div>
 
       {/* Sortierungsrelevantes Label */}
-      {sublabel && (
+      {sublabelLoading ? (
+        <div className="h-2.5 w-3/5 mx-auto mt-1.5 rounded-full animate-pulse bg-[rgba(30,40,80,0.1)] dark:bg-white/10" />
+      ) : sublabel && (
         <div
           className={`text-[11px] text-center mt-1.5 truncate px-0.5 leading-tight ${sublabelColor ? 'font-semibold' : 'text-glass'}`}
           style={sublabelColor ? { color: sublabelColor } : undefined}
