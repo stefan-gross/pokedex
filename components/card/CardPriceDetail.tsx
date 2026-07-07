@@ -2,8 +2,7 @@
 
 import { Loader2, Star, Gem } from 'lucide-react';
 import { usePrice } from '@/lib/hooks/use-price';
-import { classifyValue, pickTrendPrice } from '@/lib/prices/value-tier';
-import type { PriceResult, PriceVariant } from '@/lib/prices/types';
+import { classifyValue, pickTrendPrice, findVariantPrice } from '@/lib/prices/value-tier';
 import type { CardVariant } from '@/types';
 
 interface Props {
@@ -14,20 +13,6 @@ function fmt(n: number | undefined, currency: 'EUR' | 'USD' = 'EUR'): string {
   if (n == null) return '—';
   const locale = currency === 'USD' ? 'en-US' : 'de-DE';
   return n.toLocaleString(locale, { style: 'currency', currency });
-}
-
-/** Findet die Preis-Variante (Cardmarket/TCGplayer-Label), die zu einer Karten-Variante passt. */
-function priceForVariant(data: PriceResult, appVariant: CardVariant): PriceVariant | undefined {
-  const byLabel = (label: string) => data.variants.find(v => v.label === label);
-  switch (appVariant) {
-    case 'standard': return byLabel('Normal');
-    case 'reverse':  return byLabel('Reverse Holo');
-    case 'holo':     return byLabel('Holo') ?? byLabel('Normal');
-    case '1st-ed':   return byLabel('1st Edition Holo') ?? byLabel('1st Edition') ?? byLabel('Normal');
-    case 'alt-art':
-    case 'promo':
-    default:         return data.variants[0];
-  }
 }
 
 /** Kompakter Inline-Preis: nur die Trend-Zahl, tier-eingefärbt — für genau EINE
@@ -53,7 +38,7 @@ export function CardVariantPrice({
     </span>
   );
   if (!data) return empty;
-  const v = priceForVariant(data, variant);
+  const v = findVariantPrice(data.variants, variant);
   const price = v?.trend ?? v?.market;
   if (price == null) return empty;
   const tier = classifyValue(price);

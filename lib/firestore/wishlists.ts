@@ -27,6 +27,16 @@ export async function addWishlist(name: string, description?: string): Promise<s
   return ref.id;
 }
 
+/** Einzelne Standard-Wishlist — analog zu `ensureDefaultBinder`. Legt bei
+ *  Bedarf eine an, statt mehrere benannte Wishlists zu verwalten (bewusst
+ *  minimal, siehe Plan „Preis-Versorgung"). */
+export async function ensureDefaultWishlist(): Promise<WishlistDoc> {
+  const lists = await getWishlists();
+  if (lists[0]) return lists[0];
+  const id = await addWishlist('Wunschliste');
+  return { id, name: 'Wunschliste', description: '', items: [], createdAt: Timestamp.now() };
+}
+
 export async function updateWishlist(id: string, data: Partial<WishlistDoc>): Promise<void> {
   await updateDoc(doc(db, COL, id), data);
 }
@@ -35,11 +45,12 @@ export async function deleteWishlist(id: string): Promise<void> {
   await deleteDoc(doc(db, COL, id));
 }
 
-export async function addItemToWishlist(wishlistId: string, item: Omit<WishlistItem, 'id'>): Promise<void> {
+export async function addItemToWishlist(wishlistId: string, item: Omit<WishlistItem, 'id'>): Promise<WishlistItem | null> {
   const wl = await getWishlist(wishlistId);
-  if (!wl) return;
+  if (!wl) return null;
   const newItem: WishlistItem = { ...item, id: crypto.randomUUID() };
   await updateDoc(doc(db, COL, wishlistId), { items: [...wl.items, newItem] });
+  return newItem;
 }
 
 export async function updateWishlistItem(wishlistId: string, itemId: string, data: Partial<WishlistItem>): Promise<void> {

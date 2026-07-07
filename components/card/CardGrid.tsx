@@ -19,6 +19,9 @@ interface Props {
   sortKey?: string;
   /** tcgId → Preis — nur nötig, wenn nach Preis sortiert wird */
   priceMap?: Map<string, number>;
+  /** Wird beim Schließen des Detail-Sheets aufgerufen (z.B. um einen dort frisch
+   *  nachgeladenen Preis in die eigene priceMap zu übernehmen). */
+  onDetailClose?: (card: CardInfo) => void;
 }
 
 /** Gibt das passende Label zur aktiven Sortierung zurück */
@@ -71,12 +74,18 @@ export function CardGrid({
   emptyState,
   sortKey,
   priceMap,
+  onDetailClose,
 }: Props) {
   const [selected, setSelected] = useState<CardInfo | null>(null);
 
   if (cards.length === 0 && emptyState) {
     return <>{emptyState}</>;
   }
+
+  const closeDetail = () => {
+    if (selected) onDetailClose?.(selected);
+    setSelected(null);
+  };
 
   return (
     <>
@@ -97,8 +106,8 @@ export function CardGrid({
         ownedCopies={selected ? (ownedMap.get(selected.id) ?? []) : []}
         binders={binders}
         setMeta={setMeta}
-        onClose={() => setSelected(null)}
-        onSaved={() => setSelected(null)}
+        onClose={closeDetail}
+        onSaved={closeDetail}
       />
     </>
   );

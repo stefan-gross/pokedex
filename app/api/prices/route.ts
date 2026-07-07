@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminDb } from '@/lib/firebase/admin';
-import { CachedPrices, isFresh, toResult, refreshAndCache } from '@/lib/prices/cache';
+import { ensureFreshPrice } from '@/lib/prices/cache';
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
@@ -10,28 +9,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'tcgId required' }, { status: 400 });
   }
 
-  const db = getAdminDb();
-  const docRef = db.collection('tcg_catalog').doc(tcgId);
-
-  if (!force) {
-    try {
-      const snap = await docRef.get();
-      const cached = snap.data()?.prices as CachedPrices | undefined;
-      if (cached && isFresh(cached)) {
-        const ageMin = Math.round((Date.now() - cached.cachedAt.toMillis()) / 60000);
-        console.log(`[prices] Cache-Hit ${tcgId}: ${cached.empty ? 'empty' : (cached.provider ?? 'cardmarket')}, ${ageMin}min alt`);
-        const result = toResult(cached);
-        if (result) return NextResponse.json(result);
-        return NextResponse.json({ error: 'No price data available' }, { status: 404 });
-      }
-    } catch (e) {
-      console.warn('[prices] cache read error', e);
-    }
-  }
-
-  const live = await refreshAndCache(tcgId);
-  if (!live) {
+  const result = await ensureFreshPrice(tcgId, force);
+  if (!result) {
     return NextResponse.json({ error: 'No price data available' }, { status: 404 });
   }
-  return NextResponse.json(live);
+  return NextResponse.json(result);
 }

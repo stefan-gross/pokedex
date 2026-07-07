@@ -9,6 +9,7 @@ import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSub
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { markReviewed, deleteCard } from '@/lib/firestore/cards';
 import { getBinders, addCardToBinder, removeCardFromBinder, removeCardFromBinderAndCleanup, ensureDefaultBinder } from '@/lib/firestore/binders';
+import { getWishlists, ensureDefaultWishlist, addItemToWishlist, removeItemFromWishlist } from '@/lib/firestore/wishlists';
 import { getCardsByEvolutionFamily, getCardsByDexNumber } from '@/lib/firestore/catalog';
 import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
 import { CardVariantPrice } from '@/components/card/CardPriceDetail';
@@ -244,6 +245,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   const [confirmId,    setConfirmId]    = useState<string | null>(null);
   const resolvedMeta = useSetMeta(card?.setId, setMeta, card?.setName);
   const [resolvedBinders, setResolvedBinders] = useState<BinderDoc[]>(binders ?? []);
+  const [wishlistItem, setWishlistItem] = useState<{ listId: string; itemId: string } | null>(null);
 
   /* Reset + load on card change */
   useEffect(() => {
@@ -255,6 +257,14 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     setImgSrcDe(card.imgLargeDe || undefined);
     requestAnimationFrame(() => setVisible(true));
     getBinders().then(setResolvedBinders).catch(() => {});
+    setWishlistItem(null);
+    getWishlists().then(lists => {
+      if (cancelled) return;
+      for (const list of lists) {
+        const item = list.items.find(i => i.tcgId === card.id);
+        if (item) { setWishlistItem({ listId: list.id, itemId: item.id }); return; }
+      }
+    }).catch(() => {});
 
     const isPokemon = !card.supertype ||
       card.supertype.toLowerCase().includes('pokémon') ||
@@ -395,6 +405,27 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     setOpenSec(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n; });
   }
   function handleClose() { setVisible(false); setTimeout(onClose, 250); }
+
+  async function toggleWishlist() {
+    if (!card) return;
+    if (wishlistItem) {
+      await removeItemFromWishlist(wishlistItem.listId, wishlistItem.itemId);
+      setWishlistItem(null);
+      return;
+    }
+    const list = await ensureDefaultWishlist();
+    const newItem = await addItemToWishlist(list.id, {
+      tcgId: card.id,
+      name: card.name,
+      setName: card.setName,
+      setId: card.setId,
+      number: card.number,
+      tcgImageUrl: imgSrcDe || card.imgLarge || card.imgSmall,
+      priority: 2,
+      acquired: false,
+    });
+    if (newItem) setWishlistItem({ listId: list.id, itemId: newItem.id });
+  }
 
   async function handleRemoveFromBinder(copy: CardDoc, binderId: string) {
     await removeCardFromBinder(binderId, copy.id);
@@ -945,9 +976,13 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
 
           {/* ── Wunschliste — eigenständiger Glas-Button ────── */}
           <div className="mx-4 mb-4">
-            <button className="drawer-panel w-full h-[54px] rounded-[18px] flex items-center justify-center gap-2 text-[15px] font-semibold">
-              <Heart size={19} />
-              Auf Wunschliste setzen
+            <button
+              onClick={toggleWishlist}
+              className="drawer-panel w-full h-[54px] rounded-[18px] flex items-center justify-center gap-2 text-[15px] font-semibold"
+              style={wishlistItem ? { color: '#ef4444' } : undefined}
+            >
+              <Heart size={19} fill={wishlistItem ? '#ef4444' : 'none'} />
+              {wishlistItem ? 'Von Wunschliste entfernen' : 'Auf Wunschliste setzen'}
             </button>
           </div>
         </div>

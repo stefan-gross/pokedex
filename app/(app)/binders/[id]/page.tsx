@@ -30,6 +30,10 @@ import {
 } from '@/lib/binder-sheets';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal';
+import { useTotalValue } from '@/lib/hooks/use-total-value';
+import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
+import { findVariantPrice } from '@/lib/prices/value-tier';
+import type { PriceResult } from '@/lib/prices/types';
 import type { BinderDoc, BinderPage, CardDoc } from '@/types';
 
 interface Props {
@@ -96,6 +100,13 @@ export default function BinderDetailPage({ params }: Props) {
   const [pickerSlot, setPickerSlot] = useState<{ pageIdx: number; slotIdx: number } | null>(null);
   const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
   const [detailOwned, setDetailOwned] = useState<CardDoc[]>([]);
+
+  const totalValue = useTotalValue(cards);
+  // Preis pro Karte für die Grid-Ansicht — dieselbe Batch-Route wie überall,
+  // liefert volle Varianten-Daten (Standard/Reverse Holo/…), Auflösung pro
+  // Karte über `findVariantPrice` (identisch zu `useTotalValue`).
+  const cardTcgIds = useMemo(() => Array.from(new Set(cards.map(c => c.tcgId).filter((x): x is string => !!x))), [cards]);
+  const { prices: cardPrices } = usePricesBatch(cardTcgIds);
 
   const binderSize = (binder?.size ?? 9) as BinderSize;
   const isBox = binder?.collectionType === 'box';
@@ -245,7 +256,14 @@ export default function BinderDetailPage({ params }: Props) {
           />
           <div className="flex-1 min-w-0">
             <h1 className="font-semibold truncate text-glass">{binder.name}</h1>
-            <p className="text-xs text-glass-muted">{layoutLabel}</p>
+            <p className="text-xs text-glass-muted">
+              {layoutLabel}
+              {!totalValue.loading && totalValue.withPrice > 0 && (
+                <span className="ml-1.5 font-semibold" style={{ color: binderColor }}>
+                  · ≈ {totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
+                </span>
+              )}
+            </p>
           </div>
           <div className="flex flex-col items-end shrink-0 leading-none">
             <span className="text-[36px] font-extrabold tabular-nums" style={{ color: binderColor }}>
@@ -304,7 +322,7 @@ export default function BinderDetailPage({ params }: Props) {
       </div>
 
       {isBox || view === 'grid' ? (
-        <GridView cards={cards} onCardTap={openDetail} />
+        <GridView cards={cards} onCardTap={openDetail} prices={cardPrices} />
       ) : view === 'binder' ? (
         <BinderOverview
           sheets={sheets}
@@ -452,7 +470,9 @@ function MiniPageGrid({
 }
 
 // ── Grid View ─────────────────────────────────────────────────────────────
-function GridView({ cards, onCardTap }: { cards: CardDoc[]; onCardTap: (c: CardDoc) => void }) {
+function GridView({ cards, onCardTap, prices }: {
+  cards: CardDoc[]; onCardTap: (c: CardDoc) => void; prices?: Map<string, PriceResult | null>;
+}) {
   if (cards.length === 0) {
     return (
       <div className="px-4 py-16 text-center text-muted-foreground text-sm">
@@ -462,25 +482,35 @@ function GridView({ cards, onCardTap }: { cards: CardDoc[]; onCardTap: (c: CardD
   }
   return (
     <div className="px-3 py-3 grid grid-cols-2 gap-2">
-      {cards.map((c, i) => (
-        <button
-          key={`${c.id}-${i}`}
-          onClick={() => onCardTap(c)}
-          className="relative rounded-xl overflow-hidden border border-green-500/40 cursor-pointer"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={c.tcgImageUrl ?? `https://images.pokemontcg.io/${c.setId}/${c.number.split('/')[0]}_hires.png`}
-            alt={c.name}
-            className="w-full aspect-[2.5/3.5] object-cover"
-          />
-          {c.quantity > 1 && (
-            <div className="absolute top-1 right-1 text-[9px] font-bold px-1 py-0.5 rounded bg-black/70 text-white">
-              ×{c.quantity}
-            </div>
-          )}
-        </button>
-      ))}
+      {cards.map((c, i) => {
+        const priceResult = c.tcgId ? prices?.get(c.tcgId) : null;
+        const variantPrice = priceResult ? findVariantPrice(priceResult.variants, c.variant) : undefined;
+        const price = variantPrice?.trend ?? variantPrice?.market;
+        return (
+          <button
+            key={`${c.id}-${i}`}
+            onClick={() => onCardTap(c)}
+            className="relative rounded-xl overflow-hidden border border-green-500/40 cursor-pointer"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={c.tcgImageUrl ?? `https://images.pokemontcg.io/${c.setId}/${c.number.split('/')[0]}_hires.png`}
+              alt={c.name}
+              className="w-full aspect-[2.5/3.5] object-cover"
+            />
+            {c.quantity > 1 && (
+              <div className="absolute top-1 right-1 text-[9px] font-bold px-1 py-0.5 rounded bg-black/70 text-white">
+                ×{c.quantity}
+              </div>
+            )}
+            {price != null && (
+              <div className="absolute bottom-1 left-1 text-[9px] font-bold px-1 py-0.5 rounded bg-black/70 text-white">
+                {price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
+              </div>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }

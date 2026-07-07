@@ -1,24 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getPricesByTcgIds, type CachedPriceClient } from '@/lib/firestore/prices';
+import { fetchPricesBatch } from '@/lib/prices/fetch-batch';
+import { findVariantPrice } from '@/lib/prices/value-tier';
 import type { CardDoc } from '@/types';
-import type { PriceVariant } from '@/lib/prices/types';
-import type { CardVariant } from '@/types';
-
-/** Findet die Preis-Variante für eine Karten-Variante (Mapping wie in CardPriceDetail). */
-function findVariantPrice(variants: PriceVariant[], appVariant: CardVariant): PriceVariant | undefined {
-  const byLabel = (label: string) => variants.find(v => v.label === label);
-  switch (appVariant) {
-    case 'standard': return byLabel('Normal');
-    case 'reverse':  return byLabel('Reverse Holo');
-    case 'holo':     return byLabel('Holo') ?? byLabel('Normal');
-    case '1st-ed':   return byLabel('1st Edition Holo') ?? byLabel('1st Edition') ?? byLabel('Normal');
-    case 'alt-art':
-    case 'promo':
-    default:         return variants[0];
-  }
-}
 
 export interface TotalValueState {
   total: number;
@@ -44,7 +29,7 @@ export function useTotalValue(cards: CardDoc[] | null): TotalValueState {
     setState(s => ({ ...s, loading: true }));
 
     const uniqueTcgIds = Array.from(new Set(cards.map(c => c.tcgId).filter((x): x is string => !!x)));
-    getPricesByTcgIds(uniqueTcgIds).then(pricesMap => {
+    fetchPricesBatch(uniqueTcgIds).then(pricesMap => {
       if (!alive) return;
       let total = 0;
       let withPrice = 0;
@@ -52,7 +37,7 @@ export function useTotalValue(cards: CardDoc[] | null): TotalValueState {
       let topPrice = -Infinity;
       for (const card of cards) {
         if (!card.tcgId) continue;
-        const entry: CachedPriceClient | null | undefined = pricesMap.get(card.tcgId);
+        const entry = pricesMap.get(card.tcgId);
         if (!entry) continue;
         const variantPrice = findVariantPrice(entry.variants, card.variant);
         const price = variantPrice?.trend ?? variantPrice?.market;

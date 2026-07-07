@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, Suspense } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
@@ -8,14 +8,14 @@ import { ChevronLeft } from 'lucide-react';
 import { getCards } from '@/lib/firestore/cards';
 import { getCardsBySetId } from '@/lib/firestore/catalog';
 import { getBinders } from '@/lib/firestore/binders';
-import { getPricesByTcgIds } from '@/lib/firestore/prices';
+import { fetchPricesBatch } from '@/lib/prices/fetch-batch';
 import { pickTrendPrice } from '@/lib/prices/value-tier';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { CardGrid } from '@/components/card/CardGrid';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { detectVariants, getRarityGroup, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
-import { catalogCardToInfo } from '@/lib/card-info';
+import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import type { CatalogCard } from '@/lib/firestore/catalog';
 import type { CardDoc, BinderDoc } from '@/types';
 
@@ -98,6 +98,7 @@ function SetDetailContent() {
   const [sortDir, setSortDir]         = useState<SortDir>('asc');
   const [rarityFilter, setRarityFilter] = useState<Set<string>>(new Set());
   const [priceMap, setPriceMap]       = useState<Map<string, number>>(new Map());
+  const priceLoadedRef = useRef(false);
 
   /* Set meta */
   const [nameDe, setNameDe]         = useState('');
@@ -141,16 +142,30 @@ function SetDetailContent() {
   // Preise nur laden, wenn tatsächlich nach Preis sortiert wird — spart
   // Firestore-Reads für den (häufigeren) Fall, dass niemand danach sortiert.
   useEffect(() => {
-    if (sortField !== 'price' || rawCards.length === 0 || priceMap.size > 0) return;
-    getPricesByTcgIds(rawCards.map(c => c.id)).then(prices => {
+    if (sortField !== 'price' || rawCards.length === 0 || priceLoadedRef.current) return;
+    priceLoadedRef.current = true;
+    fetchPricesBatch(rawCards.map(c => c.id)).then(prices => {
       const map = new Map<string, number>();
       prices.forEach((data, id) => {
         const price = pickTrendPrice(data);
         if (price != null) map.set(id, price);
       });
       setPriceMap(map);
+    }).catch(() => { priceLoadedRef.current = false; });
+  }, [sortField, rawCards]);
+
+  // Trifft die Batch-Route (`app/api/prices/batch`) ein Live-Refresh-Limit,
+  // bekommt eine gerade im Detail-Sheet geöffnete Karte trotzdem sofort ihren
+  // aktuellen Preis (Einzelkarten-Route hat kein Limit) — beim Schließen des
+  // Sheets gezielt genau diese eine Karte nachziehen.
+  const refreshCardPrice = useCallback((card: CardInfo) => {
+    if (!priceLoadedRef.current) return; // Preis-Sortierung war noch nie aktiv
+    fetchPricesBatch([card.id]).then(prices => {
+      const data = prices.get(card.id);
+      const price = data ? pickTrendPrice(data) : null;
+      if (price != null) setPriceMap(prev => new Map(prev).set(card.id, price));
     }).catch(() => {});
-  }, [sortField, rawCards, priceMap.size]);
+  }, []);
 
   const logoUrl = logoDe ?? `https://images.pokemontcg.io/${setId}/logo.png`;
   // Sets vor Scarlet & Violet tragen keinen echten Kürzel-Aufdruck — nur ein
@@ -336,6 +351,7 @@ function SetDetailContent() {
               setMeta={{ nameDe: (nameDe || cards[0]?.setName) ?? '', logoUrl, printedTotal: totalCount, total: totalCount }}
               sortKey={sortField}
               priceMap={priceMap}
+              onDetailClose={refreshCardPrice}
             />
           </div>
         </>

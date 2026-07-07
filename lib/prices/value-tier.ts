@@ -1,6 +1,23 @@
-import type { PriceResult } from './types';
+import type { PriceResult, PriceVariant } from './types';
+import type { CardVariant } from '@/types';
 
 export type ValueTier = 'standard' | 'schoen' | 'besonders' | 'wertvoll' | 'schatz';
+
+/** Findet die Preis-Variante (Cardmarket/TCGplayer-Label), die zu einer
+ *  Karten-Variante passt — einzige Stelle für dieses Mapping, genutzt von
+ *  `CardPriceDetail`/`CardVariantPrice` und `useTotalValue`. */
+export function findVariantPrice(variants: PriceVariant[], appVariant: CardVariant): PriceVariant | undefined {
+  const byLabel = (label: string) => variants.find(v => v.label === label);
+  switch (appVariant) {
+    case 'standard': return byLabel('Normal');
+    case 'reverse':  return byLabel('Reverse Holo');
+    case 'holo':     return byLabel('Holo') ?? byLabel('Normal');
+    case '1st-ed':   return byLabel('1st Edition Holo') ?? byLabel('1st Edition') ?? byLabel('Normal');
+    case 'alt-art':
+    case 'promo':
+    default:         return variants[0];
+  }
+}
 
 export interface TierMeta {
   tier: ValueTier;

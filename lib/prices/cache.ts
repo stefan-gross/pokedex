@@ -3,8 +3,10 @@ import { activeProvider } from '@/lib/prices';
 import { getAdminDb } from '@/lib/firebase/admin';
 import type { PriceResult, PriceProvider, PriceCurrency } from './types';
 
-/** TTL: nach 24 h gilt der gecachte Preis als stale → Live-Refresh. */
-export const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+/** TTL: nach 7 Tagen gilt der gecachte Preis als stale → Live-Refresh.
+ *  Preise ändern sich selten stark genug, um öfter nachzufragen — siehe
+ *  `ensureFreshPrice`, die einzige Stelle, die diese Regel durchsetzt. */
+export const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Leere Cache-Einträge (empty: true) nur 1 h gültig — neue Sets bekommen oft
  *  innerhalb von Stunden Cardmarket-/TCGplayer-Daten nachgeschoben. Außerdem
  *  müssen Einträge, die noch vor dem TCGplayer-Fallback-Deploy entstanden sind,
@@ -89,6 +91,32 @@ export async function refreshAllOwnedAndStale(): Promise<{
     }
   }
   return { refreshed, upgraded, errored, total: tcgIds.size };
+}
+
+/** Zentrale „fresh-or-refresh"-Logik: gecachten Preis verwenden, wenn er
+ *  existiert und `isFresh()` ist — sonst live nachholen (`refreshAndCache`).
+ *  Einzige Stelle, die diese Regel implementiert; wird von der Einzelkarten-
+ *  Preis-Route (`app/api/prices/route.ts`) UND der Batch-Route
+ *  (`app/api/prices/batch/route.ts`) genutzt — für eine Karte oder viele. */
+export async function ensureFreshPrice(tcgId: string, force = false): Promise<PriceResult | null> {
+  const db = getAdminDb();
+  const docRef = db.collection('tcg_catalog').doc(tcgId);
+
+  if (!force) {
+    try {
+      const snap = await docRef.get();
+      const cached = snap.data()?.prices as CachedPrices | undefined;
+      if (cached && isFresh(cached)) {
+        const ageMin = Math.round((Date.now() - cached.cachedAt.toMillis()) / 60000);
+        console.log(`[prices] Cache-Hit ${tcgId}: ${cached.empty ? 'empty' : (cached.provider ?? 'cardmarket')}, ${ageMin}min alt`);
+        return toResult(cached);
+      }
+    } catch (e) {
+      console.warn('[prices] cache read error', e);
+    }
+  }
+
+  return refreshAndCache(tcgId);
 }
 
 /** Holt live von pokemontcg.io und schreibt in Firestore. */
