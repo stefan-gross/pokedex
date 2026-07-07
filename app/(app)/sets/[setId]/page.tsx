@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ChevronLeft, ChevronDown, ArrowUpDown } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 
 import { getCards } from '@/lib/firestore/cards';
 import { getCardsBySetId } from '@/lib/firestore/catalog';
@@ -12,9 +12,10 @@ import { getPricesByTcgIds } from '@/lib/firestore/prices';
 import { pickTrendPrice } from '@/lib/prices/value-tier';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { CardGrid } from '@/components/card/CardGrid';
+import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { detectVariants, getRarityGroup, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
-import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
+import { catalogCardToInfo } from '@/lib/card-info';
 import type { CatalogCard } from '@/lib/firestore/catalog';
 import type { CardDoc, BinderDoc } from '@/types';
 
@@ -84,8 +85,13 @@ function SetDetailContent() {
   const [binders, setBinders]       = useState<BinderDoc[]>([]);
   const [loading, setLoading]       = useState(true);
 
-  // CatalogCard → CardInfo normalisieren
-  const cards = useMemo(() => rawCards.map(catalogCardToInfo), [rawCards]);
+  // CatalogCard → CardInfo normalisieren — printedTotal/total fehlt am einzelnen
+  // Katalog-Dokument, wird hier aus der Set-Kartenzahl ergänzt (für führende
+  // Nullen beim Nummer-Sublabel, z.B. "053" bei einem 172er-Set)
+  const cards = useMemo(
+    () => rawCards.map(c => ({ ...catalogCardToInfo(c), printedTotal: rawCards.length, total: rawCards.length })),
+    [rawCards],
+  );
 
   const [filter, setFilter]           = useState<Filter>('all');
   const [sortField, setSortField]     = useState<SortField>('number');
@@ -310,32 +316,14 @@ function SetDetailContent() {
             />
 
             {/* Row 2: Sortierfeld + Richtung + Anzahl */}
-            <div className="flex items-center gap-2">
-              <div className="relative flex items-center">
-                <select
-                  value={sortField}
-                  onChange={e => setSortField(e.target.value as SortField)}
-                  className="text-xs rounded-lg pl-2.5 pr-6 py-1.5 glass-inner text-glass appearance-none cursor-pointer"
-                >
-                  {SORT_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-                <ChevronDown size={12} className="absolute right-1.5 pointer-events-none text-glass-muted" />
-              </div>
-
-              <button
-                onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
-                className="h-7 w-7 flex items-center justify-center rounded-lg glass-inner transition-colors"
-                title={sortDir === 'asc' ? 'Aufsteigend' : 'Absteigend'}
-              >
-                <ArrowUpDown size={12} style={{ color: sortDir === 'desc' ? 'var(--pokedex-red)' : undefined }} />
-              </button>
-
-              <span className="text-xs text-glass-muted tabular-nums shrink-0 ml-auto">
-                {pluralKarten(displayed.length)}
-              </span>
-            </div>
+            <CardSortBar
+              options={SORT_OPTIONS}
+              sortField={sortField}
+              onSortFieldChange={setSortField}
+              sortDir={sortDir}
+              onSortDirChange={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+              resultLabel={pluralKarten(displayed.length)}
+            />
 
           </div>
 

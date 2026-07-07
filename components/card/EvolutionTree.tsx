@@ -4,6 +4,7 @@ import { useId } from 'react';
 import type { CardInfo } from '@/lib/card-info';
 import type { EvolutionTreeNode } from '@/lib/pokeapi';
 import { CardNameLabel } from '@/components/card/CardNameLabel';
+import { CardImage } from '@/components/card/CardImage';
 
 /** Zeilenhöhe je Blatt-Knoten — gleicher Rhythmus wie der bisherige `h-[93px]`-Pfeil-Abstandshalter. */
 const ROW_H = 93;
@@ -43,10 +44,12 @@ function NodeThumb({ card, isCurrent, onSelect }: { card: CardInfo; isCurrent: b
         style={isCurrent ? { borderColor: 'var(--pokedex-red)', borderWidth: 2 } : undefined}
       >
         <div className="rounded-[6px] overflow-hidden">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <CardImage
+            srcDe={card.imgSmallDe}
             src={card.imgSmall}
             alt={card.name}
+            width={68}
+            height={95}
             className="w-full block"
             style={{ aspectRatio: '2.5/3.5', objectFit: 'cover' }}
           />

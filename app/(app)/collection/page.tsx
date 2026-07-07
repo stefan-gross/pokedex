@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Search, X, ChevronDown, ArrowUpDown, SlidersHorizontal, GitMerge } from 'lucide-react';
+import { Search, X, SlidersHorizontal, GitMerge } from 'lucide-react';
 import { CardGrid, CardGridSkeleton } from '@/components/card/CardGrid';
+import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { getCards } from '@/lib/firestore/cards';
@@ -40,6 +41,13 @@ const BROWSE_SORT_OPTIONS: { value: BrowseSortKey; label: string }[] = [
   { value: 'name',    label: 'A–Z'          },
   { value: 'hp',      label: 'KP (höchste)' },
   { value: 'pokedex', label: 'Pokédex-Nr.'  },
+];
+
+const SEARCH_SORT_OPTIONS: { value: SearchSortKey; label: string }[] = [
+  { value: 'number',  label: 'Nummer'      },
+  { value: 'name',    label: 'Name'        },
+  { value: 'pokedex', label: 'Pokédex-Nr.' },
+  { value: 'hp',      label: 'KP'          },
 ];
 
 const EVOLUTION_OPTIONS: { value: string | null; label: string }[] = [
@@ -499,7 +507,7 @@ function CollectionContent() {
     <div className="flex flex-col min-h-screen">
 
       {/* ── Sticky Header ──────────────────────────────────────── */}
-      <div className="sticky top-safe z-20 glass px-4 pt-4 pb-3 space-y-2">
+      <div className="sticky top-safe z-20 mx-3 mt-2 glass rounded-[20px] px-4 pt-4 pb-3 space-y-2">
 
         {/* Suchfeld */}
         <div className="relative">
@@ -650,55 +658,24 @@ function CollectionContent() {
         )}
 
         {/* ── Sortierung + Ergebniszahl (immer sichtbar) ──────── */}
-        <div className="flex items-center justify-between pt-0.5">
-          <div className="flex items-center gap-1.5">
-            <div className="relative flex items-center">
-              {isBrowseMode ? (
-                <>
-                  <select
-                    value={browseSort}
-                    onChange={e => setBrowseSort(e.target.value as BrowseSortKey)}
-                    className="h-7 pl-2 pr-6 rounded-lg glass-inner text-xs appearance-none cursor-pointer"
-                  >
-                    {BROWSE_SORT_OPTIONS.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={11} className="absolute right-1.5 pointer-events-none text-glass-muted" />
-                </>
-              ) : (
-                <>
-                  <select
-                    value={searchSort}
-                    onChange={e => setSearchSort(e.target.value as SearchSortKey)}
-                    className="h-7 pl-2 pr-6 rounded-lg glass-inner text-xs appearance-none cursor-pointer"
-                  >
-                    <option value="number">Nummer</option>
-                    <option value="name">Name</option>
-                    <option value="pokedex">Pokédex-Nr.</option>
-                    <option value="hp">KP</option>
-                  </select>
-                  <ChevronDown size={11} className="absolute right-1.5 pointer-events-none text-glass-muted" />
-                </>
-              )}
-            </div>
-            {/* Richtungs-Toggle */}
-            <button
-              onClick={() => isBrowseMode
-                ? setBrowseSortDir(d => d === 'asc' ? 'desc' : 'asc')
-                : setSearchSortDir(d => d === 'asc' ? 'desc' : 'asc')
-              }
-              className="h-7 w-7 flex items-center justify-center rounded-lg glass-inner transition-colors"
-              title={(isBrowseMode ? browseSortDir : searchSortDir) === 'asc' ? 'Aufsteigend' : 'Absteigend'}
-            >
-              <ArrowUpDown
-                size={12}
-                style={{ color: (isBrowseMode ? browseSortDir : searchSortDir) === 'desc' ? 'var(--pokedex-red)' : undefined }}
-              />
-            </button>
-          </div>
-          <div className="flex items-center gap-2 ml-auto">
-            {!isBrowseMode && (
+        {isBrowseMode ? (
+          <CardSortBar
+            options={BROWSE_SORT_OPTIONS}
+            sortField={browseSort}
+            onSortFieldChange={setBrowseSort}
+            sortDir={browseSortDir}
+            onSortDirChange={() => setBrowseSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+            resultLabel={showResultCount && resultCount != null ? `${resultCount} Karten` : undefined}
+          />
+        ) : (
+          <CardSortBar
+            options={SEARCH_SORT_OPTIONS}
+            sortField={searchSort}
+            onSortFieldChange={setSearchSort}
+            sortDir={searchSortDir}
+            onSortDirChange={() => setSearchSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+            resultLabel={showResultCount && resultCount != null ? `${resultCount} Karten` : undefined}
+            extra={
               <button
                 onClick={() => setEvoLineActive(p => !p)}
                 className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-all ${evoLineActive ? '' : 'glass-inner text-glass-muted'}`}
@@ -711,12 +688,9 @@ function CollectionContent() {
               >
                 <GitMerge size={12} /> Evo-Linie
               </button>
-            )}
-            {showResultCount && resultCount != null && (
-              <span className="text-xs text-glass-muted">{resultCount} Karten</span>
-            )}
-          </div>
-        </div>
+            }
+          />
+        )}
       </div>
 
       {/* ── Content ─────────────────────────────────────────────── */}

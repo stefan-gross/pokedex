@@ -131,9 +131,18 @@ async function pickEvolutionCards(
   currentCard: CardInfo,
   ownedTcgIds: Set<string>,
 ): Promise<CardInfo[]> {
+  // Sonderform-Drucke (MEGA/EX/VMAX/…) nie als Baum-Knoten wählen — die landen
+  // stattdessen in der separaten "Auch verfügbar als"-Zeile der jeweiligen Stufe.
+  // Ausnahme: ein Dex-Eintrag hat wirklich nur Sonderform-Drucke (kein normaler
+  // Print existiert) — dann bleibt die Sonderform als einzige Option erhalten.
   const byDex = new Map<number, CardInfo[]>();
   for (const c of candidates) {
     if (!c.nationalDexNumber) continue;
+    const isSpecialMechanic = c.subtypes?.some(s => SPECIAL_MECHANIC_KEYS.includes(s));
+    if (isSpecialMechanic && candidates.some(o =>
+      o.nationalDexNumber === c.nationalDexNumber &&
+      !o.subtypes?.some(s => SPECIAL_MECHANIC_KEYS.includes(s))
+    )) continue;
     const arr = byDex.get(c.nationalDexNumber) ?? [];
     arr.push(c);
     byDex.set(c.nationalDexNumber, arr);
@@ -311,8 +320,15 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
             const currentPicked = picked.find(p => p.nationalDexNumber === card.nationalDexNumber);
             const seenKeys = new Set<string>();
             const forms: CardInfo[] = [];
+            // Einstufige Pokémon (z.B. Miraidon) haben keinen Baum, in dem die normale
+            // Form als Knoten auftaucht — dann muss sie zusätzlich in dieser Zeile
+            // erscheinen, sonst ist sie von der Sonderform aus gar nicht erreichbar.
+            if (picked.length <= 1 && currentPicked && currentPicked.id !== card.id) {
+              forms.push(currentPicked);
+            }
             for (const c of source) {
               if (c.nationalDexNumber !== card.nationalDexNumber) continue;
+              if (c.id === card.id) continue; // aktuell angezeigte Karte nicht nochmal auflisten
               if (currentPicked && c.id === currentPicked.id) continue;
               const key = c.subtypes?.find(s => SPECIAL_MECHANIC_KEYS.includes(s));
               if (!key || seenKeys.has(key)) continue;
@@ -358,8 +374,15 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   const stage       = getStage(card.subtypes ?? []);
   const energyTypes = (card.types ?? []).map(toEnergy).filter(Boolean) as EnergyType[];
   const setCode     = card.setCode ?? card.setId.toUpperCase();
-  const numBase     = card.number.split('/')[0].padStart(3, '0');
-  const numTotal    = resolvedMeta?.printedTotal ? String(resolvedMeta.printedTotal).padStart(3, '0') : null;
+  // Promo-Karten (egal ob Nummer alphanumerisch wie "SWSH092" oder rein
+  // numerisch wie "028") tragen auf dem echten Aufdruck nie eine Gesamtzahl —
+  // die Promo-Reihe ist offen/fortlaufend, "215" wäre nur die interne
+  // Firestore-Katalogzahl, kein echter Aufdruck. Also nie ein "/Total" anhängen.
+  const isPromo     = rarityInfo?.order === 99;
+  const numRaw      = card.number.split('/')[0];
+  const isPlainNum  = /^\d+$/.test(numRaw);
+  const numBase     = isPlainNum ? numRaw.padStart(3, '0') : numRaw;
+  const numTotal    = !isPromo && isPlainNum && resolvedMeta?.printedTotal ? String(resolvedMeta.printedTotal).padStart(3, '0') : null;
   const numFmt      = numTotal ? `${numBase}/${numTotal}` : numBase;
   const logoUrl     = resolvedMeta?.logoUrl ?? `https://images.pokemontcg.io/${card.setId}/logo.png`;
   const setNameDe   = resolvedMeta?.nameDe ?? card.setName;
@@ -699,16 +722,25 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
             />
             {openSec.has('evo') && (
               <div className="px-4 pb-4">
-                {evoCards.length > 1 ? (
+                {!evoLoaded ? (
+                  <div className="flex items-center gap-2 pt-3">
+                    <div className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin shrink-0" />
+                    <p className="text-[13px] text-muted-foreground">Lade Evolutionslinie…</p>
+                  </div>
+                ) : evoCards.length > 1 || specialForms.length > 0 ? (
                   <>
-                    <EvolutionTree
-                      tree={evoTree}
-                      cards={evoCards}
-                      currentCardId={card.id}
-                      onSelect={ec => setCardStack(s => [...s, ec])}
-                    />
+                    {evoCards.length > 1 && (
+                      <EvolutionTree
+                        tree={evoTree}
+                        cards={evoCards}
+                        currentCardId={card.id}
+                        onSelect={ec => setCardStack(s => [...s, ec])}
+                      />
+                    )}
                     {specialForms.length > 0 && (
-                      <div className="mt-2 pt-3 border-t border-[rgba(255,255,255,0.1)]">
+                      // Ohne Baum darüber (z.B. einstufige Legendäre wie Miraidon)
+                      // keinen Trenner/Einzug — die Zeile steht dann für sich allein.
+                      <div className={evoCards.length > 1 ? 'mt-2 pt-3 border-t border-[rgba(255,255,255,0.1)]' : 'pt-1'}>
                         <div className="text-[11px] text-muted-foreground mb-2">Auch verfügbar als</div>
                         <div className="flex gap-2 overflow-x-auto">
                           {specialForms.map(sf => (
@@ -719,10 +751,12 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                             >
                               <div className="glass-inner rounded-[7px] p-[2px]">
                                 <div className="rounded-[4px] overflow-hidden w-10">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img
+                                  <CardImage
+                                    srcDe={sf.imgSmallDe}
                                     src={sf.imgSmall}
                                     alt={sf.name}
+                                    width={40}
+                                    height={56}
                                     className="w-full block"
                                     style={{ aspectRatio: '2.5/3.5', objectFit: 'cover' }}
                                   />
@@ -737,13 +771,8 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                       </div>
                     )}
                   </>
-                ) : evoLoaded ? (
-                  <p className="text-[13px] text-muted-foreground pt-3">Keine Evolutionslinie</p>
                 ) : (
-                  <div className="flex items-center gap-2 pt-3">
-                    <div className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin shrink-0" />
-                    <p className="text-[13px] text-muted-foreground">Lade Evolutionslinie…</p>
-                  </div>
+                  <p className="text-[13px] text-muted-foreground pt-3">Keine Evolutionslinie</p>
                 )}
               </div>
             )}

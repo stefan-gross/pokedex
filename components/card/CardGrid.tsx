@@ -28,7 +28,7 @@ function getSublabel(card: CardInfo, sortKey?: string, priceMap?: Map<string, nu
     case 'name':    return card.name;
     case 'pokedex': return card.nationalDexNumber
       ? `#${String(card.nationalDexNumber).padStart(3, '0')}`
-      : formatNumber(card);
+      : ''; // Trainer/Energie haben keine Pokédex-Nummer
     case 'hp':      return card.hp ? `KP ${card.hp}` : formatNumber(card);
     case 'price': {
       const price = priceMap?.get(card.id);
@@ -37,7 +37,14 @@ function getSublabel(card: CardInfo, sortKey?: string, priceMap?: Map<string, nu
     default:        return formatNumber(card);
   }
 }
+// Mit führenden Nullen wie auf der Karte aufgedruckt (Breite = Ziffernzahl von
+// printedTotal/total, z.B. "053" bei einem 198er-Set). Alphanumerische Nummern
+// (Promos wie "SWSH092") bleiben unverändert.
 function formatNumber(card: CardInfo) {
+  const total = card.printedTotal ?? card.total;
+  if (total && /^\d+$/.test(card.number)) {
+    return card.number.padStart(String(total).length, '0');
+  }
   return card.number;
 }
 
