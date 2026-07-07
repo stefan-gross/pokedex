@@ -37,6 +37,7 @@ export interface CatalogCard {
   region?: string;             // z.B. "Kanto", "Johto"
   variants?: CardVariant[];    // mögliche Varianten, abgeleitet aus rarity
   artist?: string;             // Illustrator, direkt von pokemontcg.io (kein separates Enrichment nötig)
+  artistTokens?: string[];     // artist.toLowerCase().split(/\s+/) — für Nachnamen-Suche (z.B. "Morii" → "Yuka Morii")
 }
 
 export interface SyncMeta {
@@ -74,21 +75,23 @@ export async function searchCatalog(q: string, setId = '', maxResults = 80): Pro
   return enSnap.docs.map(d => d.data() as CatalogCard);
 }
 
-// Präfix-Suche auf dem Illustrator-Feld. Kein separates artistLower-Feld vorhanden —
-// pokemontcg.io liefert Künstlernamen aber durchgehend in Title-Case, daher wird die
-// Eingabe dafür normalisiert statt einer Migration aller Katalog-Dokumente.
-function toTitleCase(s: string): string {
-  return s.replace(/\S+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-}
-
-export async function searchCatalogByArtistPrefix(q: string, maxResults = 80): Promise<CatalogCard[]> {
-  const prefix = toTitleCase(q.trim());
-  if (!prefix) return [];
-  const end = prefix + '';
+// Wortweise Suche auf dem Illustrator-Feld über `artistTokens` (klein geschriebene
+// Wörter des vollen Namens, z.B. "Yuka Morii" → ["yuka","morii"]). Ein reiner
+// Präfix-Vergleich auf dem vollen `artist`-String (frühere Implementierung) matcht
+// nur, wenn die Eingabe mit dem VORNAMEN beginnt — Nachnamen wie "Morii" (der in
+// der Praxis übliche Suchbegriff) fanden dadurch nie etwas. `array-contains-any`
+// findet Karten, bei denen mindestens ein Eingabe-Wort exakt vorkommt; bei
+// mehrteiliger Eingabe (z.B. "Yuka Morii") wird client-seitig auf Treffer
+// eingeschränkt, die ALLE Wörter enthalten (sonst zu lockere Ergebnisse).
+export async function searchCatalogByArtist(q: string, maxResults = 80): Promise<CatalogCard[]> {
+  const tokens = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return [];
   const snap = await getDocs(
-    query(collection(db, COL), where('artist', '>=', prefix), where('artist', '<=', end), limit(maxResults)),
+    query(collection(db, COL), where('artistTokens', 'array-contains-any', tokens.slice(0, 30)), limit(maxResults)),
   );
-  return snap.docs.map(d => d.data() as CatalogCard);
+  const docs = snap.docs.map(d => d.data() as CatalogCard);
+  if (tokens.length === 1) return docs;
+  return docs.filter(c => tokens.every(t => c.artistTokens?.includes(t)));
 }
 
 // Lookup mehrerer Karten per ID (für Deutsch-Suche via TCGdex)

@@ -8,7 +8,7 @@ import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { getCards } from '@/lib/firestore/cards';
-import { searchCatalog, searchCatalogByArtistPrefix, getCatalogCardsByIds, getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts, type CatalogCard } from '@/lib/firestore/catalog';
+import { searchCatalog, searchCatalogByArtist, getCatalogCardsByIds, getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts, type CatalogCard } from '@/lib/firestore/catalog';
 import { searchTcgdexDe } from '@/lib/tcgdex';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import { catalogCardToInfo, tcgApiCardToInfo, type CardInfo } from '@/lib/card-info';
@@ -286,26 +286,36 @@ function CollectionContent() {
         // 1. Gesamte Eingabe als Name (deckt auch mehrteilige Namen ab)
         let hits = await findByName(q);
 
-        // 2. Mehrwort-Eingabe ("Knapfel Morii" bzw. "Morii Knapfel") — ein Wort als
-        // Name, das andere client-seitig als Illustrator-Teilstring auf den gefundenen
-        // Kandidaten abgeglichen (kein artistLower-Feld für Server-Suche vorhanden).
-        // Erst ab MIN_COMBO_LEN Zeichen pro Wort, sonst zu viele False-Positives/Anfragen.
-        if (hits.length === 0 && words.length > 1 && words.every(w => w.length >= MIN_COMBO_LEN)) {
-          for (const { namePart, artistPart } of [
-            { namePart: words.slice(0, -1).join(' '), artistPart: words[words.length - 1] },
-            { namePart: words.slice(1).join(' '),     artistPart: words[0] },
-          ]) {
+        // 2. Mehrwort-Eingabe ("Knapfel Morii", "Morii Knapfel", "Knapfel Yuka
+        // Morii" …) — ein zusammenhängender Wortblock als Name (Anfang ODER
+        // Ende der Eingabe), der Rest client-seitig als Illustrator-Teilstrings
+        // auf den gefundenen Kandidaten abgeglichen (kein artistLower-Feld für
+        // Server-Suche vorhanden). Alle Namens-Längen werden durchprobiert,
+        // nicht nur ein einzelnes Randwort — deckt auch mehrteilige
+        // Illustrator-Namen ab. Erst ab MIN_COMBO_LEN Zeichen pro Wort, sonst
+        // zu viele False-Positives/Anfragen; ab 5 Wörtern zu viele Splits,
+        // dann greift nur noch die reine Illustrator-Suche (Schritt 3).
+        if (hits.length === 0 && words.length > 1 && words.length <= 4 && words.every(w => w.length >= MIN_COMBO_LEN)) {
+          const splits: { namePart: string; artistWords: string[] }[] = [];
+          for (let nameLen = 1; nameLen < words.length; nameLen++) {
+            splits.push({ namePart: words.slice(0, nameLen).join(' '),             artistWords: words.slice(nameLen) });
+            splits.push({ namePart: words.slice(words.length - nameLen).join(' '), artistWords: words.slice(0, words.length - nameLen) });
+          }
+          for (const { namePart, artistWords } of splits) {
             const nameHits = await findByName(namePart);
             if (nameHits.length === 0) continue;
-            const artistLower = artistPart.toLowerCase();
-            const filtered = nameHits.filter(c => c.artist?.toLowerCase().includes(artistLower));
+            const artistLowers = artistWords.map(w => w.toLowerCase());
+            const filtered = nameHits.filter(c => {
+              const artist = c.artist?.toLowerCase();
+              return !!artist && artistLowers.every(w => artist.includes(w));
+            });
             if (filtered.length > 0) { hits = filtered; break; }
           }
         }
 
         // 3. Reine Illustrator-Suche (ganze Eingabe = Künstlername/-präfix)
         if (hits.length === 0 && q.trim().length >= MIN_COMBO_LEN) {
-          hits = await searchCatalogByArtistPrefix(q, 80);
+          hits = await searchCatalogByArtist(q, 80);
         }
 
         if (hits.length > 0) { setAndReturn(hits.map(catalogCardToInfo)); return; }

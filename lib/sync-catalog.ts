@@ -50,7 +50,7 @@ async function fetchPage(page: number): Promise<CatalogCard[]> {
     types: c.types ?? [],
     subtypes: c.subtypes ?? [],
     ...(c.hp                          ? { hp: parseInt(c.hp) }                          : {}),
-    ...(c.artist                      ? { artist: c.artist }                            : {}),
+    ...(c.artist                      ? { artist: c.artist, artistTokens: c.artist.toLowerCase().split(/\s+/) } : {}),
     ...(c.nationalPokedexNumbers?.[0] ? { nationalDexNumber: c.nationalPokedexNumbers[0] } : {}),
     imgSmall: c.images.small,
     imgLarge: c.images.large,
@@ -281,7 +281,7 @@ export async function enrichEvolutionFamilies(batchSize = 500): Promise<EnrichRe
 // Holt deutsche Kartennamen set-weise von TCGdex und schreibt nameDe + nameDeLower.
 
 interface TcgdexCardVariants { normal?: boolean; reverse?: boolean; holo?: boolean; firstEdition?: boolean; }
-interface TcgdexCard { localId: string; name: string; variants?: TcgdexCardVariants; }
+interface TcgdexCard { id: string; localId: string; name: string; variants?: TcgdexCardVariants; }
 interface TcgdexSet  { cards?: TcgdexCard[]; }
 
 const tcgdexSetCache = new Map<string, Map<string, TcgdexCard>>(); // tcgdexSetId → localId → card
@@ -406,6 +406,117 @@ export async function enrichGermanNames(batchSize = 500): Promise<EnrichDeNamesR
     message: hasMore
       ? `📥 ${enriched} Karten angereichert — weitere vorhanden`
       : `✅ Deutsche Namen vollständig (${enriched} Karten angereichert)`,
+    enriched,
+    remaining: hasMore ? -1 : 0,
+  };
+}
+
+// ── Illustrator-Anreicherung via TCGdex (Fallback für pokemontcg.io-Lücken) ─
+// pokemontcg.io liefert bei manchen Karten `artist: null`, obwohl der Name auf
+// dem Kartenbild aufgedruckt ist (z.B. sv8-138 „Knapfel"/Applin aus „Stürmische
+// Funken", von Yuka Morii illustriert). TCGdex hat pro Karte einen eigenen
+// `illustrator`-Wert — ABER nur über den Einzelkarten-Endpunkt, nicht im
+// Set-Bulk-Response (der nur id/image/localId/name liefert) — deshalb ein
+// Request pro fehlender Karte, gepaced wie die anderen Enrichments.
+
+async function fetchTcgdexIllustrator(tcgdexCardId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`https://api.tcgdex.net/v2/de/cards/${tcgdexCardId}`);
+    if (!res.ok) return null;
+    const data: { illustrator?: string } = await res.json();
+    return data.illustrator ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export interface EnrichArtistResult {
+  status: 'complete' | 'in-progress';
+  message: string;
+  enriched: number;
+  remaining: number;
+}
+
+export async function enrichArtistFromTcgdex(batchSize = 150): Promise<EnrichArtistResult> {
+  const db = getAdminDb();
+
+  const cursorRef = db.doc('tcg_catalog_meta/artist_enrichment_cursor');
+  const cursorSnap = await cursorRef.get();
+  const lastDocId: string = cursorSnap.exists ? (cursorSnap.data()?.lastDocId ?? '') : '';
+
+  let q = db.collection(COL).orderBy(FieldPath.documentId()).limit(batchSize + 1);
+  if (lastDocId) {
+    const lastDoc = await db.doc(`${COL}/${lastDocId}`).get();
+    if (lastDoc.exists) q = q.startAfter(lastDoc) as typeof q;
+  }
+  const snap = await q.get();
+
+  if (snap.empty) {
+    await cursorRef.delete();
+    return { status: 'complete', message: '✅ Alle Illustrator-Daten sind vollständig', enriched: 0, remaining: 0 };
+  }
+
+  const hasMore  = snap.docs.length > batchSize;
+  const pageDocs = snap.docs.slice(0, batchSize);
+  // Defensiv: einzelne (fehlerhafte/unvollständige) Dokumente ohne setId/number
+  // überspringen, statt toTcgdexId()/split() an undefined abstürzen zu lassen
+  // und damit die ganze Batch zu verlieren.
+  const toEnrich = pageDocs.filter(d => {
+    const data = d.data();
+    return !data.artist && data.setId && data.number;
+  });
+
+  let enriched = 0;
+  if (toEnrich.length > 0) {
+    const setIds = [...new Set(toEnrich.map(d => (d.data() as CatalogCard).setId))];
+    const CONCURRENCY = 8;
+    for (let i = 0; i < setIds.length; i += CONCURRENCY) {
+      await Promise.all(setIds.slice(i, i + CONCURRENCY).map(id => fetchDeCardsForSet(toTcgdexId(id))));
+    }
+
+    const results: { ref: FirebaseFirestore.DocumentReference; artist: string }[] = [];
+    for (let i = 0; i < toEnrich.length; i += CONCURRENCY) {
+      const chunk = toEnrich.slice(i, i + CONCURRENCY);
+      const fetched = await Promise.all(chunk.map(async doc => {
+        try {
+          const card = doc.data() as CatalogCard;
+          const tcgdexId = toTcgdexId(card.setId);
+          const cardMap  = tcgdexSetCache.get(tcgdexId);
+          const rawNum   = card.number.split('/')[0];
+          const normNum  = String(parseInt(rawNum) || 0) || rawNum;
+          const tcgdexCard = cardMap?.get(rawNum) ?? cardMap?.get(normNum);
+          if (!tcgdexCard) return null;
+          const illustrator = await fetchTcgdexIllustrator(tcgdexCard.id);
+          return illustrator ? { ref: doc.ref, artist: illustrator } : null;
+        } catch (e) {
+          console.warn('[enrich-artist] Karte übersprungen (Fehler)', doc.id, e);
+          return null;
+        }
+      }));
+      fetched.forEach(r => { if (r) results.push(r); });
+    }
+
+    for (let i = 0; i < results.length; i += 500) {
+      const batch = db.batch();
+      results.slice(i, i + 500).forEach(({ ref, artist }) => {
+        batch.update(ref, { artist, artistTokens: artist.toLowerCase().split(/\s+/) });
+      });
+      await batch.commit();
+    }
+    enriched = results.length;
+  }
+
+  if (hasMore) {
+    await cursorRef.set({ lastDocId: pageDocs[pageDocs.length - 1].id });
+  } else {
+    await cursorRef.delete();
+  }
+
+  return {
+    status: hasMore ? 'in-progress' : 'complete',
+    message: hasMore
+      ? `🎨 ${enriched} Illustrator-Credits ergänzt — weitere vorhanden`
+      : `✅ Illustrator-Anreicherung abgeschlossen (${enriched} Karten ergänzt)`,
     enriched,
     remaining: hasMore ? -1 : 0,
   };
@@ -613,6 +724,36 @@ export async function backfillSetCodes(): Promise<BackfillSetCodesResult> {
   }
 
   return { status: 'complete', message: `✅ ${totalUpdated} Karten mit Set-Kürzel aktualisiert`, updated: totalUpdated };
+}
+
+// ── Backfill: artistTokens aus bereits vorhandenem artist-Feld ableiten ────
+// Rein lokale Firestore-Operation (kein pokemontcg.io-Call nötig) — für Karten,
+// die vor Einführung der wortweisen Illustrator-Suche synchronisiert wurden.
+
+export interface BackfillArtistTokensResult {
+  status: 'complete';
+  message: string;
+  updated: number;
+}
+
+export async function backfillArtistTokens(): Promise<BackfillArtistTokensResult> {
+  const db = getAdminDb();
+  const snap = await db.collection(COL).where('artist', '>', '').get();
+  const toUpdate = snap.docs.filter(d => {
+    const data = d.data();
+    return data.artist && !data.artistTokens;
+  });
+
+  for (let i = 0; i < toUpdate.length; i += 500) {
+    const batch = db.batch();
+    toUpdate.slice(i, i + 500).forEach(d => {
+      const artist = d.data().artist as string;
+      batch.update(d.ref, { artistTokens: artist.toLowerCase().split(/\s+/) });
+    });
+    await batch.commit();
+  }
+
+  return { status: 'complete', message: `✅ ${toUpdate.length} Karten mit Illustrator-Tokens aktualisiert`, updated: toUpdate.length };
 }
 
 // ── DE-Bilder-Anreicherung ─────────────────────────────────────────────────
