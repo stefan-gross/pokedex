@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Search, X, SlidersHorizontal, GitMerge } from 'lucide-react';
+import { Search, X, SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { CardGrid, CardGridSkeleton } from '@/components/card/CardGrid';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
@@ -12,15 +12,16 @@ import { searchCatalog, searchCatalogByArtist, getCatalogCardsByIds, getCardsByD
 import { searchTcgdexDe } from '@/lib/tcgdex';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import { catalogCardToInfo, tcgApiCardToInfo, type CardInfo } from '@/lib/card-info';
-import { getRarityGroup } from '@/lib/card-constants';
+import { getRarityGroup, getSubtypeDe, SPECIAL_MECHANIC_KEYS } from '@/lib/card-constants';
 import { useCardBrowser, TCG_TYPES, type TcgType, type CardBrowserFilter } from '@/lib/hooks/useCardBrowser';
 import { useWishlist } from '@/lib/hooks/use-wishlist';
 import { EnergyIcon, ENERGY_META } from '@/components/ui/EnergyIcon';
+import { getAllSets, type TcgSet } from '@/lib/firestore/sets';
 import type { TcgApiCard } from '@/lib/pokemon-tcg';
 import type { CardDoc } from '@/types';
 import type { BrowseSortKey } from '@/lib/firestore/catalog';
 
-type OwnedFilter   = 'all' | 'owned' | 'missing' | 'review';
+type OwnedFilter   = 'all' | 'owned' | 'missing';
 type SearchSortKey = 'number' | 'name' | 'pokedex' | 'hp';
 type Supertype     = 'Pokémon' | 'Trainer' | 'Energy';
 
@@ -31,11 +32,22 @@ const MIN_COMBO_LEN = 3;
 // Anzahl Karten, die pro Scroll-Schritt zusätzlich sichtbar gemacht werden
 const SEARCH_REVEAL_CHUNK = 20;
 
+// Limits sind reine Kosten-/Sicherheitsbremsen gegen einen extrem generischen
+// Suchbegriff (z.B. 1 Buchstabe), der sonst den ganzen Katalog laden würde —
+// keine Notwendigkeit für die Korrektheit der Suche selbst.
+// Direkt angezeigte Treffer (Raster blendet ohnehin nur häppchenweise ein,
+// SEARCH_REVEAL_CHUNK) — hoch genug, dass auch generische Kurz-Präfixe wie
+// "Cha" (mehrere Pokémon-Familien über viele Sets) nicht abgeschnitten werden.
+const SEARCH_DISPLAY_LIMIT = 300;
+// Nur als Zwischenmenge für die Wort-für-Wort-Schnittmenge (Schritt 2) genutzt,
+// nie direkt angezeigt — darf höher liegen, deckt auch sehr produktive
+// Illustratoren (aktuell max. 208 Karten im Katalog) mit Puffer ab.
+const SEARCH_CANDIDATE_LIMIT = 1000;
+
 const OWNED_OPTIONS: { value: OwnedFilter; label: string }[] = [
   { value: 'all',     label: 'Alle'      },
   { value: 'owned',   label: 'Vorhanden' },
   { value: 'missing', label: 'Fehlen'    },
-  { value: 'review',  label: 'Prüfen'    },
 ];
 
 const BROWSE_SORT_OPTIONS: { value: BrowseSortKey; label: string }[] = [
@@ -58,24 +70,50 @@ const EVOLUTION_OPTIONS: { value: string | null; label: string }[] = [
   { value: 'Stage 2', label: 'Phase 2' },
 ];
 
-function fmt(n: number) { return n.toLocaleString('de'); }
+const SPECIAL_MECHANIC_OPTIONS: { value: string; label: string }[] =
+  SPECIAL_MECHANIC_KEYS.map(k => ({ value: k, label: getSubtypeDe(k) }));
 
-function FilterChip({ label, onRemove, color, icon }: {
-  label: string; onRemove: () => void; color?: string; icon?: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onRemove}
-      className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border shrink-0 transition-colors ${color ? '' : 'glass-inner text-glass'}`}
-      style={color
-        ? { borderColor: color, background: `${color}22`, color }
-        : undefined
-      }
-    >
-      {icon}{label} <X size={10} />
-    </button>
-  );
+type FacetDim = 'owned' | 'supertype' | 'types' | 'evolutions' | 'specialMechanics' | 'rarity';
+
+interface FacetState {
+  ownedFilter: OwnedFilter;
+  activeSupertype: Supertype | 'all';
+  activeTypes: Set<TcgType>;
+  activeEvolutions: Set<string>;
+  activeSpecialMechanics: Set<string>;
+  activeRarity: string | null;
+  ownedIds: Set<string>;
 }
+
+// Wendet alle aktiven Filter außer `skip` an — Basis für die kreuzreaktiven
+// Zähler: um zu wissen, wie viele Treffer eine Filter-OPTION selbst hätte,
+// muss man sie aus der eigenen Berechnung ausschließen (sonst würde z.B. die
+// gerade aktive Rarity immer 100% der gefilterten Menge zeigen).
+function applyFacetFilters(cards: CardInfo[], f: FacetState, skip?: FacetDim): CardInfo[] {
+  let r = cards;
+  if (skip !== 'owned') {
+    if (f.ownedFilter === 'owned')   r = r.filter(c => f.ownedIds.has(c.id));
+    if (f.ownedFilter === 'missing') r = r.filter(c => !f.ownedIds.has(c.id));
+  }
+  if (skip !== 'supertype' && f.activeSupertype !== 'all') {
+    r = r.filter(c => c.supertype?.toLowerCase() === f.activeSupertype.toLowerCase());
+  }
+  if (skip !== 'types' && f.activeTypes.size > 0) {
+    r = r.filter(c => c.types?.some(t => f.activeTypes.has(t as TcgType)));
+  }
+  if (skip !== 'evolutions' && f.activeEvolutions.size > 0) {
+    r = r.filter(c => c.subtypes?.some(s => f.activeEvolutions.has(s)));
+  }
+  if (skip !== 'specialMechanics' && f.activeSpecialMechanics.size > 0) {
+    r = r.filter(c => c.subtypes?.some(s => f.activeSpecialMechanics.has(s)));
+  }
+  if (skip !== 'rarity' && f.activeRarity) {
+    r = r.filter(c => (getRarityGroup(c.rarity ?? '')?.label ?? 'Sonstige') === f.activeRarity);
+  }
+  return r;
+}
+
+function fmt(n: number) { return n.toLocaleString('de'); }
 
 function CollectionContent() {
   const searchParams = useSearchParams();
@@ -88,7 +126,9 @@ function CollectionContent() {
   const [ownedFilter,      setOwnedFilter]      = useState<OwnedFilter>('all');
   const [activeRarity,     setActiveRarity]     = useState<string | null>(null);
   const [activeEvolutions, setActiveEvolutions] = useState<Set<string>>(new Set());
+  const [activeSpecialMechanics, setActiveSpecialMechanics] = useState<Set<string>>(new Set());
   const [evoLineActive,    setEvoLineActive]    = useState(false);
+  const [allSets,          setAllSets]          = useState<TcgSet[]>([]);
   const baseResultsRef = useRef<CardInfo[]>([]); // Suchergebnisse vor Evo-Line-Erweiterung
 
   // ── Browse-spezifisch ─────────────────────────────────────────
@@ -124,7 +164,12 @@ function CollectionContent() {
     getCards().then(setOwnedCards).catch(() => {});
     getCatalogCount().then(n => { setCatalogCount(n); catalogCountRef.current = n; }).catch(() => {});
     getCatalogFilterCounts().then(setFilterCounts).catch(() => {});
+    getAllSets().then(setAllSets).catch(() => {});
   }, []);
+
+  // Set-Metadaten (Symbol/Kürzel) für die Set-Badges auf Karten-Kacheln —
+  // einmalig geladen, ~140 Docs, für die gesamte Seiten-Lebensdauer gecacht.
+  const setsMetaMap = useMemo(() => new Map(allSets.map(s => [s.id, s])), [allSets]);
 
   // ── Dynamische Counts (debounced) ─────────────────────────────
   const activeTypesKey = useMemo(() => [...activeTypes].sort().join(','), [activeTypes]);
@@ -144,7 +189,7 @@ function CollectionContent() {
 
   // ── Exakte Gesamtzahl für aktuellen Browse-Filter ─────────────
   const activeEvolutionsKey = useMemo(() => [...activeEvolutions].sort().join(','), [activeEvolutions]);
-  const hasActiveFilterForCount = !!(activeTypes.size || activeSupertype !== 'all' || activeEvolutions.size || ownedFilter !== 'all' || activeRarity);
+  const hasActiveFilterForCount = !!(activeTypes.size || activeSupertype !== 'all' || activeEvolutions.size || activeSpecialMechanics.size || ownedFilter !== 'all' || activeRarity);
   useEffect(() => {
     if (!hasActiveFilterForCount) { setBrowseTotal(null); return; }
     const browseFilter = activeTypes.size > 0
@@ -201,20 +246,17 @@ function CollectionContent() {
 
   const ownedIds = useMemo(() => new Set(ownedMap.keys()), [ownedMap]);
 
-  // tcgIds der Karten die noch geprüft werden müssen (für "Zu prüfen"-Filter)
-  const reviewTcgIds = useMemo(
-    () => new Set(ownedCards.filter(c => c.needsReview && c.tcgId).map(c => c.tcgId!)),
-    [ownedCards],
-  );
+  const activeSpecialMechanicsKey = useMemo(() => [...activeSpecialMechanics].sort().join(','), [activeSpecialMechanics]);
 
   const browserFilter = useMemo<CardBrowserFilter>(() => ({
     supertype:       activeSupertype !== 'all' ? activeSupertype : undefined,
     types:           activeTypes.size > 0 ? [...activeTypes] : undefined,
     evolutionStages: activeEvolutions.size > 0 ? [...activeEvolutions] : undefined,
+    specialMechanics: activeSpecialMechanics.size > 0 ? [...activeSpecialMechanics] : undefined,
     rarity:          activeRarity ?? undefined,
-    ownedFilter: ownedFilter === 'review' ? 'all' : ownedFilter,
+    ownedFilter,
     ownedIds,
-  }), [activeSupertype, activeTypesKey, activeEvolutionsKey, activeRarity, ownedFilter, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [activeSupertype, activeTypesKey, activeEvolutionsKey, activeSpecialMechanicsKey, activeRarity, ownedFilter, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const {
     cards: browseCards, loading: browseLoading,
@@ -257,7 +299,7 @@ function CollectionContent() {
       const dexMatch = q.trim().match(/^#?(\d{1,4})$/);
       const dexNum = dexMatch ? parseInt(dexMatch[1], 10) : null;
       if (dexNum && dexNum >= 1 && dexNum <= 1025 && catalogCountRef.current > 0) {
-        const dexHits = await getCardsByDexNumber(dexNum, 80);
+        const dexHits = await getCardsByDexNumber(dexNum, SEARCH_DISPLAY_LIMIT);
         if (dexHits.length > 0) {
           setAndReturn(dexHits.map(catalogCardToInfo));
           setSearchSort('pokedex');
@@ -275,47 +317,48 @@ function CollectionContent() {
         // (z.B. "Knapfel Nonsense" trotzdem als "Knapfel" matchen), deshalb nur für
         // echte Einzelwort-Namensteile, nie für die volle Mehrwort-Eingabe.
         const findByName = async (namePart: string): Promise<CatalogCard[]> => {
-          const nameHits = await searchCatalog(namePart, filterSet, 80);
+          const nameHits = await searchCatalog(namePart, filterSet, SEARCH_DISPLAY_LIMIT);
           if (nameHits.length > 0) return nameHits;
           if (namePart.trim().includes(' ')) return [];
           const tcgdexIds = await searchTcgdexDe(namePart);
           if (tcgdexIds.length === 0) return [];
-          return getCatalogCardsByIds(tcgdexIds.slice(0, 80));
+          return getCatalogCardsByIds(tcgdexIds.slice(0, SEARCH_DISPLAY_LIMIT));
         };
 
         // 1. Gesamte Eingabe als Name (deckt auch mehrteilige Namen ab)
         let hits = await findByName(q);
 
-        // 2. Mehrwort-Eingabe ("Knapfel Morii", "Morii Knapfel", "Knapfel Yuka
-        // Morii" …) — ein zusammenhängender Wortblock als Name (Anfang ODER
-        // Ende der Eingabe), der Rest client-seitig als Illustrator-Teilstrings
-        // auf den gefundenen Kandidaten abgeglichen (kein artistLower-Feld für
-        // Server-Suche vorhanden). Alle Namens-Längen werden durchprobiert,
-        // nicht nur ein einzelnes Randwort — deckt auch mehrteilige
-        // Illustrator-Namen ab. Erst ab MIN_COMBO_LEN Zeichen pro Wort, sonst
-        // zu viele False-Positives/Anfragen; ab 5 Wörtern zu viele Splits,
-        // dann greift nur noch die reine Illustrator-Suche (Schritt 3).
-        if (hits.length === 0 && words.length > 1 && words.length <= 4 && words.every(w => w.length >= MIN_COMBO_LEN)) {
-          const splits: { namePart: string; artistWords: string[] }[] = [];
-          for (let nameLen = 1; nameLen < words.length; nameLen++) {
-            splits.push({ namePart: words.slice(0, nameLen).join(' '),             artistWords: words.slice(nameLen) });
-            splits.push({ namePart: words.slice(words.length - nameLen).join(' '), artistWords: words.slice(0, words.length - nameLen) });
-          }
-          for (const { namePart, artistWords } of splits) {
-            const nameHits = await findByName(namePart);
-            if (nameHits.length === 0) continue;
-            const artistLowers = artistWords.map(w => w.toLowerCase());
-            const filtered = nameHits.filter(c => {
-              const artist = c.artist?.toLowerCase();
-              return !!artist && artistLowers.every(w => artist.includes(w));
-            });
-            if (filtered.length > 0) { hits = filtered; break; }
+        // 2. Mehrwort-Eingabe ("Knapfel Morii", "Morii Knapfel", "Yuka Knapf" …):
+        // pro Wort gilt Name ODER Illustrator, über alle Wörter hinweg UND —
+        // Kandidatenmenge pro Wort (Name-Treffer ∪ Illustrator-Treffer) bilden,
+        // dann über alle Wörter schneiden. Deckt beliebige Wortanzahl/
+        // -reihenfolge ab, ohne feste Wortblock-Splits durchprobieren zu müssen.
+        if (hits.length === 0 && words.length > 1 && words.length <= 6 && words.every(w => w.length >= MIN_COMBO_LEN)) {
+          // Höheres Limit als bei der reinen Anzeige-Suche (Schritt 3): hier
+          // wird nur als Kandidatenmenge für die Schnittmenge gebraucht, nicht
+          // direkt angezeigt. Firestore liefert ohne orderBy nach Dokument-ID
+          // (=tcgId) — alte Sets ("bw", "dp", "ecard", "ex…") sortieren VOR
+          // neuen ("sv…"), ein niedriges Limit würde produktive Illustratoren
+          // (z.B. 200+ Karten) systematisch auf ihre ältesten Karten
+          // beschränken und moderne Sets nie erreichen.
+          const perWordMaps = await Promise.all(words.map(async w => {
+            const [nameHits, artistHits] = await Promise.all([findByName(w), searchCatalogByArtist(w, SEARCH_CANDIDATE_LIMIT)]);
+            const map = new Map<string, CatalogCard>();
+            [...nameHits, ...artistHits].forEach(c => map.set(c.id, c));
+            return map;
+          }));
+          let ids = new Set(perWordMaps[0].keys());
+          for (const m of perWordMaps.slice(1)) ids = new Set([...ids].filter(id => m.has(id)));
+          if (ids.size > 0) {
+            hits = [...ids].map(id => perWordMaps.find(m => m.has(id))!.get(id)!);
           }
         }
 
-        // 3. Reine Illustrator-Suche (ganze Eingabe = Künstlername/-präfix)
+        // 3. Reine Illustrator-Suche (Einzelwort-Fallback — bei Mehrwort-
+        // Eingaben deckt Schritt 2 den Fall "alle Wörter nur im Illustrator-
+        // Feld" bereits als Sonderfall der Schnittmenge ab)
         if (hits.length === 0 && q.trim().length >= MIN_COMBO_LEN) {
-          hits = await searchCatalogByArtist(q, 80);
+          hits = await searchCatalogByArtist(q, SEARCH_DISPLAY_LIMIT);
         }
 
         if (hits.length > 0) { setAndReturn(hits.map(catalogCardToInfo)); return; }
@@ -397,18 +440,13 @@ function CollectionContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [evoLineActive, results.length > 0 && results[0]?.id]);
 
+  const facetState = useMemo<FacetState>(() => ({
+    ownedFilter, activeSupertype, activeTypes, activeEvolutions, activeSpecialMechanics, activeRarity, ownedIds,
+  }), [ownedFilter, activeSupertype, activeTypesKey, activeEvolutionsKey, activeSpecialMechanicsKey, activeRarity, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Sucherg. durch geteilte Filter gefiltert
   const displayed = useMemo(() => {
-    let r = [...results];
-    if (ownedFilter === 'owned')        r = r.filter(c => ownedIds.has(c.id));
-    if (ownedFilter === 'missing')     r = r.filter(c => !ownedIds.has(c.id));
-    if (ownedFilter === 'review')      r = r.filter(c => reviewTcgIds.has(c.id));
-    if (activeSupertype !== 'all')     r = r.filter(c => c.supertype?.toLowerCase() === activeSupertype.toLowerCase());
-    if (activeTypes.size > 0)          r = r.filter(c => c.types?.some(t => activeTypes.has(t as TcgType)));
-    if (activeEvolutions.size > 0)     r = r.filter(c => c.subtypes?.some(s => activeEvolutions.has(s)));
-    if (activeRarity) {
-      r = r.filter(c => (getRarityGroup(c.rarity ?? '')?.label ?? 'Sonstige') === activeRarity);
-    }
+    const r = [...applyFacetFilters(results, facetState)];
     const d = searchSortDir === 'desc' ? -1 : 1;
     r.sort((a, b) =>
       searchSort === 'name'
@@ -420,12 +458,20 @@ function CollectionContent() {
             : d * ((parseInt(a.number) || 0) - (parseInt(b.number) || 0)),
     );
     return r;
-  }, [results, ownedFilter, activeSupertype, activeTypesKey, activeEvolutionsKey, activeRarity, ownedIds, reviewTcgIds, searchSort, searchSortDir]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [results, facetState, searchSort, searchSortDir]);
 
-  // Review-Mode: kein Suchbegriff + "Zu prüfen" Filter → eigene Karten laden
-  const isReviewMode = !inputValue && ownedFilter === 'review';
-  const isBrowseMode = !inputValue && ownedFilter !== 'review';
-  const hasActiveFilter = !!(activeTypes.size || activeSupertype !== 'all' || ownedFilter !== 'all' || activeRarity || activeEvolutions.size);
+  const isBrowseMode = !inputValue;
+  // Zählt nur die Filter, die im eingeklappten Zustand NICHT sichtbar/bedienbar
+  // bleiben (Typ, Stufe, Alternative Formen, Rarity) — Owned-Switch und
+  // Supertype bleiben immer sichtbar, zählen daher hier nicht mit.
+  const extraFilterCount = activeTypes.size + activeEvolutions.size + activeSpecialMechanics.size + (activeRarity ? 1 : 0);
+
+  // Zeigt an, ob die Suchergebnisse mehrere unterschiedliche Sets enthalten —
+  // nur dann macht das Set-Badge auf den Karten-Kacheln Sinn (sonst redundant).
+  const resultsSpanMultipleSets = useMemo(
+    () => new Set(displayed.map(c => c.setId)).size > 1,
+    [displayed],
+  );
 
   useEffect(() => {
     const el = searchSentinelRef.current;
@@ -436,16 +482,6 @@ function CollectionContent() {
     observer.observe(el);
     return () => observer.disconnect();
   }, [isBrowseMode, displayed.length]);
-
-  // Review-Mode: Catalog-Karten für alle ungeprüften Einträge laden
-  useEffect(() => {
-    if (!isReviewMode) return;
-    if (reviewTcgIds.size === 0) { setResults([]); return; }
-    getCatalogCardsByIds([...reviewTcgIds]).then(cards => {
-      baseResultsRef.current = cards.map(catalogCardToInfo);
-      setResults(baseResultsRef.current);
-    }).catch(() => {});
-  }, [isReviewMode, reviewTcgIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const clearSearch = () => {
     setInputValue('');
@@ -470,6 +506,14 @@ function CollectionContent() {
     });
   };
 
+  const toggleSpecialMechanic = (key: string) => {
+    setActiveSpecialMechanics(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
   // Ergebniszahl — immer die exakte Gesamtzahl, unabhängig davon wie viele
   // Karten aktuell tatsächlich geladen/gerendert sind (Lazy-Loading beim Scrollen)
   const resultCount = isBrowseMode
@@ -481,40 +525,92 @@ function CollectionContent() {
     : displayed.length > 0 ? fmt(displayed.length) : null;
   const showResultCount = true;
 
+  // Alle Zähler unten sind "kreuzreaktiv": im Suche-Modus werden sie aus den
+  // Suchergebnissen berechnet, jeweils mit ALLEN AKTIVEN Filtern AUSSER der
+  // eigenen Dimension (applyFacetFilters(..., skip)) — so zeigt z.B. die
+  // Rarity-Zeile, wie viele Treffer JEDE Rarity hätte, wenn man Typ/Stufe/
+  // Owned-Filter unverändert lässt, aber diese eine Rarity wählt. Im Browse-
+  // Modus bleiben Typ/Stufe/Formen/Rarity wie bisher nur mit Typ+Supertype
+  // kreuzreaktiv (Firestore-Limitierung — echte Kreuzreaktivität mit dem
+  // Owned-Filter würde serverseitig eine "in"-Query über tausende IDs
+  // brauchen, was Firestore nicht unterstützt).
+
   // Disabled-Logik für Type-Pills
   const typeCountInContext = useMemo(() => {
-    const source = isBrowseMode ? filterCounts?.types : null;
-    if (source) return source;
-    if (!isBrowseMode) {
-      return Object.fromEntries(TCG_TYPES.map(t => [t, results.filter(c => c.types?.includes(t)).length]));
-    }
-    return null;
-  }, [isBrowseMode, filterCounts, results]);
+    if (isBrowseMode) return filterCounts?.types ?? null;
+    const base = applyFacetFilters(results, facetState, 'types');
+    return Object.fromEntries(TCG_TYPES.map(t => [t, base.filter(c => c.types?.includes(t)).length]));
+  }, [isBrowseMode, filterCounts, results, facetState]);
 
   // Disabled-Logik für Entwicklungsstufen-Pills
   const evolutionCountInContext = useMemo((): Record<string, number> | null => {
-    const cards = isBrowseMode ? browseCards : results;
-    if (cards.length === 0) return null;
+    const base = isBrowseMode ? browseCards : applyFacetFilters(results, facetState, 'evolutions');
+    if (base.length === 0) return null;
     return {
-      'Basic':   cards.filter(c => c.subtypes?.includes('Basic')).length,
-      'Stage 1': cards.filter(c => c.subtypes?.includes('Stage 1')).length,
-      'Stage 2': cards.filter(c => c.subtypes?.includes('Stage 2')).length,
+      'Basic':   base.filter(c => c.subtypes?.includes('Basic')).length,
+      'Stage 1': base.filter(c => c.subtypes?.includes('Stage 1')).length,
+      'Stage 2': base.filter(c => c.subtypes?.includes('Stage 2')).length,
     };
-  }, [isBrowseMode, browseCards, results]);
+  }, [isBrowseMode, browseCards, results, facetState]);
+
+  // Disabled-Logik für Alternative-Formen-Pills
+  const specialMechanicCountInContext = useMemo((): Record<string, number> | null => {
+    const base = isBrowseMode ? browseCards : applyFacetFilters(results, facetState, 'specialMechanics');
+    if (base.length === 0) return null;
+    return Object.fromEntries(
+      SPECIAL_MECHANIC_KEYS.map(k => [k, base.filter(c => c.subtypes?.includes(k)).length]),
+    );
+  }, [isBrowseMode, browseCards, results, facetState]);
+
+  // Owned-Optionen (Alle|Vorhanden|Fehlen) mit Zählern
+  const ownedOptions = useMemo(() => {
+    if (isBrowseMode) {
+      // Browse: nur globale Näherung (eigene Sammlung ist vollständig lokal
+      // bekannt, aber nicht mit Typ/Stufe/Rarity kombinierbar ohne teure
+      // Firestore-"in"-Query über die gesamte Sammlung).
+      const ownedTotal = ownedIds.size;
+      return OWNED_OPTIONS.map(o => ({
+        ...o,
+        count: o.value === 'all' ? catalogCount || undefined
+          : o.value === 'owned' ? ownedTotal
+          : catalogCount > 0 ? Math.max(0, catalogCount - ownedTotal) : undefined,
+      }));
+    }
+    const base = applyFacetFilters(results, facetState, 'owned');
+    return OWNED_OPTIONS.map(o => ({
+      ...o,
+      count: o.value === 'all' ? base.length
+        : o.value === 'owned' ? base.filter(c => ownedIds.has(c.id)).length
+        : base.filter(c => !ownedIds.has(c.id)).length,
+    }));
+  }, [isBrowseMode, results, facetState, ownedIds, catalogCount]);
 
   // Supertype-Optionen mit Counts
-  const supertypeOptions = useMemo(() => [
-    { value: 'all',     label: 'Alle',    count: filterCounts ? Object.values(filterCounts.supertypes).reduce((a, b) => a + b, 0) : undefined },
-    { value: 'Pokémon', label: 'Pokémon', count: filterCounts?.supertypes['Pokémon'] },
-    { value: 'Trainer', label: 'Trainer', count: filterCounts?.supertypes['Trainer'] ?? (filterCounts ? 0 : undefined) },
-    { value: 'Energy',  label: 'Energie', count: filterCounts?.supertypes['Energy']  ?? (filterCounts ? 0 : undefined) },
-  ], [filterCounts]);
+  const supertypeOptions = useMemo(() => {
+    if (isBrowseMode) {
+      return [
+        { value: 'all',     label: 'Alle',    count: filterCounts ? Object.values(filterCounts.supertypes).reduce((a, b) => a + b, 0) : undefined },
+        { value: 'Pokémon', label: 'Pokémon', count: filterCounts?.supertypes['Pokémon'] },
+        { value: 'Trainer', label: 'Trainer', count: filterCounts?.supertypes['Trainer'] ?? (filterCounts ? 0 : undefined) },
+        { value: 'Energy',  label: 'Energie', count: filterCounts?.supertypes['Energy']  ?? (filterCounts ? 0 : undefined) },
+      ];
+    }
+    const base = applyFacetFilters(results, facetState, 'supertype');
+    const countFor = (s: string) => base.filter(c => c.supertype?.toLowerCase() === s.toLowerCase()).length;
+    return [
+      { value: 'all',     label: 'Alle',    count: base.length },
+      { value: 'Pokémon', label: 'Pokémon', count: countFor('Pokémon') },
+      { value: 'Trainer', label: 'Trainer', count: countFor('Trainer') },
+      { value: 'Energy',  label: 'Energie', count: countFor('Energy') },
+    ];
+  }, [isBrowseMode, filterCounts, results, facetState]);
 
   const showTypePills = activeSupertype === 'all' || activeSupertype === 'Pokémon';
   const showEvolution = showTypePills;
 
-  // Karten für RarityFilterBar (browseModus = geladene Karten; Suche = Suchergebnisse)
-  const rarityCards  = isBrowseMode ? browseCards : results;
+  // Karten für RarityFilterBar (browseModus = geladene Karten; Suche = kreuzreaktiv,
+  // alle Filter außer Rarity selbst)
+  const rarityCards  = isBrowseMode ? browseCards : applyFacetFilters(results, facetState, 'rarity');
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -522,7 +618,7 @@ function CollectionContent() {
       {/* ── Sticky Header ──────────────────────────────────────── */}
       <div className="sticky top-safe z-20 mx-3 mt-2 glass rounded-[20px] px-4 pt-4 pb-3 space-y-2">
 
-        {/* Suchfeld */}
+        {/* Suchfeld — im expandierten Zustand größer */}
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-glass-muted pointer-events-none" />
           <input
@@ -530,7 +626,9 @@ function CollectionContent() {
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             placeholder="Name, Illustrator … oder stöbern"
-            className="w-full h-10 pl-9 pr-8 rounded-xl glass-inner text-glass text-sm placeholder:text-glass-muted focus:outline-none focus:ring-1 focus:ring-ring"
+            className={`w-full pl-9 pr-8 rounded-xl glass-inner text-glass placeholder:text-glass-muted focus:outline-none focus:ring-1 focus:ring-ring transition-all ${
+              filtersCollapsed ? 'h-9 text-sm' : 'h-12 text-base'
+            }`}
           />
           {inputValue && (
             <button type="button" onClick={clearSearch}
@@ -540,64 +638,44 @@ function CollectionContent() {
           )}
         </div>
 
-        {/* ── Filter-Block ───────────────────────────────────── */}
+        {/* Zeile: Vorhanden/Fehlen (volle Breite) + Set-Filter in Suche — bleibt
+            in beiden Zuständen (expandiert/eingeklappt) sichtbar/bedienbar */}
+        <div className="flex items-center gap-2">
+          <ButtonGroup
+            className="flex-1"
+            options={ownedOptions.map(o => ({ ...o, disabled: o.count === 0 }))}
+            value={ownedFilter}
+            onChange={v => setOwnedFilter(v as OwnedFilter)}
+          />
+          {!filtersCollapsed && !isBrowseMode && sets.length > 1 && (
+            <select value={filterSet} onChange={e => setFilterSet(e.target.value)}
+              className="h-8 px-2 rounded-lg glass-inner text-xs max-w-[120px]">
+              <option value="">Alle Sets</option>
+              {sets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          )}
+        </div>
+
+        {/* Zeile: Supertype mit Counts (volle Breite) — bleibt ebenfalls sichtbar */}
+        <ButtonGroup
+          options={supertypeOptions.map(o => ({ ...o, disabled: o.count === 0 }))}
+          value={activeSupertype}
+          onChange={v => { setActiveSupertype(v as Supertype | 'all'); setActiveTypes(new Set()); setActiveEvolutions(new Set()); }}
+        />
+
         {filtersCollapsed ? (
-          /* Kompakter Strip mit aktiven Chips */
-          hasActiveFilter ? (
-            <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
-              {activeSupertype !== 'all' && (
-                <FilterChip label={activeSupertype} onRemove={() => setActiveSupertype('all')} />
-              )}
-              {[...activeTypes].map(t => (
-                <FilterChip
-                  key={t}
-                  label={ENERGY_META[t].de}
-                  onRemove={() => toggleType(t)}
-                  color={ENERGY_META[t].bg}
-                  icon={<EnergyIcon type={t} size={14} />}
-                />
-              ))}
-              {[...activeEvolutions].map(s => (
-                <FilterChip
-                  key={s}
-                  label={EVOLUTION_OPTIONS.find(o => o.value === s)?.label ?? s}
-                  onRemove={() => toggleEvolution(s)}
-                />
-              ))}
-              {ownedFilter !== 'all' && (
-                <FilterChip
-                  label={OWNED_OPTIONS.find(o => o.value === ownedFilter)?.label ?? ownedFilter}
-                  onRemove={() => setOwnedFilter('all')}
-                />
-              )}
-              {activeRarity && (
-                <FilterChip label={activeRarity} onRemove={() => setActiveRarity(null)} />
-              )}
-            </div>
+          /* Eingeklappt: Hinweis auf weitere aktive Filter, tippen klappt wieder auf */
+          extraFilterCount > 0 ? (
+            <button
+              onClick={() => setFiltersCollapsed(false)}
+              className="flex items-center justify-center gap-1 w-full text-xs text-glass-muted py-1"
+            >
+              {extraFilterCount} weitere Filter aktiv <ChevronDown size={12} />
+            </button>
           ) : null
         ) : (
-          /* Vollständige Filter-Zeilen */
           <>
-            {/* Zeile 1: Vorhanden/Fehlen (+ Set-Filter in Suche) */}
-            <div className="flex items-center gap-2">
-              <ButtonGroup options={OWNED_OPTIONS} value={ownedFilter} onChange={v => setOwnedFilter(v as OwnedFilter)} />
-              {!isBrowseMode && sets.length > 1 && (
-                <select value={filterSet} onChange={e => setFilterSet(e.target.value)}
-                  className="h-8 px-2 rounded-lg glass-inner text-xs max-w-[120px] ml-auto">
-                  <option value="">Alle Sets</option>
-                  {sets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              )}
-            </div>
-
-            {/* Zeile 2: Supertype mit Counts */}
-            <ButtonGroup
-              options={supertypeOptions}
-              value={activeSupertype}
-              onChange={v => { setActiveSupertype(v as Supertype | 'all'); setActiveTypes(new Set()); setActiveEvolutions(new Set()); }}
-            />
-
-            {/* Zeile 3: Typ-Pills (Mehrfachauswahl, OR) */}
+            {/* Typ-Pills (Mehrfachauswahl, OR) — fixe Reihenfolge, 0-Treffer ausgegraut */}
             {showTypePills && (
               <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
                 {TCG_TYPES.map(t => {
@@ -629,9 +707,18 @@ function CollectionContent() {
               </div>
             )}
 
-            {/* Zeile 4: Entwicklungsstufe als Pills (Mehrfachauswahl, leer = alle) */}
+            {/* Rarity — Browse: globale Firestore-Counts; Suche: aus Ergebnissen */}
+            <RarityFilterBar
+              cards={rarityCards}
+              ownedIds={ownedIds}
+              activeRarities={activeRarity ? new Set([activeRarity]) : new Set()}
+              onToggle={label => setActiveRarity(prev => prev === label ? null : label)}
+              rarityCounts={isBrowseMode ? filterCounts?.rarities : undefined}
+            />
+
+            {/* Entwicklungsstufe als Pills + Evolutionslinie als Checkbox */}
             {showEvolution && (
-              <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
                 {EVOLUTION_OPTIONS.filter(o => o.value !== null).map(o => {
                   const active     = activeEvolutions.has(o.value!);
                   const count      = evolutionCountInContext?.[o.value!];
@@ -656,21 +743,62 @@ function CollectionContent() {
                     </button>
                   );
                 })}
+                {!isBrowseMode && (
+                  <button
+                    onClick={() => setEvoLineActive(p => !p)}
+                    role="switch"
+                    aria-checked={evoLineActive}
+                    className="flex items-center gap-1.5 text-xs shrink-0 ml-auto pl-2"
+                  >
+                    <span
+                      className="w-8 h-[18px] rounded-full flex items-center shrink-0 transition-colors px-0.5"
+                      style={{ background: evoLineActive ? 'var(--pokedex-red)' : 'rgba(120,120,130,.3)' }}
+                    >
+                      <span
+                        className="w-[14px] h-[14px] rounded-full bg-white shadow-sm transition-transform"
+                        style={{ transform: evoLineActive ? 'translateX(14px)' : 'translateX(0)' }}
+                      />
+                    </span>
+                    <span className={evoLineActive ? '' : 'text-glass-muted'}>Evolutionslinie</span>
+                  </button>
+                )}
               </div>
             )}
 
-            {/* Zeile 5: Rarity — Browse: globale Firestore-Counts; Suche: aus Ergebnissen */}
-            <RarityFilterBar
-              cards={rarityCards}
-              ownedIds={ownedIds}
-              activeRarities={activeRarity ? new Set([activeRarity]) : new Set()}
-              onToggle={label => setActiveRarity(prev => prev === label ? null : label)}
-              rarityCounts={isBrowseMode ? filterCounts?.rarities : undefined}
-            />
+            {/* Alternative Formen (ex/GX/V/VMAX/VSTAR/Mega/…) — eigene Dimension,
+                nicht mit den Entwicklungsstufen vermischt */}
+            {showTypePills && (
+              <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
+                {SPECIAL_MECHANIC_OPTIONS.map(o => {
+                  const active     = activeSpecialMechanics.has(o.value);
+                  const count      = specialMechanicCountInContext?.[o.value];
+                  const isDisabled = count === 0;
+                  return (
+                    <button
+                      key={o.value}
+                      onClick={() => !isDisabled && toggleSpecialMechanic(o.value)}
+                      disabled={isDisabled}
+                      className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
+                      style={{
+                        borderColor: active ? 'var(--pokedex-red)' : 'transparent',
+                        background:  active ? 'color-mix(in srgb, var(--pokedex-red) 15%, transparent)' : undefined,
+                        color:       active ? 'var(--pokedex-red)' : undefined,
+                        fontWeight:  active ? 600 : 400,
+                      }}
+                    >
+                      {o.label}
+                      {count != null && count > 0 && (
+                        <span className="text-[10px] opacity-50 font-normal">{count}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
 
-        {/* ── Sortierung + Ergebniszahl (immer sichtbar) ──────── */}
+        {/* ── Sortierung + Ergebniszahl (immer direkt unter dem Filter-Panel) ── */}
         {isBrowseMode ? (
           <CardSortBar
             options={BROWSE_SORT_OPTIONS}
@@ -688,20 +816,6 @@ function CollectionContent() {
             sortDir={searchSortDir}
             onSortDirChange={() => setSearchSortDir(d => d === 'asc' ? 'desc' : 'asc')}
             resultLabel={showResultCount && resultCount != null ? `${resultCount} Karten` : undefined}
-            extra={
-              <button
-                onClick={() => setEvoLineActive(p => !p)}
-                className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-all ${evoLineActive ? '' : 'glass-inner text-glass-muted'}`}
-                style={{
-                  borderColor: evoLineActive ? 'var(--pokedex-red)' : 'transparent',
-                  background:  evoLineActive ? 'color-mix(in srgb, var(--pokedex-red) 12%, transparent)' : undefined,
-                  color:       evoLineActive ? 'var(--pokedex-red)' : undefined,
-                  fontWeight:  evoLineActive ? 600 : 400,
-                }}
-              >
-                <GitMerge size={12} /> Evo-Linie
-              </button>
-            }
           />
         )}
       </div>
@@ -753,7 +867,15 @@ function CollectionContent() {
             )}
             {!searchLoading && displayed.length > 0 && (
               <>
-                <CardGrid cards={displayed.slice(0, searchVisibleCount)} ownedMap={ownedMap} sortKey={searchSort} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} />
+                <CardGrid
+                  cards={displayed.slice(0, searchVisibleCount)}
+                  ownedMap={ownedMap}
+                  sortKey={searchSort}
+                  wishlistIds={wishlistIds}
+                  onToggleWishlist={toggleWishlist}
+                  setsMeta={setsMetaMap}
+                  showSetBadge={resultsSpanMultipleSets}
+                />
                 <div ref={searchSentinelRef} className="h-1" />
               </>
             )}

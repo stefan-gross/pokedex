@@ -19,6 +19,7 @@ export type CardBrowserFilter = {
   supertype?:       string;         // 'Pokémon' | 'Trainer' | 'Energy'
   types?:           string[];       // Mehrfachauswahl, OR-Verknüpfung (englisch: 'Fire', 'Water', …)
   evolutionStages?: string[];       // ['Basic'] | ['Stage 1', 'Stage 2'] etc. — leer = alle
+  specialMechanics?: string[];      // ['VMAX'] | ['EX', 'V'] etc. — leer = alle, rein clientseitig
   rarity?:          string;         // Rarity-Label aus RARITY_GROUPS
   ownedFilter?:     'all' | 'owned' | 'missing';
   ownedIds?:        Set<string>;
@@ -52,6 +53,9 @@ function applyClientFilters(cards: CatalogCard[], f: CardBrowserFilter): Catalog
   }
   if (f.evolutionStages && f.evolutionStages.length > 0) {
     r = r.filter(c => f.evolutionStages!.some(s => c.subtypes?.includes(s)));
+  }
+  if (f.specialMechanics && f.specialMechanics.length > 0) {
+    r = r.filter(c => f.specialMechanics!.some(s => c.subtypes?.includes(s)));
   }
   if (f.rarity) {
     r = r.filter(c => (getRarityGroup(c.rarity ?? '')?.label ?? 'Sonstige') === f.rarity);
@@ -88,13 +92,15 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
     filter.types?.length ||
     filter.supertype ||
     filter.evolutionStages?.length ||
+    filter.specialMechanics?.length ||
     (filter.ownedFilter && filter.ownedFilter !== 'all') ||
     filter.rarity
   );
 
   // Stabile Dep-Keys für array-ähnliche Filter
-  const typesKey          = [...(filter.types ?? [])].sort().join(',');
+  const typesKey           = [...(filter.types ?? [])].sort().join(',');
   const evolutionStagesKey = [...(filter.evolutionStages ?? [])].sort().join(',');
+  const specialMechanicsKey = [...(filter.specialMechanics ?? [])].sort().join(',');
 
   useEffect(() => {
     let cancelled = false;
@@ -118,7 +124,7 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
     run();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typesKey, filter.supertype, evolutionStagesKey, filter.rarity, filter.ownedFilter, sort, desc]);
+  }, [typesKey, filter.supertype, evolutionStagesKey, specialMechanicsKey, filter.rarity, filter.ownedFilter, sort, desc]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore || !cursorRef.current) return;

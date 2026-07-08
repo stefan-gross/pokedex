@@ -179,15 +179,22 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* overflow-x: clip statt hidden — hidden/auto/scroll auf einer Achse zwingt
+     Browser dazu, die jeweils andere Achse von "visible" auf "auto" umzustellen
+     (CSS-Spec-Verhalten), was html/body zum eigenen Scroll-Container macht und
+     "position: sticky" für alle Nachfahren bricht (Sticky bezieht sich dann auf
+     den falschen Scroll-Kontext statt auf das echte Fenster-Scrollen). "clip"
+     ist von dieser Kopplung ausgenommen — verhindert horizontales Scrollen
+     genauso, ohne den Sticky-Kontext zu verändern. */
   body {
     @apply bg-background text-foreground;
     overscroll-behavior-x: none;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
   html {
     @apply font-sans;
     overscroll-behavior-x: none;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 }
 

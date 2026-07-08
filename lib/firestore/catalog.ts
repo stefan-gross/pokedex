@@ -57,7 +57,7 @@ export type FilterCounts = {
 const COL = 'tcg_catalog';
 
 // Prefix-Suche nach Name — sucht parallel auf englischem (nameLower) und deutschem (nameDeLower) Feld
-export async function searchCatalog(q: string, setId = '', maxResults = 80): Promise<CatalogCard[]> {
+export async function searchCatalog(q: string, setId = '', maxResults = 300): Promise<CatalogCard[]> {
   const lower = q.toLowerCase();
   const end   = lower + ''; // Unicode-Sentinel für Prefix-Range
 
@@ -83,7 +83,7 @@ export async function searchCatalog(q: string, setId = '', maxResults = 80): Pro
 // findet Karten, bei denen mindestens ein Eingabe-Wort exakt vorkommt; bei
 // mehrteiliger Eingabe (z.B. "Yuka Morii") wird client-seitig auf Treffer
 // eingeschränkt, die ALLE Wörter enthalten (sonst zu lockere Ergebnisse).
-export async function searchCatalogByArtist(q: string, maxResults = 80): Promise<CatalogCard[]> {
+export async function searchCatalogByArtist(q: string, maxResults = 300): Promise<CatalogCard[]> {
   const tokens = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return [];
   const snap = await getDocs(

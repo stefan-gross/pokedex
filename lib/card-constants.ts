@@ -56,6 +56,12 @@ export function getSubtypeDe(subtype: string): string {
   return SUBTYPE_LABELS_DE[subtype] ?? subtype;
 }
 
+/** „Alternative Formen"-Filter (Suche-Seite) — Teilmenge der SUBTYPE_LABELS_DE-
+ *  Keys, Labels werden von dort wiederverwendet statt dupliziert. */
+export const SPECIAL_MECHANIC_KEYS = [
+  'GX', 'EX', 'V', 'VMAX', 'VSTAR', 'V-UNION', 'Radiant', 'Tera', 'ACE SPEC', 'MEGA', 'BREAK',
+] as const;
+
 export const VARIANT_LABELS: Record<CardVariant, string> = {
   'standard': 'Standard',
   'holo':     'Holo',

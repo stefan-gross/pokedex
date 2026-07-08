@@ -16,9 +16,14 @@ interface Props {
   /** Zeigt statt des Sublabels einen animierten Platzhalter — z.B. während
    *  der Preis noch per Batch-Route nachgeladen wird. */
   sublabelLoading?: boolean;
+  /** Kleines Set-Symbol oben links — zeigt, aus welchem Set die Karte stammt
+   *  (z.B. bei einer Namenssuche, die mehrere Sets umfasst). */
+  setSymbolUrl?: string;
+  /** Tooltip/Alt-Text für das Set-Symbol, z.B. das Set-Kürzel. */
+  setCode?: string;
 }
 
-export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWishlisted, sublabel, sublabelColor, sublabelLoading }: Props) {
+export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWishlisted, sublabel, sublabelColor, sublabelLoading, setSymbolUrl, setCode }: Props) {
   const totalOwned = ownedCards.reduce((s, c) => s + c.quantity, 0);
   const isOwned    = totalOwned > 0;
 
@@ -49,6 +54,18 @@ export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWis
             sizes="(max-width: 400px) 30vw, 120px"
           />
         </div>
+
+        {/* Set-Badge — oben links, spiegelbildlich zum Owned-Badge oben rechts */}
+        {setSymbolUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={setSymbolUrl}
+            alt={setCode ?? ''}
+            title={setCode}
+            className="absolute top-1.5 left-1.5 w-[18px] h-[18px] object-contain rounded-[4px] p-[2px]"
+            style={{ background: 'rgba(0,0,0,.55)' }}
+          />
+        )}
 
         {/* Owned badge — grün, analog zum Scan-Erkennungs-Rahmen */}
         {isOwned && (

@@ -6,6 +6,7 @@ import { CardDetailSheet, type SetMeta } from '@/components/card/CardDetailSheet
 import type { CardInfo } from '@/lib/card-info';
 import type { CardDoc, BinderDoc } from '@/types';
 import { PRICE_COLOR } from '@/lib/prices/value-tier';
+import type { TcgSet } from '@/lib/firestore/sets';
 
 interface Props {
   cards: CardInfo[];
@@ -30,6 +31,11 @@ interface Props {
   /** Preise werden noch per Batch-Route nachgeladen — zeigt animierte
    *  Platzhalter statt "–", solange nach Preis sortiert wird. */
   pricesLoading?: boolean;
+  /** setId → Set-Metadaten (Symbol/Kürzel) — nur nötig, wenn `showSetBadge` aktiv ist. */
+  setsMeta?: Map<string, TcgSet>;
+  /** Zeigt ein kleines Set-Symbol oben links auf jeder Kachel — sinnvoll, wenn
+   *  Ergebnisse mehrere Sets umfassen (z.B. Suche nach einem Pokémon-Namen). */
+  showSetBadge?: boolean;
 }
 
 /** Gibt das passende Label zur aktiven Sortierung zurück */
@@ -86,6 +92,8 @@ export function CardGrid({
   wishlistIds,
   onToggleWishlist,
   pricesLoading,
+  setsMeta,
+  showSetBadge,
 }: Props) {
   const [selected, setSelected] = useState<CardInfo | null>(null);
 
@@ -114,6 +122,8 @@ export function CardGrid({
             sublabelLoading={isPriceSort && pricesLoading && priceMap?.get(card.id) == null}
             isWishlisted={wishlistIds?.has(card.id)}
             onWishlist={() => onToggleWishlist?.(card)}
+            setSymbolUrl={showSetBadge ? setsMeta?.get(card.setId)?.symbolUrl : undefined}
+            setCode={showSetBadge ? (setsMeta?.get(card.setId)?.ptcgoCode ?? card.setCode) : undefined}
           />
         ))}
       </div>
