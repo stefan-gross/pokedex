@@ -7,6 +7,7 @@ import type { CardInfo } from '@/lib/card-info';
 import type { CardDoc, BinderDoc } from '@/types';
 import { PRICE_COLOR } from '@/lib/prices/value-tier';
 import type { TcgSet } from '@/lib/firestore/sets';
+import { SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 
 interface Props {
   cards: CardInfo[];
@@ -38,7 +39,7 @@ interface Props {
   showSetBadge?: boolean;
 }
 
-/** Gibt das passende Label zur aktiven Sortierung zurück */
+/** Gibt das passende Label zur aktiven Sortierung zurück. */
 function getSublabel(card: CardInfo, sortKey?: string, priceMap?: Map<string, number>): string {
   const key = sortKey?.replace(/-asc$|-desc$/, '') ?? 'number';
   switch (key) {
@@ -51,7 +52,8 @@ function getSublabel(card: CardInfo, sortKey?: string, priceMap?: Map<string, nu
       const price = priceMap?.get(card.id);
       return price != null ? price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : '–';
     }
-    default:        return formatNumber(card);
+    default:
+      return formatNumber(card);
   }
 }
 // Mit führenden Nullen wie auf der Karte aufgedruckt (Breite = Ziffernzahl von
@@ -106,12 +108,22 @@ export function CardGrid({
     setSelected(null);
   };
 
-  const isPriceSort = (sortKey?.replace(/-asc$|-desc$/, '') ?? 'number') === 'price';
+  const sortKeyBase = sortKey?.replace(/-asc$|-desc$/, '') ?? 'number';
+  const isPriceSort = sortKeyBase === 'price';
+  // Set-Kürzel/-Symbol vor der Nummer ergibt nur bei Nummern-Sortierung Sinn —
+  // bei Namens-/Pokédex-/Preis-Sortierung ist die Nummer nicht der Anzeigefokus.
+  const showNumberPrefix = showSetBadge && sortKeyBase === 'number';
 
   return (
     <>
       <div className="grid grid-cols-2 gap-2">
-        {cards.map(card => (
+        {cards.map(card => {
+          const set = setsMeta?.get(card.setId);
+          const numberPrefixCode = set?.ptcgoCode ?? card.setCode;
+          const series = set?.series ?? card.series;
+          const isSymbolOnlySet = !!series && SYMBOL_ONLY_SERIES.includes(series);
+          const numberPrefixSymbolUrl = isSymbolOnlySet ? set?.symbolUrl : undefined;
+          return (
           <CardTile
             key={card.id}
             card={card}
@@ -122,10 +134,13 @@ export function CardGrid({
             sublabelLoading={isPriceSort && pricesLoading && priceMap?.get(card.id) == null}
             isWishlisted={wishlistIds?.has(card.id)}
             onWishlist={() => onToggleWishlist?.(card)}
-            setSymbolUrl={showSetBadge ? setsMeta?.get(card.setId)?.symbolUrl : undefined}
-            setCode={showSetBadge ? (setsMeta?.get(card.setId)?.ptcgoCode ?? card.setCode) : undefined}
+            setSymbolUrl={showSetBadge ? set?.symbolUrl : undefined}
+            setCode={numberPrefixCode}
+            numberPrefixCode={showNumberPrefix && !numberPrefixSymbolUrl ? numberPrefixCode : undefined}
+            numberPrefixSymbolUrl={showNumberPrefix ? numberPrefixSymbolUrl : undefined}
           />
-        ))}
+          );
+        })}
       </div>
 
       <CardDetailSheet

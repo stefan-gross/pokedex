@@ -21,9 +21,15 @@ interface Props {
   setSymbolUrl?: string;
   /** Tooltip/Alt-Text für das Set-Symbol, z.B. das Set-Kürzel. */
   setCode?: string;
+  /** Set-Kürzel als gerahmtes Badge vor der Nummer (nur bei Nummern-Sortierung
+   *  sinnvoll) — z.B. "SSP" bei modernen Sets mit aufgedrucktem Kürzel. */
+  numberPrefixCode?: string;
+  /** Set-Symbol vor der Nummer statt eines Kürzels — bei alten Sets ohne
+   *  aufgedrucktes Kürzel (siehe SYMBOL_ONLY_SERIES). Hat Vorrang vor `numberPrefixCode`. */
+  numberPrefixSymbolUrl?: string;
 }
 
-export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWishlisted, sublabel, sublabelColor, sublabelLoading, setSymbolUrl, setCode }: Props) {
+export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWishlisted, sublabel, sublabelColor, sublabelLoading, setSymbolUrl, setCode, numberPrefixCode, numberPrefixSymbolUrl }: Props) {
   const totalOwned = ownedCards.reduce((s, c) => s + c.quantity, 0);
   const isOwned    = totalOwned > 0;
 
@@ -97,11 +103,24 @@ export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWis
       {sublabelLoading ? (
         <div className="h-2.5 w-3/5 mx-auto mt-1.5 rounded-full animate-pulse bg-[rgba(30,40,80,0.1)] dark:bg-white/10" />
       ) : sublabel && (
-        <div
-          className={`text-[11px] text-center mt-1.5 truncate px-0.5 leading-tight ${sublabelColor ? 'font-semibold' : 'text-glass'}`}
-          style={sublabelColor ? { color: sublabelColor } : undefined}
-        >
-          {sublabel}
+        <div className="flex items-center justify-center gap-1 mt-1.5 px-0.5">
+          {numberPrefixSymbolUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={numberPrefixSymbolUrl} alt={setCode ?? ''} className="w-[13px] h-[13px] object-contain shrink-0" />
+          ) : numberPrefixCode && (
+            <span
+              className="text-[9px] font-bold rounded-[5px] shrink-0 leading-none"
+              style={{ color: '#9A9DA6', background: '#F2F2F2', padding: '1px 5px', letterSpacing: '.03em' }}
+            >
+              {numberPrefixCode}
+            </span>
+          )}
+          <div
+            className={`text-[11px] text-center truncate leading-tight ${sublabelColor ? 'font-semibold' : 'text-glass'}`}
+            style={sublabelColor ? { color: sublabelColor } : undefined}
+          >
+            {sublabel}
+          </div>
         </div>
       )}
     </div>

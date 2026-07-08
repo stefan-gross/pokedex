@@ -209,7 +209,7 @@ function CollectionContent() {
     const onScroll = () => {
       if (scrollLockRef.current) return;
       const y = Math.max(0, window.scrollY);
-      if (y > lastScrollY.current + 40 && y > 80) {
+      if (y > lastScrollY.current + 60 && y > 100) {
         setFiltersCollapsed(true);
         lastScrollY.current = y;
         scrollLockRef.current = true;
@@ -217,7 +217,7 @@ function CollectionContent() {
           lastScrollY.current = Math.max(0, window.scrollY);
           scrollLockRef.current = false;
         }, 200);
-      } else if (y < lastScrollY.current - 25) {
+      } else if (y < lastScrollY.current - 70) {
         setFiltersCollapsed(false);
         lastScrollY.current = y;
         scrollLockRef.current = true;
@@ -663,18 +663,29 @@ function CollectionContent() {
           onChange={v => { setActiveSupertype(v as Supertype | 'all'); setActiveTypes(new Set()); setActiveEvolutions(new Set()); }}
         />
 
-        {filtersCollapsed ? (
-          /* Eingeklappt: Hinweis auf weitere aktive Filter, tippen klappt wieder auf */
-          extraFilterCount > 0 ? (
+        {/* Eingeklappt: Hinweis auf weitere aktive Filter, tippen klappt wieder auf —
+            animiert über CSS-Grid-Rows (0fr↔1fr), da Höhe von "auto" nicht direkt
+            transitionierbar ist */}
+        <div
+          className="grid transition-[grid-template-rows] duration-300 ease-in-out"
+          style={{ gridTemplateRows: filtersCollapsed && extraFilterCount > 0 ? '1fr' : '0fr' }}
+        >
+          <div className="overflow-hidden">
             <button
               onClick={() => setFiltersCollapsed(false)}
               className="flex items-center justify-center gap-1 w-full text-xs text-glass-muted py-1"
             >
               {extraFilterCount} weitere Filter aktiv <ChevronDown size={12} />
             </button>
-          ) : null
-        ) : (
-          <>
+          </div>
+        </div>
+
+        {/* Vollständige Filter-Zeilen — animiert ein-/ausklappend */}
+        <div
+          className="grid transition-[grid-template-rows] duration-300 ease-in-out"
+          style={{ gridTemplateRows: filtersCollapsed ? '0fr' : '1fr' }}
+        >
+          <div className="overflow-hidden flex flex-col gap-2">
             {/* Typ-Pills (Mehrfachauswahl, OR) — fixe Reihenfolge, 0-Treffer ausgegraut */}
             {showTypePills && (
               <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
@@ -795,8 +806,8 @@ function CollectionContent() {
                 })}
               </div>
             )}
-          </>
-        )}
+          </div>
+        </div>
 
         {/* ── Sortierung + Ergebniszahl (immer direkt unter dem Filter-Panel) ── */}
         {isBrowseMode ? (

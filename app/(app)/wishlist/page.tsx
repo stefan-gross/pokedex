@@ -3,13 +3,19 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Heart, X } from 'lucide-react';
 import { getWishlists, ensureDefaultWishlist, removeItemFromWishlist } from '@/lib/firestore/wishlists';
+import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
+import { getCardsByTcgId } from '@/lib/firestore/cards';
+import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
+import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
 import { pickTrendPrice, PRICE_COLOR } from '@/lib/prices/value-tier';
-import type { WishlistDoc, WishlistItem } from '@/types';
+import type { WishlistDoc, WishlistItem, CardDoc } from '@/types';
 
 export default function WishlistPage() {
   const [list, setList] = useState<WishlistDoc | null>(null);
   const [loading, setLoading] = useState(true);
+  const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
+  const [detailOwned, setDetailOwned] = useState<CardDoc[]>([]);
 
   const load = async () => {
     try {
@@ -33,6 +39,15 @@ export default function WishlistPage() {
     if (!list) return;
     await removeItemFromWishlist(list.id, item.id);
     setList(l => l ? { ...l, items: l.items.filter(i => i.id !== item.id) } : l);
+  }
+
+  async function openDetail(item: WishlistItem) {
+    if (!item.tcgId) return;
+    const [cc] = await getCatalogCardsByIds([item.tcgId]);
+    if (!cc) return;
+    const owned = await getCardsByTcgId(item.tcgId);
+    setDetailOwned(owned);
+    setDetailCard(catalogCardToInfo(cc));
   }
 
   if (loading) {
@@ -66,7 +81,10 @@ export default function WishlistPage() {
             const price = pickTrendPrice(prices.get(item.tcgId!));
             return (
               <div key={item.id} className="relative flex flex-col">
-                <div className="relative rounded-[8px] overflow-hidden glass">
+                <div
+                  className="relative rounded-[8px] overflow-hidden glass cursor-pointer"
+                  onClick={() => openDetail(item)}
+                >
                   {item.tcgImageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -80,7 +98,7 @@ export default function WishlistPage() {
                     </div>
                   )}
                   <button
-                    onClick={() => handleRemove(item)}
+                    onClick={e => { e.stopPropagation(); handleRemove(item); }}
                     className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full flex items-center justify-center"
                     style={{ background: 'rgba(0,0,0,.6)' }}
                     aria-label="Von Wunschliste entfernen"
@@ -124,6 +142,15 @@ export default function WishlistPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {detailCard && (
+        <CardDetailSheet
+          card={detailCard}
+          ownedCopies={detailOwned}
+          onClose={() => setDetailCard(null)}
+          onSaved={load}
+        />
       )}
     </div>
   );
