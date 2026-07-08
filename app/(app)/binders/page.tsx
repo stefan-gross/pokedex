@@ -6,7 +6,7 @@ import { Plus, Folder, Heart } from 'lucide-react';
 import { getBinders, deleteBinder } from '@/lib/firestore/binders';
 import { getCards } from '@/lib/firestore/cards';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
-import { BinderIcon } from '@/lib/binder-icons';
+import { BinderCover } from '@/components/binder/BinderCover';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
 import type { BinderDoc, CardDoc } from '@/types';
 
@@ -107,46 +107,40 @@ export default function BindersPage() {
   );
 }
 
-/** Binder/Box als "Cover"-Kachel — zentrierter Name oben, großes Icon in
- *  Sammlungsfarbe darunter (wie ein Ordner-/Boxen-Deckel), Wert unten links,
- *  Kartenanzahl unten rechts. Boxen nutzen automatisch das Box-Icon statt
- *  des Ordner-Icons (binder.icon-Fallback), sehen sonst identisch aus. */
+/** Binder/Box als Ringbuch-"Deckel"-Grafik (BinderCover) in der Sammlungsfarbe,
+ *  Wert/Kartenanzahl als Overlay-Leiste unten. Boxen nutzen automatisch das
+ *  Box-Icon statt des Ordner-Icons (binder.icon-Fallback), sehen sonst identisch aus. */
 function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; binderCards: CardDoc[]; onDeleted: () => void }) {
   const cardCount = binder.cardIds.length;
-  const bgColor   = binder.color ?? 'var(--pokedex-red)';
   const isBox     = binder.collectionType === 'box';
   const totalValue = useTotalValue(binderCards);
   const wishlistCount = binder.wishlistCardIds?.length ?? 0;
 
   return (
-    <Link
-      href={`/binders/${binder.id}`}
-      className="relative rounded-2xl glass overflow-hidden flex flex-col items-center p-4 gap-2 aspect-[3/4] active:scale-[.98] transition-transform"
-    >
+    <Link href={`/binders/${binder.id}`} className="relative block active:scale-[.98] transition-transform">
+      <BinderCover
+        color={binder.color}
+        name={binder.name}
+        icon={binder.icon ?? (isBox ? 'box' : 'folder')}
+        shape={isBox ? 'box' : 'folder'}
+      />
+
       {wishlistCount > 0 && (
         <span
           className="absolute top-2.5 right-2.5 inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-          style={{ background: 'rgba(237,100,166,.18)', color: '#ed64a6' }}
+          style={{ background: 'rgba(0,0,0,.35)', color: '#fff' }}
         >
           +{wishlistCount} <Heart size={9} fill="currentColor" />
         </span>
       )}
 
-      <div className="text-sm font-bold text-center text-glass line-clamp-2 leading-tight px-1 mt-1">
-        {binder.name}
-      </div>
-
-      <div className="flex-1 flex items-center justify-center">
-        <BinderIcon name={binder.icon ?? (isBox ? 'box' : 'folder')} size={56} style={{ color: bgColor }} />
-      </div>
-
-      <div className="w-full flex items-end justify-between">
-        <span className="text-xs font-bold truncate" style={{ color: bgColor }}>
+      <div className="absolute bottom-0 inset-x-0 flex items-end justify-between px-3.5 py-2.5">
+        <span className="text-xs font-bold truncate text-white drop-shadow-[0_1px_2px_rgba(0,0,0,.4)]">
           {!totalValue.loading && totalValue.withPrice > 0
             ? `≈ ${totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
             : ''}
         </span>
-        <span className="text-xs text-glass-muted shrink-0 tabular-nums">
+        <span className="text-xs text-white/85 shrink-0 tabular-nums drop-shadow-[0_1px_2px_rgba(0,0,0,.4)]">
           {cardCount} {cardCount === 1 ? 'Karte' : 'Karten'}
         </span>
       </div>
