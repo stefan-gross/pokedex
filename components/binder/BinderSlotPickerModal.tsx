@@ -97,7 +97,7 @@ export function BinderSlotPickerModal({ onClose, onPick }: Props) {
           <h2 className="text-base font-semibold">Karte wählen</h2>
           <button
             onClick={handleClose}
-            className="w-8 h-8 rounded-md flex items-center justify-center"
+            className="w-11 h-11 rounded-md flex items-center justify-center"
             style={{ background: 'var(--secondary)' }}
             aria-label="Schließen"
           >

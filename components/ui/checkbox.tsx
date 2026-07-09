@@ -25,7 +25,7 @@ export function Checkbox({ checked, onChange, label, accentColor = 'var(--pokede
       role="checkbox"
       aria-checked={checked}
       disabled={disabled}
-      className={`flex items-center gap-2 text-sm shrink-0 disabled:opacity-40 ${className}`}
+      className={`flex items-center gap-2 text-sm shrink-0 min-h-11 disabled:opacity-40 ${className}`}
     >
       <span
         className={`w-[18px] h-[18px] rounded-[5px] flex items-center justify-center shrink-0 transition-colors ${checked ? '' : 'glass-inner'}`}

@@ -390,7 +390,7 @@ function ViewBtn({ active, onClick, label, children }: {
     <button
       onClick={onClick}
       title={label}
-      className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${active ? 'bg-white text-[#e53e3e]' : 'text-glass-muted'}`}
+      className={`w-11 h-11 flex items-center justify-center rounded-full transition-colors ${active ? 'bg-white text-[#e53e3e]' : 'text-glass-muted'}`}
     >
       {children}
     </button>

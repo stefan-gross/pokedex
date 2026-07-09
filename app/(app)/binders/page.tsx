@@ -52,7 +52,7 @@ export default function BindersPage() {
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="w-9 h-9 rounded-full flex items-center justify-center text-white"
+          className="w-11 h-11 rounded-full flex items-center justify-center text-white"
           style={tintedGlassStyle('#2f855a')}
         >
           <Plus size={20} />

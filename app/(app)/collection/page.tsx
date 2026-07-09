@@ -700,7 +700,7 @@ function CollectionContent() {
                       key={t}
                       onClick={() => !isDisabled && toggleType(t)}
                       disabled={isDisabled}
-                      className={`flex items-center gap-1.5 text-role-label pl-1 pr-2.5 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
+                      className={`flex items-center gap-1.5 text-role-label min-h-11 pl-1 pr-2.5 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
                       style={{
                         borderColor: active ? meta.bg : 'transparent',
                         background:  active ? `${meta.bg}22` : undefined,
@@ -740,7 +740,7 @@ function CollectionContent() {
                       key={o.value}
                       onClick={() => !isDisabled && toggleEvolution(o.value!)}
                       disabled={isDisabled}
-                      className={`flex items-center gap-1.5 text-role-label px-3 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
+                      className={`flex items-center gap-1.5 text-role-label min-h-11 px-3 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
                       style={{
                         borderColor: active ? 'var(--pokedex-red)' : 'transparent',
                         background:  active ? 'color-mix(in srgb, var(--pokedex-red) 15%, transparent)' : undefined,
@@ -779,7 +779,7 @@ function CollectionContent() {
                       key={o.value}
                       onClick={() => !isDisabled && toggleSpecialMechanic(o.value)}
                       disabled={isDisabled}
-                      className={`flex items-center gap-1.5 text-role-label px-3 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
+                      className={`flex items-center gap-1.5 text-role-label min-h-11 px-3 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
                       style={{
                         borderColor: active ? 'var(--pokedex-red)' : 'transparent',
                         background:  active ? 'color-mix(in srgb, var(--pokedex-red) 15%, transparent)' : undefined,

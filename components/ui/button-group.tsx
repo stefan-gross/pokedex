@@ -54,8 +54,8 @@ export function ButtonGroup<T extends string>({
             aria-label={opt.ariaLabel}
             className={
               iconOnly
-                ? `w-9 h-9 rounded-full flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'text-glass-muted'}`
-                : `flex-1 px-2 py-1.5 text-xs font-medium transition-colors whitespace-nowrap flex items-center justify-center gap-1 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'text-glass-muted'}${
+                ? `w-11 h-11 rounded-full flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'text-glass-muted'}`
+                : `flex-1 min-h-11 px-2 py-1.5 text-xs font-medium transition-colors whitespace-nowrap flex items-center justify-center gap-1 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'text-glass-muted'}${
                     i > 0 ? ' border-l border-[rgba(46,46,50,0.08)] dark:border-white/10' : ''
                   }`
             }

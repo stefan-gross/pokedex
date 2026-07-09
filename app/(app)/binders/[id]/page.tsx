@@ -281,7 +281,7 @@ export default function BinderDetailPage({ params }: Props) {
           </div>
           <button
             onClick={() => setShowActions(a => !a)}
-            className="w-8 h-8 rounded-md glass-inner flex items-center justify-center text-glass"
+            className="w-11 h-11 rounded-md glass-inner flex items-center justify-center text-glass"
             aria-label="Aktionen"
           >
             <Settings size={15} />
@@ -299,7 +299,7 @@ export default function BinderDetailPage({ params }: Props) {
           {!isBox && view !== 'grid' && (
             <button
               onClick={() => setEditMode(e => !e)}
-              className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-xs font-semibold transition-colors ${editMode ? '' : 'glass-inner text-glass-muted'}`}
+              className={`inline-flex items-center gap-1.5 h-11 px-3 rounded-full text-xs font-semibold transition-colors ${editMode ? '' : 'glass-inner text-glass-muted'}`}
               style={editMode
                 ? { background: binderColor, color: '#fff', border: 'none' }
                 : undefined
@@ -403,7 +403,7 @@ function ViewBtn({
   return (
     <button
       onClick={onClick}
-      className="w-10 h-8 flex items-center justify-center rounded-full transition-colors"
+      className="w-11 h-11 flex items-center justify-center rounded-full transition-colors"
       style={{
         background: active ? color : 'transparent',
         color: active ? '#fff' : 'var(--muted-foreground)',
@@ -576,11 +576,11 @@ function SheetTile({
           <button
             onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); onDelete(); }}
-            className="w-6 h-6 rounded-full flex items-center justify-center text-white"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-white"
             style={DELETE_GLASS_STYLE}
             aria-label="Blatt löschen"
           >
-            <X size={11} strokeWidth={3} />
+            <X size={13} strokeWidth={3} />
           </button>
         )}
       </div>

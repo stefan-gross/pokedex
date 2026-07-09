@@ -23,7 +23,7 @@ export function Switch({ checked, onChange, label, accentColor = 'var(--pokedex-
       role="switch"
       aria-checked={checked}
       disabled={disabled}
-      className={`flex items-center gap-1.5 text-xs shrink-0 disabled:opacity-40 ${className}`}
+      className={`flex items-center gap-1.5 text-xs shrink-0 min-h-11 disabled:opacity-40 ${className}`}
     >
       <span
         className="w-8 h-[18px] rounded-full flex items-center shrink-0 transition-colors px-0.5"

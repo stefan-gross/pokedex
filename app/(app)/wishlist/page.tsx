@@ -99,11 +99,11 @@ export default function WishlistPage() {
                   )}
                   <button
                     onClick={e => { e.stopPropagation(); handleRemove(item); }}
-                    className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full flex items-center justify-center"
+                    className="absolute top-1 right-1 w-8 h-8 rounded-full flex items-center justify-center"
                     style={{ background: 'rgba(0,0,0,.6)' }}
                     aria-label="Von Wunschliste entfernen"
                   >
-                    <X size={13} color="#fff" />
+                    <X size={14} color="#fff" />
                   </button>
                   {price != null && (
                     <div

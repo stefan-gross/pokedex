@@ -106,7 +106,7 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
 
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold">{existing ? 'Sammlung bearbeiten' : 'Neue Sammlung'}</h2>
-          <button onClick={onClose} className="w-7 h-7 rounded-full glass-inner flex items-center justify-center">
+          <button onClick={onClose} className="w-11 h-11 rounded-full glass-inner flex items-center justify-center" aria-label="Schließen">
             <X size={14} />
           </button>
         </div>
@@ -175,7 +175,7 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
                 <button
                   key={key}
                   onClick={() => setIcon(key)}
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center border-2 transition-colors ${icon === key ? '' : 'glass-inner'}`}
+                  className={`w-11 h-11 rounded-xl flex items-center justify-center border-2 transition-colors ${icon === key ? '' : 'glass-inner'}`}
                   style={{ borderColor: icon === key ? color : 'transparent', background: icon === key ? `${color}20` : undefined }}
                 >
                   <BinderIcon name={key} size={18} style={{ color: icon === key ? color : 'var(--muted-foreground)' }} />
@@ -191,7 +191,7 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
                 <button
                   key={t}
                   onClick={() => setIcon(`type:${t}`)}
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center border-2 transition-colors ${icon === `type:${t}` ? '' : 'glass-inner'}`}
+                  className={`w-11 h-11 rounded-xl flex items-center justify-center border-2 transition-colors ${icon === `type:${t}` ? '' : 'glass-inner'}`}
                   style={{ borderColor: icon === `type:${t}` ? color : 'transparent', background: icon === `type:${t}` ? `${color}20` : undefined }}
                 >
                   <EnergyIcon type={t} size={24} />
@@ -275,7 +275,7 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
               <button
                 key={c}
                 onClick={() => setColor(c)}
-                className="w-7 h-7 rounded-full border-2 border-transparent transition-all"
+                className="w-9 h-9 rounded-full border-2 border-transparent transition-all"
                 style={{
                   background: c,
                   boxShadow: color === c ? `0 0 0 2px var(--background), 0 0 0 4px ${c}` : undefined,

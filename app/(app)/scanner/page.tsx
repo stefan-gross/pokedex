@@ -2731,7 +2731,7 @@ function ScannedCardTile({
         {/* Trash unten rechts (~2 px Abstand zum Rand) */}
         <button
           onClick={e => { e.stopPropagation(); onRemove(); }}
-          className="absolute bottom-0.5 right-0.5 w-7 h-7 rounded-md flex items-center justify-center text-white"
+          className="absolute bottom-0.5 right-0.5 w-8 h-8 rounded-md flex items-center justify-center text-white"
           style={{ background: 'var(--action-delete)' }}
           aria-label="Entfernen"
         >
@@ -2749,7 +2749,7 @@ function ScannedCardTile({
         {(job.result?.fakeRisk === 'medium' || job.result?.fakeRisk === 'high') && (
           <button
             onClick={e => { e.stopPropagation(); onFakeReasons(); }}
-            className="absolute left-1/2 -translate-x-1/2 w-7 h-7 rounded-full flex items-center justify-center"
+            className="absolute left-1/2 -translate-x-1/2 w-8 h-8 rounded-full flex items-center justify-center"
             style={{ top: 2, background: 'rgba(0,0,0,0.75)' }}
             aria-label="Fake-Verdacht-Gründe"
           >

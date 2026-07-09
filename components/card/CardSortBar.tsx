@@ -38,7 +38,7 @@ export function CardSortBar<K extends string>({
           <select
             value={sortField}
             onChange={e => onSortFieldChange(e.target.value as K)}
-            className="h-7 pl-2 pr-6 rounded-lg glass-inner text-glass text-xs appearance-none cursor-pointer"
+            className="h-11 pl-2 pr-6 rounded-lg glass-inner text-glass text-xs appearance-none cursor-pointer"
           >
             {options.map(o => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -48,7 +48,7 @@ export function CardSortBar<K extends string>({
         </div>
         <button
           onClick={onSortDirChange}
-          className="h-7 w-7 flex items-center justify-center rounded-lg glass-inner transition-colors shrink-0"
+          className="h-11 w-11 flex items-center justify-center rounded-lg glass-inner transition-colors shrink-0"
           title={sortDir === 'asc' ? 'Aufsteigend' : 'Absteigend'}
         >
           {sortDir === 'asc'
