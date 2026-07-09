@@ -213,8 +213,7 @@ export default function DashboardPage() {
               </div>
               <Link
                 href="/sets"
-                className="text-role-title text-glass rounded-full bg-[rgba(30,40,80,0.06)] dark:bg-white/10 border border-[rgba(30,40,80,0.15)] dark:border-white/35"
-                style={{ padding: '5px 12px' }}
+                className="inline-flex items-center justify-center min-h-11 px-4 text-role-title text-glass rounded-full bg-[rgba(30,40,80,0.06)] dark:bg-white/10 border border-[rgba(30,40,80,0.15)] dark:border-white/35"
               >
                 Alle
               </Link>
