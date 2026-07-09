@@ -92,7 +92,6 @@ const FOLDER_STITCH_PATH = (() => {
 const BOX_LID_HEIGHT = 131;
 const BOX_LID_PATH  = 'M9 0 L291 0 Q297 0 297 6 L297 131 L3 131 L3 6 Q3 0 9 0 Z';
 const BOX_BODY_PATH = 'M6 131 L294 131 L294 394 Q294 400 288 400 L12 400 Q6 400 6 394 Z';
-const BOX_STITCH_PATH = 'M11 134 L11 386 Q11 394 19 394 L281 394 Q289 394 289 386 L289 134';
 
 /**
  * Bindergrafik — Ringbuch-Deckel (Leder-Optik, umlaufende Naht die links
@@ -158,10 +157,6 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
           {/* Daumenkerbe zum Aufklappen */}
           <ellipse cx="150" cy="6" rx="26" ry="15" fill="#000" fillOpacity=".28" />
           <ellipse cx="150" cy="3" rx="20" ry="9" fill="#fff" fillOpacity=".12" />
-
-          {/* Gesteppte Naht — nur am Körper (links unten, unten, rechts unten), Deckel bleibt nahtlos */}
-          <path d={BOX_STITCH_PATH} stroke="#000" strokeOpacity=".22" strokeWidth="1.8" strokeDasharray="5 4" strokeLinecap="round" />
-          <path d={BOX_STITCH_PATH} stroke="#fff" strokeOpacity=".18" strokeWidth="1" strokeDasharray="5 4" strokeDashoffset="1.5" strokeLinecap="round" />
         </svg>
       ) : (
         <>
