@@ -273,7 +273,7 @@ export default function SettingsPage() {
         <Link href="/" className="text-glass">
           <ChevronLeft size={22} />
         </Link>
-        <h1 className="font-semibold text-base text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">Einstellungen</h1>
+        <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">Einstellungen</h1>
       </div>
 
       <div className="px-4 py-5 space-y-6">
@@ -288,8 +288,8 @@ export default function SettingsPage() {
             >
               <RefreshCw size={18} className="text-glass-muted shrink-0" />
               <div>
-                <p className="text-sm font-medium text-glass">App aktualisieren</p>
-                <p className="text-xs text-glass-muted">Lädt die neueste Version — Cache wird geleert</p>
+                <p className="text-role-title text-glass">App aktualisieren</p>
+                <p className="text-role-label text-glass-muted">Lädt die neueste Version — Cache wird geleert</p>
               </div>
             </button>
           </div>
@@ -310,14 +310,14 @@ export default function SettingsPage() {
                 <div className="px-4 py-3 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Database size={16} className="text-glass-muted shrink-0" />
-                    <p className="text-sm font-medium text-glass">Sync-Status</p>
+                    <p className="text-role-title text-glass">Sync-Status</p>
                   </div>
                   {isComplete
                     ? <span className="flex items-center gap-1 text-xs text-green-700 dark:text-green-300"><CheckCircle size={12} /> Aktuell</span>
                     : hasNew
                       ? <span className="flex items-center gap-1 text-xs text-yellow-700 dark:text-yellow-300"><Clock size={12} /> Update verfügbar</span>
                       : (syncStatus?.syncedTotal ?? 0) === 0
-                        ? <span className="text-xs text-glass-muted">Noch nicht gestartet</span>
+                        ? <span className="text-role-label text-glass-muted">Noch nicht gestartet</span>
                         : <span className="flex items-center gap-1 text-xs text-orange-700 dark:text-orange-200"><Clock size={12} /> Unvollständig</span>
                   }
                 </div>
@@ -330,12 +330,12 @@ export default function SettingsPage() {
                       style={{ width: `${pct}%`, ...(isComplete ? { background: '#48bb78' } : {}) }}
                     />
                   </div>
-                  <div className="flex justify-between text-xs text-glass-muted">
+                  <div className="flex justify-between text-role-label text-glass-muted">
                     <span>{(syncStatus?.syncedTotal ?? 0).toLocaleString('de-DE')} gecacht</span>
                     <span>{pct}% · {(syncStatus?.currentTotal ?? 0).toLocaleString('de-DE')} gesamt</span>
                   </div>
                   {syncStatus?.lastSynced && (
-                    <p className="text-xs text-glass-muted">
+                    <p className="text-role-label text-glass-muted">
                       Letzter Sync: {new Date(syncStatus.lastSynced).toLocaleString('de-DE')}
                     </p>
                   )}
@@ -358,7 +358,7 @@ export default function SettingsPage() {
 
                 {/* Ergebnis letzter Sync */}
                 {syncResult && !runningAll && (
-                  <div className="px-4 py-2.5 text-xs text-glass-muted">
+                  <div className="px-4 py-2.5 text-role-label text-glass-muted">
                     {syncResult}
                   </div>
                 )}
@@ -374,10 +374,10 @@ export default function SettingsPage() {
                     className={`shrink-0 text-glass ${runningAll ? 'animate-spin' : ''}`}
                   />
                   <div>
-                    <p className="text-sm font-medium text-glass">
+                    <p className="text-role-title text-glass">
                       {runningAll ? 'Läuft…' : 'Daten aktualisieren'}
                     </p>
-                    <p className="text-xs text-glass-muted">
+                    <p className="text-role-label text-glass-muted">
                       Neue Karten holen und alle Felder anreichern
                     </p>
                   </div>
@@ -391,8 +391,8 @@ export default function SettingsPage() {
                 >
                   <RotateCcw size={18} className="text-orange-700 dark:text-orange-200 shrink-0" />
                   <div>
-                    <p className="text-sm font-medium text-orange-700 dark:text-orange-200">Daten neu aufbauen</p>
-                    <p className="text-xs text-glass-muted">Reset + alle Schritte komplett neu — z. B. nach Schema-Änderung</p>
+                    <p className="text-role-title text-orange-700 dark:text-orange-200">Daten neu aufbauen</p>
+                    <p className="text-role-label text-glass-muted">Reset + alle Schritte komplett neu — z. B. nach Schema-Änderung</p>
                   </div>
                 </button>
 
@@ -404,14 +404,14 @@ export default function SettingsPage() {
                 >
                   <RefreshCw size={18} className={`shrink-0 text-blue-700 dark:text-blue-200 ${refreshingPrices ? 'animate-spin' : ''}`} />
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-blue-700 dark:text-blue-200">
+                    <p className="text-role-title text-blue-700 dark:text-blue-200">
                       {refreshingPrices ? 'Preise werden aktualisiert…' : 'Preise jetzt aktualisieren'}
                     </p>
-                    <p className="text-xs text-glass-muted">
+                    <p className="text-role-label text-glass-muted">
                       Holt aktuelle Cardmarket/TCGplayer-Preise für deine Sammlung
                     </p>
                     {refreshPricesResult && (
-                      <p className="text-xs text-glass-muted mt-1 font-mono">{refreshPricesResult}</p>
+                      <p className="text-role-label text-glass-muted mt-1 font-mono">{refreshPricesResult}</p>
                     )}
                   </div>
                 </button>
@@ -424,7 +424,7 @@ export default function SettingsPage() {
         <section>
           <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-3">Erscheinungsbild</p>
           <div className="glass rounded-[20px] px-4 py-3 flex items-center justify-between gap-3">
-            <p className="text-sm font-medium text-glass">Farbschema</p>
+            <p className="text-role-title text-glass">Farbschema</p>
             {mounted && (
               <ButtonGroup
                 iconOnly
@@ -451,18 +451,18 @@ export default function SettingsPage() {
             >
               <Trash2 size={18} className="text-red-600 dark:text-red-300 shrink-0" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-red-600 dark:text-red-300">
+                <p className="text-role-title text-red-600 dark:text-red-300">
                   {confirmStage === 0
                     ? 'Sammlung zurücksetzen'
                     : resetting
                       ? 'Wird gelöscht…'
                       : 'Wirklich? Tippe nochmal zum Bestätigen'}
                 </p>
-                <p className="text-xs text-glass-muted">
+                <p className="text-role-label text-glass-muted">
                   Löscht alle Karten aus deiner Sammlung. Sammlungs-/Binder-Struktur bleibt erhalten.
                 </p>
                 {resetProgress && (
-                  <p className="text-xs text-glass-muted mt-1 font-mono">{resetProgress}</p>
+                  <p className="text-role-label text-glass-muted mt-1 font-mono">{resetProgress}</p>
                 )}
               </div>
             </button>
@@ -485,7 +485,7 @@ export default function SettingsPage() {
               onClick={handleLogout}
               className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors"
             >
-              <div className="text-sm font-medium text-red-600 dark:text-red-300">Abmelden</div>
+              <div className="text-role-title text-red-600 dark:text-red-300">Abmelden</div>
             </button>
           </div>
         </section>
