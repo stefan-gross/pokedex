@@ -44,16 +44,13 @@ function coverFillColor(bg: string): string {
   return bg?.toLowerCase() === '#1a1a1a' ? '#2c2e33' : bg;
 }
 
-/** Text-/Icon-Farbe auf dem Deckel: Prägeeffekt (Farbversatz zur Fläche),
- *  mit zwei Sonderfällen:
- *  - Reines Weiß: die Fläche wirkt durch Textur/Overlays ohnehin schon
- *    gräulich, also volles Weiß statt zusätzlich abgedunkelter Mischfarbe.
- *  - Anthrazit (die Schwarz-Darstellung, siehe coverFillColor): kann nicht
- *    weiter abgedunkelt werden, hellt stattdessen dezent auf.
- *  Alle anderen Farben (auch nahe an der 50%-Helligkeits-Mitte wie Rot/Blau)
- *  werden einheitlich abgedunkelt statt automatisch per Schwelle zu kippen. */
+/** Text-/Icon-Farbe auf dem Deckel: EIN Stil für alle Farben — Prägeeffekt
+ *  durch Abdunkeln Richtung Schwarz. Einziger Sonderfall: Anthrazit (die
+ *  Schwarz-Darstellung, siehe coverFillColor) kann nicht weiter abgedunkelt
+ *  werden, hellt stattdessen dezent auf. Weiß bekommt bewusst KEINEN
+ *  Sonderfall mehr (vorher reines Weiß) — läuft durch dieselbe Abdunkeln-
+ *  Logik wie jede andere Paletten-Farbe. */
 function coverAccentColor(bg: string): string {
-  if (bg?.toLowerCase() === '#ffffff') return '#ffffff';
   if (bg?.toLowerCase() === '#2c2e33') return embossTextColor(bg, 0.25, 255);
   return embossTextColor(bg, 0.35, 0);
 }
