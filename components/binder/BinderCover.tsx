@@ -155,9 +155,6 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
         </>
       )}
 
-      {/* Feiner Rahmen für einen sauberen Deckel-Kantenabschluss */}
-      <div className={`absolute inset-0 ${rounding}`} style={{ boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.14)' }} />
-
       {isBox ? (
         <>
           {/* Name im oberen Bereich (Deckel), oberhalb der Naht */}
@@ -171,31 +168,33 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
               </span>
             )}
           </div>
-          {/* Logo auf der Box, unterhalb der Naht — max. 65% Breite, damit
-              links/rechts immer Rand zum Deckelrand bleibt. */}
-          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center px-6" style={{ top: '33%' }}>
+          {/* Logo auf der Box, unterhalb der Naht — nur 5px Rand links/rechts */}
+          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center px-[5px]" style={{ top: '33%' }}>
             {icon && (
               <BinderIcon
                 name={icon}
                 size={56}
-                style={{ color: textColor, filter: EMBOSS_ICON_FILTER, maxWidth: '65%', width: 'auto', height: 'auto', maxHeight: 56 }}
+                style={{ color: textColor, filter: EMBOSS_ICON_FILTER, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
               />
             )}
           </div>
         </>
       ) : (
-        /* Logo + Name mittig — Logo max. 65% Breite (siehe Box-Zweig oben) */
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6">
+        /* Logo + Name mittig — Logo nur 5px Rand links/rechts (eigener
+           Wrapper, damit der Name weiterhin mehr Innenabstand behält) */
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
           {icon && (
-            <BinderIcon
-              name={icon}
-              size={56}
-              style={{ color: textColor, filter: EMBOSS_ICON_FILTER, maxWidth: '65%', width: 'auto', height: 'auto', maxHeight: 56 }}
-            />
+            <div className="flex justify-center w-full px-[5px]">
+              <BinderIcon
+                name={icon}
+                size={56}
+                style={{ color: textColor, filter: EMBOSS_ICON_FILTER, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
+              />
+            </div>
           )}
           {name && (
             <span
-              className="font-bold text-base text-center leading-tight line-clamp-3"
+              className="font-bold text-base text-center leading-tight line-clamp-3 px-6"
               style={{ color: textColor, textShadow: EMBOSS_TEXT_SHADOW }}
             >
               {name}
