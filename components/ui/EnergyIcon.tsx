@@ -24,13 +24,18 @@ export const ENERGY_META: Record<EnergyType, { bg: string; de: string }> = {
 
 const SYM = 'rgba(0,0,0,0.82)';
 
-function InnerSymbol({ type }: { type: EnergyType }) {
+function InnerSymbol({ type, color }: { type: EnergyType; color?: string }) {
+  // `color` erzwingt einfarbige Darstellung (Symbol + Akzente in derselben
+  // Farbe statt Typ-eigenem SYM-Dunkel bzw. Akzentfarben) — für den
+  // "geprägt wie Text"-Modus (siehe EnergyIcon-Props).
+  const sym = color ?? SYM;
+  const accent = color ?? undefined; // undefined → Aufrufer nutzt ENERGY_META-Akzent weiter unten
   switch (type) {
 
     case 'Colorless':
       // 4-zackiger Stern (Normal-Typ)
       return (
-        <path fill={SYM} d="
+        <path fill={sym} d="
           M12 5.5 L13.6 10.4 L18.5 12 L13.6 13.6
           L12 18.5 L10.4 13.6 L5.5 12 L10.4 10.4 Z
         " />
@@ -39,7 +44,7 @@ function InnerSymbol({ type }: { type: EnergyType }) {
     case 'Fire':
       // Flamme mit Zunge
       return (
-        <path fill={SYM} d="
+        <path fill={sym} d="
           M12 5
           C12 5 9 8.5 9.5 11.5
           C9 11 8.5 10 8.5 10
@@ -55,7 +60,7 @@ function InnerSymbol({ type }: { type: EnergyType }) {
     case 'Water':
       // Wassertropfen mit Schwung (wie im offiziellen Icon)
       return (
-        <path fill={SYM} d="
+        <path fill={sym} d="
           M14.5 6.5
           C14.5 6.5 9 11 8.5 13.5
           C8 16.5 9.8 19 12.5 19
@@ -70,7 +75,7 @@ function InnerSymbol({ type }: { type: EnergyType }) {
     case 'Lightning':
       // Blitz (dicker Pfeil)
       return (
-        <path fill={SYM} d="
+        <path fill={sym} d="
           M15 5 L9 13 L13 13 L9 19 L18.5 10.5 L14.5 10.5 Z
         " />
       );
@@ -78,7 +83,7 @@ function InnerSymbol({ type }: { type: EnergyType }) {
     case 'Grass':
       // Blatt
       return (
-        <path fill={SYM} d="
+        <path fill={sym} d="
           M12 5.5
           C12 5.5 6 9 6.5 14.5
           C7 18 10 19 12 18.5
@@ -91,15 +96,15 @@ function InnerSymbol({ type }: { type: EnergyType }) {
       // Auge (Pupille + Iris)
       return (
         <g>
-          <path fill={SYM} d="
+          <path fill={sym} d="
             M12 8
             C7 8 4 12 4 12
             C4 12 7 16 12 16
             C17 16 20 12 20 12
             C20 12 17 8 12 8 Z
           " />
-          <circle cx="12" cy="12" r="3.5" fill={ENERGY_META['Psychic'].bg} />
-          <circle cx="12" cy="12" r="2"   fill={SYM} />
+          <circle cx="12" cy="12" r="3.5" fill={accent ?? ENERGY_META['Psychic'].bg} />
+          <circle cx="12" cy="12" r="2"   fill={sym} />
           <circle cx="11" cy="11" r="0.7" fill="white" opacity="0.6" />
         </g>
       );
@@ -107,7 +112,7 @@ function InnerSymbol({ type }: { type: EnergyType }) {
     case 'Fighting':
       // Faust (vereinfacht)
       return (
-        <path fill={SYM} d="
+        <path fill={sym} d="
           M8.5 10.5
           C8.5 9 9.5 8 10.5 8 L13.5 8
           C14.5 8 15.5 9 15.5 10.5 L15.5 12
@@ -127,39 +132,39 @@ function InnerSymbol({ type }: { type: EnergyType }) {
       // Dunkler Kreis mit Mondform (Unlicht-Symbol)
       return (
         <>
-          <circle cx="12" cy="12" r="5.5" fill={SYM} />
-          <circle cx="10" cy="10" r="4"   fill={ENERGY_META['Darkness'].bg} />
+          <circle cx="12" cy="12" r="5.5" fill={sym} />
+          <circle cx="10" cy="10" r="4"   fill={accent ?? ENERGY_META['Darkness'].bg} />
         </>
       );
 
     case 'Metal':
       // Stahl-Dreieck mit innerer Zeichnung
       return (
-        <g fill={SYM}>
+        <g fill={sym}>
           <path d="M12 6 L18.5 17 L5.5 17 Z" />
-          <path d="M12 9 L16.5 17 L7.5 17 Z" fill={ENERGY_META['Metal'].bg} />
-          <line x1="10" y1="14" x2="14" y2="14" stroke={SYM} strokeWidth="1.5" />
-          <line x1="10.8" y1="16" x2="13.2" y2="16" stroke={SYM} strokeWidth="1.5" />
+          <path d="M12 9 L16.5 17 L7.5 17 Z" fill={accent ?? ENERGY_META['Metal'].bg} />
+          <line x1="10" y1="14" x2="14" y2="14" stroke={sym} strokeWidth="1.5" />
+          <line x1="10.8" y1="16" x2="13.2" y2="16" stroke={sym} strokeWidth="1.5" />
         </g>
       );
 
     case 'Dragon':
       // Drachenschwinge
       return (
-        <path fill={SYM} d="M7 8 C7 8 5.5 11 7 14 C8 16 10 16.5 10 16.5 C10 16.5 9 18 10 18.5 C11 19 13 19 14 18.5 C15 18 14 16.5 14 16.5 C14 16.5 16 16 17 14 C18.5 11 17 8 17 8 C15 6 12 5.5 9 6.5 Z" />
+        <path fill={sym} d="M7 8 C7 8 5.5 11 7 14 C8 16 10 16.5 10 16.5 C10 16.5 9 18 10 18.5 C11 19 13 19 14 18.5 C15 18 14 16.5 14 16.5 C14 16.5 16 16 17 14 C18.5 11 17 8 17 8 C15 6 12 5.5 9 6.5 Z" />
       );
 
     case 'Fairy':
       // 4-Blüten Blume mit Herz-Mitte
       return (
-        <g fill={SYM}>
+        <g fill={sym}>
           <ellipse cx="12" cy="8"  rx="2.8" ry="4" />
           <ellipse cx="12" cy="8"  rx="2.8" ry="4" transform="rotate(90 12 12)" />
           <ellipse cx="12" cy="8"  rx="2.8" ry="4" transform="rotate(180 12 12)" />
           <ellipse cx="12" cy="8"  rx="2.8" ry="4" transform="rotate(270 12 12)" />
           {/* Herz in der Mitte */}
           <path d="M12 14.5 C11 13.5 9.5 13 9.5 11.5 C9.5 10.5 10.5 10 12 11.5 C13.5 10 14.5 10.5 14.5 11.5 C14.5 13 13 13.5 12 14.5Z"
-            fill={ENERGY_META['Fairy'].bg} />
+            fill={accent ?? ENERGY_META['Fairy'].bg} />
         </g>
       );
   }
@@ -169,9 +174,14 @@ interface Props {
   type: EnergyType;
   size?: number;
   className?: string;
+  /** Erzwingt eine einheitliche Farbe statt der Typ-eigenen Kreis-/Akzent-
+   *  farben — Kreis-Hintergrund entfällt dann, nur das Symbol wird in dieser
+   *  Farbe gezeichnet (wie ein einfarbiges Glyph, z.B. für "geprägt wie
+   *  Text"-Kontexte auf BinderCover). */
+  color?: string;
 }
 
-export function EnergyIcon({ type, size = 24, className = '' }: Props) {
+export function EnergyIcon({ type, size = 24, className = '', color }: Props) {
   const { bg } = ENERGY_META[type];
   return (
     <svg
@@ -181,8 +191,8 @@ export function EnergyIcon({ type, size = 24, className = '' }: Props) {
       className={className}
       aria-label={ENERGY_META[type].de}
     >
-      <circle cx="12" cy="12" r="11.5" fill={bg} />
-      <InnerSymbol type={type} />
+      {!color && <circle cx="12" cy="12" r="11.5" fill={bg} />}
+      <InnerSymbol type={type} color={color} />
     </svg>
   );
 }

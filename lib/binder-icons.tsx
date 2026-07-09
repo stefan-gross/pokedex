@@ -33,7 +33,16 @@ export function BinderIcon({ name, size = 20, className, style }: { name?: strin
   const setMeta = useSetMeta(setId, undefined, undefined);
 
   if (name?.startsWith('type:')) {
-    return <EnergyIcon type={name.slice(5) as EnergyType} size={size} className={className} />;
+    // `style.color` (z.B. Präge-Textfarbe auf BinderCover) wird als
+    // EnergyIcon-`color`-Override durchgereicht — Rest von `style` (Filter,
+    // Größenbegrenzung) auf einen Wrapper, da EnergyIcon selbst kein
+    // generisches `style` annimmt.
+    const { color, ...wrapperStyle } = style ?? {};
+    return (
+      <span style={{ display: 'inline-flex', ...wrapperStyle }}>
+        <EnergyIcon type={name.slice(5) as EnergyType} size={size} className={className} color={color as string | undefined} />
+      </span>
+    );
   }
   if (setId) {
     // Deutsches TCGdex-Logo bevorzugt (setMeta.logoUrl), pokemontcg.io nur

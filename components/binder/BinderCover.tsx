@@ -11,6 +11,11 @@ import { BinderIcon } from '@/lib/binder-icons';
  *  Detailgrafik, siehe readableTextColor). */
 const EMBOSS_TEXT_SHADOW = '-1px -1px 1px rgba(0,0,0,.3), 1px 1px 1px rgba(255,255,255,.25)';
 const EMBOSS_ICON_FILTER = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.3)) drop-shadow(1px 1px 1px rgba(255,255,255,.25))';
+// Auf der (dunklen) Anthrazit-Fläche liest sich ein schwarzer Schatten kaum
+// (dunkel auf dunkel) — dort Schatten kräftiger schwarz + Glanz kräftiger
+// weiß, damit die Prägung überhaupt sichtbar bleibt.
+const EMBOSS_TEXT_SHADOW_DARK = '-1px -1px 1px rgba(0,0,0,.6), 1px 1px 1px rgba(255,255,255,.4)';
+const EMBOSS_ICON_FILTER_DARK = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.6)) drop-shadow(1px 1px 1px rgba(255,255,255,.4))';
 
 /** Prägeeffekt braucht dennoch etwas Farbabstand zur Fläche, sonst ist der
  *  Titel trotz Schatten/Schein kaum lesbar (getestet: bei exakter
@@ -110,25 +115,21 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   const rounding = ROUNDING[shape];
   const uid = useId().replace(/:/g, '');
 
-  // Negativer Spread zieht die schattenwerfende Fläche vor dem Weichzeichnen
-  // etwas ein, damit der Schatten nicht als sichtbare Kontur rings um die
-  // Kachel (auch oben/links) erscheint, sondern nur als weiche Erhebung
-  // unterhalb sichtbar wird.
-  const outerShadow = isBox ? '0 4px 10px -4px rgba(0,0,0,.22)' : '0 8px 20px -6px rgba(0,0,0,.28)';
   const fill = coverFillColor(color);
-  // "Basis"-Icons (Lucide, kein type:/set:-Präfix) werden wie der Titel-Text
-  // geprägt dargestellt (Farbversatz zur Fläche). Set-Logos/Typ-Icons bleiben
-  // farblich unverändert (eigene Farben bzw. Detailgrafik) und bekommen NUR
-  // den Prägeschatten, keine Farbänderung.
-  const isBasisIcon = !!icon && !icon.startsWith('type:') && !icon.startsWith('set:');
-  const iconColor = isBasisIcon ? coverAccentColor(fill) : undefined;
-  const iconFilter = EMBOSS_ICON_FILTER;
+  const isAnthracite = fill?.toLowerCase() === '#2c2e33';
+  // Basis- UND Typ-Icons (alles außer Set-Logos) werden wie der Titel-Text
+  // geprägt dargestellt (gleicher Farbversatz zur Fläche). Set-Logos bleiben
+  // farblich unverändert (eigene Detailgrafik) und bekommen nur den
+  // Prägeschatten, keine Farbänderung.
+  const isColorableIcon = !!icon && !icon.startsWith('set:');
+  const iconColor = isColorableIcon ? coverAccentColor(fill) : undefined;
+  const iconFilter = isAnthracite ? EMBOSS_ICON_FILTER_DARK : EMBOSS_ICON_FILTER;
   const textColor = coverAccentColor(fill);
+  const textShadow = isAnthracite ? EMBOSS_TEXT_SHADOW_DARK : EMBOSS_TEXT_SHADOW;
 
   return (
     <div
       className={`relative aspect-[3/4] overflow-hidden ${rounding} ${className}`}
-      style={{ boxShadow: outerShadow }}
     >
       {isBox ? (
         <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 300 400" fill="none" preserveAspectRatio="none">
@@ -210,7 +211,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
             {name && (
               <span
                 className="font-bold text-sm text-center leading-tight line-clamp-2"
-                style={{ color: textColor, textShadow: EMBOSS_TEXT_SHADOW }}
+                style={{ color: textColor, textShadow: textShadow }}
               >
                 {name}
               </span>
@@ -243,7 +244,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
           {name && (
             <span
               className="font-bold text-base text-center leading-tight line-clamp-3 px-6"
-              style={{ color: textColor, textShadow: EMBOSS_TEXT_SHADOW }}
+              style={{ color: textColor, textShadow: textShadow }}
             >
               {name}
             </span>
