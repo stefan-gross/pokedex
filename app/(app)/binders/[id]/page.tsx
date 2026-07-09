@@ -45,6 +45,21 @@ type View = 'binder' | 'page' | 'grid';
 /** Resolved Hintergrund-Farbe basierend auf Binder-Setting. */
 const MILKY_BG = 'rgba(255, 255, 255, 0.55)';
 
+// Getönte Glas-Chips für Aktions-Buttons (Hinzufügen/Löschen) — dasselbe
+// Rezept wie der Scan-FAB (BottomNav) und der „+"-Button auf der
+// Sammlungsübersicht: blur + Sättigung + heller Innenrand + farbiger Glow.
+function tintedGlassStyle(rgb: string): React.CSSProperties {
+  return {
+    background: `rgba(${rgb},0.85)`,
+    backdropFilter: 'blur(10px) saturate(1.4)',
+    WebkitBackdropFilter: 'blur(10px) saturate(1.4)',
+    border: '1.5px solid rgba(255,255,255,0.5)',
+    boxShadow: `inset 0 1px 2px rgba(255,255,255,0.6), 0 0 12px rgba(${rgb},0.5), 0 3px 10px rgba(0,0,0,0.3)`,
+  };
+}
+const ADD_GLASS_STYLE    = tintedGlassStyle('47,133,90');
+const DELETE_GLASS_STYLE = tintedGlassStyle('197,48,48');
+
 function resolvePageBg(setting: 'black' | 'white' | 'transparent' | undefined): string {
   switch (setting) {
     case 'white':       return '#f3f4f6';
@@ -475,7 +490,7 @@ function GridView({ cards, onCardTap, prices }: {
 }) {
   if (cards.length === 0) {
     return (
-      <div className="px-4 py-16 text-center text-muted-foreground text-sm">
+      <div className="px-4 py-16 text-center text-glass-muted text-sm">
         Noch keine Karten in dieser Sammlung.
       </div>
     );
@@ -490,7 +505,7 @@ function GridView({ cards, onCardTap, prices }: {
           <button
             key={`${c.id}-${i}`}
             onClick={() => onCardTap(c)}
-            className="relative rounded-xl overflow-hidden border border-green-500/40 cursor-pointer"
+            className="relative rounded-xl overflow-hidden shadow-card cursor-pointer"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -572,8 +587,8 @@ function SheetTile({
           <button
             onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); onDelete(); }}
-            className="w-6 h-6 rounded-md flex items-center justify-center text-white"
-            style={{ background: 'var(--action-delete)' }}
+            className="w-6 h-6 rounded-full flex items-center justify-center text-white"
+            style={DELETE_GLASS_STYLE}
             aria-label="Blatt löschen"
           >
             <X size={11} strokeWidth={3} />
@@ -640,7 +655,7 @@ function BinderOverview({
           {editMode && (
             <button
               onClick={onAddSheet}
-              className="relative bg-card rounded-xl border-2 border-dashed border-border p-2"
+              className="relative glass-inner rounded-xl border-2 border-dashed border-border p-2"
               aria-label="Neues Blatt"
             >
               <div className="flex items-stretch gap-1.5 opacity-50">
@@ -655,14 +670,11 @@ function BinderOverview({
                 <RingsCol />
               </div>
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <span
-                  className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg text-white"
-                  style={{ background: 'var(--action-add)' }}
-                >
+                <span className="w-12 h-12 rounded-full flex items-center justify-center text-white" style={ADD_GLASS_STYLE}>
                   <Plus size={24} strokeWidth={3} />
                 </span>
               </div>
-              <div className="mt-2 text-[11px] text-muted-foreground text-center">Neues Blatt</div>
+              <div className="mt-2 text-[11px] text-glass-muted text-center">Neues Blatt</div>
             </button>
           )}
         </div>
@@ -933,14 +945,14 @@ function SinglePageView({
           <select
             value={label.sheet - 1}
             onChange={e => onChangePageIdx(Number(e.target.value) * 2)}
-            className="appearance-none pl-3 pr-7 h-8 rounded-md text-[13px] font-bold tabular-nums bg-secondary focus:outline-none"
+            className="appearance-none pl-3 pr-7 h-8 rounded-full text-[13px] font-bold tabular-nums glass-inner text-glass focus:outline-none"
             aria-label="Blatt auswählen"
           >
             {Array.from({ length: totalSheets }, (_, i) => (
               <option key={i} value={i}>Blatt {i + 1}</option>
             ))}
           </select>
-          <ChevronDown size={13} className="absolute right-2 pointer-events-none text-muted-foreground" />
+          <ChevronDown size={13} className="absolute right-2 pointer-events-none text-glass-muted" />
         </label>
       </div>
 
@@ -1089,7 +1101,7 @@ function SinglePageView({
       )}
 
       <div className="mt-2 flex items-center justify-center px-4">
-        <span className="text-[11px] font-bold text-foreground">
+        <span className="text-[11px] font-bold text-glass">
           {sideLabel}
         </span>
       </div>
@@ -1151,8 +1163,8 @@ function DraggableCardSlot({
         <button
           onPointerDown={e => e.stopPropagation()}
           onClick={e => { e.stopPropagation(); onDelete(); }}
-          className="absolute top-0.5 right-0.5 w-5 h-5 rounded-md flex items-center justify-center shadow-md text-white"
-          style={{ background: 'var(--action-delete)' }}
+          className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full flex items-center justify-center text-white"
+          style={DELETE_GLASS_STYLE}
           aria-label="Aus Slot entfernen"
         >
           <X size={10} strokeWidth={3} />
@@ -1192,14 +1204,14 @@ function DroppableEmptySlot({
         {editMode ? (
           <button
             onClick={onAdd}
-            className="w-8 h-8 rounded-full flex items-center justify-center shadow-md text-white"
-            style={{ background: 'var(--action-add)' }}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-white"
+            style={ADD_GLASS_STYLE}
             aria-label="Karte hinzufügen"
           >
             <Plus size={16} strokeWidth={3} />
           </button>
         ) : (
-          <span className="text-muted-foreground/30 text-xs">{n}</span>
+          <span className="text-glass-muted/50 text-xs">{n}</span>
         )}
       </div>
     </div>

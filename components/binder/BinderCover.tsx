@@ -11,8 +11,9 @@ interface Props {
   /** BinderIcon-Schlüssel (Lucide/EnergyIcon/Set-Logo) — großes Logo mittig
    *  (Ordner) bzw. im unteren Bereich (Box). */
   icon?: string;
-  /** 'folder' = Ringbuch mit gerader Naht links (Standard).
-   *  'box' = Karton mit ringsum kleiner Rundung + geschwungener Deckel-Naht bei 1/3 Höhe. */
+  /** 'folder' = Ringbuch mit umlaufender Naht, die links flach ausläuft.
+   *  'box' = Karton mit Deckel + Körper als zwei eigenständigen Rechtecken,
+   *  die exakt an der Deckel-Unterkante zusammenschließen. */
   shape?: 'folder' | 'box';
   className?: string;
 }
@@ -22,90 +23,128 @@ const ROUNDING = {
   box:    'rounded-[4px]',
 };
 
-// Eckradien der umlaufenden gesteppten Kontur-Naht — links klein (Ordner-Bindung
-// bzw. Karton-Ecke), rechts groß beim Ordner, ebenfalls klein bei der Box.
-const STITCH_CORNER = {
-  folder: { left: 6, right: 22 },
-  box:    { left: 8, right: 8 },
-};
-const STITCH_INSET = 5;        // oben/rechts/unten — nah an der Kontur
-const FOLDER_LEFT_INSET = 18;  // linke Bindungsnaht — deutlich größerer Abstand zur Kante
+// ── Ordner ───────────────────────────────────────────────────────────────
+// Naht läuft oben/rechts/unten umlaufend, endet links flach (keine Rundung,
+// kein Bruch) — dort sitzt statt der Naht ein leichter vertikaler Schatten.
+const FOLDER_STITCH_INSET = 5;
+const FOLDER_STITCH_RIGHT_RADIUS = 22;
+const FOLDER_STITCH_LEFT_X = 6;
+const FOLDER_STITCH_PATH = (() => {
+  const i = FOLDER_STITCH_INSET;
+  const r = FOLDER_STITCH_RIGHT_RADIUS;
+  const x = FOLDER_STITCH_LEFT_X;
+  return `M${x} ${i} L${300 - i - r} ${i} Q${300 - i} ${i} ${300 - i} ${i + r} `
+       + `L${300 - i} ${400 - i - r} Q${300 - i} ${400 - i} ${300 - i - r} ${400 - i} L${x} ${400 - i}`;
+})();
 
-const BOX_LID_PATH = 'M0 128 Q 18 133.3 36 133.3 L 264 133.3 Q 282 133.3 300 128';
-
-/** Umlaufende gesteppte Kontur-Naht (geschlossener Pfad) — folgt den Ecken des
- *  jeweiligen Formats. Beim Ordner liegt die linke Seite weiter von der Kante
- *  entfernt (FOLDER_LEFT_INSET) als oben/rechts/unten; die Eckenkurven gleichen
- *  den Versatz sanft aus, statt einen scharfen Knick zu erzeugen. */
-function stitchPath(shape: 'folder' | 'box') {
-  const { left: l, right: r } = STITCH_CORNER[shape];
-  const i = STITCH_INSET;
-  const L = shape === 'folder' ? FOLDER_LEFT_INSET : i;
-  return `M${L} ${i + l} Q ${L} ${i} ${i + l} ${i} `
-       + `L ${300 - i - r} ${i} Q ${300 - i} ${i} ${300 - i} ${i + r} `
-       + `L ${300 - i} ${400 - i - r} Q ${300 - i} ${400 - i} ${300 - i - r} ${400 - i} `
-       + `L ${i + l} ${400 - i} Q ${L} ${400 - i} ${L} ${400 - i - l} Z`;
-}
+// ── Box ──────────────────────────────────────────────────────────────────
+// Deckel (oben, Kanten berühren die Kachel-Ecken) und Körper (unten, an den
+// Seiten leicht eingezogen) sind zwei eigenständige Rechtecke, die exakt an
+// der Deckel-Unterkante zusammenschließen — kein Diagonal-Knick.
+const BOX_LID_HEIGHT = 131;
+const BOX_LID_PATH  = 'M9 0 L291 0 Q297 0 297 6 L297 131 L3 131 L3 6 Q3 0 9 0 Z';
+const BOX_BODY_PATH = 'M6 131 L294 131 L294 394 Q294 400 288 400 L12 400 Q6 400 6 394 Z';
+const BOX_STITCH_PATH = 'M11 134 L11 386 Q11 394 19 394 L281 394 Q289 394 289 386 L289 134';
 
 /**
- * Bindergrafik — Ringbuch-Deckel (umlaufende gestrichelte Naht, links mit
- * größerem Abstand zur Kante) oder Karton (kleine Rundung ringsum, geschwungene
- * Deckel-Naht bei 1/3 Höhe mit dazu passendem, der Kurve folgendem Schlagschatten).
- * Farbe/Name/Logo sind frei parametrisiert, damit jede Sammlung ihre eigene
- * Deckel-Ansicht bekommt.
+ * Bindergrafik — Ringbuch-Deckel (Leder-Optik, umlaufende Naht die links
+ * flach ausläuft + vertikaler Schatten dort statt Rundung) oder Karton
+ * (Deckel mit diagonalem Glanz, Körper mit vertikalem Schatten von oben,
+ * Naht nur am Körper). Farbe/Name/Logo sind frei parametrisiert, damit jede
+ * Sammlung ihre eigene Deckel-Ansicht bekommt.
  */
 export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 'folder', className = '' }: Props) {
   const isBox = shape === 'box';
   const rounding = ROUNDING[shape];
-  const stitch = stitchPath(shape);
-  const filterId = `lid-shadow-${useId().replace(/:/g, '')}`;
+  const uid = useId().replace(/:/g, '');
+
+  const outerShadow = isBox ? '0 3px 8px rgba(0,0,0,.10)' : '0 6px 18px rgba(0,0,0,.18)';
 
   return (
     <div
       className={`relative aspect-[3/4] overflow-hidden ${rounding} ${className}`}
-      style={{ background: color, boxShadow: '0 6px 18px rgba(0,0,0,.18)' }}
+      style={{ boxShadow: outerShadow }}
     >
-      {/* Leder-/Vinyl-Glanzlicht — diagonaler heller Verlauf oben links */}
-      <div
-        className="absolute inset-0"
-        style={{ background: 'linear-gradient(135deg, rgba(255,255,255,.38) 0%, rgba(255,255,255,.10) 20%, rgba(255,255,255,0) 42%)' }}
-      />
-      {/* Abdunklung unten für Tiefe/Rundung */}
-      <div
-        className="absolute inset-0"
-        style={{ background: 'linear-gradient(0deg, rgba(0,0,0,.20) 0%, rgba(0,0,0,0) 32%)' }}
-      />
+      {isBox ? (
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 300 400" fill="none" preserveAspectRatio="none">
+          <defs>
+            <filter id={`lidblur-${uid}`} x="-10%" y="-100%" width="120%" height="300%">
+              <feGaussianBlur stdDeviation="4" />
+            </filter>
+            <linearGradient id={`lidsheen-${uid}`} x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stopColor="#fff" stopOpacity=".38" />
+              <stop offset=".2" stopColor="#fff" stopOpacity=".1" />
+              <stop offset=".42" stopColor="#fff" stopOpacity="0" />
+            </linearGradient>
+            <linearGradient id={`bodyshadow-${uid}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="#000" stopOpacity=".22" />
+              <stop offset=".35" stopColor="#000" stopOpacity="0" />
+            </linearGradient>
+            <clipPath id={`lidclip-${uid}`}><path d={BOX_LID_PATH} /></clipPath>
+            <clipPath id={`bodyclip-${uid}`}><path d={BOX_BODY_PATH} /></clipPath>
+          </defs>
 
-      <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 300 400" fill="none" preserveAspectRatio="none">
-        {isBox && (
-          <>
+          {/* Deckel — eigenes Rechteck mit diagonalem Leder-Glanz */}
+          <g clipPath={`url(#lidclip-${uid})`}>
+            <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT} fill={color} />
+            <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT} fill={`url(#lidsheen-${uid})`} />
+          </g>
+          {/* Körper — eigenes Rechteck mit leichtem Schatten von oben (fällt unter dem Deckel aus) */}
+          <g clipPath={`url(#bodyclip-${uid})`}>
+            <rect x="0" y={BOX_LID_HEIGHT} width="300" height={400 - BOX_LID_HEIGHT} fill={color} />
+            <rect x="0" y={BOX_LID_HEIGHT} width="300" height={400 - BOX_LID_HEIGHT} fill={`url(#bodyshadow-${uid})`} />
+          </g>
+
+          {/* Schlagschatten + gerade Trennlinie an der Deckel-Unterkante */}
+          <path d="M3 129 L297 129" stroke="#000" strokeOpacity=".7" strokeWidth="16" transform="translate(0,6)" filter={`url(#lidblur-${uid})`} />
+          <path d="M3 131 L297 131" stroke="#000" strokeOpacity=".22" strokeWidth="2.5" />
+          {/* Daumenkerbe zum Aufklappen */}
+          <ellipse cx="150" cy="6" rx="26" ry="15" fill="#000" fillOpacity=".28" />
+          <ellipse cx="150" cy="3" rx="20" ry="9" fill="#fff" fillOpacity=".12" />
+
+          {/* Gesteppte Naht — nur am Körper (links unten, unten, rechts unten), Deckel bleibt nahtlos */}
+          <path d={BOX_STITCH_PATH} stroke="#000" strokeOpacity=".22" strokeWidth="1.8" strokeDasharray="5 4" strokeLinecap="round" />
+          <path d={BOX_STITCH_PATH} stroke="#fff" strokeOpacity=".18" strokeWidth="1" strokeDasharray="5 4" strokeDashoffset="1.5" strokeLinecap="round" />
+        </svg>
+      ) : (
+        <>
+          <div className="absolute inset-0" style={{ background: color }} />
+          {/* Leder-/Vinyl-Glanzlicht — diagonaler heller Verlauf oben links */}
+          <div
+            className="absolute inset-0"
+            style={{ background: 'linear-gradient(135deg, rgba(255,255,255,.38) 0%, rgba(255,255,255,.10) 20%, rgba(255,255,255,0) 42%)' }}
+          />
+          {/* Abdunklung unten für Tiefe/Rundung */}
+          <div
+            className="absolute inset-0"
+            style={{ background: 'linear-gradient(0deg, rgba(0,0,0,.20) 0%, rgba(0,0,0,0) 32%)' }}
+          />
+          {/* Leichter vertikaler Schatten links — dort, wo die Naht flach ausläuft statt zu runden */}
+          <div
+            className="absolute inset-0"
+            style={{ background: 'linear-gradient(90deg, rgba(0,0,0,.3) 0%, rgba(0,0,0,0) 9%)' }}
+          />
+
+          <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 300 400" fill="none" preserveAspectRatio="none">
             <defs>
-              <filter id={filterId} x="-10%" y="-100%" width="120%" height="300%">
-                <feGaussianBlur stdDeviation="2.5" />
+              <filter id={`leather-${uid}`}>
+                <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" result="noise" />
+                <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.1 0.1 0.1 0 0" />
               </filter>
             </defs>
-            {/* Schlagschatten unter der Deckel-Naht — folgt exakt derselben
-                Kurve wie die Naht selbst (statt eines starren Balkens), wirkt
-                wie ein leicht überlappender Kartondeckel */}
-            <path d={BOX_LID_PATH} stroke="rgba(0,0,0,.45)" strokeWidth="9" transform="translate(0,5)" filter={`url(#${filterId})`} />
-            {/* Geschwungene Deckel-Naht bei 1/3 Höhe — an den Ecken leicht nach oben abgerundet */}
-            <path d={BOX_LID_PATH} stroke="rgba(0,0,0,.16)" strokeWidth="2.5" />
-            <path d="M0 129.5 Q 18 134.8 36 134.8 L 264 134.8 Q 282 134.8 300 129.5" stroke="rgba(255,255,255,.22)" strokeWidth="1" />
-          </>
-        )}
-        {!isBox && (
-          /* Reißverschluss-Griff links, sitzt auf der umlaufenden Naht */
-          <>
+            {/* Ganz feine Leder-Körnung */}
+            <rect x="0" y="0" width="300" height="400" filter={`url(#leather-${uid})`} />
+
+            {/* Reißverschluss-Griff links, sitzt auf der Naht */}
             <rect x="9" y="14" width="18" height="28" rx="9" fill="rgba(0,0,0,.20)" />
             <rect x="12.5" y="18" width="11" height="16" rx="5.5" fill="rgba(255,255,255,.20)" />
-          </>
-        )}
 
-        {/* Umlaufende gesteppte Kontur-Naht — beim Ordner links UND rechts/oben/unten
-            als ein zusammenhängender gestrichelter Pfad */}
-        <path d={stitch} stroke="rgba(0,0,0,.22)" strokeWidth="1.8" strokeDasharray="5 4" strokeLinecap="round" />
-        <path d={stitch} stroke="rgba(255,255,255,.18)" strokeWidth="1" strokeDasharray="5 4" strokeDashoffset="1.5" strokeLinecap="round" />
-      </svg>
+            {/* Umlaufende gesteppte Naht — läuft links flach aus statt zu runden */}
+            <path d={FOLDER_STITCH_PATH} stroke="rgba(0,0,0,.22)" strokeWidth="1.8" strokeDasharray="5 4" strokeLinecap="round" />
+            <path d={FOLDER_STITCH_PATH} stroke="rgba(255,255,255,.18)" strokeWidth="1" strokeDasharray="5 4" strokeDashoffset="1.5" strokeLinecap="round" />
+          </svg>
+        </>
+      )}
 
       {/* Feiner Rahmen für einen sauberen Deckel-Kantenabschluss */}
       <div className={`absolute inset-0 ${rounding}`} style={{ boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.14)' }} />

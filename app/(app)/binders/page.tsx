@@ -51,8 +51,14 @@ export default function BindersPage() {
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="w-9 h-9 rounded-md flex items-center justify-center text-white"
-          style={{ background: 'var(--action-add)' }}
+          className="w-9 h-9 rounded-full flex items-center justify-center text-white"
+          style={{
+            background: 'rgba(47,133,90,0.85)',
+            backdropFilter: 'blur(10px) saturate(1.4)',
+            WebkitBackdropFilter: 'blur(10px) saturate(1.4)',
+            border: '1.5px solid rgba(255,255,255,0.5)',
+            boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.6), 0 0 14px rgba(47,133,90,0.5), 0 4px 12px rgba(0,0,0,0.3)',
+          }}
         >
           <Plus size={20} />
         </button>
@@ -72,8 +78,14 @@ export default function BindersPage() {
             <p className="text-sm text-glass-muted">Erstelle deinen ersten Binder oder eine Box, um Karten zu organisieren</p>
             <button
               onClick={() => setShowCreate(true)}
-              className="mt-2 px-5 py-2.5 rounded-md text-sm font-semibold text-white"
-              style={{ background: 'var(--action-add)' }}
+              className="mt-2 px-5 py-2.5 rounded-full text-sm font-semibold text-white"
+              style={{
+                background: 'rgba(47,133,90,0.85)',
+                backdropFilter: 'blur(10px) saturate(1.4)',
+                WebkitBackdropFilter: 'blur(10px) saturate(1.4)',
+                border: '1.5px solid rgba(255,255,255,0.5)',
+                boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.6), 0 0 14px rgba(47,133,90,0.5), 0 4px 12px rgba(0,0,0,0.3)',
+              }}
             >
               Erste Sammlung erstellen
             </button>
