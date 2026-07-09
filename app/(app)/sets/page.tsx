@@ -68,7 +68,7 @@ export default function SetsPage() {
         <Link href="/" className="text-glass shrink-0">
           <ChevronLeft size={22} />
         </Link>
-        <h1 className="font-semibold text-base text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">Alle Sets</h1>
+        <h1 className="text-role-h2 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">Alle Sets</h1>
       </div>
 
       {loading ? (
@@ -89,7 +89,7 @@ export default function SetsPage() {
                   <span className="text-xs font-bold text-glass-muted uppercase tracking-widest">
                     {seriesName}
                   </span>
-                  <span className="text-xs text-glass-muted tabular-nums">
+                  <span className="text-role-label text-glass-muted tabular-nums">
                     {totalOwned.toLocaleString('de-DE')}/{totalCards.toLocaleString('de-DE')}
                   </span>
                 </div>

@@ -151,8 +151,8 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Pokédex</h1>
-          <p className="text-sm text-glass-muted">Deine Sammlung</p>
+          <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Pokédex</h1>
+          <p className="text-role-body text-glass-muted">Deine Sammlung</p>
         </div>
         <Link
           href="/settings"
@@ -198,7 +198,7 @@ export default function DashboardPage() {
       {!loading && (
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-bold text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.25)]">Sets</h2>
+            <h2 className="text-role-h2 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.25)]">Sets</h2>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-0.5 p-1 rounded-full bg-[rgba(30,40,80,0.07)] dark:bg-white/10">
                 <ViewBtn active={setView === 'favorites'} onClick={() => setSetView('favorites')} label="Meiste Karten">
@@ -213,7 +213,7 @@ export default function DashboardPage() {
               </div>
               <Link
                 href="/sets"
-                className="text-sm font-medium text-glass rounded-full bg-[rgba(30,40,80,0.06)] dark:bg-white/10 border border-[rgba(30,40,80,0.15)] dark:border-white/35"
+                className="text-role-title text-glass rounded-full bg-[rgba(30,40,80,0.06)] dark:bg-white/10 border border-[rgba(30,40,80,0.15)] dark:border-white/35"
                 style={{ padding: '5px 12px' }}
               >
                 Alle
@@ -243,14 +243,14 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="glass rounded-[20px] px-4 py-6 flex flex-col items-center gap-3 text-center">
-              <p className="text-sm text-glass-muted">
+              <p className="text-role-body text-glass-muted">
                 {setView === 'favorites'
                   ? 'Noch keine Favoriten — scanne Karten um Sets zu befüllen.'
                   : 'Noch keine Karten in deiner Sammlung.'}
               </p>
               <Link
                 href="/sets"
-                className="text-sm font-medium px-4 py-2 rounded-xl"
+                className="text-role-title px-4 py-2 rounded-xl"
                 style={{ background: 'var(--pokedex-red)', color: '#fff' }}
               >
                 Alle Zyklen & Sets ansehen
@@ -264,7 +264,7 @@ export default function DashboardPage() {
       {loading && <RecentCardsSkeleton />}
       {!loading && recentCards.length > 0 && (
         <section>
-          <h2 className="text-base font-bold mb-3 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.25)]">Zuletzt hinzugefügt</h2>
+          <h2 className="text-role-h2 mb-3 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.25)]">Zuletzt hinzugefügt</h2>
           <div className="grid grid-cols-3 gap-2.5">
             {recentCards.map(card => (
               <RecentCard key={card.id} name={card.name} img={card.tcgImageUrl!} onClick={() => openDetail(card)} />
@@ -292,9 +292,9 @@ export default function DashboardPage() {
       {!loading && (cards?.length ?? 0) === 0 && (
         <div className="flex flex-col items-center justify-center pt-16 gap-3 text-center">
           <div className="text-4xl">📦</div>
-          <p className="text-sm font-medium text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Noch keine Karten</p>
-          <p className="text-xs text-glass-muted max-w-[220px]">Scanne deine erste Karte oder suche sie in der Kartendatenbank.</p>
-          <Link href="/scanner" className="mt-2 px-4 py-2 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--pokedex-red)' }}>
+          <p className="text-role-title text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Noch keine Karten</p>
+          <p className="text-role-label text-glass-muted max-w-[220px]">Scanne deine erste Karte oder suche sie in der Kartendatenbank.</p>
+          <Link href="/scanner" className="mt-2 px-4 py-2 rounded-xl text-role-title text-white" style={{ background: 'var(--pokedex-red)' }}>
             Karte scannen
           </Link>
         </div>
@@ -365,7 +365,7 @@ function ValueHero({ totalOwned, thisWeek, totalValue, heroCard }: {
         </div>
 
         <div className="flex items-baseline gap-1.5 mt-3.5 pt-3.5 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]">
-          <span className="text-[13px] text-glass-muted">Geschätzter Wert</span>
+          <span className="text-role-label text-glass-muted">Geschätzter Wert</span>
           <span className="text-lg font-extrabold text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.25)]">{valueLabel}</span>
         </div>
       </div>
@@ -377,8 +377,8 @@ function ValueHero({ totalOwned, thisWeek, totalValue, heroCard }: {
 function StatChip({ label, value }: { label: string; value: string }) {
   return (
     <div className="glass rounded-[16px] px-2 py-3 flex flex-col items-center gap-0.5">
-      <span className="text-[22px] font-extrabold leading-none tabular-nums text-glass">{value}</span>
-      <span className="text-[11px] font-medium text-glass-muted">{label}</span>
+      <span className="text-role-metric leading-none tabular-nums text-glass">{value}</span>
+      <span className="text-role-label text-glass-muted">{label}</span>
     </div>
   );
 }
@@ -408,7 +408,7 @@ function RecentCard({ name, img, onClick }: { name: string; img: string; onClick
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={img} alt={name} className="w-full h-full object-cover" />
       </div>
-      <span className="text-[11px] font-semibold text-center truncate w-full mt-0.5 text-glass">{name}</span>
+      <span className="text-role-label text-center truncate w-full mt-0.5 text-glass">{name}</span>
     </button>
   );
 }

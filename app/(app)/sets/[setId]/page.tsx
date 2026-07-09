@@ -250,7 +250,7 @@ function SetDetailContent() {
 
       {/* ── Sticky top bar ── */}
       <div className="sticky top-safe z-20 px-4 pt-4 pb-3">
-        <Link href={backHref} className="inline-flex items-center gap-1 text-sm text-glass-muted">
+        <Link href={backHref} className="inline-flex items-center gap-1 text-role-body text-glass-muted">
           <ChevronLeft size={18} strokeWidth={2} />
           {backLabel}
         </Link>
@@ -281,14 +281,14 @@ function SetDetailContent() {
                 }}
               />
               <div className="min-w-0">
-                <h1 className="text-lg font-bold leading-tight truncate text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">
+                <h1 className="text-role-h2 leading-tight truncate text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">
                   {nameDe || <span className="text-glass-muted">…</span>}
                 </h1>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   {releaseYear && (
-                    <span className="text-xs text-glass-muted">{releaseYear}</span>
+                    <span className="text-role-label text-glass-muted">{releaseYear}</span>
                   )}
-                  {releaseYear && (ptcgoCode || symbolUrl) && <span className="text-glass-muted opacity-40 text-xs">·</span>}
+                  {releaseYear && (ptcgoCode || symbolUrl) && <span className="text-glass-muted opacity-40 text-role-label">·</span>}
                   {isSymbolOnlySet && symbolUrl ? (
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img src={symbolUrl} alt={ptcgoCode ?? ''} className="w-[21px] h-[21px] object-contain" />
@@ -305,8 +305,8 @@ function SetDetailContent() {
             {/* Progress */}
             <div className="space-y-1.5">
               <div className="flex justify-between items-baseline">
-                <span className="text-sm font-semibold text-glass">{ownedCount} / {totalCount} Karten</span>
-                <span className="text-xs text-glass-muted">{pct}%</span>
+                <span className="text-role-title text-glass">{ownedCount} / {totalCount} Karten</span>
+                <span className="text-role-label text-glass-muted">{pct}%</span>
               </div>
               <div className="h-2 rounded-full glass-inner overflow-hidden">
                 <div className="h-full rounded-full transition-all"

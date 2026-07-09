@@ -61,15 +61,15 @@ export default function WishlistPage() {
   return (
     <div className="min-h-screen pb-24">
       <div className="px-4 pt-4 pb-4">
-        <h1 className="text-2xl font-bold text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Wunschliste</h1>
-        <p className="text-sm text-glass-muted">{items.length} {items.length === 1 ? 'Karte' : 'Karten'}</p>
+        <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Wunschliste</h1>
+        <p className="text-role-body text-glass-muted">{items.length} {items.length === 1 ? 'Karte' : 'Karten'}</p>
       </div>
 
       {items.length === 0 && (
         <div className="text-center pt-16 space-y-3 px-4">
           <div className="flex justify-center"><Heart size={48} className="text-glass-muted" /></div>
-          <p className="font-semibold text-glass">Noch nichts auf der Wunschliste</p>
-          <p className="text-sm text-glass-muted">
+          <p className="text-role-title text-glass">Noch nichts auf der Wunschliste</p>
+          <p className="text-role-body text-glass-muted">
             Öffne eine Karte im Detail und tippe auf „Auf Wunschliste setzen"
           </p>
         </div>
@@ -107,7 +107,7 @@ export default function WishlistPage() {
                   </button>
                   {price != null && (
                     <div
-                      className="absolute bottom-1.5 left-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-md"
+                      className="absolute bottom-1.5 left-1.5 text-role-badge px-1.5 py-0.5 rounded-md"
                       style={{ background: 'rgba(0,0,0,.7)', color: PRICE_COLOR }}
                     >
                       {price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
@@ -133,8 +133,8 @@ export default function WishlistPage() {
           {freeText.map(item => (
             <div key={item.id} className="flex items-center justify-between gap-2 glass-inner rounded-xl px-3 py-2.5">
               <div className="min-w-0">
-                <p className="text-sm text-glass truncate">{item.name}</p>
-                {item.notes && <p className="text-xs text-glass-muted truncate">{item.notes}</p>}
+                <p className="text-role-body text-glass truncate">{item.name}</p>
+                {item.notes && <p className="text-role-label text-glass-muted truncate">{item.notes}</p>}
               </div>
               <button onClick={() => handleRemove(item)} className="text-glass-muted shrink-0" aria-label="Entfernen">
                 <X size={16} />
