@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { signInWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '@/lib/firebase/client'
 import { GlassBackground } from '@/components/GlassBackground'
+import { Button } from '@/components/ui/button'
 
 function LoginForm() {
   const router = useRouter()
@@ -91,12 +92,12 @@ function LoginForm() {
             <span className="font-semibold text-glass text-lg">Pokédex</span>
           </div>
 
-          <h2 className="text-2xl md:text-3xl font-semibold text-glass mb-2 dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">Willkommen zurück</h2>
-          <p className="text-base text-glass-muted mb-8">Melde dich mit deinem Familienkonto an.</p>
+          <h2 className="text-role-h1 text-glass mb-2 dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">Willkommen zurück</h2>
+          <p className="text-role-body text-glass-muted mb-8">Melde dich mit deinem Familienkonto an.</p>
 
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
-              <label className="block text-sm font-medium text-[#3a3d42] dark:text-white/85 mb-2">E-Mail</label>
+              <label className="block text-role-label text-glass-muted mb-2">E-Mail</label>
               <input
                 type="email"
                 value={email}
@@ -104,11 +105,11 @@ function LoginForm() {
                 required
                 autoComplete="email"
                 placeholder="name@beispiel.de"
-                className="w-full px-4 py-3 rounded-xl text-base text-glass placeholder-[#9096a0] dark:placeholder-white/45 bg-[rgba(30,40,80,0.05)] dark:bg-white/10 border border-[rgba(30,40,80,0.18)] dark:border-white/25 focus:outline-none focus:ring-2 focus:ring-[rgba(30,40,80,0.3)] dark:focus:ring-white/50 focus:border-transparent transition"
+                className="w-full px-4 py-3 rounded-xl text-role-body glass-inner text-glass placeholder:text-glass-muted focus:outline-none focus:ring-1 focus:ring-ring transition"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-[#3a3d42] dark:text-white/85 mb-2">Passwort</label>
+              <label className="block text-role-label text-glass-muted mb-2">Passwort</label>
               <input
                 type="password"
                 value={password}
@@ -116,26 +117,21 @@ function LoginForm() {
                 required
                 autoComplete="current-password"
                 placeholder="••••••••"
-                className="w-full px-4 py-3 rounded-xl text-base text-glass placeholder-[#9096a0] dark:placeholder-white/45 bg-[rgba(30,40,80,0.05)] dark:bg-white/10 border border-[rgba(30,40,80,0.18)] dark:border-white/25 focus:outline-none focus:ring-2 focus:ring-[rgba(30,40,80,0.3)] dark:focus:ring-white/50 focus:border-transparent transition"
+                className="w-full px-4 py-3 rounded-xl text-role-body glass-inner text-glass placeholder:text-glass-muted focus:outline-none focus:ring-1 focus:ring-ring transition"
               />
             </div>
 
             {error && (
-              <div className="text-sm text-[#7a1414] dark:text-white px-4 py-3 rounded-xl" style={{ background: 'rgba(220,38,38,0.16)', border: '1px solid rgba(220,38,38,0.3)' }}>
+              <div className="text-role-body text-[#7a1414] dark:text-white px-4 py-3 rounded-xl" style={{ background: 'rgba(220,38,38,0.16)', border: '1px solid rgba(220,38,38,0.3)' }}>
                 {error}
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full text-white font-semibold py-3.5 rounded-xl text-base transition-colors flex items-center justify-center gap-2"
-              style={{ background: loading ? 'rgba(229,62,62,0.6)' : 'var(--pokedex-red)' }}
-            >
+            <Button type="submit" disabled={loading} size="lg" className="w-full">
               {loading ? (
                 <><span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Anmelden…</>
               ) : 'Anmelden'}
-            </button>
+            </Button>
           </form>
         </div>
       </div>
