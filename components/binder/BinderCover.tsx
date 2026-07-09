@@ -81,11 +81,12 @@ const ROUNDING = {
 // ── Ordner ───────────────────────────────────────────────────────────────
 // Naht läuft oben/rechts/unten umlaufend, endet links flach (keine Rundung,
 // kein Bruch) — dort sitzt statt der Naht ein leichter vertikaler Schatten.
-// Rechter Eckradius konzentrisch zur Kachel-Rundung (20px CSS) berechnet:
-// gemessener Skalierungsfaktor 300/211 ≈ 1.42 → Außenradius ≈ 28.4 Einheiten,
-// abzüglich des Naht-Insets (5) ergibt den Naht-eigenen Radius von 23.
+// Rechter Eckradius konzentrisch zur tatsächlichen Kachel-Rundung (20px CSS)
+// berechnet: gemessene Kachelbreite 165.5px → Skalierungsfaktor 300/165.5 ≈
+// 1.813 → Außenradius ≈ 36.25 Einheiten, abzüglich des Naht-Insets (5)
+// ergibt den Naht-eigenen Radius von ≈31.
 const FOLDER_STITCH_INSET = 5;
-const FOLDER_STITCH_RIGHT_RADIUS = 14;
+const FOLDER_STITCH_RIGHT_RADIUS = 31;
 const FOLDER_STITCH_LEFT_X = 6;
 const FOLDER_STITCH_PATH = (() => {
   const i = FOLDER_STITCH_INSET;
