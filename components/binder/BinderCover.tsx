@@ -9,13 +9,13 @@ import { BinderIcon } from '@/lib/binder-icons';
  *  abgewandt ist), Schein unten rechts (dort, wo die Kante das Licht
  *  reflektiert). Set-Logos/Typ-Icons bleiben ohne Prägung (eigene Farben/
  *  Detailgrafik, siehe readableTextColor). */
-const EMBOSS_TEXT_SHADOW = '-1px -1px 1px rgba(0,0,0,.3), 1px 1px 1px rgba(255,255,255,.25)';
-const EMBOSS_ICON_FILTER = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.3)) drop-shadow(1px 1px 1px rgba(255,255,255,.25))';
+const EMBOSS_TEXT_SHADOW = '-1px -1px 1px rgba(0,0,0,.2), 1px 1px 1px rgba(255,255,255,.18)';
+const EMBOSS_ICON_FILTER = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.2)) drop-shadow(1px 1px 1px rgba(255,255,255,.18))';
 // Auf der (dunklen) Anthrazit-Fläche liest sich ein schwarzer Schatten kaum
 // (dunkel auf dunkel) — dort Schatten kräftiger schwarz + Glanz kräftiger
 // weiß, damit die Prägung überhaupt sichtbar bleibt.
-const EMBOSS_TEXT_SHADOW_DARK = '-1px -1px 1px rgba(0,0,0,.6), 1px 1px 1px rgba(255,255,255,.4)';
-const EMBOSS_ICON_FILTER_DARK = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.6)) drop-shadow(1px 1px 1px rgba(255,255,255,.4))';
+const EMBOSS_TEXT_SHADOW_DARK = '-1px -1px 1px rgba(0,0,0,.45), 1px 1px 1px rgba(255,255,255,.3)';
+const EMBOSS_ICON_FILTER_DARK = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.45)) drop-shadow(1px 1px 1px rgba(255,255,255,.3))';
 
 /** Prägeeffekt braucht dennoch etwas Farbabstand zur Fläche, sonst ist der
  *  Titel trotz Schatten/Schein kaum lesbar. Richtung ist bewusst FEST
@@ -25,7 +25,7 @@ const EMBOSS_ICON_FILTER_DARK = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.6)) drop-
  *  sich willkürlich anfühlte. Standard: immer Richtung Schwarz abgedunkelt;
  *  nur der Anthrazit-Sonderfall (siehe coverAccentColor) hellt auf, da er
  *  selbst schon nahe Schwarz ist. */
-function embossTextColor(bg: string, amount = 0.35, target: 0 | 255 = 0): string {
+function embossTextColor(bg: string, amount = 0.22, target: 0 | 255 = 0): string {
   if (!bg?.startsWith('#')) return '#ffffff';
   const hex = bg.replace('#', '');
   const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
@@ -51,8 +51,8 @@ function coverFillColor(bg: string): string {
  *  Sonderfall mehr (vorher reines Weiß) — läuft durch dieselbe Abdunkeln-
  *  Logik wie jede andere Paletten-Farbe. */
 function coverAccentColor(bg: string): string {
-  if (bg?.toLowerCase() === '#2c2e33') return embossTextColor(bg, 0.25, 255);
-  return embossTextColor(bg, 0.35, 0);
+  if (bg?.toLowerCase() === '#2c2e33') return embossTextColor(bg, 0.18, 255);
+  return embossTextColor(bg, 0.22, 0);
 }
 
 interface Props {
