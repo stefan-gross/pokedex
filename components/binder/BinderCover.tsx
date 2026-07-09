@@ -26,8 +26,11 @@ const ROUNDING = {
 // ── Ordner ───────────────────────────────────────────────────────────────
 // Naht läuft oben/rechts/unten umlaufend, endet links flach (keine Rundung,
 // kein Bruch) — dort sitzt statt der Naht ein leichter vertikaler Schatten.
+// Rechter Eckradius konzentrisch zur Kachel-Rundung (20px CSS) berechnet:
+// gemessener Skalierungsfaktor 300/211 ≈ 1.42 → Außenradius ≈ 28.4 Einheiten,
+// abzüglich des Naht-Insets (5) ergibt den Naht-eigenen Radius von 23.
 const FOLDER_STITCH_INSET = 5;
-const FOLDER_STITCH_RIGHT_RADIUS = 22;
+const FOLDER_STITCH_RIGHT_RADIUS = 23;
 const FOLDER_STITCH_LEFT_X = 6;
 const FOLDER_STITCH_PATH = (() => {
   const i = FOLDER_STITCH_INSET;
@@ -77,8 +80,8 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
               <stop offset=".42" stopColor="#fff" stopOpacity="0" />
             </linearGradient>
             <linearGradient id={`bodyshadow-${uid}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#000" stopOpacity=".22" />
-              <stop offset=".35" stopColor="#000" stopOpacity="0" />
+              <stop offset="0" stopColor="#000" stopOpacity=".14" />
+              <stop offset=".16" stopColor="#000" stopOpacity="0" />
             </linearGradient>
             <clipPath id={`lidclip-${uid}`}><path d={BOX_LID_PATH} /></clipPath>
             <clipPath id={`bodyclip-${uid}`}><path d={BOX_BODY_PATH} /></clipPath>
@@ -134,10 +137,6 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
             </defs>
             {/* Ganz feine Leder-Körnung */}
             <rect x="0" y="0" width="300" height="400" filter={`url(#leather-${uid})`} />
-
-            {/* Reißverschluss-Griff links, sitzt auf der Naht */}
-            <rect x="9" y="14" width="18" height="28" rx="9" fill="rgba(0,0,0,.20)" />
-            <rect x="12.5" y="18" width="11" height="16" rx="5.5" fill="rgba(255,255,255,.20)" />
 
             {/* Umlaufende gesteppte Naht — läuft links flach aus statt zu runden */}
             <path d={FOLDER_STITCH_PATH} stroke="rgba(0,0,0,.22)" strokeWidth="1.8" strokeDasharray="5 4" strokeLinecap="round" />

@@ -2,7 +2,7 @@
 
 interface ButtonGroupOption<T extends string> {
   value: T;
-  label: string;
+  label: React.ReactNode;
   count?: number;
   /** Deaktiviert die Option (z.B. count === 0 im aktuellen Filter-Kontext). */
   disabled?: boolean;

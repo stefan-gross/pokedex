@@ -129,32 +129,37 @@ function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; 
   const wishlistCount = binder.wishlistCardIds?.length ?? 0;
 
   return (
-    <Link href={`/binders/${binder.id}`} className="relative block active:scale-[.98] transition-transform">
-      <BinderCover
-        color={binder.color}
-        name={binder.name}
-        icon={binder.icon ?? (isBox ? 'box' : 'folder')}
-        shape={isBox ? 'box' : 'folder'}
-      />
+    <Link href={`/binders/${binder.id}`} className="block active:scale-[.98] transition-transform">
+      {/* Boxen etwas kleiner als Ordner darstellen (Karton wirkt kompakter) —
+          Skalierung auf einem eigenen relative-Wrapper, damit Badge/Footer
+          mitschrumpfen und weiterhin korrekt am Cover ausgerichtet bleiben. */}
+      <div className="relative" style={isBox ? { transform: 'scale(0.92)', transformOrigin: 'center' } : undefined}>
+        <BinderCover
+          color={binder.color}
+          name={binder.name}
+          icon={binder.icon ?? (isBox ? 'box' : 'folder')}
+          shape={isBox ? 'box' : 'folder'}
+        />
 
-      {wishlistCount > 0 && (
-        <span
-          className="absolute top-2.5 right-2.5 inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-          style={{ background: 'rgba(0,0,0,.35)', color: '#fff' }}
-        >
-          +{wishlistCount} <Heart size={9} fill="currentColor" />
-        </span>
-      )}
+        {wishlistCount > 0 && (
+          <span
+            className="absolute top-2.5 right-2.5 inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+            style={{ background: 'rgba(0,0,0,.35)', color: '#fff' }}
+          >
+            +{wishlistCount} <Heart size={9} fill="currentColor" />
+          </span>
+        )}
 
-      <div className="absolute bottom-0 inset-x-0 flex items-end justify-between px-3.5 py-2.5">
-        <span className="text-xs font-bold truncate text-white drop-shadow-[0_1px_2px_rgba(0,0,0,.4)]">
-          {!totalValue.loading && totalValue.withPrice > 0
-            ? `≈ ${totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
-            : ''}
-        </span>
-        <span className="text-xs text-white/85 shrink-0 tabular-nums drop-shadow-[0_1px_2px_rgba(0,0,0,.4)]">
-          {cardCount} {cardCount === 1 ? 'Karte' : 'Karten'}
-        </span>
+        <div className="absolute bottom-0 inset-x-0 flex items-end justify-between px-3.5 py-2.5">
+          <span className="text-xs font-bold truncate text-white drop-shadow-[0_1px_2px_rgba(0,0,0,.4)]">
+            {!totalValue.loading && totalValue.withPrice > 0
+              ? `≈ ${totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
+              : ''}
+          </span>
+          <span className="text-xs text-white/85 shrink-0 tabular-nums drop-shadow-[0_1px_2px_rgba(0,0,0,.4)]">
+            {cardCount} {cardCount === 1 ? 'Karte' : 'Karten'}
+          </span>
+        </div>
       </div>
     </Link>
   );
