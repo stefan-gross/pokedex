@@ -18,6 +18,12 @@ type PickerTab = 'icons' | 'types' | 'set';
 
 const COLORS = ['#1a1a1a', '#ffffff', '#e53e3e', '#4299e1', '#ecc94b', '#48bb78', '#667eea'];
 
+/** Fixer Akzent für die Auswahl-Hervorhebungen im Drawer (Typ-/Icon-Picker,
+ *  Speichern-Button) — bewusst UNABHÄNGIG von der gewählten Sammlungsfarbe,
+ *  sonst würde z.B. ein weißer/schwarzer Farbwahl den Speichern-Button oder
+ *  andere UI-Elemente im Drawer mitverfärben. */
+const ACCENT = '#e53e3e';
+
 interface Props {
   existing?: BinderDoc;
   onClose: () => void;
@@ -126,11 +132,11 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
                     }}
                     className={`flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-xl border-2 transition-colors text-left ${collectionType === val ? '' : 'glass-inner'}`}
                     style={{
-                      borderColor: collectionType === val ? color : 'transparent',
-                      background: collectionType === val ? `${color}15` : undefined,
+                      borderColor: collectionType === val ? ACCENT : 'transparent',
+                      background: collectionType === val ? `${ACCENT}15` : undefined,
                     }}
                   >
-                    <BinderIcon name={iconKey} size={22} className="mt-0.5" style={{ color: collectionType === val ? color : undefined }} />
+                    <BinderIcon name={iconKey} size={22} className="mt-0.5" style={{ color: collectionType === val ? ACCENT : undefined }} />
                     <span className="text-sm font-semibold mt-1">{label}</span>
                     <span className="text-[10px] text-muted-foreground">{sub}</span>
                   </button>
@@ -176,9 +182,9 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
                   key={key}
                   onClick={() => setIcon(key)}
                   className={`w-11 h-11 rounded-xl flex items-center justify-center border-2 transition-colors ${icon === key ? '' : 'glass-inner'}`}
-                  style={{ borderColor: icon === key ? color : 'transparent', background: icon === key ? `${color}20` : undefined }}
+                  style={{ borderColor: icon === key ? ACCENT : 'transparent', background: icon === key ? `${ACCENT}20` : undefined }}
                 >
-                  <BinderIcon name={key} size={18} style={{ color: icon === key ? color : 'var(--muted-foreground)' }} />
+                  <BinderIcon name={key} size={18} style={{ color: icon === key ? ACCENT : 'var(--muted-foreground)' }} />
                 </button>
               ))}
             </div>
@@ -192,7 +198,7 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
                   key={t}
                   onClick={() => setIcon(`type:${t}`)}
                   className={`w-11 h-11 rounded-xl flex items-center justify-center border-2 transition-colors ${icon === `type:${t}` ? '' : 'glass-inner'}`}
-                  style={{ borderColor: icon === `type:${t}` ? color : 'transparent', background: icon === `type:${t}` ? `${color}20` : undefined }}
+                  style={{ borderColor: icon === `type:${t}` ? ACCENT : 'transparent', background: icon === `type:${t}` ? `${ACCENT}20` : undefined }}
                 >
                   <EnergyIcon type={t} size={24} />
                 </button>
@@ -225,8 +231,8 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
                       onClick={() => setIcon(`set:${s.id}`)}
                       className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg border-2 text-left transition-colors ${icon === `set:${s.id}` ? '' : 'glass-inner'}`}
                       style={{
-                        borderColor: icon === `set:${s.id}` ? color : 'transparent',
-                        background:  icon === `set:${s.id}` ? `${color}20` : undefined,
+                        borderColor: icon === `set:${s.id}` ? ACCENT : 'transparent',
+                        background:  icon === `set:${s.id}` ? `${ACCENT}20` : undefined,
                       }}
                     >
                       {/* Logo */}
@@ -343,7 +349,7 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
             onClick={save}
             disabled={!name.trim() || saving}
             className="w-full h-11 rounded-xl font-semibold text-sm text-white disabled:opacity-40"
-            style={tintedGlassStyle(color)}
+            style={tintedGlassStyle(ACCENT)}
           >
             {saving ? 'Speichern…' : existing ? 'Änderungen speichern' : 'Sammlung erstellen'}
           </button>

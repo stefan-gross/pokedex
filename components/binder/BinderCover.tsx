@@ -2,7 +2,6 @@
 
 import { useId } from 'react';
 import { BinderIcon } from '@/lib/binder-icons';
-import { readableTextColor } from '@/lib/color-utils';
 
 /** Geprägter Look für Titel-Text UND "Basis"-Icons (Lucide, z.B. Ordner/
  *  Blitz/Stern — kein Set-Logo, kein Typ-Icon) — Licht kommt gedanklich von
@@ -31,6 +30,22 @@ function embossTextColor(bg: string): string {
   const amount = luminance > 0.5 ? 0.35 : 0.45;
   const mix = (c: number) => Math.round(c + (target - c) * amount);
   return `#${[r, g, b].map(mix).map(v => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** Reines Schwarz (#1a1a1a) wirkt mit Leder-Körnung/Glanz-Overlays eher grau
+ *  als geplant — für die Deckel-Fläche selbst auf ein dezentes Anthrazit
+ *  angehoben. Nur die Darstellung, der in Firestore gespeicherte Farbwert
+ *  bleibt unverändert. */
+function coverFillColor(bg: string): string {
+  return bg?.toLowerCase() === '#1a1a1a' ? '#2c2e33' : bg;
+}
+
+/** Text-/Icon-Farbe auf dem Deckel: Prägeeffekt (Farbversatz zur Fläche),
+ *  AUSSER bei reinem Weiß — dort wirkt die Fläche durch Textur/Overlays
+ *  ohnehin schon gräulich, also volles Weiß statt zusätzlich abgedunkelter
+ *  Mischfarbe (sonst wirkt Text/Icon auf dem "grauen Weiß" nochmal grauer). */
+function coverAccentColor(bg: string): string {
+  return bg?.toLowerCase() === '#ffffff' ? '#ffffff' : embossTextColor(bg);
 }
 
 interface Props {
@@ -92,13 +107,15 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   const uid = useId().replace(/:/g, '');
 
   const outerShadow = isBox ? '0 3px 8px rgba(0,0,0,.10)' : '0 6px 18px rgba(0,0,0,.18)';
+  const fill = coverFillColor(color);
   // "Basis"-Icons (Lucide, kein type:/set:-Präfix) werden wie der Titel-Text
-  // geprägt dargestellt. Set-Logos/Typ-Icons behalten vollen Kontrast (eigene
-  // Farben bzw. Detailgrafik, Prägung würde dort nur Kontrast rauben).
+  // geprägt dargestellt (Farbversatz zur Fläche). Set-Logos/Typ-Icons bleiben
+  // farblich unverändert (eigene Farben bzw. Detailgrafik) und bekommen NUR
+  // den Prägeschatten, keine Farbänderung.
   const isBasisIcon = !!icon && !icon.startsWith('type:') && !icon.startsWith('set:');
-  const iconColor = isBasisIcon ? embossTextColor(color) : readableTextColor(color);
-  const iconFilter = isBasisIcon ? EMBOSS_ICON_FILTER : 'drop-shadow(0 1px 3px rgba(0,0,0,.35))';
-  const textColor = embossTextColor(color);
+  const iconColor = isBasisIcon ? coverAccentColor(fill) : undefined;
+  const iconFilter = EMBOSS_ICON_FILTER;
+  const textColor = coverAccentColor(fill);
 
   return (
     <div
@@ -126,12 +143,12 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
 
           {/* Deckel — eigenes Rechteck mit diagonalem Leder-Glanz */}
           <g clipPath={`url(#lidclip-${uid})`}>
-            <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT} fill={color} />
+            <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT} fill={fill} />
             <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT} fill={`url(#lidsheen-${uid})`} />
           </g>
           {/* Körper — eigenes Rechteck mit leichtem Schatten von oben (fällt unter dem Deckel aus) */}
           <g clipPath={`url(#bodyclip-${uid})`}>
-            <rect x="0" y={BOX_LID_HEIGHT} width="300" height={400 - BOX_LID_HEIGHT} fill={color} />
+            <rect x="0" y={BOX_LID_HEIGHT} width="300" height={400 - BOX_LID_HEIGHT} fill={fill} />
             <rect x="0" y={BOX_LID_HEIGHT} width="300" height={400 - BOX_LID_HEIGHT} fill={`url(#bodyshadow-${uid})`} />
           </g>
 
@@ -148,7 +165,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
         </svg>
       ) : (
         <>
-          <div className="absolute inset-0" style={{ background: color }} />
+          <div className="absolute inset-0" style={{ background: fill }} />
           {/* Leder-/Vinyl-Glanzlicht — diagonaler heller Verlauf oben links */}
           <div
             className="absolute inset-0"
