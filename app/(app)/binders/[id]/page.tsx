@@ -34,6 +34,7 @@ import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
 import { findVariantPrice, PRICE_COLOR } from '@/lib/prices/value-tier';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
+import { readableTextColor } from '@/lib/color-utils';
 import type { PriceResult } from '@/lib/prices/types';
 import type { BinderDoc, BinderPage, CardDoc } from '@/types';
 
@@ -60,14 +61,7 @@ function resolvePageBg(setting: 'black' | 'white' | 'transparent' | undefined): 
 
 /** Hochkontrast-Textfarbe für einen Hintergrund. Nicht-Hex (rgba/milky) → dunkler Text. */
 function readableText(bg: string): string {
-  if (!bg?.startsWith('#')) return '#1a1a1a';
-  const hex = bg.replace('#', '');
-  const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
-  const r = parseInt(full.slice(0, 2), 16);
-  const g = parseInt(full.slice(2, 4), 16);
-  const b = parseInt(full.slice(4, 6), 16);
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.6 ? '#1a1a1a' : '#ffffff';
+  return readableTextColor(bg, '#1a1a1a');
 }
 
 /** Slot-Farben passend zum Seitenhintergrund. */

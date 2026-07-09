@@ -2,6 +2,13 @@
 
 import { useId } from 'react';
 import { BinderIcon } from '@/lib/binder-icons';
+import { readableTextColor } from '@/lib/color-utils';
+
+/** Leicht geprägter Look statt reinem Schlagschatten — dunkler Schatten
+ *  unten + dezentes Höhenlicht oben, wie in Leder/Karton gestanzt. Niedrige
+ *  Deckkraft, damit es unabhängig von der Textfarbe (hell/dunkel) subtil bleibt. */
+const EMBOSS_TEXT_SHADOW = '0 1px 1px rgba(0,0,0,.35), 0 -1px 0 rgba(255,255,255,.2)';
+const EMBOSS_ICON_FILTER = 'drop-shadow(0 1px 1px rgba(0,0,0,.35)) drop-shadow(0 -1px 0 rgba(255,255,255,.2))';
 
 interface Props {
   /** Sammlungsfarbe (Hex/CSS) — bestimmt die Lederfläche der Grafik. */
@@ -62,6 +69,9 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   const uid = useId().replace(/:/g, '');
 
   const outerShadow = isBox ? '0 3px 8px rgba(0,0,0,.10)' : '0 6px 18px rgba(0,0,0,.18)';
+  // Helle Sammlungsfarben (z.B. Weiß/Gelb) brauchen dunklen statt weißen
+  // Text/Icon — sonst auf hellem Deckel praktisch unsichtbar.
+  const textColor = readableTextColor(color);
 
   return (
     <div
@@ -151,38 +161,43 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
       {isBox ? (
         <>
           {/* Name im oberen Bereich (Deckel), oberhalb der Naht */}
-          <div className="absolute inset-x-0 top-0 flex items-center justify-center px-4" style={{ height: '30%' }}>
+          <div className="absolute inset-x-0 top-0 flex items-center justify-center px-6" style={{ height: '30%' }}>
             {name && (
-              <span className="text-white font-bold text-sm text-center leading-tight line-clamp-2 drop-shadow-[0_1px_3px_rgba(0,0,0,.35)]">
+              <span
+                className="font-bold text-sm text-center leading-tight line-clamp-2"
+                style={{ color: textColor, textShadow: EMBOSS_TEXT_SHADOW }}
+              >
                 {name}
               </span>
             )}
           </div>
-          {/* Logo auf der Box, unterhalb der Naht */}
-          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center" style={{ top: '33%' }}>
+          {/* Logo auf der Box, unterhalb der Naht — max. 65% Breite, damit
+              links/rechts immer Rand zum Deckelrand bleibt. */}
+          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center px-6" style={{ top: '33%' }}>
             {icon && (
               <BinderIcon
                 name={icon}
                 size={56}
-                className="drop-shadow-[0_1px_3px_rgba(0,0,0,.35)]"
-                style={{ color: '#fff' }}
+                style={{ color: textColor, filter: EMBOSS_ICON_FILTER, maxWidth: '65%', width: 'auto', height: 'auto', maxHeight: 56 }}
               />
             )}
           </div>
         </>
       ) : (
-        /* Logo + Name mittig */
+        /* Logo + Name mittig — Logo max. 65% Breite (siehe Box-Zweig oben) */
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6">
           {icon && (
             <BinderIcon
               name={icon}
               size={56}
-              className="drop-shadow-[0_1px_3px_rgba(0,0,0,.35)]"
-              style={{ color: '#fff' }}
+              style={{ color: textColor, filter: EMBOSS_ICON_FILTER, maxWidth: '65%', width: 'auto', height: 'auto', maxHeight: 56 }}
             />
           )}
           {name && (
-            <span className="text-white font-bold text-base text-center leading-tight line-clamp-3 drop-shadow-[0_1px_3px_rgba(0,0,0,.35)]">
+            <span
+              className="font-bold text-base text-center leading-tight line-clamp-3"
+              style={{ color: textColor, textShadow: EMBOSS_TEXT_SHADOW }}
+            >
               {name}
             </span>
           )}
