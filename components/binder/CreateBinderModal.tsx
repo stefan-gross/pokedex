@@ -16,7 +16,7 @@ import type { BinderDoc, BinderPage } from '@/types';
 
 type PickerTab = 'icons' | 'types' | 'set';
 
-const COLORS = ['#e53e3e', '#ed8936', '#ecc94b', '#48bb78', '#38b2ac', '#4299e1', '#667eea', '#ed64a6'];
+const COLORS = ['#1a1a1a', '#ffffff', '#e53e3e', '#4299e1', '#ecc94b', '#48bb78', '#667eea'];
 
 interface Props {
   existing?: BinderDoc;
@@ -270,14 +270,15 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
         {/* Color picker */}
         <div className="mb-3">
           <label className="text-xs text-muted-foreground mb-1 block">Farbe</label>
-          <div className="flex gap-2">
+          <div className="flex gap-1">
             {COLORS.map(c => (
               <button
                 key={c}
                 onClick={() => setColor(c)}
-                className="w-9 h-9 rounded-full border-2 border-transparent transition-all"
+                className="w-11 h-11 rounded-full border-2 transition-all"
                 style={{
                   background: c,
+                  borderColor: color === c ? 'transparent' : 'rgba(0,0,0,0.12)',
                   boxShadow: color === c ? `0 0 0 2px var(--background), 0 0 0 4px ${c}` : undefined,
                 }}
               />
