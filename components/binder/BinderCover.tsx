@@ -85,7 +85,7 @@ const ROUNDING = {
 // gemessener Skalierungsfaktor 300/211 ≈ 1.42 → Außenradius ≈ 28.4 Einheiten,
 // abzüglich des Naht-Insets (5) ergibt den Naht-eigenen Radius von 23.
 const FOLDER_STITCH_INSET = 5;
-const FOLDER_STITCH_RIGHT_RADIUS = 23;
+const FOLDER_STITCH_RIGHT_RADIUS = 14;
 const FOLDER_STITCH_LEFT_X = 6;
 const FOLDER_STITCH_PATH = (() => {
   const i = FOLDER_STITCH_INSET;
@@ -149,17 +149,26 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
             </linearGradient>
             <clipPath id={`lidclip-${uid}`}><path d={BOX_LID_PATH} /></clipPath>
             <clipPath id={`bodyclip-${uid}`}><path d={BOX_BODY_PATH} /></clipPath>
+            <filter id={`leatherbox-${uid}`}>
+              <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" result="noise" />
+              <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.1 0.1 0.1 0 0" />
+            </filter>
           </defs>
 
           {/* Deckel — eigenes Rechteck mit diagonalem Leder-Glanz */}
           <g clipPath={`url(#lidclip-${uid})`}>
             <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT} fill={fill} />
             <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT} fill={`url(#lidsheen-${uid})`} />
+            {/* Ganz feine Leder-Körnung — gleiche Textur wie beim Ordner, sonst
+                wirkt v.a. Weiß auf der Box viel reiner/heller als auf dem
+                Ordner (dort bricht die Körnung die Fläche bewusst grau). */}
+            <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT} filter={`url(#leatherbox-${uid})`} />
           </g>
           {/* Körper — eigenes Rechteck mit leichtem Schatten von oben (fällt unter dem Deckel aus) */}
           <g clipPath={`url(#bodyclip-${uid})`}>
             <rect x="0" y={BOX_LID_HEIGHT} width="300" height={400 - BOX_LID_HEIGHT} fill={fill} />
             <rect x="0" y={BOX_LID_HEIGHT} width="300" height={400 - BOX_LID_HEIGHT} fill={`url(#bodyshadow-${uid})`} />
+            <rect x="0" y={BOX_LID_HEIGHT} width="300" height={400 - BOX_LID_HEIGHT} filter={`url(#leatherbox-${uid})`} />
           </g>
 
           {/* Schlagschatten + gerade Trennlinie an der Deckel-Unterkante */}
