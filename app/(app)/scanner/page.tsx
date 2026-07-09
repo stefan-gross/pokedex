@@ -1804,16 +1804,7 @@ export default function ScannerPage() {
         </div>
         <div className="flex-1 flex justify-center">
           {mode === 'scanning' && (
-            <div
-              className="flex p-1 rounded-full"
-              style={{
-                background: 'rgba(255,255,255,0.13)',
-                backdropFilter: 'blur(22px) saturate(1.4)',
-                WebkitBackdropFilter: 'blur(22px) saturate(1.4)',
-                border: '1px solid rgba(255,255,255,0.22)',
-                boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.28), 0 8px 26px rgba(0,0,0,0.32)',
-              }}
-            >
+            <div className="flex p-1 rounded-full glass-overlay">
               {(['recognize', 'add'] as const).map(m => (
                 <button
                   key={m}
@@ -1835,15 +1826,8 @@ export default function ScannerPage() {
           {mode === 'scanning' && (
             <button
               onClick={handleClose}
-              className="w-[46px] h-[46px] flex items-center justify-center rounded-full"
+              className="w-[46px] h-[46px] flex items-center justify-center rounded-full glass-overlay"
               aria-label="Scanner schließen"
-              style={{
-                background: 'rgba(255,255,255,0.13)',
-                backdropFilter: 'blur(22px) saturate(1.4)',
-                WebkitBackdropFilter: 'blur(22px) saturate(1.4)',
-                border: '1px solid rgba(255,255,255,0.22)',
-                boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.28), 0 8px 26px rgba(0,0,0,0.32)',
-              }}
             >
               <X size={20} color="#fff" />
             </button>
@@ -2969,15 +2953,8 @@ function RecognizedCardLarge({
           design_handoff_scanner_glass, "Bug"-Chip 38px). */}
       <button
         onClick={onDebugTap}
-        className="absolute top-0 right-0 w-[38px] h-[38px] flex items-center justify-center rounded-full"
+        className="absolute top-0 right-0 w-[38px] h-[38px] flex items-center justify-center rounded-full glass-overlay"
         aria-label="Debug-Infos anzeigen"
-        style={{
-          background: 'rgba(255,255,255,0.13)',
-          backdropFilter: 'blur(22px) saturate(1.4)',
-          WebkitBackdropFilter: 'blur(22px) saturate(1.4)',
-          border: '1px solid rgba(255,255,255,0.22)',
-          boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.28), 0 8px 26px rgba(0,0,0,0.32)',
-        }}
       >
         <Bug size={17} color="#fff" />
       </button>
@@ -3059,15 +3036,7 @@ function RecognizedCardLarge({
           abhängigen .glass-Klasse. */}
       {card && (
         <div
-          className="w-full flex flex-col items-start gap-2 px-4 py-4"
-          style={{
-            borderRadius: 24,
-            background: 'rgba(255,255,255,0.13)',
-            backdropFilter: 'blur(22px) saturate(1.4)',
-            WebkitBackdropFilter: 'blur(22px) saturate(1.4)',
-            border: '1px solid rgba(255,255,255,0.22)',
-            boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.28), 0 8px 26px rgba(0,0,0,0.32)',
-          }}
+          className="w-full flex flex-col items-start gap-2 px-4 py-4 rounded-[24px] glass-overlay"
         >
           {/* Logo + Zyklus/Setname als ein Block — Logo links, rechts daneben
               Zyklus- und Setname linksbündig in zwei Zeilen übereinander,

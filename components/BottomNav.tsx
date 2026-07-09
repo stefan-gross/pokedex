@@ -143,16 +143,9 @@ export function BottomNav() {
         {scanState.gridVisible && (
           <button
             onClick={() => window.dispatchEvent(new Event(SCAN_GRID_TOGGLE_EVENT))}
-            className="fixed z-50 flex items-center justify-center rounded-full"
+            className="fixed z-50 flex items-center justify-center rounded-full glass-overlay"
             aria-label="Übersicht öffnen"
-            style={{
-              bottom: 90, left: 14, width: 44, height: 44,
-              background: 'rgba(255,255,255,0.13)',
-              backdropFilter: 'blur(22px) saturate(1.4)',
-              WebkitBackdropFilter: 'blur(22px) saturate(1.4)',
-              border: '1px solid rgba(255,255,255,0.22)',
-              boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.28), 0 8px 26px rgba(0,0,0,0.32)',
-            }}
+            style={{ bottom: 90, left: 14, width: 44, height: 44 }}
           >
             <LayoutGrid size={19} color="#fff" />
             {scanState.jobsCount > 0 && (
