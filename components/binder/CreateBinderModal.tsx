@@ -113,7 +113,7 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
   return (
     <div className="fixed inset-0 z-[60] flex items-end">
       <div className="absolute inset-0 bg-black/80" onClick={onClose} />
-      <div className="relative w-full rounded-t-2xl glass border-t border-white/20 dark:border-white/10 flex flex-col max-h-[85dvh] mb-16">
+      <div className="relative w-full rounded-t-2xl glass border-t border-white/20 dark:border-white/10 flex flex-col max-h-[85dvh]">
         <div className="w-10 h-1 rounded-full bg-white/30 mx-auto mt-3 mb-1 shrink-0" />
         <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 pt-2">
 
