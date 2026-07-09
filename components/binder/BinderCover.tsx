@@ -4,11 +4,31 @@ import { useId } from 'react';
 import { BinderIcon } from '@/lib/binder-icons';
 import { readableTextColor } from '@/lib/color-utils';
 
-/** Leicht geprägter Look statt reinem Schlagschatten — dunkler Schatten
- *  unten + dezentes Höhenlicht oben, wie in Leder/Karton gestanzt. Niedrige
- *  Deckkraft, damit es unabhängig von der Textfarbe (hell/dunkel) subtil bleibt. */
-const EMBOSS_TEXT_SHADOW = '0 1px 1px rgba(0,0,0,.35), 0 -1px 0 rgba(255,255,255,.2)';
-const EMBOSS_ICON_FILTER = 'drop-shadow(0 1px 1px rgba(0,0,0,.35)) drop-shadow(0 -1px 0 rgba(255,255,255,.2))';
+/** Geprägter Look NUR für den Titel-Text — Licht kommt gedanklich von oben
+ *  links: Schatten oben links (dort, wo die gestanzte Kante vom Licht
+ *  abgewandt ist), Schein unten rechts (dort, wo die Kante das Licht
+ *  reflektiert). Icon/Logo bleiben ohne Prägung, siehe readableTextColor. */
+const EMBOSS_TEXT_SHADOW = '-1px -1px 1px rgba(0,0,0,.4), 1px 1px 1px rgba(255,255,255,.35)';
+
+/** Prägeeffekt braucht dennoch etwas Farbabstand zur Fläche, sonst ist der
+ *  Titel trotz Schatten/Schein kaum lesbar (getestet: bei exakter
+ *  Flächenfarbe nur bei Schwarz/Weiß noch lesbar, bei bunten Farben nicht
+ *  mehr). Deshalb: Text = Flächenfarbe, aber um ~35-45% Richtung
+ *  Schwarz/Weiß verschoben (helle Fläche → dunklerer Text, dunkle Fläche →
+ *  hellerer Text) — bleibt in der Farbfamilie, ist aber klar lesbar. */
+function embossTextColor(bg: string): string {
+  if (!bg?.startsWith('#')) return '#ffffff';
+  const hex = bg.replace('#', '');
+  const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  const target = luminance > 0.5 ? 0 : 255;
+  const amount = luminance > 0.5 ? 0.35 : 0.45;
+  const mix = (c: number) => Math.round(c + (target - c) * amount);
+  return `#${[r, g, b].map(mix).map(v => v.toString(16).padStart(2, '0')).join('')}`;
+}
 
 interface Props {
   /** Sammlungsfarbe (Hex/CSS) — bestimmt die Lederfläche der Grafik. */
@@ -69,9 +89,10 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   const uid = useId().replace(/:/g, '');
 
   const outerShadow = isBox ? '0 3px 8px rgba(0,0,0,.10)' : '0 6px 18px rgba(0,0,0,.18)';
-  // Helle Sammlungsfarben (z.B. Weiß/Gelb) brauchen dunklen statt weißen
-  // Text/Icon — sonst auf hellem Deckel praktisch unsichtbar.
-  const textColor = readableTextColor(color);
+  // Icon/Logo: voller Kontrast, keine Prägung. Titel-Text: dezenter
+  // Farbversatz + Prägeschatten (siehe embossTextColor-Kommentar oben).
+  const iconColor = readableTextColor(color);
+  const textColor = embossTextColor(color);
 
   return (
     <div
@@ -169,12 +190,12 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
             )}
           </div>
           {/* Logo auf der Box, unterhalb der Naht — nur 5px Rand links/rechts */}
-          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center px-[5px]" style={{ top: '33%' }}>
+          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center px-[10px]" style={{ top: '33%' }}>
             {icon && (
               <BinderIcon
                 name={icon}
                 size={56}
-                style={{ color: textColor, filter: EMBOSS_ICON_FILTER, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
+                style={{ color: iconColor, filter: 'drop-shadow(0 1px 3px rgba(0,0,0,.35))', maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
               />
             )}
           </div>
@@ -184,11 +205,11 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
            Wrapper, damit der Name weiterhin mehr Innenabstand behält) */
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
           {icon && (
-            <div className="flex justify-center w-full px-[5px]">
+            <div className="flex justify-center w-full px-[10px]">
               <BinderIcon
                 name={icon}
                 size={56}
-                style={{ color: textColor, filter: EMBOSS_ICON_FILTER, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
+                style={{ color: iconColor, filter: 'drop-shadow(0 1px 3px rgba(0,0,0,.35))', maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
               />
             </div>
           )}
