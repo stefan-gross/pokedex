@@ -674,7 +674,7 @@ function CollectionContent() {
           <div className="overflow-hidden">
             <button
               onClick={() => setFiltersCollapsed(false)}
-              className="flex items-center justify-center gap-1 w-full text-xs text-glass-muted py-1"
+              className="flex items-center justify-center gap-1 w-full text-role-label text-glass-muted py-1"
             >
               {extraFilterCount} weitere Filter aktiv <ChevronDown size={12} />
             </button>
@@ -700,7 +700,7 @@ function CollectionContent() {
                       key={t}
                       onClick={() => !isDisabled && toggleType(t)}
                       disabled={isDisabled}
-                      className={`flex items-center gap-1.5 text-xs pl-1 pr-2.5 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
+                      className={`flex items-center gap-1.5 text-role-label pl-1 pr-2.5 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
                       style={{
                         borderColor: active ? meta.bg : 'transparent',
                         background:  active ? `${meta.bg}22` : undefined,
@@ -740,7 +740,7 @@ function CollectionContent() {
                       key={o.value}
                       onClick={() => !isDisabled && toggleEvolution(o.value!)}
                       disabled={isDisabled}
-                      className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
+                      className={`flex items-center gap-1.5 text-role-label px-3 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
                       style={{
                         borderColor: active ? 'var(--pokedex-red)' : 'transparent',
                         background:  active ? 'color-mix(in srgb, var(--pokedex-red) 15%, transparent)' : undefined,
@@ -779,7 +779,7 @@ function CollectionContent() {
                       key={o.value}
                       onClick={() => !isDisabled && toggleSpecialMechanic(o.value)}
                       disabled={isDisabled}
-                      className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
+                      className={`flex items-center gap-1.5 text-role-label px-3 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
                       style={{
                         borderColor: active ? 'var(--pokedex-red)' : 'transparent',
                         background:  active ? 'color-mix(in srgb, var(--pokedex-red) 15%, transparent)' : undefined,
@@ -831,7 +831,7 @@ function CollectionContent() {
           ) : (
             <>
               {browseCards.length === 0 && !browseLoading && (
-                <p className="text-center text-glass-muted text-sm pt-12">
+                <p className="text-center text-glass-muted text-role-body pt-12">
                   Keine Karten für diesen Filter.
                 </p>
               )}
@@ -853,15 +853,15 @@ function CollectionContent() {
             {!searchLoading && results.length === 0 && inputValue && (
               <div className="flex flex-col items-center gap-2 pt-16 text-center">
                 <Search size={40} className="text-glass-muted" />
-                <p className="font-medium text-sm">Keine Karten gefunden</p>
-                <p className="text-xs text-glass-muted">Kein Ergebnis für „{inputValue}"</p>
+                <p className="text-role-title text-glass">Keine Karten gefunden</p>
+                <p className="text-role-label text-glass-muted">Kein Ergebnis für „{inputValue}"</p>
               </div>
             )}
             {!searchLoading && results.length > 0 && displayed.length === 0 && inputValue && (
               <div className="flex flex-col items-center gap-2 pt-16 text-center">
                 <SlidersHorizontal size={40} className="text-glass-muted" />
-                <p className="font-medium text-sm">Filter zu streng</p>
-                <p className="text-xs text-glass-muted">
+                <p className="text-role-title text-glass">Filter zu streng</p>
+                <p className="text-role-label text-glass-muted">
                   {results.length} Karten gefunden, aber alle durch aktive Filter ausgeblendet.
                 </p>
               </div>
