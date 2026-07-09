@@ -4,11 +4,14 @@ import { useId } from 'react';
 import { BinderIcon } from '@/lib/binder-icons';
 import { readableTextColor } from '@/lib/color-utils';
 
-/** Geprägter Look NUR für den Titel-Text — Licht kommt gedanklich von oben
- *  links: Schatten oben links (dort, wo die gestanzte Kante vom Licht
+/** Geprägter Look für Titel-Text UND "Basis"-Icons (Lucide, z.B. Ordner/
+ *  Blitz/Stern — kein Set-Logo, kein Typ-Icon) — Licht kommt gedanklich von
+ *  oben links: Schatten oben links (dort, wo die gestanzte Kante vom Licht
  *  abgewandt ist), Schein unten rechts (dort, wo die Kante das Licht
- *  reflektiert). Icon/Logo bleiben ohne Prägung, siehe readableTextColor. */
+ *  reflektiert). Set-Logos/Typ-Icons bleiben ohne Prägung (eigene Farben/
+ *  Detailgrafik, siehe readableTextColor). */
 const EMBOSS_TEXT_SHADOW = '-1px -1px 1px rgba(0,0,0,.4), 1px 1px 1px rgba(255,255,255,.35)';
+const EMBOSS_ICON_FILTER = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.4)) drop-shadow(1px 1px 1px rgba(255,255,255,.35))';
 
 /** Prägeeffekt braucht dennoch etwas Farbabstand zur Fläche, sonst ist der
  *  Titel trotz Schatten/Schein kaum lesbar (getestet: bei exakter
@@ -89,9 +92,12 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   const uid = useId().replace(/:/g, '');
 
   const outerShadow = isBox ? '0 3px 8px rgba(0,0,0,.10)' : '0 6px 18px rgba(0,0,0,.18)';
-  // Icon/Logo: voller Kontrast, keine Prägung. Titel-Text: dezenter
-  // Farbversatz + Prägeschatten (siehe embossTextColor-Kommentar oben).
-  const iconColor = readableTextColor(color);
+  // "Basis"-Icons (Lucide, kein type:/set:-Präfix) werden wie der Titel-Text
+  // geprägt dargestellt. Set-Logos/Typ-Icons behalten vollen Kontrast (eigene
+  // Farben bzw. Detailgrafik, Prägung würde dort nur Kontrast rauben).
+  const isBasisIcon = !!icon && !icon.startsWith('type:') && !icon.startsWith('set:');
+  const iconColor = isBasisIcon ? embossTextColor(color) : readableTextColor(color);
+  const iconFilter = isBasisIcon ? EMBOSS_ICON_FILTER : 'drop-shadow(0 1px 3px rgba(0,0,0,.35))';
   const textColor = embossTextColor(color);
 
   return (
@@ -195,7 +201,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
               <BinderIcon
                 name={icon}
                 size={56}
-                style={{ color: iconColor, filter: 'drop-shadow(0 1px 3px rgba(0,0,0,.35))', maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
+                style={{ color: iconColor, filter: iconFilter, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
               />
             )}
           </div>
@@ -209,7 +215,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
               <BinderIcon
                 name={icon}
                 size={56}
-                style={{ color: iconColor, filter: 'drop-shadow(0 1px 3px rgba(0,0,0,.35))', maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
+                style={{ color: iconColor, filter: iconFilter, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
               />
             </div>
           )}
