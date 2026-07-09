@@ -18,21 +18,20 @@ const EMBOSS_TEXT_SHADOW_DARK = '-1px -1px 1px rgba(0,0,0,.6), 1px 1px 1px rgba(
 const EMBOSS_ICON_FILTER_DARK = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.6)) drop-shadow(1px 1px 1px rgba(255,255,255,.4))';
 
 /** Prägeeffekt braucht dennoch etwas Farbabstand zur Fläche, sonst ist der
- *  Titel trotz Schatten/Schein kaum lesbar (getestet: bei exakter
- *  Flächenfarbe nur bei Schwarz/Weiß noch lesbar, bei bunten Farben nicht
- *  mehr). Deshalb: Text = Flächenfarbe, aber um ~35-45% Richtung
- *  Schwarz/Weiß verschoben (helle Fläche → dunklerer Text, dunkle Fläche →
- *  hellerer Text) — bleibt in der Farbfamilie, ist aber klar lesbar. */
-function embossTextColor(bg: string, amountOverride?: number): string {
+ *  Titel trotz Schatten/Schein kaum lesbar. Richtung ist bewusst FEST
+ *  vorgegeben (nicht mehr per 50%-Helligkeits-Schwelle automatisch bestimmt)
+ *  — bei nahe an der Schwelle liegenden Farben (z.B. Rot 44% vs. Blau 53%)
+ *  kippte die Richtung sonst uneinheitlich zwischen "heller"/"dunkler", was
+ *  sich willkürlich anfühlte. Standard: immer Richtung Schwarz abgedunkelt;
+ *  nur der Anthrazit-Sonderfall (siehe coverAccentColor) hellt auf, da er
+ *  selbst schon nahe Schwarz ist. */
+function embossTextColor(bg: string, amount = 0.35, target: 0 | 255 = 0): string {
   if (!bg?.startsWith('#')) return '#ffffff';
   const hex = bg.replace('#', '');
   const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
   const r = parseInt(full.slice(0, 2), 16);
   const g = parseInt(full.slice(2, 4), 16);
   const b = parseInt(full.slice(4, 6), 16);
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  const target = luminance > 0.5 ? 0 : 255;
-  const amount = amountOverride ?? (luminance > 0.5 ? 0.35 : 0.45);
   const mix = (c: number) => Math.round(c + (target - c) * amount);
   return `#${[r, g, b].map(mix).map(v => v.toString(16).padStart(2, '0')).join('')}`;
 }
@@ -49,13 +48,14 @@ function coverFillColor(bg: string): string {
  *  mit zwei Sonderfällen:
  *  - Reines Weiß: die Fläche wirkt durch Textur/Overlays ohnehin schon
  *    gräulich, also volles Weiß statt zusätzlich abgedunkelter Mischfarbe.
- *  - Anthrazit (die Schwarz-Darstellung, siehe coverFillColor): dunkleres
- *    Grau als die generische Mischung (kleinerer Aufhellungs-Anteil), damit
- *    Text/Icon auf Schwarz nicht zu hell/auffällig wirkt. */
+ *  - Anthrazit (die Schwarz-Darstellung, siehe coverFillColor): kann nicht
+ *    weiter abgedunkelt werden, hellt stattdessen dezent auf.
+ *  Alle anderen Farben (auch nahe an der 50%-Helligkeits-Mitte wie Rot/Blau)
+ *  werden einheitlich abgedunkelt statt automatisch per Schwelle zu kippen. */
 function coverAccentColor(bg: string): string {
   if (bg?.toLowerCase() === '#ffffff') return '#ffffff';
-  if (bg?.toLowerCase() === '#2c2e33') return embossTextColor(bg, 0.25);
-  return embossTextColor(bg);
+  if (bg?.toLowerCase() === '#2c2e33') return embossTextColor(bg, 0.25, 255);
+  return embossTextColor(bg, 0.35, 0);
 }
 
 interface Props {
