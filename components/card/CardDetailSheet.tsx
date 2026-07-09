@@ -206,7 +206,7 @@ function AccHeader({
       className="w-full flex items-center justify-between px-4 min-h-[52px] text-left transition-colors"
       style={{ borderTop: border ? '1px solid color-mix(in srgb, var(--border) 50%, transparent)' : 'none' }}
     >
-      <div className="flex items-center gap-2.5 font-semibold text-[15px]">
+      <div className="flex items-center gap-2.5 text-role-title">
         <span className="text-muted-foreground">{icon}</span>
         {title}
       </div>
@@ -535,7 +535,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           ) : <span />}
 
           {/* Mitte: Pokémon-Name */}
-          <h2 className="flex-1 text-center text-[19px] font-extrabold leading-tight tracking-tight truncate">
+          <h2 className="flex-1 text-center text-role-h2 leading-tight tracking-tight truncate">
             <CardNameLabel card={card} />
           </h2>
 
@@ -634,7 +634,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
             {openSec.has('details') && (
               <div className="px-4 pb-4">
                 {card.artist && (
-                  <p className="text-[13px] text-muted-foreground pt-3">
+                  <p className="text-role-body text-muted-foreground pt-3">
                     Illustration: <span className="font-medium text-foreground">{card.artist}</span>
                   </p>
                 )}
@@ -643,11 +643,11 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                     {(species.genus || species.isLegendary || species.isMythical) && (
                       <div className={`flex items-center gap-2 mb-3 ${card.artist ? '' : 'pt-3'}`}>
                         {species.genus && (
-                          <p className="text-[13px] text-muted-foreground">{species.genus}</p>
+                          <p className="text-role-body text-muted-foreground">{species.genus}</p>
                         )}
                         {(species.isLegendary || species.isMythical) && (
                           <span
-                            className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                            className="text-role-badge px-2 py-0.5 rounded-full shrink-0"
                             style={{ background: 'rgba(234,179,8,.15)', color: '#ca9a04' }}
                           >
                             {species.isMythical ? 'Mystisch' : 'Legendär'}
@@ -659,34 +659,34 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                       {species.height > 0 && (
                         <div className="glass-inner rounded-[14px] px-3 py-2.5">
                           <div className="text-[15px] font-bold">{(species.height / 10).toFixed(1)} m</div>
-                          <div className="text-[11px] text-muted-foreground mt-0.5">Größe</div>
+                          <div className="text-role-label text-muted-foreground mt-0.5">Größe</div>
                         </div>
                       )}
                       {species.weight > 0 && (
                         <div className="glass-inner rounded-[14px] px-3 py-2.5">
                           <div className="text-[15px] font-bold">{(species.weight / 10).toFixed(1)} kg</div>
-                          <div className="text-[11px] text-muted-foreground mt-0.5">Gewicht</div>
+                          <div className="text-role-label text-muted-foreground mt-0.5">Gewicht</div>
                         </div>
                       )}
                       {species.region && (
                         <div className="glass-inner rounded-[14px] px-3 py-2.5">
                           <div className="text-[15px] font-bold">{species.region}</div>
-                          <div className="text-[11px] text-muted-foreground mt-0.5">Region</div>
+                          <div className="text-role-label text-muted-foreground mt-0.5">Region</div>
                         </div>
                       )}
                       {card.nationalDexNumber && (
                         <div className="glass-inner rounded-[14px] px-3 py-2.5">
                           <div className="text-[15px] font-bold">#{String(card.nationalDexNumber).padStart(3, '0')}</div>
-                          <div className="text-[11px] text-muted-foreground mt-0.5">Pokédex</div>
+                          <div className="text-role-label text-muted-foreground mt-0.5">Pokédex</div>
                         </div>
                       )}
                     </div>
                     {species.abilities && species.abilities.length > 0 && (
                       <div className="mb-3">
-                        <div className="text-[11px] font-semibold text-muted-foreground mb-1.5">Fähigkeiten</div>
+                        <div className="text-role-label text-muted-foreground mb-1.5">Fähigkeiten</div>
                         <div className="flex flex-wrap gap-1.5">
                           {species.abilities.map(a => (
-                            <span key={a.name} className="glass-inner text-[12px] font-medium px-2.5 py-1 rounded-full">
+                            <span key={a.name} className="glass-inner text-role-label px-2.5 py-1 rounded-full">
                               {a.name}
                               {a.hidden && <span className="text-muted-foreground"> (Versteckt)</span>}
                             </span>
@@ -696,13 +696,13 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                     )}
                     {species.stats && (
                       <div className="mb-3">
-                        <div className="text-[11px] font-semibold text-muted-foreground mb-1.5">Basiswerte</div>
+                        <div className="text-role-label text-muted-foreground mb-1.5">Basiswerte</div>
                         <div className="flex flex-col gap-1.5">
                           {STAT_ROWS.map(({ key, label }) => {
                             const value = species.stats![key];
                             return (
                               <div key={key} className="flex items-center gap-2">
-                                <span className="text-[11px] text-muted-foreground w-[92px] shrink-0">{label}</span>
+                                <span className="text-role-label text-muted-foreground w-[92px] shrink-0">{label}</span>
                                 <div className="flex-1 h-2 rounded-full bg-secondary overflow-hidden">
                                   <div
                                     className="h-full rounded-full"
@@ -717,7 +717,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                       </div>
                     )}
                     {species.flavorText && (
-                      <p className="text-[13px] text-muted-foreground leading-relaxed italic">
+                      <p className="text-role-body text-muted-foreground leading-relaxed italic">
                         „{species.flavorText}"
                       </p>
                     )}
@@ -727,15 +727,15 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                     {card.nationalDexNumber && (
                       <div className="glass-inner rounded-[14px] px-3 py-2.5 w-fit mb-3">
                         <div className="text-[15px] font-bold">#{String(card.nationalDexNumber).padStart(3, '0')}</div>
-                        <div className="text-[11px] text-muted-foreground mt-0.5">Pokédex</div>
+                        <div className="text-role-label text-muted-foreground mt-0.5">Pokédex</div>
                       </div>
                     )}
-                    {!card.artist && <p className="text-[13px] text-muted-foreground">Keine Details verfügbar</p>}
+                    {!card.artist && <p className="text-role-body text-muted-foreground">Keine Details verfügbar</p>}
                   </div>
                 ) : (
                   <div className={`flex items-center gap-2 ${card.artist ? '' : 'pt-3'}`}>
                     <div className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin shrink-0" />
-                    <p className="text-[13px] text-muted-foreground">Lade Details…</p>
+                    <p className="text-role-body text-muted-foreground">Lade Details…</p>
                   </div>
                 )}
               </div>
@@ -756,7 +756,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 {!evoLoaded ? (
                   <div className="flex items-center gap-2 pt-3">
                     <div className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin shrink-0" />
-                    <p className="text-[13px] text-muted-foreground">Lade Evolutionslinie…</p>
+                    <p className="text-role-body text-muted-foreground">Lade Evolutionslinie…</p>
                   </div>
                 ) : evoCards.length > 1 || specialForms.length > 0 ? (
                   <>
@@ -772,7 +772,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                       // Ohne Baum darüber (z.B. einstufige Legendäre wie Miraidon)
                       // keinen Trenner/Einzug — die Zeile steht dann für sich allein.
                       <div className={evoCards.length > 1 ? 'mt-2 pt-3 border-t border-[rgba(255,255,255,0.1)]' : 'pt-1'}>
-                        <div className="text-[11px] text-muted-foreground mb-2">Auch verfügbar als</div>
+                        <div className="text-role-label text-muted-foreground mb-2">Auch verfügbar als</div>
                         <div className="flex gap-2 overflow-x-auto">
                           {specialForms.map(sf => (
                             <button
@@ -803,7 +803,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                     )}
                   </>
                 ) : (
-                  <p className="text-[13px] text-muted-foreground pt-3">Keine Evolutionslinie</p>
+                  <p className="text-role-body text-muted-foreground pt-3">Keine Evolutionslinie</p>
                 )}
               </div>
             )}
@@ -834,10 +834,10 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                       {/* Variant-Zeile: Name + Owned-Badge + Preis + + Button */}
                       <div className="flex items-center justify-between gap-2 mb-2">
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-[14px] font-semibold">{VARIANT_LABELS[variant]}</span>
+                          <span className="text-role-title">{VARIANT_LABELS[variant]}</span>
                           {isOwned && (
                             <span
-                              className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                              className="text-role-badge px-1.5 py-0.5 rounded-full shrink-0"
                               style={{ background: 'rgba(72,187,120,.15)', color: 'var(--green, #48bb78)' }}
                             >
                               ✓
@@ -890,7 +890,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                         window.dispatchEvent(new Event('review-count-changed'));
                                         onSaved?.();
                                       }}
-                                      className="text-[11px] px-2 py-1 rounded flex items-center gap-1 shrink-0 text-white"
+                                      className="text-role-label px-2 py-1 rounded flex items-center gap-1 shrink-0 text-white"
                                       style={{ background: 'var(--action-delete)' }}
                                     >
                                       <CheckCircle2 size={11} /> Prüfen
@@ -898,7 +898,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                   )}
                                   <LanguageFlag lang={copy.language} size={16} />
                                   <span
-                                    className="text-[12px] font-semibold px-2 py-1 rounded border shrink-0"
+                                    className="text-role-label px-2 py-1 rounded border shrink-0"
                                     style={{
                                       borderColor: condColor,
                                       color: condColor,
@@ -913,7 +913,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                     tabIndex={0}
                                     onClick={() => router.push(binder ? `/binders/${binder.id}` : '/binders')}
                                     onKeyDown={(e) => e.key === 'Enter' && router.push(binder ? `/binders/${binder.id}` : '/binders')}
-                                    className="text-[13px] font-semibold pl-3 pr-2 py-1.5 rounded-full flex items-center gap-1.5 cursor-pointer shrink-0 ml-auto truncate"
+                                    className="text-role-title pl-3 pr-2 py-1.5 rounded-full flex items-center gap-1.5 cursor-pointer shrink-0 ml-auto truncate"
                                     style={{
                                       background: isDefaultBinder ? 'var(--secondary)' : 'rgba(66,153,225,.12)',
                                       border: isDefaultBinder
@@ -956,9 +956,9 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                   aria-label="Karte löschen"
                                 >
                                   {isDeleting
-                                    ? <span className="text-[10px]">…</span>
+                                    ? <span className="text-role-badge">…</span>
                                     : isConfirm
-                                      ? <span className="text-[11px] font-bold">OK?</span>
+                                      ? <span className="text-role-badge">OK?</span>
                                       : <Trash2 size={16} />
                                   }
                                 </button>
@@ -978,7 +978,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           <div className="mx-4 mb-4">
             <button
               onClick={toggleWishlist}
-              className="drawer-panel w-full h-[54px] rounded-[18px] flex items-center justify-center gap-2 text-[15px] font-semibold"
+              className="drawer-panel w-full h-[54px] rounded-[18px] flex items-center justify-center gap-2 text-role-title"
               style={wishlistItem ? { color: '#ef4444' } : undefined}
             >
               <Heart size={19} fill={wishlistItem ? '#ef4444' : 'none'} />
