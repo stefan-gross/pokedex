@@ -11,6 +11,7 @@ import Link from 'next/link';
 import type { SyncMeta } from '@/lib/firestore/catalog';
 import { getCards, deleteCard } from '@/lib/firestore/cards';
 import { getBinders, updateBinder } from '@/lib/firestore/binders';
+import { ButtonGroup } from '@/components/ui/button-group';
 
 const THEMES = [
   { value: 'system', label: 'System', icon: Smartphone },
@@ -425,26 +426,16 @@ export default function SettingsPage() {
           <div className="glass rounded-[20px] px-4 py-3 flex items-center justify-between gap-3">
             <p className="text-sm font-medium text-glass">Farbschema</p>
             {mounted && (
-              <div className="flex rounded-full p-0.5 bg-[rgba(30,40,80,0.08)] dark:bg-white/18">
-                {THEMES.map(({ value, label, icon: Icon }) => {
-                  const active = theme === value;
-                  return (
-                    <button
-                      key={value}
-                      onClick={() => setTheme(value)}
-                      aria-label={label}
-                      className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${active ? '' : 'text-glass-muted'}`}
-                      style={{
-                        background: active ? '#fff' : 'transparent',
-                        color: active ? 'var(--pokedex-red)' : undefined,
-                        boxShadow: active ? '0 1px 3px rgba(0,0,0,0.2)' : undefined,
-                      }}
-                    >
-                      <Icon size={18} strokeWidth={active ? 2.5 : 1.8} />
-                    </button>
-                  );
-                })}
-              </div>
+              <ButtonGroup
+                iconOnly
+                value={(theme ?? 'system') as 'system' | 'light' | 'dark'}
+                onChange={setTheme}
+                options={THEMES.map(({ value, label, icon: Icon }) => ({
+                  value,
+                  ariaLabel: label,
+                  label: <Icon size={18} strokeWidth={theme === value ? 2.5 : 1.8} style={{ color: theme === value ? 'var(--pokedex-red)' : undefined }} />,
+                }))}
+              />
             )}
           </div>
         </section>

@@ -1,58 +1,70 @@
-import { Button as ButtonPrimitive } from "@base-ui/react/button"
-import { cva, type VariantProps } from "class-variance-authority"
+'use client';
 
-import { cn } from "@/lib/utils"
+import { forwardRef } from 'react';
+import { cva, type VariantProps } from 'class-variance-authority';
+import { cn } from '@/lib/utils';
+import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
+
+const DEFAULT_ACCENT = '#e53e3e';   // var(--pokedex-red) als Hex — tintedGlassStyle braucht echte RGB-Werte, kein CSS-Var-Referenz
+const DEFAULT_DESTRUCTIVE = '#c53030'; // var(--action-delete)
 
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  'inline-flex items-center justify-center gap-1.5 font-semibold whitespace-nowrap transition-transform outline-none select-none active:scale-[.97] disabled:pointer-events-none disabled:opacity-40 rounded-xl',
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
-        outline:
-          "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
-        ghost:
-          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
-        destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
-        link: "text-primary underline-offset-4 hover:underline",
+        primary: 'text-white border-none',
+        secondary: 'glass-inner text-foreground border-none',
+        ghost: 'bg-transparent border-none',
+        destructive: 'text-white border-none',
+        icon: 'glass-inner rounded-full border-none p-0',
       },
       size: {
-        default:
-          "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
-        lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        icon: "size-8",
-        "icon-xs":
-          "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm":
-          "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
-        "icon-lg": "size-9",
+        sm: 'h-8 px-3 text-xs',
+        md: 'h-10 px-4 text-sm',
+        lg: 'h-11 px-5 text-base',
       },
     },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  }
-)
+    compoundVariants: [
+      { variant: 'icon', size: 'sm', class: 'w-8' },
+      { variant: 'icon', size: 'md', class: 'w-10' },
+      { variant: 'icon', size: 'lg', class: 'w-11' },
+    ],
+    defaultVariants: { variant: 'primary', size: 'md' },
+  },
+);
 
-function Button({
-  className,
-  variant = "default",
-  size = "default",
-  ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
-  return (
-    <ButtonPrimitive
-      data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
-      {...props}
-    />
-  )
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  /** Akzentfarbe (Hex) für primary/destructive (getönte Glas-Füllung) bzw.
+   *  ghost (Textfarbe) — z.B. `binder.color`. Default: App-Rot bzw. Löschen-Rot. */
+  accentColor?: string;
 }
 
-export { Button, buttonVariants }
+/**
+ * Zentrale Button-Komponente — 5 Varianten (primary/secondary/ghost/
+ * destructive/icon), 3 Größen (sm/md/lg), feste Radien/Höhen statt der
+ * bisher ~6 Ad-hoc-Stilfamilien app-weit. `primary`/`destructive` nutzen
+ * denselben getönten Glas-Look wie der Scan-FAB (`lib/ui/tinted-glass.ts`).
+ */
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { className, variant = 'primary', size = 'md', accentColor, style, ...props },
+  ref,
+) {
+  const isTinted = variant === 'primary' || variant === 'destructive';
+  const color = accentColor ?? (variant === 'destructive' ? DEFAULT_DESTRUCTIVE : DEFAULT_ACCENT);
+
+  return (
+    <button
+      ref={ref}
+      className={cn(buttonVariants({ variant, size, className }))}
+      style={{
+        ...(isTinted ? tintedGlassStyle(color) : undefined),
+        ...(variant === 'ghost' ? { color } : undefined),
+        ...style,
+      }}
+      {...props}
+    />
+  );
+});

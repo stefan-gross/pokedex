@@ -149,13 +149,13 @@ export function AddToCollectionModal({
   return createPortal((
     <div className={fromScanner ? 'dark fixed inset-0 z-[100] flex items-end' : 'fixed inset-0 z-[100] flex items-end'}>
       <div
-        className="absolute inset-0 transition-opacity duration-[250ms] bg-[rgba(240,242,248,0.5)] [backdrop-filter:saturate(0.55)_brightness(1.06)_blur(2px)] [-webkit-backdrop-filter:saturate(0.55)_brightness(1.06)_blur(2px)] dark:bg-[rgba(8,7,12,0.35)] dark:[backdrop-filter:saturate(0.5)_brightness(0.42)_blur(2px)] dark:[-webkit-backdrop-filter:saturate(0.5)_brightness(0.42)_blur(2px)]"
+        className="absolute inset-0 transition-opacity duration-[250ms] glass-sheet-backdrop"
         style={{ opacity: visible ? 1 : 0 }}
         onClick={handleClose}
       />
 
       <div
-        className="relative w-full rounded-t-[26px] bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(28,29,38,0.4)] border-t border-[rgba(255,255,255,0.85)] dark:border-[rgba(255,255,255,0.18)] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] dark:shadow-[0_-12px_40px_rgba(0,0,0,0.5)] [backdrop-filter:blur(34px)_saturate(1.5)] [-webkit-backdrop-filter:blur(34px)_saturate(1.5)] max-h-[90dvh] flex flex-col text-foreground"
+        className="relative w-full rounded-t-[26px] glass-sheet max-h-[90dvh] flex flex-col text-foreground"
         style={{
           transform: visible ? `translateY(${dragY}px)` : 'translateY(100%)',
           transition: sheetTransition,

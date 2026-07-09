@@ -7,6 +7,7 @@ import { CardGrid, CardGridSkeleton } from '@/components/card/CardGrid';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { ButtonGroup } from '@/components/ui/button-group';
+import { Switch } from '@/components/ui/switch';
 import { getCards } from '@/lib/firestore/cards';
 import { searchCatalog, searchCatalogByArtist, getCatalogCardsByIds, getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts, type CatalogCard } from '@/lib/firestore/catalog';
 import { searchTcgdexDe } from '@/lib/tcgdex';
@@ -755,23 +756,12 @@ function CollectionContent() {
                   );
                 })}
                 {!isBrowseMode && (
-                  <button
-                    onClick={() => setEvoLineActive(p => !p)}
-                    role="switch"
-                    aria-checked={evoLineActive}
-                    className="flex items-center gap-1.5 text-xs shrink-0 ml-auto pl-2"
-                  >
-                    <span
-                      className="w-8 h-[18px] rounded-full flex items-center shrink-0 transition-colors px-0.5"
-                      style={{ background: evoLineActive ? 'var(--pokedex-red)' : 'rgba(120,120,130,.3)' }}
-                    >
-                      <span
-                        className="w-[14px] h-[14px] rounded-full bg-white shadow-sm transition-transform"
-                        style={{ transform: evoLineActive ? 'translateX(14px)' : 'translateX(0)' }}
-                      />
-                    </span>
-                    <span className={evoLineActive ? '' : 'text-glass-muted'}>Evolutionslinie</span>
-                  </button>
+                  <Switch
+                    checked={evoLineActive}
+                    onChange={setEvoLineActive}
+                    label="Evolutionslinie"
+                    className="ml-auto pl-2"
+                  />
                 )}
               </div>
             )}
