@@ -9,8 +9,8 @@ import { BinderIcon } from '@/lib/binder-icons';
  *  abgewandt ist), Schein unten rechts (dort, wo die Kante das Licht
  *  reflektiert). Set-Logos/Typ-Icons bleiben ohne Prägung (eigene Farben/
  *  Detailgrafik, siehe readableTextColor). */
-const EMBOSS_TEXT_SHADOW = '-1px -1px 1px rgba(0,0,0,.4), 1px 1px 1px rgba(255,255,255,.35)';
-const EMBOSS_ICON_FILTER = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.4)) drop-shadow(1px 1px 1px rgba(255,255,255,.35))';
+const EMBOSS_TEXT_SHADOW = '-1px -1px 1px rgba(0,0,0,.3), 1px 1px 1px rgba(255,255,255,.25)';
+const EMBOSS_ICON_FILTER = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.3)) drop-shadow(1px 1px 1px rgba(255,255,255,.25))';
 
 /** Prägeeffekt braucht dennoch etwas Farbabstand zur Fläche, sonst ist der
  *  Titel trotz Schatten/Schein kaum lesbar (getestet: bei exakter
@@ -18,7 +18,7 @@ const EMBOSS_ICON_FILTER = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.4)) drop-shado
  *  mehr). Deshalb: Text = Flächenfarbe, aber um ~35-45% Richtung
  *  Schwarz/Weiß verschoben (helle Fläche → dunklerer Text, dunkle Fläche →
  *  hellerer Text) — bleibt in der Farbfamilie, ist aber klar lesbar. */
-function embossTextColor(bg: string): string {
+function embossTextColor(bg: string, amountOverride?: number): string {
   if (!bg?.startsWith('#')) return '#ffffff';
   const hex = bg.replace('#', '');
   const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
@@ -27,7 +27,7 @@ function embossTextColor(bg: string): string {
   const b = parseInt(full.slice(4, 6), 16);
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   const target = luminance > 0.5 ? 0 : 255;
-  const amount = luminance > 0.5 ? 0.35 : 0.45;
+  const amount = amountOverride ?? (luminance > 0.5 ? 0.35 : 0.45);
   const mix = (c: number) => Math.round(c + (target - c) * amount);
   return `#${[r, g, b].map(mix).map(v => v.toString(16).padStart(2, '0')).join('')}`;
 }
@@ -41,11 +41,16 @@ function coverFillColor(bg: string): string {
 }
 
 /** Text-/Icon-Farbe auf dem Deckel: Prägeeffekt (Farbversatz zur Fläche),
- *  AUSSER bei reinem Weiß — dort wirkt die Fläche durch Textur/Overlays
- *  ohnehin schon gräulich, also volles Weiß statt zusätzlich abgedunkelter
- *  Mischfarbe (sonst wirkt Text/Icon auf dem "grauen Weiß" nochmal grauer). */
+ *  mit zwei Sonderfällen:
+ *  - Reines Weiß: die Fläche wirkt durch Textur/Overlays ohnehin schon
+ *    gräulich, also volles Weiß statt zusätzlich abgedunkelter Mischfarbe.
+ *  - Anthrazit (die Schwarz-Darstellung, siehe coverFillColor): dunkleres
+ *    Grau als die generische Mischung (kleinerer Aufhellungs-Anteil), damit
+ *    Text/Icon auf Schwarz nicht zu hell/auffällig wirkt. */
 function coverAccentColor(bg: string): string {
-  return bg?.toLowerCase() === '#ffffff' ? '#ffffff' : embossTextColor(bg);
+  if (bg?.toLowerCase() === '#ffffff') return '#ffffff';
+  if (bg?.toLowerCase() === '#2c2e33') return embossTextColor(bg, 0.25);
+  return embossTextColor(bg);
 }
 
 interface Props {
@@ -105,7 +110,11 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   const rounding = ROUNDING[shape];
   const uid = useId().replace(/:/g, '');
 
-  const outerShadow = isBox ? '0 3px 8px rgba(0,0,0,.10)' : '0 6px 18px rgba(0,0,0,.18)';
+  // Negativer Spread zieht die schattenwerfende Fläche vor dem Weichzeichnen
+  // etwas ein, damit der Schatten nicht als sichtbare Kontur rings um die
+  // Kachel (auch oben/links) erscheint, sondern nur als weiche Erhebung
+  // unterhalb sichtbar wird.
+  const outerShadow = isBox ? '0 4px 10px -4px rgba(0,0,0,.22)' : '0 8px 20px -6px rgba(0,0,0,.28)';
   const fill = coverFillColor(color);
   // "Basis"-Icons (Lucide, kein type:/set:-Präfix) werden wie der Titel-Text
   // geprägt dargestellt (Farbversatz zur Fläche). Set-Logos/Typ-Icons bleiben
