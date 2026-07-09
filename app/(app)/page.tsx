@@ -14,6 +14,7 @@ import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { getCountFromServer, collection, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { SetListItem } from '@/components/set/SetListItem';
+import { ButtonGroup } from '@/components/ui/button-group';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import type { CardDoc, BinderDoc } from '@/types';
 
@@ -200,20 +201,19 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-role-h2 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.25)]">Sets</h2>
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-0.5 p-1 rounded-full bg-[rgba(30,40,80,0.07)] dark:bg-white/10">
-                <ViewBtn active={setView === 'favorites'} onClick={() => setSetView('favorites')} label="Meiste Karten">
-                  <Star size={17} />
-                </ViewBtn>
-                <ViewBtn active={setView === 'recent'} onClick={() => setSetView('recent')} label="Zuletzt aktiv">
-                  <Clock size={17} />
-                </ViewBtn>
-                <ViewBtn active={setView === 'complete'} onClick={() => setSetView('complete')} label="Vollständigste">
-                  <Percent size={17} />
-                </ViewBtn>
-              </div>
+              <ButtonGroup
+                iconOnly
+                value={setView}
+                onChange={setSetView}
+                options={[
+                  { value: 'favorites', label: <Star size={17} />, ariaLabel: 'Meiste Karten' },
+                  { value: 'recent',    label: <Clock size={17} />, ariaLabel: 'Zuletzt aktiv' },
+                  { value: 'complete',  label: <Percent size={17} />, ariaLabel: 'Vollständigste' },
+                ]}
+              />
               <Link
                 href="/sets"
-                className="inline-flex items-center justify-center min-h-11 px-4 text-role-title text-glass rounded-full bg-[rgba(30,40,80,0.06)] dark:bg-white/10 border border-[rgba(30,40,80,0.15)] dark:border-white/35"
+                className="inline-flex items-center min-h-11 text-role-title text-glass"
               >
                 Alle
               </Link>
@@ -379,20 +379,6 @@ function StatChip({ label, value }: { label: string; value: string }) {
       <span className="text-role-metric leading-none tabular-nums text-glass">{value}</span>
       <span className="text-role-label text-glass-muted">{label}</span>
     </div>
-  );
-}
-
-function ViewBtn({ active, onClick, label, children }: {
-  active: boolean; onClick: () => void; label: string; children: React.ReactNode
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={label}
-      className={`w-11 h-11 flex items-center justify-center rounded-full transition-colors ${active ? 'bg-white text-[#e53e3e]' : 'text-glass-muted'}`}
-    >
-      {children}
-    </button>
   );
 }
 
