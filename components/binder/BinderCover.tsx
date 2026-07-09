@@ -117,11 +117,12 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
 
   const fill = coverFillColor(color);
   const isAnthracite = fill?.toLowerCase() === '#2c2e33';
-  // Basis- UND Typ-Icons (alles außer Set-Logos) werden wie der Titel-Text
-  // geprägt dargestellt (gleicher Farbversatz zur Fläche). Set-Logos bleiben
-  // farblich unverändert (eigene Detailgrafik) und bekommen nur den
-  // Prägeschatten, keine Farbänderung.
-  const isColorableIcon = !!icon && !icon.startsWith('set:');
+  // NUR Basis-Icons (Lucide, kein type:/set:-Präfix) werden wie der
+  // Titel-Text eingefärbt+geprägt. Typ-Icons (EnergyIcon) und Set-Logos
+  // behalten ihre eigenen Farben (Detailgrafik bzw. Typ-Branding) und
+  // bekommen nur den Prägeschatten obendrauf, keine Farbänderung — gilt
+  // gleichermaßen für Binder und Box (gleicher Code-Pfad, siehe unten).
+  const isColorableIcon = !!icon && !icon.startsWith('type:') && !icon.startsWith('set:');
   const iconColor = isColorableIcon ? coverAccentColor(fill) : undefined;
   const iconFilter = isAnthracite ? EMBOSS_ICON_FILTER_DARK : EMBOSS_ICON_FILTER;
   const textColor = coverAccentColor(fill);
