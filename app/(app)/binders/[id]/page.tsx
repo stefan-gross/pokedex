@@ -259,8 +259,8 @@ export default function BinderDetailPage({ params }: Props) {
             className="shrink-0"
           />
           <div className="flex-1 min-w-0">
-            <h1 className="font-semibold truncate text-glass">{binder.name}</h1>
-            <p className="text-xs text-glass-muted">
+            <h1 className="text-role-h2 truncate text-glass">{binder.name}</h1>
+            <p className="text-role-label text-glass-muted">
               {layoutLabel}
               {!totalValue.loading && totalValue.withPrice > 0 && (
                 <span className="ml-1.5 font-semibold" style={{ color: binderColor }}>

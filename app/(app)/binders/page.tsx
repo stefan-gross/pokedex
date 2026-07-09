@@ -47,8 +47,8 @@ export default function BindersPage() {
       {/* Header */}
       <div className="px-4 pt-4 pb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Sammlungen</h1>
-          <p className="text-sm text-glass-muted">{binders.length} {binders.length === 1 ? 'Sammlung' : 'Sammlungen'}</p>
+          <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Sammlungen</h1>
+          <p className="text-role-body text-glass-muted">{binders.length} {binders.length === 1 ? 'Sammlung' : 'Sammlungen'}</p>
         </div>
         <button
           onClick={() => setShowCreate(true)}
@@ -69,8 +69,8 @@ export default function BindersPage() {
         {!loading && binders.length === 0 && (
           <div className="text-center pt-16 space-y-3">
             <div className="flex justify-center"><Folder size={48} className="text-glass-muted" /></div>
-            <p className="font-semibold text-glass">Noch keine Sammlungen</p>
-            <p className="text-sm text-glass-muted">Erstelle deinen ersten Binder oder eine Box, um Karten zu organisieren</p>
+            <p className="text-role-title text-glass">Noch keine Sammlungen</p>
+            <p className="text-role-body text-glass-muted">Erstelle deinen ersten Binder oder eine Box, um Karten zu organisieren</p>
             <button
               onClick={() => setShowCreate(true)}
               className="mt-2 px-5 py-2.5 rounded-full text-sm font-semibold text-white"
