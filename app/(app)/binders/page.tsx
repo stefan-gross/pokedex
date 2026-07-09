@@ -8,6 +8,7 @@ import { getCards } from '@/lib/firestore/cards';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { BinderCover } from '@/components/binder/BinderCover';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
+import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import type { BinderDoc, CardDoc } from '@/types';
 
 export default function BindersPage() {
@@ -52,13 +53,7 @@ export default function BindersPage() {
         <button
           onClick={() => setShowCreate(true)}
           className="w-9 h-9 rounded-full flex items-center justify-center text-white"
-          style={{
-            background: 'rgba(47,133,90,0.85)',
-            backdropFilter: 'blur(10px) saturate(1.4)',
-            WebkitBackdropFilter: 'blur(10px) saturate(1.4)',
-            border: '1.5px solid rgba(255,255,255,0.5)',
-            boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.6), 0 0 14px rgba(47,133,90,0.5), 0 4px 12px rgba(0,0,0,0.3)',
-          }}
+          style={tintedGlassStyle('#2f855a')}
         >
           <Plus size={20} />
         </button>
@@ -79,13 +74,7 @@ export default function BindersPage() {
             <button
               onClick={() => setShowCreate(true)}
               className="mt-2 px-5 py-2.5 rounded-full text-sm font-semibold text-white"
-              style={{
-                background: 'rgba(47,133,90,0.85)',
-                backdropFilter: 'blur(10px) saturate(1.4)',
-                WebkitBackdropFilter: 'blur(10px) saturate(1.4)',
-                border: '1.5px solid rgba(255,255,255,0.5)',
-                boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.6), 0 0 14px rgba(47,133,90,0.5), 0 4px 12px rgba(0,0,0,0.3)',
-              }}
+              style={tintedGlassStyle('#2f855a')}
             >
               Erste Sammlung erstellen
             </button>

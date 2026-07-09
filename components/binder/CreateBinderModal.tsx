@@ -11,32 +11,12 @@ import { getAllSets, filterSets, type TcgSet } from '@/lib/firestore/sets';
 import { SERIES_NAMES_DE } from '@/lib/card-constants';
 import { BINDER_SIZES, type BinderSize } from '@/lib/binder-sizes';
 import { initialSheetCount } from '@/lib/binder-sheets';
+import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import type { BinderDoc, BinderPage } from '@/types';
 
 type PickerTab = 'icons' | 'types' | 'set';
 
 const COLORS = ['#e53e3e', '#ed8936', '#ecc94b', '#48bb78', '#38b2ac', '#4299e1', '#667eea', '#ed64a6'];
-
-function hexToRgb(hex: string): string {
-  const h = hex.replace('#', '');
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  return `${r},${g},${b}`;
-}
-
-/** Getönter Glas-Chip für den primären Aktions-Button — dasselbe Rezept wie
- *  der Scan-FAB (BottomNav) und die Aktions-Buttons auf der Sammlungsseite. */
-function tintedGlassStyle(hex: string): React.CSSProperties {
-  const rgb = hexToRgb(hex);
-  return {
-    background: `rgba(${rgb},0.85)`,
-    backdropFilter: 'blur(10px) saturate(1.4)',
-    WebkitBackdropFilter: 'blur(10px) saturate(1.4)',
-    border: '1.5px solid rgba(255,255,255,0.5)',
-    boxShadow: `inset 0 1px 2px rgba(255,255,255,0.6), 0 0 14px rgba(${rgb},0.5), 0 4px 12px rgba(0,0,0,0.3)`,
-  };
-}
 
 interface Props {
   existing?: BinderDoc;
@@ -112,14 +92,21 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end">
-      <div className="absolute inset-0 bg-black/80" onClick={onClose} />
-      <div className="relative w-full rounded-t-2xl glass border-t border-white/20 dark:border-white/10 flex flex-col max-h-[85dvh]">
-        <div className="w-10 h-1 rounded-full bg-white/30 mx-auto mt-3 mb-1 shrink-0" />
+      {/* Backdrop — entsättigt & dimmt die Seite dahinter, wie bei jedem anderen
+          Drawer in der App (CardDetailSheet/AddToCollectionModal), statt einer
+          eigenen Schwarz-Abdunkelung — Konsistenz-Vorgabe: ein Muster für alle
+          Drawer statt abweichender Ad-hoc-Werte pro Modal. */}
+      <div
+        className="absolute inset-0 transition-opacity duration-[250ms] bg-[rgba(240,242,248,0.5)] [backdrop-filter:saturate(0.55)_brightness(1.06)_blur(2px)] [-webkit-backdrop-filter:saturate(0.55)_brightness(1.06)_blur(2px)] dark:bg-[rgba(8,7,12,0.35)] dark:[backdrop-filter:saturate(0.5)_brightness(0.42)_blur(2px)] dark:[-webkit-backdrop-filter:saturate(0.5)_brightness(0.42)_blur(2px)]"
+        onClick={onClose}
+      />
+      <div className="relative w-full rounded-t-2xl bg-[rgba(255,255,255,0.42)] dark:bg-[rgba(28,29,38,0.4)] border-t border-[rgba(255,255,255,0.85)] dark:border-[rgba(255,255,255,0.18)] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] dark:shadow-[0_-12px_40px_rgba(0,0,0,0.5)] [backdrop-filter:blur(34px)_saturate(1.5)] [-webkit-backdrop-filter:blur(34px)_saturate(1.5)] max-h-[93dvh] flex flex-col">
+        <div className="w-9 h-1 rounded-full bg-[rgba(46,46,50,0.2)] dark:bg-white/30 mx-auto mt-3 mb-1 shrink-0" />
         <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 pt-2">
 
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-glass">{existing ? 'Sammlung bearbeiten' : 'Neue Sammlung'}</h2>
-          <button onClick={onClose} className="w-7 h-7 rounded-full glass-inner flex items-center justify-center text-glass">
+          <h2 className="font-semibold">{existing ? 'Sammlung bearbeiten' : 'Neue Sammlung'}</h2>
+          <button onClick={onClose} className="w-7 h-7 rounded-full glass-inner flex items-center justify-center">
             <X size={14} />
           </button>
         </div>
@@ -127,7 +114,7 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
         {/* Typ-Auswahl — nur beim Erstellen */}
         {!existing && (
           <div className="mb-4">
-            <label className="text-xs text-glass-muted mb-1.5 block">Typ</label>
+            <label className="text-xs text-muted-foreground mb-1.5 block">Typ</label>
             <div className="grid grid-cols-2 gap-2">
               {([['binder', 'folder', 'Binder', 'Ordner mit Seitenraster'], ['box', 'box', 'Box', 'Offene Box ohne Limit']] as const).map(
                 ([val, iconKey, label, sub]) => (
@@ -144,8 +131,8 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
                     }}
                   >
                     <BinderIcon name={iconKey} size={22} className="mt-0.5" style={{ color: collectionType === val ? color : undefined }} />
-                    <span className="text-sm font-semibold mt-1 text-glass">{label}</span>
-                    <span className="text-[10px] text-glass-muted">{sub}</span>
+                    <span className="text-sm font-semibold mt-1">{label}</span>
+                    <span className="text-[10px] text-muted-foreground">{sub}</span>
                   </button>
                 )
               )}
@@ -155,19 +142,19 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
 
         {/* Name */}
         <div className="mb-3">
-          <label className="text-xs text-glass-muted mb-1 block">Name</label>
+          <label className="text-xs text-muted-foreground mb-1 block">Name</label>
           <input
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder={isBinder ? 'z.B. Elektro-Stars' : 'z.B. Hoenn-Box'}
-            className="w-full h-10 px-3 rounded-xl glass-inner text-glass text-sm focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-glass-muted"
+            className="w-full h-10 px-3 rounded-xl glass-inner text-sm focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
           />
         </div>
 
         {/* Icon picker */}
         <div className="mb-3">
-          <label className="text-xs text-glass-muted mb-1.5 block">Icon</label>
+          <label className="text-xs text-muted-foreground mb-1.5 block">Icon</label>
 
           {/* Tabs */}
           <ButtonGroup
@@ -217,19 +204,19 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
           {pickerTab === 'set' && (
             <div>
               <div className="relative mb-2">
-                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-glass-muted pointer-events-none" />
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                 <input
                   type="search"
                   value={setQuery}
                   onChange={e => setSetQuery(e.target.value)}
                   placeholder="Name oder Kürzel (z.B. PAL)"
-                  className="w-full h-8 pl-7 pr-3 rounded-lg glass-inner text-glass text-xs focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-glass-muted"
+                  className="w-full h-8 pl-7 pr-3 rounded-lg glass-inner text-xs focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
                 />
               </div>
               {allSets.length === 0 ? (
-                <p className="text-xs text-glass-muted text-center py-3">Lade Sets…</p>
+                <p className="text-xs text-muted-foreground text-center py-3">Lade Sets…</p>
               ) : filteredSets.length === 0 ? (
-                <p className="text-xs text-glass-muted text-center py-3">Kein Set gefunden</p>
+                <p className="text-xs text-muted-foreground text-center py-3">Kein Set gefunden</p>
               ) : (
                 <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
                   {filteredSets.map(s => (
@@ -258,15 +245,15 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
                       </div>
                       {/* Name + Serie */}
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs font-semibold truncate text-glass">{s.nameDe ?? s.name}</div>
-                        <div className="text-[10px] text-glass-muted truncate">
+                        <div className="text-xs font-semibold truncate">{s.nameDe ?? s.name}</div>
+                        <div className="text-[10px] text-muted-foreground truncate">
                           {SERIES_NAMES_DE[s.series] ?? s.series}
                         </div>
                       </div>
                       {/* Kürzel-Badge */}
                       {s.ptcgoCode && (
                         <span
-                          className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border shrink-0 text-glass"
+                          className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border shrink-0"
                           style={{ borderColor: 'currentcolor' }}
                         >
                           {s.ptcgoCode}
@@ -282,7 +269,7 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
 
         {/* Color picker */}
         <div className="mb-3">
-          <label className="text-xs text-glass-muted mb-1 block">Farbe</label>
+          <label className="text-xs text-muted-foreground mb-1 block">Farbe</label>
           <div className="flex gap-2">
             {COLORS.map(c => (
               <button
@@ -302,7 +289,7 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
         {isBinder && (
           <>
             <div className="mb-5">
-              <label className="text-xs text-glass-muted mb-1 block">Seitenlayout</label>
+              <label className="text-xs text-muted-foreground mb-1 block">Seitenlayout</label>
               <ButtonGroup
                 value={String(size)}
                 onChange={v => setSize(Number(v) as BinderSize)}
@@ -311,8 +298,8 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
             </div>
 
             <div className="mb-5">
-              <label className="text-xs text-glass-muted mb-1 block">
-                Kapazität <span className="text-glass-muted/60">(optional)</span>
+              <label className="text-xs text-muted-foreground mb-1 block">
+                Kapazität <span className="text-muted-foreground/60">(optional)</span>
               </label>
               <input
                 type="number"
@@ -322,12 +309,12 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
                 value={capacity}
                 onChange={e => setCapacity(e.target.value.replace(/[^0-9]/g, ''))}
                 placeholder="z.B. 400 — wie viele Karten passen rein?"
-                className="w-full h-10 rounded-md glass-inner text-glass px-3 text-sm placeholder:text-glass-muted"
+                className="w-full h-10 rounded-md glass-inner px-3 text-sm placeholder:text-muted-foreground"
               />
             </div>
 
             <div className="mb-5">
-              <label className="text-xs text-glass-muted mb-1 block">Seiten-Hintergrund</label>
+              <label className="text-xs text-muted-foreground mb-1 block">Seiten-Hintergrund</label>
               <ButtonGroup
                 value={pageBg}
                 onChange={setPageBg}

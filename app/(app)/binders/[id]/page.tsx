@@ -33,6 +33,7 @@ import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal
 import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
 import { findVariantPrice, PRICE_COLOR } from '@/lib/prices/value-tier';
+import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import type { PriceResult } from '@/lib/prices/types';
 import type { BinderDoc, BinderPage, CardDoc } from '@/types';
 
@@ -45,20 +46,8 @@ type View = 'binder' | 'page' | 'grid';
 /** Resolved Hintergrund-Farbe basierend auf Binder-Setting. */
 const MILKY_BG = 'rgba(255, 255, 255, 0.55)';
 
-// Getönte Glas-Chips für Aktions-Buttons (Hinzufügen/Löschen) — dasselbe
-// Rezept wie der Scan-FAB (BottomNav) und der „+"-Button auf der
-// Sammlungsübersicht: blur + Sättigung + heller Innenrand + farbiger Glow.
-function tintedGlassStyle(rgb: string): React.CSSProperties {
-  return {
-    background: `rgba(${rgb},0.85)`,
-    backdropFilter: 'blur(10px) saturate(1.4)',
-    WebkitBackdropFilter: 'blur(10px) saturate(1.4)',
-    border: '1.5px solid rgba(255,255,255,0.5)',
-    boxShadow: `inset 0 1px 2px rgba(255,255,255,0.6), 0 0 12px rgba(${rgb},0.5), 0 3px 10px rgba(0,0,0,0.3)`,
-  };
-}
-const ADD_GLASS_STYLE    = tintedGlassStyle('47,133,90');
-const DELETE_GLASS_STYLE = tintedGlassStyle('197,48,48');
+const ADD_GLASS_STYLE    = tintedGlassStyle('#2f855a');
+const DELETE_GLASS_STYLE = tintedGlassStyle('#c53030');
 
 function resolvePageBg(setting: 'black' | 'white' | 'transparent' | undefined): string {
   switch (setting) {
