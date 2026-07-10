@@ -130,10 +130,15 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   // ist der Kontrast garantiert richtig herum; der Schein bleibt nur noch
   // als dezenter Zusatz obendrauf.
   const textBgColor = coverAccentColor(fill, isAnthracite ? 0.15 : 0.4);
-  const textShadowColor = hexToRgba(embossTextColor(fill, isAnthracite ? 0.6 : 0.55, 255), 0.28);
+  // Nur auf Anthrazit/Schwarz zusätzlich einen dunklen Gegenschatten +
+  // helleren Schein — auf den übrigen Farben bleibt es beim bisherigen
+  // einzelnen, dezenten Schein (unverändert).
+  const textShineColor = hexToRgba(embossTextColor(fill, isAnthracite ? 0.75 : 0.55, 255), isAnthracite ? 0.65 : 0.28);
   const engravedTextStyle: CSSProperties = {
     color: textBgColor,
-    textShadow: `${textShadowColor} 0.5px 0.8px 0.4px`,
+    textShadow: isAnthracite
+      ? `${hexToRgba(embossTextColor(fill, 0.7, 0), 0.55)} -0.6px -0.9px 0.4px, ${textShineColor} 0.6px 0.9px 0.4px`
+      : `${textShineColor} 0.5px 0.8px 0.4px`,
   };
   // Icons: gleiche (aus der Binderfarbe abgeleitete) Schein-Farbe wie beim
   // Text, aber kräftiger als der Text-Schatten — auf einer durchgehenden
