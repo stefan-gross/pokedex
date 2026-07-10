@@ -124,10 +124,17 @@ function PreviewTile({
             alignItems: 'flex-end',
             justifyContent: 'space-between',
             padding: '10px 14px',
-            // Gleicher linker Schatten-Verlauf wie am Ordner-Cover selbst
-            // (BinderCover.tsx: "Leichter vertikaler Schatten links"), vor
-            // die etwas aufgehellte Binderfarbe gelegt.
-            background: `linear-gradient(90deg, rgba(0,0,0,.3) 0%, rgba(0,0,0,0) 9%), ${bandColor}`,
+            // Gleiches Glanzlicht oben links + (nur bei Bindern) derselbe
+            // linke Schatten-Verlauf wie am Ordner-Cover selbst
+            // (BinderCover.tsx: "Leder-/Vinyl-Glanzlicht" bzw. "Leichter
+            // vertikaler Schatten links"), vor die etwas aufgehellte
+            // Binderfarbe gelegt. Boxen bekommen keinen linken Schatten
+            // (dort gibt es am Körper auch keinen vergleichbaren Schatten).
+            background: [
+              'linear-gradient(135deg, rgba(255,255,255,.38) 0%, rgba(255,255,255,.10) 20%, rgba(255,255,255,0) 42%)',
+              ...(isBox ? [] : ['linear-gradient(90deg, rgba(0,0,0,.3) 0px, rgba(0,0,0,0) 26px)']),
+              bandColor,
+            ].join(', '),
             boxShadow: '0 3px 6px rgba(0,0,0,.35)',
             filter: `url(#banderole-grain-${grainUid})`,
             // Box: keine Eckenrundung, einfaches Rechteck. Binder: rechte
