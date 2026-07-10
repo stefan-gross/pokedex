@@ -9,6 +9,7 @@ import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { BinderCover } from '@/components/binder/BinderCover';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
+import { readableTextColor } from '@/lib/color-utils';
 import type { BinderDoc, CardDoc } from '@/types';
 
 export default function BindersPage() {
@@ -112,7 +113,7 @@ export default function BindersPage() {
 // components/binder/BinderCover.tsx).
 const TILE_RADIUS = 20;
 const BANDEROLE_GAP = 6;
-const BANDEROLE_HEIGHT = 36;
+const BANDEROLE_HEIGHT = 28;
 // Sehr kleine Rundung an den "normalen" Ecken (oben links/rechts, unten
 // links) — nur die Binder-Ecke unten rechts bekommt stattdessen die an die
 // Kachel-Rundung angeglichene große Kurve (siehe banderoleClipPath).
@@ -159,6 +160,9 @@ function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; 
   const wishlistCount = binder.wishlistCardIds?.length ?? 0;
   const grainUid = useId().replace(/:/g, '');
   const bandColor = lightenColor(binder.color ?? '#e53e3e', 0.14);
+  // Bei hellen Sammlungsfarben (z.B. Weiß) wäre weißer Text auf der
+  // ebenfalls hellen Banderole unlesbar — luminanzbasierte Kontrastfarbe.
+  const bandTextColor = readableTextColor(bandColor);
 
   // Tatsächliche Kachelbreite messen (responsives Grid, kein fester Wert)
   // — die Bogenberechnung für die Binder-Ecke unten rechts braucht echte
@@ -217,8 +221,10 @@ function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; 
             selbst. Sehr kleine Rundung an 3 Ecken, unten rechts bei
             Bindern folgt stattdessen exakt der Kachel-Rundung. */}
         <div
-          className="absolute flex items-end justify-between px-3.5 py-2.5"
+          className="absolute flex items-end justify-between px-3.5"
           style={{
+            paddingTop: 6,
+            paddingBottom: 6,
             bottom: BANDEROLE_GAP,
             left: isBox ? 'calc(4 / 300 * 100% - 1px)' : -1,
             right: isBox ? 'calc(4 / 300 * 100% - 1px)' : -1,
@@ -232,12 +238,12 @@ function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; 
             clipPath: isBox || tileWidth === 0 ? undefined : banderoleClipPath(tileWidth),
           }}
         >
-          <span className="font-sans font-bold truncate" style={{ fontSize: 15, color: '#fff' }}>
+          <span className="font-sans font-bold truncate" style={{ fontSize: 13, color: bandTextColor }}>
             {!totalValue.loading && totalValue.withPrice > 0
               ? `≈ ${totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
               : ''}
           </span>
-          <span className="font-sans font-bold shrink-0 tabular-nums" style={{ fontSize: 15, color: '#fff' }}>
+          <span className="font-sans font-bold shrink-0 tabular-nums" style={{ fontSize: 13, color: bandTextColor }}>
             {cardCount} {cardCount === 1 ? 'Karte' : 'Karten'}
           </span>
         </div>
