@@ -144,6 +144,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
     // Deckkraft, verwäscht die Textfarbe also nicht (anders als der frühere
     // Opacity-Ansatz).
     filter: `url(#icon-grain-${uid})`,
+    opacity: 0.82,
   };
   // Icons: gleiche (aus der Binderfarbe abgeleitete) Schein-Farbe wie beim
   // Text, aber kräftiger als der Text-Schatten — auf einer durchgehenden
