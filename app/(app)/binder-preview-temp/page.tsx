@@ -152,7 +152,7 @@ function PreviewTile({
           }}
         >
           <span className="font-sans" style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>≈ 42 €</span>
-          <span className="font-sans" style={{ fontSize: 15, color: '#fff', opacity: 0.85 }}>7 Karten</span>
+          <span className="font-sans" style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>7 Karten</span>
         </div>
       </div>
     </div>
