@@ -26,7 +26,7 @@ export const BINDER_ICON_MAP: Record<string, LucideIcon> = {
 
 export const BINDER_ICON_KEYS = Object.keys(BINDER_ICON_MAP);
 
-export function BinderIcon({ name, size = 20, className, style }: { name?: string; size?: number; className?: string; style?: React.CSSProperties }) {
+export function BinderIcon({ name, size = 20, className, style, strokeWidth }: { name?: string; size?: number; className?: string; style?: React.CSSProperties; strokeWidth?: number }) {
   // Hook muss unabhängig vom `name`-Zweig immer aufgerufen werden (Rules of
   // Hooks) — löst nur einen Fetch aus, wenn setId gesetzt ist.
   const setId = name?.startsWith('set:') ? name.slice(4) : undefined;
@@ -58,5 +58,5 @@ export function BinderIcon({ name, size = 20, className, style }: { name?: strin
     );
   }
   const Icon = (name && BINDER_ICON_MAP[name]) ? BINDER_ICON_MAP[name] : Folder;
-  return <Icon size={size} className={className} style={style} />;
+  return <Icon size={size} className={className} style={style} strokeWidth={strokeWidth} />;
 }

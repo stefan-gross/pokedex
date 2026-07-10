@@ -114,13 +114,14 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   // ihre eigenen Farben (Detailgrafik bzw. Typ-Branding) — alle drei
   // Icon-Arten UND der Text teilen sich aber denselben Schatten/Körnung.
   const isColorableIcon = !!icon && !icon.startsWith('type:') && !icon.startsWith('set:');
-  // Lucide-Glyphen (z.B. "folder") haben viel eigenen Innenabstand im
-  // 24x24-Raster (füllen nur ~70% der Höhe) — anders als Typ-Icons, die
-  // einen fast randfüllenden Farbkreis zeichnen (~96%). Bei gleicher
-  // Zielgröße wirkt ein Basis-Icon dadurch deutlich kleiner/dünner. Größere
-  // Zielgröße für Basis-Icons gleicht das optisch an, ohne Typ-/Set-Icons
-  // anzufassen (die schon "voll" wirken).
-  const iconSize = isColorableIcon ? 72 : 56;
+  // Lucide-Glyphen (z.B. "folder") sind dünne Outline-Symbole (2px-Strich,
+  // viel Leerraum im 24x24-Raster, füllen nur ~70% der Höhe) — anders als
+  // Typ-Icons, die eine randfüllende, VOLLFLÄCHIGE Farbe zeichnen (~96%).
+  // Eine größere Box allein reicht nicht, um das optisch anzugleichen (eine
+  // dünne Linie bleibt eine dünne Linie) — zusätzlich zur größeren
+  // Zielgröße wird deshalb auch die Strichstärke kräftiger gezeichnet.
+  const iconSize = isColorableIcon ? 84 : 56;
+  const iconStrokeWidth = isColorableIcon ? 2.75 : undefined;
   // ECHTE (deckende) Farbe, leicht dunkler als die Fläche (coverAccentColor,
   // 40%/15% Anthrazit) — der background-clip:text-Trick wurde verworfen,
   // weil der helle Schein bei unserer kleinen Schriftgröße (15-19px) breiter
@@ -260,6 +261,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
               <BinderIcon
                 name={icon}
                 size={iconSize}
+                strokeWidth={iconStrokeWidth}
                 style={{ color: iconColor, filter: iconShadowFilter, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: iconSize }}
               />
             )}
@@ -274,6 +276,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
               <BinderIcon
                 name={icon}
                 size={iconSize}
+                strokeWidth={iconStrokeWidth}
                 style={{ color: iconColor, filter: iconShadowFilter, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: iconSize }}
               />
             </div>
