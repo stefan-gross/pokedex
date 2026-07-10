@@ -88,9 +88,13 @@ const FOLDER_STITCH_PATH = (() => {
 })();
 
 // ── Box ──────────────────────────────────────────────────────────────────
-// Deckel (oben, Kanten berühren die Kachel-Ecken) und Körper (unten, an den
-// Seiten leicht eingezogen) sind zwei eigenständige Rechtecke, die exakt an
-// der Deckel-Unterkante zusammenschließen — kein Diagonal-Knick.
+// Deckel (oben, Kanten berühren die Kachel-Ecken) und Körper (unten) sind
+// zwei eigenständige Rechtecke, die exakt an der Deckel-Unterkante
+// zusammenschließen — kein Diagonal-Knick. Beide nutzen an der Naht-Kurve
+// dieselbe Breite (3-297) statt unterschiedlicher Insets — ein Breiten-
+// Unterschied dort erzeugte einen sichtbaren kleinen "Absatz" genau an der
+// Ecke (dünner Lid-Streifen, den der schmalere Body nicht überdeckt),
+// gerade bei der jetzt viel tieferen Wölbung deutlich sichtbar.
 const BOX_LID_HEIGHT = 131;
 // Deckel-Unterkante rundet sich nach unten ab — Kubische Bezier mit
 // Kontrollpunkten SENKRECHT unter den Eckpunkten (nicht seitlich versetzt
@@ -102,8 +106,17 @@ const BOX_LID_HEIGHT = 131;
 const BOX_LID_DIP = 24;
 const BOX_LID_PATH  = `M9 0 L291 0 Q297 0 297 6 L297 ${BOX_LID_HEIGHT} `
   + `C297 ${BOX_LID_HEIGHT + BOX_LID_DIP} 3 ${BOX_LID_HEIGHT + BOX_LID_DIP} 3 ${BOX_LID_HEIGHT} L3 6 Q3 0 9 0 Z`;
-const BOX_BODY_PATH = `M6 ${BOX_LID_HEIGHT} C6 ${BOX_LID_HEIGHT + BOX_LID_DIP} 294 ${BOX_LID_HEIGHT + BOX_LID_DIP} 294 ${BOX_LID_HEIGHT} `
-  + 'L294 394 Q294 400 288 400 L12 400 Q6 400 6 394 Z';
+const BOX_BODY_PATH = `M3 ${BOX_LID_HEIGHT} C3 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT} `
+  + 'L297 394 Q297 400 291 400 L9 400 Q3 400 3 394 Z';
+// Weicher, der Wölbung folgender Schatten: geschlossene "Banane"-Form —
+// Oberkante = dieselbe Kurve wie BOX_BODY_PATH, Unterkante = exakt dieselbe
+// Kurve, nur um BOX_SHADOW_BAND nach unten verschoben. Dadurch ist das Band
+// überall gleich dick und folgt der Rundung exakt statt (wie ein simpler
+// vertikaler Verlauf) an den Rändern anders anzusetzen als in der Mitte.
+const BOX_SHADOW_BAND = 34;
+const BOX_SHADOW_PATH = `M3 ${BOX_LID_HEIGHT} C3 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT} `
+  + `L297 ${BOX_LID_HEIGHT + BOX_SHADOW_BAND} `
+  + `C297 ${BOX_LID_HEIGHT + BOX_LID_DIP + BOX_SHADOW_BAND} 3 ${BOX_LID_HEIGHT + BOX_LID_DIP + BOX_SHADOW_BAND} 3 ${BOX_LID_HEIGHT + BOX_SHADOW_BAND} Z`;
 // Naht am Körper — läuft oben offen (dort sitzt bereits die Deckel-
 // Trennlinie), rundet nur die untere Kante mit, analog zur Ordner-Naht.
 const BOX_STITCH_INSET = 5;
@@ -113,8 +126,8 @@ const BOX_STITCH_PATH = (() => {
   const r = BOX_STITCH_RADIUS;
   const top = BOX_LID_HEIGHT + i;
   const bottom = 400 - i;
-  const left = 6 + i;
-  const right = 294 - i;
+  const left = 3 + i;
+  const right = 297 - i;
   return `M${left} ${top} L${left} ${bottom - r} Q${left} ${bottom} ${left + r} ${bottom} `
        + `L${right - r} ${bottom} Q${right} ${bottom} ${right} ${bottom - r} L${right} ${top}`;
 })();
@@ -207,19 +220,16 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
               <stop offset=".2" stopColor="#fff" stopOpacity=".1" />
               <stop offset=".42" stopColor="#fff" stopOpacity="0" />
             </linearGradient>
-            {/* Körper dunkelt zur Deckelkante hin ab (statt eines separaten
-                Schlagschatten-Strichs) — als Rect + bodyclip gerendert, folgt
-                die Abdunklung automatisch der gerundeten Wölbung statt einer
-                geraden/falsch verlaufenden Schattenlinie. */}
-            <linearGradient id={`bodyshadow-${uid}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#000" stopOpacity=".55" />
-              <stop offset=".22" stopColor="#000" stopOpacity="0" />
-            </linearGradient>
             <clipPath id={`lidclip-${uid}`}><path d={BOX_LID_PATH} /></clipPath>
             <clipPath id={`bodyclip-${uid}`}><path d={BOX_BODY_PATH} /></clipPath>
             <filter id={`leatherbox-${uid}`}>
               <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" result="noise" />
               <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.1 0.1 0.1 0 0" />
+            </filter>
+            {/* Weicher Schatten, der der Wölbung folgt (BOX_SHADOW_PATH) —
+                Blur statt hartem Rand, damit er nach unten hin ausklingt. */}
+            <filter id={`boxshadowblur-${uid}`} x="-20%" y="-60%" width="140%" height="240%">
+              <feGaussianBlur stdDeviation="6" />
             </filter>
           </defs>
 
@@ -235,18 +245,20 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
                 Ordner (dort bricht die Körnung die Fläche bewusst grau). */}
             <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT + BOX_LID_DIP} filter={`url(#leatherbox-${uid})`} />
           </g>
-          {/* Körper — eigenes Rechteck mit leichtem Schatten von oben (fällt unter dem Deckel aus) */}
+          {/* Körper */}
           <g clipPath={`url(#bodyclip-${uid})`}>
             <rect x="0" y={BOX_LID_HEIGHT} width="300" height={400 - BOX_LID_HEIGHT} fill={fill} />
-            <rect x="0" y={BOX_LID_HEIGHT} width="300" height={400 - BOX_LID_HEIGHT} fill={`url(#bodyshadow-${uid})`} />
             <rect x="0" y={BOX_LID_HEIGHT} width="300" height={400 - BOX_LID_HEIGHT} filter={`url(#leatherbox-${uid})`} />
+            {/* Weicher Schatten direkt unter der Deckelkante — BOX_SHADOW_PATH
+                ist eine der Wölbung nachgezogene, gleich dicke Bahn (keine
+                geraden Verlaufs-Bänder mehr), folgt der Rundung dadurch
+                exakt statt an den Rändern anders anzusetzen als in der
+                Mitte. Zusätzlich per bodyclip auf den Körper begrenzt. */}
+            <path d={BOX_SHADOW_PATH} fill="#000" fillOpacity=".45" filter={`url(#boxshadowblur-${uid})`} />
           </g>
 
           {/* Feine Trennlinie an der Deckel-Unterkante — folgt derselben
-              Rundung wie BOX_LID_PATH/BOX_BODY_PATH. Der eigentliche
-              Schatten kommt jetzt von der bodyshadow-Verlaufsfläche oben
-              (siehe Körper-<g>), nicht mehr von einem separaten, geraden
-              Schlagschatten-Strich. */}
+              Rundung wie BOX_LID_PATH/BOX_BODY_PATH. */}
           <path d={`M3 ${BOX_LID_HEIGHT} C3 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT}`} stroke="#000" strokeOpacity=".22" strokeWidth="2.5" strokeLinecap="round" />
           {/* Daumenkerbe zum Aufklappen */}
           <ellipse cx="150" cy="6" rx="26" ry="15" fill="#000" fillOpacity=".28" />
