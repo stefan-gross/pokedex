@@ -51,8 +51,8 @@ function coverFillColor(bg: string): string {
  *  Sonderfall mehr (vorher reines Weiß) — läuft durch dieselbe Abdunkeln-
  *  Logik wie jede andere Paletten-Farbe. */
 function coverAccentColor(bg: string): string {
-  if (bg?.toLowerCase() === '#2c2e33') return embossTextColor(bg, 0.26, 255);
-  return embossTextColor(bg, 0.32, 0);
+  if (bg?.toLowerCase() === '#2c2e33') return embossTextColor(bg, 0.21, 255);
+  return embossTextColor(bg, 0.26, 0);
 }
 
 interface Props {
