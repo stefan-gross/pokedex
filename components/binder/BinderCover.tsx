@@ -15,13 +15,13 @@ const EMBOSS_ICON_FILTER = 'drop-shadow(1px 1px 2px rgba(255,255,255,.5))';
 // weiß, damit die Prägung überhaupt sichtbar bleibt.
 const EMBOSS_ICON_FILTER_DARK = 'drop-shadow(1px 1px 2px rgba(255,255,255,.5))';
 
-/** "Echtes" Eingraviert-Rezept (Vorlage: codepen.io/daryl/pen/XWXpyz) — der
- *  Text bekommt dieselbe Farbe wie die Fläche selbst (background-clip:text
- *  + color:transparent macht die Buchstaben "unsichtbar", zeigen aber die
- *  Flächenfarbe), sichtbar wird nur ein versetzter, heller text-shadow, der
- *  an den Buchstabenkanten hervorschimmert — wirkt wie eine echte Prägung
- *  statt aufgedruckter Farbe mit Schatten obendrauf. */
-const ENGRAVED_TEXT_SHADOW = 'rgba(255,255,255,.6) 0.6px 1px 0.5px';
+function hexToRgba(hex: string, alpha: number): string {
+  const full = hex.replace('#', '');
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 /** Prägeeffekt braucht dennoch etwas Farbabstand zur Fläche, sonst ist der
  *  Titel trotz Schatten/Schein kaum lesbar. Richtung ist bewusst FEST
@@ -133,14 +133,21 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   // scheint dadurch durch Basis-Icons hindurch statt komplett verdeckt zu
   // werden.
   const embossOpacity = 0.86;
-  // Text: background-clip:text auf die Flächenfarbe selbst + transparente
-  // Textfarbe + versetzter heller Schatten — siehe ENGRAVED_TEXT_SHADOW.
+  // Text: background-clip:text, aber NICHT auf die reine Flächenfarbe
+  // selbst — stattdessen ein individuell abgedunkelter Ton (wie iconColor)
+  // als "Buchstaben-Füllung" und ein individuell aufgehellter, farbig
+  // getönter (statt reinweißer) Schatten. Beide Farben leiten sich aus der
+  // jeweiligen Binderfarbe ab, statt fix rot/weiß/schwarz zu sein — dadurch
+  // wirkt die Prägung auf jeder Farbe stimmig statt wie ein universeller
+  // Weiß-Schein-Aufkleber.
+  const textBgColor = coverAccentColor(fill);
+  const textShadowColor = hexToRgba(embossTextColor(fill, isAnthracite ? 0.6 : 0.55, 255), 0.5);
   const engravedTextStyle: CSSProperties = {
-    backgroundColor: fill,
+    backgroundColor: textBgColor,
     WebkitBackgroundClip: 'text',
     backgroundClip: 'text',
     color: 'transparent',
-    textShadow: ENGRAVED_TEXT_SHADOW,
+    textShadow: `${textShadowColor} 0.6px 1px 0.5px`,
   };
   // Typ-Icons/Set-Logos bekommen KEINE Transparenz (würde ihre kräftigen
   // Eigenfarben verwaschen) — stattdessen wird dieselbe Körnung direkt auf
