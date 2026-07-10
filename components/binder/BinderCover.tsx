@@ -146,8 +146,8 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   // bekommen, deren Kontrastrichtung wir steuern könnten (ihre
   // Originalfarben bleiben unverändert erhalten).
   const iconShineColor = hexToRgba(embossTextColor(fill, isAnthracite ? 0.6 : 0.55, 255), 0.5);
-  const iconShadowColor = hexToRgba(embossTextColor(fill, 0.55, 0), 0.5);
-  const iconShadowFilter = `url(#icon-grain-${uid}) drop-shadow(${iconShadowColor} -1px -1.3px 0.6px) drop-shadow(${iconShineColor} 1px 1.3px 0.6px)`;
+  const iconShadowColor = hexToRgba(embossTextColor(fill, 0.7, 0), 0.65);
+  const iconShadowFilter = `url(#icon-grain-${uid}) drop-shadow(${iconShadowColor} -1.3px -1.6px 0.6px) drop-shadow(${iconShineColor} 1px 1.3px 0.6px)`;
   const iconColor = isColorableIcon ? textBgColor : undefined;
 
   return (
