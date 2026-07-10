@@ -139,7 +139,14 @@ function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; 
           </span>
         )}
 
-        <div className="absolute bottom-0 inset-x-0 flex items-end justify-between px-3.5 py-2.5">
+        {/* Banderole — eigene Farbfläche in der Sammlungsfarbe, 1px breiter
+            als die Kachel je Seite (bewusster kleiner Überstand, wie eine
+            aufgeklebte Papierbanderole um Box/Ordner). Eigener Schlagschatten
+            unten, Eckenradius spiegelt die jeweilige Cover-Form. */}
+        <div
+          className={`absolute bottom-0 flex items-end justify-between px-3.5 py-2.5 ${isBox ? 'rounded-b-[4px]' : 'rounded-bl-[4px] rounded-br-[20px]'}`}
+          style={{ left: -1, right: -1, background: binder.color, boxShadow: '0 3px 6px rgba(0,0,0,.35)' }}
+        >
           <span className="text-xs font-bold truncate text-white drop-shadow-[0_1px_2px_rgba(0,0,0,.4)]">
             {!totalValue.loading && totalValue.withPrice > 0
               ? `≈ ${totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
