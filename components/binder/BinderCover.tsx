@@ -114,13 +114,12 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   // ihre eigenen Farben (Detailgrafik bzw. Typ-Branding) — alle drei
   // Icon-Arten UND der Text teilen sich aber denselben Schatten/Körnung.
   const isColorableIcon = !!icon && !icon.startsWith('type:') && !icon.startsWith('set:');
-  // Lucide-Glyphen (z.B. "folder") sind dünne Outline-Symbole (2px-Strich,
-  // viel Leerraum im 24x24-Raster, füllen nur ~70% der Höhe) — anders als
-  // Typ-Icons, die eine randfüllende, VOLLFLÄCHIGE Farbe zeichnen (~96%).
-  // Eine größere Box allein reicht nicht, um das optisch anzugleichen (eine
-  // dünne Linie bleibt eine dünne Linie) — zusätzlich zur größeren
-  // Zielgröße wird deshalb auch die Strichstärke kräftiger gezeichnet.
-  const iconSize = isColorableIcon ? 84 : 56;
+  // Gleiche Ziel-/Originalgröße wie Typ-/Set-Icons (56px) — Lucide-Glyphen
+  // (z.B. "folder") sind aber dünne Outline-Symbole (2px-Strich, viel
+  // Leerraum im 24x24-Raster, füllen nur ~70% der Höhe) verglichen mit der
+  // randfüllenden, VOLLFLÄCHIGEN Farbe der Typ-Icons (~96%) — deshalb nur
+  // die Strichstärke kräftiger, nicht die Größe.
+  const iconSize = 56;
   const iconStrokeWidth = isColorableIcon ? 2.75 : undefined;
   // ECHTE (deckende) Farbe, leicht dunkler als die Fläche (coverAccentColor,
   // 40%/15% Anthrazit) — der background-clip:text-Trick wurde verworfen,
