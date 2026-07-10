@@ -135,14 +135,18 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
     color: textBgColor,
     textShadow: `${textShadowColor} 0.5px 0.8px 0.4px`,
   };
-  // Icons: dieselbe Schein-Farbe/-Versatz wie beim Text, aber als
-  // drop-shadow-Filter (wirkt auf SVG/Bild statt auf Text). Zusätzlich die
-  // Leder-Körnung direkt auf die Icon-Fläche geblendet (multiply, auf die
-  // Icon-eigene Alpha-Form geclippt) — bei Typ-Icons/Set-Logos ist das die
-  // einzige Textur-Quelle, da sie (anders als Basis-Icons/Text) keine
-  // eigene deckende Farbe bekommen, deren Kontrastrichtung wir steuern
-  // könnten (ihre Originalfarben bleiben unverändert erhalten).
-  const iconShadowFilter = `url(#icon-grain-${uid}) drop-shadow(${textShadowColor} 0.5px 0.8px 0.4px)`;
+  // Icons: gleiche (aus der Binderfarbe abgeleitete) Schein-Farbe wie beim
+  // Text, aber kräftiger als der Text-Schatten — auf einer durchgehenden
+  // Kreis-/Glyphenfläche (Typ-Icon) liest sich der für Text austarierte,
+  // sehr dezente Versatz (0.5px/0.8px, Alpha .28) kaum als Prägung, anders
+  // als bei dünnen Textstrichen. Zusätzlich die Leder-Körnung direkt auf
+  // die Icon-Fläche geblendet (multiply, auf die Icon-eigene Alpha-Form
+  // geclippt) — bei Typ-Icons/Set-Logos ist das die einzige Textur-Quelle,
+  // da sie (anders als Basis-Icons/Text) keine eigene deckende Farbe
+  // bekommen, deren Kontrastrichtung wir steuern könnten (ihre
+  // Originalfarben bleiben unverändert erhalten).
+  const iconShadowColor = hexToRgba(embossTextColor(fill, isAnthracite ? 0.6 : 0.55, 255), 0.5);
+  const iconShadowFilter = `url(#icon-grain-${uid}) drop-shadow(${iconShadowColor} 1px 1.3px 0.6px)`;
   const iconColor = isColorableIcon ? textBgColor : undefined;
 
   return (
