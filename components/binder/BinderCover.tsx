@@ -243,8 +243,8 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
 
           {/* Schlagschatten + Trennlinie an der Deckel-Unterkante — folgen
               derselben Rundung wie BOX_LID_PATH/BOX_BODY_PATH */}
-          <path d={`M3 ${BOX_LID_HEIGHT - 2} C3 ${BOX_LID_HEIGHT - 2 + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT - 2 + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT - 2}`} stroke="#000" strokeOpacity=".7" strokeWidth="16" transform="translate(0,6)" filter={`url(#lidblur-${uid})`} />
-          <path d={`M3 ${BOX_LID_HEIGHT} C3 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT}`} stroke="#000" strokeOpacity=".22" strokeWidth="2.5" />
+          <path d={`M3 ${BOX_LID_HEIGHT - 2} C3 ${BOX_LID_HEIGHT - 2 + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT - 2 + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT - 2}`} stroke="#000" strokeOpacity=".7" strokeWidth="9" strokeLinecap="round" transform="translate(0,6)" filter={`url(#lidblur-${uid})`} />
+          <path d={`M3 ${BOX_LID_HEIGHT} C3 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT}`} stroke="#000" strokeOpacity=".22" strokeWidth="2.5" strokeLinecap="round" />
           {/* Daumenkerbe zum Aufklappen */}
           <ellipse cx="150" cy="6" rx="26" ry="15" fill="#000" fillOpacity=".28" />
           <ellipse cx="150" cy="3" rx="20" ry="9" fill="#fff" fillOpacity=".12" />
