@@ -133,21 +133,19 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   // scheint dadurch durch Basis-Icons hindurch statt komplett verdeckt zu
   // werden.
   const embossOpacity = 0.86;
-  // Text: background-clip:text, aber NICHT auf die reine Flächenfarbe
-  // selbst — stattdessen ein individuell abgedunkelter Ton (wie iconColor)
-  // als "Buchstaben-Füllung" und ein individuell aufgehellter, farbig
-  // getönter (statt reinweißer) Schatten. Beide Farben leiten sich aus der
-  // jeweiligen Binderfarbe ab, statt fix rot/weiß/schwarz zu sein — dadurch
-  // wirkt die Prägung auf jeder Farbe stimmig statt wie ein universeller
-  // Weiß-Schein-Aufkleber.
-  const textBgColor = coverAccentColor(fill);
-  const textShadowColor = hexToRgba(embossTextColor(fill, isAnthracite ? 0.6 : 0.55, 255), 0.5);
+  // Text: ECHTE (deckende) Textfarbe, leicht dunkler als die Fläche
+  // (coverAccentColor, 15%) — der background-clip:text-Trick wurde wieder
+  // verworfen, weil der helle Schein bei unserer kleinen Schriftgröße
+  // (15-19px) breiter als die Strichstärke selbst war und die dunklere
+  // Füllfarbe komplett überdeckt hat, sodass der Text trotz dunklerer
+  // Grundfarbe insgesamt heller als der Hintergrund wirkte. Mit einer
+  // deckenden dunkleren Farbe ist der Kontrast garantiert richtig herum;
+  // der Schein bleibt nur noch als dezenter Zusatz obendrauf.
+  const textBgColor = coverAccentColor(fill, isAnthracite ? 0.15 : 0.22);
+  const textShadowColor = hexToRgba(embossTextColor(fill, isAnthracite ? 0.6 : 0.55, 255), 0.28);
   const engravedTextStyle: CSSProperties = {
-    backgroundColor: textBgColor,
-    WebkitBackgroundClip: 'text',
-    backgroundClip: 'text',
-    color: 'transparent',
-    textShadow: `${textShadowColor} 0.6px 1px 0.5px`,
+    color: textBgColor,
+    textShadow: `${textShadowColor} 0.5px 0.8px 0.4px`,
   };
   // Typ-Icons/Set-Logos bekommen KEINE Transparenz (würde ihre kräftigen
   // Eigenfarben verwaschen) — stattdessen wird dieselbe Körnung direkt auf
