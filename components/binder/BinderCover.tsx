@@ -114,6 +114,13 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   // ihre eigenen Farben (Detailgrafik bzw. Typ-Branding) — alle drei
   // Icon-Arten UND der Text teilen sich aber denselben Schatten/Körnung.
   const isColorableIcon = !!icon && !icon.startsWith('type:') && !icon.startsWith('set:');
+  // Lucide-Glyphen (z.B. "folder") haben viel eigenen Innenabstand im
+  // 24x24-Raster (füllen nur ~70% der Höhe) — anders als Typ-Icons, die
+  // einen fast randfüllenden Farbkreis zeichnen (~96%). Bei gleicher
+  // Zielgröße wirkt ein Basis-Icon dadurch deutlich kleiner/dünner. Größere
+  // Zielgröße für Basis-Icons gleicht das optisch an, ohne Typ-/Set-Icons
+  // anzufassen (die schon "voll" wirken).
+  const iconSize = isColorableIcon ? 72 : 56;
   // ECHTE (deckende) Farbe, leicht dunkler als die Fläche (coverAccentColor,
   // 40%/15% Anthrazit) — der background-clip:text-Trick wurde verworfen,
   // weil der helle Schein bei unserer kleinen Schriftgröße (15-19px) breiter
@@ -252,8 +259,8 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
             {icon && (
               <BinderIcon
                 name={icon}
-                size={56}
-                style={{ color: iconColor, filter: iconShadowFilter, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
+                size={iconSize}
+                style={{ color: iconColor, filter: iconShadowFilter, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: iconSize }}
               />
             )}
           </div>
@@ -266,8 +273,8 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
             <div className="flex justify-center w-full px-[10px]">
               <BinderIcon
                 name={icon}
-                size={56}
-                style={{ color: iconColor, filter: iconShadowFilter, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
+                size={iconSize}
+                style={{ color: iconColor, filter: iconShadowFilter, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: iconSize }}
               />
             </div>
           )}
