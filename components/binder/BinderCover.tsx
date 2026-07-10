@@ -92,13 +92,17 @@ const FOLDER_STITCH_PATH = (() => {
 // Seiten leicht eingezogen) sind zwei eigenständige Rechtecke, die exakt an
 // der Deckel-Unterkante zusammenschließen — kein Diagonal-Knick.
 const BOX_LID_HEIGHT = 131;
-// Deckel-Unterkante rundet sich nach unten ab (Bezier-Bogen, keine Gerade
-// mehr) — Körper-Oberkante folgt exakt derselben Kurve, damit beide
-// Formen nahtlos ineinandergreifen (kein Knick/keine Lücke am Übergang).
+// Deckel-Unterkante rundet sich nach unten ab — Kubische Bezier mit
+// Kontrollpunkten SENKRECHT unter den Eckpunkten (nicht seitlich versetzt
+// wie bei einer einzelnen quadratischen Kurve), dadurch ist die Tangente an
+// beiden Enden exakt vertikal und schließt knickfrei an die geraden
+// Seitenkanten an — sieht wie eine sanft ausgerundete Wanne statt eines
+// spitzen "V" mit Eckenknick aus. Körper-Oberkante folgt exakt derselben
+// Kurvenform, damit beide Formen nahtlos ineinandergreifen.
 const BOX_LID_DIP = 10;
 const BOX_LID_PATH  = `M9 0 L291 0 Q297 0 297 6 L297 ${BOX_LID_HEIGHT} `
-  + `Q150 ${BOX_LID_HEIGHT + BOX_LID_DIP} 3 ${BOX_LID_HEIGHT} L3 6 Q3 0 9 0 Z`;
-const BOX_BODY_PATH = `M6 ${BOX_LID_HEIGHT} Q150 ${BOX_LID_HEIGHT + BOX_LID_DIP} 294 ${BOX_LID_HEIGHT} `
+  + `C297 ${BOX_LID_HEIGHT + BOX_LID_DIP} 3 ${BOX_LID_HEIGHT + BOX_LID_DIP} 3 ${BOX_LID_HEIGHT} L3 6 Q3 0 9 0 Z`;
+const BOX_BODY_PATH = `M6 ${BOX_LID_HEIGHT} C6 ${BOX_LID_HEIGHT + BOX_LID_DIP} 294 ${BOX_LID_HEIGHT + BOX_LID_DIP} 294 ${BOX_LID_HEIGHT} `
   + 'L294 394 Q294 400 288 400 L12 400 Q6 400 6 394 Z';
 // Naht am Körper — läuft oben offen (dort sitzt bereits die Deckel-
 // Trennlinie), rundet nur die untere Kante mit, analog zur Ordner-Naht.
@@ -236,8 +240,8 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
 
           {/* Schlagschatten + Trennlinie an der Deckel-Unterkante — folgen
               derselben Rundung wie BOX_LID_PATH/BOX_BODY_PATH */}
-          <path d={`M3 ${BOX_LID_HEIGHT - 2} Q150 ${BOX_LID_HEIGHT - 2 + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT - 2}`} stroke="#000" strokeOpacity=".7" strokeWidth="16" transform="translate(0,6)" filter={`url(#lidblur-${uid})`} />
-          <path d={`M3 ${BOX_LID_HEIGHT} Q150 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT}`} stroke="#000" strokeOpacity=".22" strokeWidth="2.5" />
+          <path d={`M3 ${BOX_LID_HEIGHT - 2} C3 ${BOX_LID_HEIGHT - 2 + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT - 2 + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT - 2}`} stroke="#000" strokeOpacity=".7" strokeWidth="16" transform="translate(0,6)" filter={`url(#lidblur-${uid})`} />
+          <path d={`M3 ${BOX_LID_HEIGHT} C3 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT}`} stroke="#000" strokeOpacity=".22" strokeWidth="2.5" />
           {/* Daumenkerbe zum Aufklappen */}
           <ellipse cx="150" cy="6" rx="26" ry="15" fill="#000" fillOpacity=".28" />
           <ellipse cx="150" cy="3" rx="20" ry="9" fill="#fff" fillOpacity=".12" />
