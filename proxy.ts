@@ -5,7 +5,7 @@ import { verifySessionToken, SESSION_COOKIE } from '@/lib/auth'
 // damit Vercel-Cron-Jobs (kein Session-Cookie) den Handler erreichen.
 const PUBLIC_PATHS = ['/login', '/api/auth', '/api/cron']
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
