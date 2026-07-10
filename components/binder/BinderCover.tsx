@@ -9,13 +9,13 @@ import { BinderIcon } from '@/lib/binder-icons';
  *  abgewandt ist), Schein unten rechts (dort, wo die Kante das Licht
  *  reflektiert). Set-Logos/Typ-Icons bleiben ohne Prägung (eigene Farben/
  *  Detailgrafik, siehe readableTextColor). */
-const EMBOSS_TEXT_SHADOW = '-1px -1px 1px rgba(0,0,0,.25), 1px 1px 1px rgba(255,255,255,.22)';
-const EMBOSS_ICON_FILTER = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.25)) drop-shadow(1px 1px 1px rgba(255,255,255,.22))';
+const EMBOSS_TEXT_SHADOW = '-1px -1px 1px rgba(0,0,0,.32), 1px 1px 1px rgba(255,255,255,.22)';
+const EMBOSS_ICON_FILTER = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.32)) drop-shadow(1px 1px 1px rgba(255,255,255,.22))';
 // Auf der (dunklen) Anthrazit-Fläche liest sich ein schwarzer Schatten kaum
 // (dunkel auf dunkel) — dort Schatten kräftiger schwarz + Glanz kräftiger
 // weiß, damit die Prägung überhaupt sichtbar bleibt.
-const EMBOSS_TEXT_SHADOW_DARK = '-1px -1px 1px rgba(0,0,0,.5), 1px 1px 1px rgba(255,255,255,.35)';
-const EMBOSS_ICON_FILTER_DARK = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.5)) drop-shadow(1px 1px 1px rgba(255,255,255,.35))';
+const EMBOSS_TEXT_SHADOW_DARK = '-1px -1px 1px rgba(0,0,0,.58), 1px 1px 1px rgba(255,255,255,.35)';
+const EMBOSS_ICON_FILTER_DARK = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.58)) drop-shadow(1px 1px 1px rgba(255,255,255,.35))';
 
 /** Prägeeffekt braucht dennoch etwas Farbabstand zur Fläche, sonst ist der
  *  Titel trotz Schatten/Schein kaum lesbar. Richtung ist bewusst FEST
