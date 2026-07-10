@@ -141,7 +141,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   // Grundfarbe insgesamt heller als der Hintergrund wirkte. Mit einer
   // deckenden dunkleren Farbe ist der Kontrast garantiert richtig herum;
   // der Schein bleibt nur noch als dezenter Zusatz obendrauf.
-  const textBgColor = coverAccentColor(fill, isAnthracite ? 0.15 : 0.22);
+  const textBgColor = coverAccentColor(fill, isAnthracite ? 0.15 : 0.4);
   const textShadowColor = hexToRgba(embossTextColor(fill, isAnthracite ? 0.6 : 0.55, 255), 0.28);
   const engravedTextStyle: CSSProperties = {
     color: textBgColor,
