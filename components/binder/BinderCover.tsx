@@ -1,6 +1,6 @@
 'use client';
 
-import { useId } from 'react';
+import { useId, type CSSProperties } from 'react';
 import { BinderIcon } from '@/lib/binder-icons';
 
 /** Geprägter Look für Titel-Text UND "Basis"-Icons (Lucide, z.B. Ordner/
@@ -9,13 +9,19 @@ import { BinderIcon } from '@/lib/binder-icons';
  *  abgewandt ist), Schein unten rechts (dort, wo die Kante das Licht
  *  reflektiert). Set-Logos/Typ-Icons bleiben ohne Prägung (eigene Farben/
  *  Detailgrafik, siehe readableTextColor). */
-const EMBOSS_TEXT_SHADOW = '-1px -1px 1px rgba(0,0,0,.32), 1px 1px 1px rgba(255,255,255,.22)';
-const EMBOSS_ICON_FILTER = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.32)) drop-shadow(1px 1px 1px rgba(255,255,255,.22))';
+const EMBOSS_ICON_FILTER = 'drop-shadow(1px 1px 2px rgba(255,255,255,.5))';
 // Auf der (dunklen) Anthrazit-Fläche liest sich ein schwarzer Schatten kaum
 // (dunkel auf dunkel) — dort Schatten kräftiger schwarz + Glanz kräftiger
 // weiß, damit die Prägung überhaupt sichtbar bleibt.
-const EMBOSS_TEXT_SHADOW_DARK = '-1px -1px 1px rgba(0,0,0,.58), 1px 1px 1px rgba(255,255,255,.35)';
-const EMBOSS_ICON_FILTER_DARK = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.58)) drop-shadow(1px 1px 1px rgba(255,255,255,.35))';
+const EMBOSS_ICON_FILTER_DARK = 'drop-shadow(1px 1px 2px rgba(255,255,255,.5))';
+
+/** "Echtes" Eingraviert-Rezept (Vorlage: codepen.io/daryl/pen/XWXpyz) — der
+ *  Text bekommt dieselbe Farbe wie die Fläche selbst (background-clip:text
+ *  + color:transparent macht die Buchstaben "unsichtbar", zeigen aber die
+ *  Flächenfarbe), sichtbar wird nur ein versetzter, heller text-shadow, der
+ *  an den Buchstabenkanten hervorschimmert — wirkt wie eine echte Prägung
+ *  statt aufgedruckter Farbe mit Schatten obendrauf. */
+const ENGRAVED_TEXT_SHADOW = 'rgba(255,255,255,.6) 0.6px 1px 0.5px';
 
 /** Prägeeffekt braucht dennoch etwas Farbabstand zur Fläche, sonst ist der
  *  Titel trotz Schatten/Schein kaum lesbar. Richtung ist bewusst FEST
@@ -123,18 +129,19 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   const isColorableIcon = !!icon && !icon.startsWith('type:') && !icon.startsWith('set:');
   const iconColor = isColorableIcon ? coverAccentColor(fill) : undefined;
   const iconFilter = isAnthracite ? EMBOSS_ICON_FILTER_DARK : EMBOSS_ICON_FILTER;
-  // Text ist stärker transparent als Basis-Icons (0.5 statt 0.86) — die
-  // Farbe wird deshalb deutlich weiter Richtung Schwarz/Weiß abgedunkelt/
-  // aufgehellt (0.42/0.34 statt 0.26/0.21), sonst würde die höhere
-  // Transparenz die Prägung verwaschen statt nur die Körnung durchscheinen
-  // zu lassen.
-  const textColor = coverAccentColor(fill, isAnthracite ? 0.34 : 0.42);
-  const textShadow = isAnthracite ? EMBOSS_TEXT_SHADOW_DARK : EMBOSS_TEXT_SHADOW;
   // Leicht transparent statt voll deckend — die Leder-Körnung darunter
   // scheint dadurch durch Basis-Icons hindurch statt komplett verdeckt zu
   // werden.
   const embossOpacity = 0.86;
-  const textOpacity = 0.5;
+  // Text: background-clip:text auf die Flächenfarbe selbst + transparente
+  // Textfarbe + versetzter heller Schatten — siehe ENGRAVED_TEXT_SHADOW.
+  const engravedTextStyle: CSSProperties = {
+    backgroundColor: fill,
+    WebkitBackgroundClip: 'text',
+    backgroundClip: 'text',
+    color: 'transparent',
+    textShadow: ENGRAVED_TEXT_SHADOW,
+  };
   // Typ-Icons/Set-Logos bekommen KEINE Transparenz (würde ihre kräftigen
   // Eigenfarben verwaschen) — stattdessen wird dieselbe Körnung direkt auf
   // die Icon-Fläche geblendet (multiply, auf die Icon-eigene Alpha-Form
@@ -244,7 +251,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
             {name && (
               <span
                 className="font-extrabold text-[17px] text-center leading-tight line-clamp-2"
-                style={{ color: textColor, textShadow, opacity: textOpacity }}
+                style={engravedTextStyle}
               >
                 {name}
               </span>
@@ -277,7 +284,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
           {name && (
             <span
               className="font-extrabold text-[19px] text-center leading-tight line-clamp-3 px-[10px]"
-              style={{ color: textColor, textShadow, opacity: textOpacity }}
+              style={engravedTextStyle}
             >
               {name}
             </span>
