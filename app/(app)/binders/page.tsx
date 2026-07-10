@@ -139,13 +139,21 @@ function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; 
           </span>
         )}
 
-        {/* Banderole — eigene Farbfläche in der Sammlungsfarbe, 1px breiter
-            als die Kachel je Seite (bewusster kleiner Überstand, wie eine
-            aufgeklebte Papierbanderole um Box/Ordner). Eigener Schlagschatten
-            unten, Eckenradius spiegelt die jeweilige Cover-Form. */}
+        {/* Banderole — eigene Farbfläche in der Sammlungsfarbe, nur 1px
+            breiter als der Körper, auf dem sie liegt (nicht die ganze
+            Kachel — die Box-Körper-Form ist selbst schon BOX_BODY_INSET
+            (4 von 300 SVG-Einheiten) schmaler als die Kachel, siehe
+            BinderCover.tsx). Ein paar Pixel Abstand nach unten, statt
+            direkt an der Kachel-Unterkante zu kleben. Eigener
+            Schlagschatten, Eckenradius spiegelt die jeweilige Cover-Form. */}
         <div
-          className={`absolute bottom-0 flex items-end justify-between px-3.5 py-2.5 ${isBox ? 'rounded-b-[4px]' : 'rounded-bl-[4px] rounded-br-[20px]'}`}
-          style={{ left: -1, right: -1, background: binder.color, boxShadow: '0 3px 6px rgba(0,0,0,.35)' }}
+          className={`absolute bottom-1.5 flex items-end justify-between px-3.5 py-2.5 ${isBox ? 'rounded-b-[4px]' : 'rounded-bl-[4px] rounded-br-[20px]'}`}
+          style={{
+            left: isBox ? 'calc(4 / 300 * 100% - 1px)' : -1,
+            right: isBox ? 'calc(4 / 300 * 100% - 1px)' : -1,
+            background: binder.color,
+            boxShadow: '0 3px 6px rgba(0,0,0,.35)',
+          }}
         >
           <span className="text-xs font-bold truncate text-white drop-shadow-[0_1px_2px_rgba(0,0,0,.4)]">
             {!totalValue.loading && totalValue.withPrice > 0
