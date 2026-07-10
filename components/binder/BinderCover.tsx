@@ -277,7 +277,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
                 name={icon}
                 size={iconSize}
                 strokeWidth={iconStrokeWidth}
-                style={{ color: iconColor, filter: iconShadowFilter, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: iconSize }}
+                style={{ color: iconColor, filter: iconShadowFilter, opacity: isColorableIcon ? 0.7 : undefined, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: iconSize }}
               />
             )}
           </div>
@@ -292,7 +292,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
                 name={icon}
                 size={iconSize}
                 strokeWidth={iconStrokeWidth}
-                style={{ color: iconColor, filter: iconShadowFilter, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: iconSize }}
+                style={{ color: iconColor, filter: iconShadowFilter, opacity: isColorableIcon ? 0.7 : undefined, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: iconSize }}
               />
             </div>
           )}
