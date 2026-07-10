@@ -222,14 +222,17 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
             </filter>
           </defs>
 
-          {/* Deckel — eigenes Rechteck mit diagonalem Leder-Glanz */}
+          {/* Deckel — eigenes Rechteck mit diagonalem Leder-Glanz. Höhe reicht
+              bewusst über BOX_LID_HEIGHT hinaus bis in die Wölbung hinein
+              (+BOX_LID_DIP), sonst bleibt die gerundete Unterkante ungefüllt
+              (zeigt den Seitenhintergrund durch statt der Lederfarbe). */}
           <g clipPath={`url(#lidclip-${uid})`}>
-            <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT} fill={fill} />
-            <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT} fill={`url(#lidsheen-${uid})`} />
+            <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT + BOX_LID_DIP} fill={fill} />
+            <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT + BOX_LID_DIP} fill={`url(#lidsheen-${uid})`} />
             {/* Ganz feine Leder-Körnung — gleiche Textur wie beim Ordner, sonst
                 wirkt v.a. Weiß auf der Box viel reiner/heller als auf dem
                 Ordner (dort bricht die Körnung die Fläche bewusst grau). */}
-            <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT} filter={`url(#leatherbox-${uid})`} />
+            <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT + BOX_LID_DIP} filter={`url(#leatherbox-${uid})`} />
           </g>
           {/* Körper — eigenes Rechteck mit leichtem Schatten von oben (fällt unter dem Deckel aus) */}
           <g clipPath={`url(#bodyclip-${uid})`}>
