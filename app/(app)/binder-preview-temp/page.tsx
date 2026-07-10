@@ -47,6 +47,30 @@ export default function BinderPreviewPage() {
 /** Eigene Komponente statt Inline-JSX in der map()-Schleife, da die
  *  Banderolen-Körnung ihre eigene useId()-Instanz pro Kachel braucht (Hooks
  *  dürfen nicht in Callbacks/Schleifen aufgerufen werden). */
+// Feste Kachelbreite auf dieser Testseite (kein Grid, kein Resize nötig).
+const TILE_W = 260;
+const TILE_H = TILE_W * 4 / 3; // aspect-[3/4]
+// Radius der echten Kachel-Rundung (rounded-br-[20px] in ROUNDING.folder).
+const TILE_RADIUS = 20;
+const BANDEROLE_GAP = 6;
+const BANDEROLE_HEIGHT = 36;
+
+/** Banderole-Pfad (nur Ordner) — statt eines unabhängigen, eigenen
+ *  Eckenradius (sah bei der geringen Bandhöhe stark überproportioniert aus)
+ *  folgt die rechte Kante exakt demselben Kreisbogen wie die echte
+ *  Kachel-Rundung (TILE_RADIUS), nur um 1px nach rechts verschoben. Da die
+ *  Banderole viel niedriger ist als die Kachel, ist nur ein kleiner
+ *  Bogen-Abschnitt sichtbar — daher die sanfte statt starke Rundung. */
+function banderoleClipPath(): string {
+  const w = TILE_W + 2; // Div-Breite: -1 bis TILE_W+1
+  const h = BANDEROLE_HEIGHT;
+  const yc = BANDEROLE_HEIGHT + BANDEROLE_GAP - TILE_RADIUS; // Kreismittelpunkt, lokale Y
+  const dy = h - yc;
+  const dx = Math.sqrt(Math.max(TILE_RADIUS ** 2 - dy ** 2, 0));
+  const xBottom = (w - TILE_RADIUS) + dx;
+  return `path('M0 0 L${w} 0 L${w} ${yc} A${TILE_RADIUS} ${TILE_RADIUS} 0 0 1 ${xBottom} ${h} L0 ${h} Z')`;
+}
+
 function PreviewTile({
   shape, color: c, icon: ic,
 }: {
@@ -90,11 +114,11 @@ function PreviewTile({
             background: c.hex,
             boxShadow: '0 3px 6px rgba(0,0,0,.35)',
             filter: `url(#banderole-grain-${grainUid})`,
-            // Box: keine Eckenrundung. Binder: nur unten rechts, angeglichen
-            // an die Kachel-Rundung (21 statt 20, gleicht den 1px-Überstand
-            // aus). Unten links bleibt bei Binder eckig.
-            borderBottomLeftRadius: 0,
-            borderBottomRightRadius: isBox ? 0 : 21,
+            // Box: keine Eckenrundung, einfaches Rechteck. Binder: rechte
+            // Kante folgt exakt dem Kreisbogen der echten Kachel-Rundung
+            // (siehe banderoleClipPath) statt eines eigenen, unabhängigen
+            // Radius — der sah bei der geringen Bandhöhe unproportional aus.
+            clipPath: isBox ? undefined : banderoleClipPath(),
           }}
         >
           <span style={{ fontSize: 12, fontWeight: 700, color: textColor }}>≈ 42 €</span>
