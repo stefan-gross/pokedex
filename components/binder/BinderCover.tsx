@@ -99,7 +99,7 @@ const BOX_LID_HEIGHT = 131;
 // Seitenkanten an — sieht wie eine sanft ausgerundete Wanne statt eines
 // spitzen "V" mit Eckenknick aus. Körper-Oberkante folgt exakt derselben
 // Kurvenform, damit beide Formen nahtlos ineinandergreifen.
-const BOX_LID_DIP = 10;
+const BOX_LID_DIP = 24;
 const BOX_LID_PATH  = `M9 0 L291 0 Q297 0 297 6 L297 ${BOX_LID_HEIGHT} `
   + `C297 ${BOX_LID_HEIGHT + BOX_LID_DIP} 3 ${BOX_LID_HEIGHT + BOX_LID_DIP} 3 ${BOX_LID_HEIGHT} L3 6 Q3 0 9 0 Z`;
 const BOX_BODY_PATH = `M6 ${BOX_LID_HEIGHT} C6 ${BOX_LID_HEIGHT + BOX_LID_DIP} 294 ${BOX_LID_HEIGHT + BOX_LID_DIP} 294 ${BOX_LID_HEIGHT} `
@@ -202,17 +202,18 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
       {isBox ? (
         <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 300 400" fill="none" preserveAspectRatio="none">
           <defs>
-            <filter id={`lidblur-${uid}`} x="-10%" y="-100%" width="120%" height="300%">
-              <feGaussianBlur stdDeviation="4" />
-            </filter>
             <linearGradient id={`lidsheen-${uid}`} x1="0" y1="0" x2="1" y2="1">
               <stop offset="0" stopColor="#fff" stopOpacity=".38" />
               <stop offset=".2" stopColor="#fff" stopOpacity=".1" />
               <stop offset=".42" stopColor="#fff" stopOpacity="0" />
             </linearGradient>
+            {/* Körper dunkelt zur Deckelkante hin ab (statt eines separaten
+                Schlagschatten-Strichs) — als Rect + bodyclip gerendert, folgt
+                die Abdunklung automatisch der gerundeten Wölbung statt einer
+                geraden/falsch verlaufenden Schattenlinie. */}
             <linearGradient id={`bodyshadow-${uid}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#000" stopOpacity=".14" />
-              <stop offset=".16" stopColor="#000" stopOpacity="0" />
+              <stop offset="0" stopColor="#000" stopOpacity=".55" />
+              <stop offset=".22" stopColor="#000" stopOpacity="0" />
             </linearGradient>
             <clipPath id={`lidclip-${uid}`}><path d={BOX_LID_PATH} /></clipPath>
             <clipPath id={`bodyclip-${uid}`}><path d={BOX_BODY_PATH} /></clipPath>
@@ -241,9 +242,11 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
             <rect x="0" y={BOX_LID_HEIGHT} width="300" height={400 - BOX_LID_HEIGHT} filter={`url(#leatherbox-${uid})`} />
           </g>
 
-          {/* Schlagschatten + Trennlinie an der Deckel-Unterkante — folgen
-              derselben Rundung wie BOX_LID_PATH/BOX_BODY_PATH */}
-          <path d={`M3 ${BOX_LID_HEIGHT - 2} C3 ${BOX_LID_HEIGHT - 2 + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT - 2 + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT - 2}`} stroke="#000" strokeOpacity=".7" strokeWidth="9" strokeLinecap="round" transform="translate(0,6)" filter={`url(#lidblur-${uid})`} />
+          {/* Feine Trennlinie an der Deckel-Unterkante — folgt derselben
+              Rundung wie BOX_LID_PATH/BOX_BODY_PATH. Der eigentliche
+              Schatten kommt jetzt von der bodyshadow-Verlaufsfläche oben
+              (siehe Körper-<g>), nicht mehr von einem separaten, geraden
+              Schlagschatten-Strich. */}
           <path d={`M3 ${BOX_LID_HEIGHT} C3 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT}`} stroke="#000" strokeOpacity=".22" strokeWidth="2.5" strokeLinecap="round" />
           {/* Daumenkerbe zum Aufklappen */}
           <ellipse cx="150" cy="6" rx="26" ry="15" fill="#000" fillOpacity=".28" />
