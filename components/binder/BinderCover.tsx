@@ -94,6 +94,20 @@ const FOLDER_STITCH_PATH = (() => {
 const BOX_LID_HEIGHT = 131;
 const BOX_LID_PATH  = 'M9 0 L291 0 Q297 0 297 6 L297 131 L3 131 L3 6 Q3 0 9 0 Z';
 const BOX_BODY_PATH = 'M6 131 L294 131 L294 394 Q294 400 288 400 L12 400 Q6 400 6 394 Z';
+// Naht am Körper — läuft oben offen (dort sitzt bereits die Deckel-
+// Trennlinie), rundet nur die untere Kante mit, analog zur Ordner-Naht.
+const BOX_STITCH_INSET = 5;
+const BOX_STITCH_RADIUS = 5;
+const BOX_STITCH_PATH = (() => {
+  const i = BOX_STITCH_INSET;
+  const r = BOX_STITCH_RADIUS;
+  const top = BOX_LID_HEIGHT + i;
+  const bottom = 400 - i;
+  const left = 6 + i;
+  const right = 294 - i;
+  return `M${left} ${top} L${left} ${bottom - r} Q${left} ${bottom} ${left + r} ${bottom} `
+       + `L${right - r} ${bottom} Q${right} ${bottom} ${right} ${bottom - r} L${right} ${top}`;
+})();
 
 /**
  * Bindergrafik — Ringbuch-Deckel (Leder-Optik, umlaufende Naht die links
@@ -220,6 +234,9 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
           {/* Daumenkerbe zum Aufklappen */}
           <ellipse cx="150" cy="6" rx="26" ry="15" fill="#000" fillOpacity=".28" />
           <ellipse cx="150" cy="3" rx="20" ry="9" fill="#fff" fillOpacity=".12" />
+          {/* Naht am Körper — läuft oben offen (dort sitzt bereits die Trennlinie) */}
+          <path d={BOX_STITCH_PATH} stroke="rgba(0,0,0,.22)" strokeWidth="1.8" strokeDasharray="5 4" strokeLinecap="round" />
+          <path d={BOX_STITCH_PATH} stroke="rgba(255,255,255,.18)" strokeWidth="1" strokeDasharray="5 4" strokeDashoffset="1.5" strokeLinecap="round" />
         </svg>
       ) : (
         <>
