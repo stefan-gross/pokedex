@@ -7,7 +7,6 @@
 import { useId } from 'react';
 import { Fredoka } from 'next/font/google';
 import { BinderCover } from '@/components/binder/BinderCover';
-import { complementaryColor } from '@/lib/color-utils';
 
 // NUR zum Testen auf dieser temporären Seite — Kandidat für eine besser
 // zur Prägung passende Schrift (kräftig, rund), unabhängig vom App-Font.
@@ -73,14 +72,22 @@ function lightenColor(hex: string, amount: number): string {
   return `#${[r, g, b].map(mix).map(v => v.toString(16).padStart(2, '0')).join('')}`;
 }
 
+// Sehr kleine Rundung an den "normalen" Ecken (oben links/rechts, unten
+// links) — nur die Binder-Ecke unten rechts bekommt stattdessen die an die
+// Kachel-Rundung angeglichene große Kurve (siehe unten).
+const BANDEROLE_SMALL_RADIUS = 3;
+
 function banderoleClipPath(): string {
   const w = TILE_W + 2; // Div-Breite: -1 bis TILE_W+1
   const h = BANDEROLE_HEIGHT;
+  const sr = BANDEROLE_SMALL_RADIUS;
   const yc = BANDEROLE_HEIGHT + BANDEROLE_GAP - TILE_RADIUS; // Kreismittelpunkt, lokale Y
   const dy = h - yc;
   const dx = Math.sqrt(Math.max(TILE_RADIUS ** 2 - dy ** 2, 0));
   const xBottom = (w - TILE_RADIUS) + dx;
-  return `path('M0 0 L${w} 0 L${w} ${yc} A${TILE_RADIUS} ${TILE_RADIUS} 0 0 1 ${xBottom} ${h} L0 ${h} Z')`;
+  return `path('M0 ${sr} A${sr} ${sr} 0 0 1 ${sr} 0 L${w - sr} 0 A${sr} ${sr} 0 0 1 ${w} ${sr} `
+    + `L${w} ${yc} A${TILE_RADIUS} ${TILE_RADIUS} 0 0 1 ${xBottom} ${h} `
+    + `L${sr} ${h} A${sr} ${sr} 0 0 1 0 ${h - sr} Z')`;
 }
 
 function PreviewTile({
@@ -92,7 +99,7 @@ function PreviewTile({
 }) {
   const grainUid = useId().replace(/:/g, '');
   const isBox = shape === 'box';
-  const textColor = complementaryColor(c.hex);
+  // Komplementärfarbe war schwer lesbar — erstmal zurück auf Weiß.
   const bandColor = lightenColor(c.hex, 0.14);
 
   return (
@@ -124,28 +131,28 @@ function PreviewTile({
             alignItems: 'flex-end',
             justifyContent: 'space-between',
             padding: '10px 14px',
-            // Gleiches Glanzlicht oben links + (nur bei Bindern) derselbe
-            // linke Schatten-Verlauf wie am Ordner-Cover selbst
-            // (BinderCover.tsx: "Leder-/Vinyl-Glanzlicht" bzw. "Leichter
-            // vertikaler Schatten links"), vor die etwas aufgehellte
-            // Binderfarbe gelegt. Boxen bekommen keinen linken Schatten
-            // (dort gibt es am Körper auch keinen vergleichbaren Schatten).
+            // (Nur bei Bindern) derselbe linke Schatten-Verlauf wie am
+            // Ordner-Cover selbst (BinderCover.tsx: "Leichter vertikaler
+            // Schatten links"), vor die etwas aufgehellte Binderfarbe
+            // gelegt. Boxen bekommen keinen linken Schatten (dort gibt es
+            // am Körper auch keinen vergleichbaren Schatten). Kein
+            // Glanzlicht mehr (auf Nutzerwunsch wieder entfernt).
             background: [
-              'linear-gradient(135deg, rgba(255,255,255,.38) 0%, rgba(255,255,255,.10) 20%, rgba(255,255,255,0) 42%)',
               ...(isBox ? [] : ['linear-gradient(90deg, rgba(0,0,0,.3) 0px, rgba(0,0,0,0) 26px)']),
               bandColor,
             ].join(', '),
             boxShadow: '0 3px 6px rgba(0,0,0,.35)',
             filter: `url(#banderole-grain-${grainUid})`,
-            // Box: keine Eckenrundung, einfaches Rechteck. Binder: rechte
-            // Kante folgt exakt dem Kreisbogen der echten Kachel-Rundung
-            // (siehe banderoleClipPath) statt eines eigenen, unabhängigen
-            // Radius — der sah bei der geringen Bandhöhe unproportional aus.
+            // Box: einheitliche sehr kleine Rundung an allen 4 Ecken.
+            // Binder: dieselbe kleine Rundung an 3 Ecken, nur unten rechts
+            // folgt stattdessen dem Kreisbogen der echten Kachel-Rundung
+            // (siehe banderoleClipPath).
+            borderRadius: isBox ? BANDEROLE_SMALL_RADIUS : undefined,
             clipPath: isBox ? undefined : banderoleClipPath(),
           }}
         >
-          <span style={{ fontSize: 12, fontWeight: 700, color: textColor }}>≈ 42 €</span>
-          <span style={{ fontSize: 12, color: textColor, opacity: 0.85 }}>7 Karten</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>≈ 42 €</span>
+          <span style={{ fontSize: 12, color: '#fff', opacity: 0.85 }}>7 Karten</span>
         </div>
       </div>
     </div>
