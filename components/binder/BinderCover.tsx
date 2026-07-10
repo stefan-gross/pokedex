@@ -240,10 +240,10 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
       {isBox ? (
         <>
           {/* Name im oberen Bereich (Deckel), oberhalb der Naht */}
-          <div className="absolute inset-x-0 top-0 flex items-center justify-center px-6" style={{ height: '30%' }}>
+          <div className="absolute inset-x-0 top-0 flex items-center justify-center px-[10px]" style={{ height: '30%' }}>
             {name && (
               <span
-                className="font-extrabold text-[15px] text-center leading-tight line-clamp-2"
+                className="font-extrabold text-[17px] text-center leading-tight line-clamp-2"
                 style={{ color: textColor, textShadow, opacity: textOpacity }}
               >
                 {name}
@@ -276,7 +276,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
           )}
           {name && (
             <span
-              className="font-extrabold text-[17px] text-center leading-tight line-clamp-3 px-6"
+              className="font-extrabold text-[19px] text-center leading-tight line-clamp-3 px-[10px]"
               style={{ color: textColor, textShadow, opacity: textOpacity }}
             >
               {name}
