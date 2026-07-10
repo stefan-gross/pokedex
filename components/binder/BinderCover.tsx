@@ -50,9 +50,9 @@ function coverFillColor(bg: string): string {
  *  werden, hellt stattdessen dezent auf. Weiß bekommt bewusst KEINEN
  *  Sonderfall mehr (vorher reines Weiß) — läuft durch dieselbe Abdunkeln-
  *  Logik wie jede andere Paletten-Farbe. */
-function coverAccentColor(bg: string): string {
-  if (bg?.toLowerCase() === '#2c2e33') return embossTextColor(bg, 0.21, 255);
-  return embossTextColor(bg, 0.26, 0);
+function coverAccentColor(bg: string, amount?: number): string {
+  if (bg?.toLowerCase() === '#2c2e33') return embossTextColor(bg, amount ?? 0.21, 255);
+  return embossTextColor(bg, amount ?? 0.26, 0);
 }
 
 interface Props {
@@ -123,12 +123,18 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   const isColorableIcon = !!icon && !icon.startsWith('type:') && !icon.startsWith('set:');
   const iconColor = isColorableIcon ? coverAccentColor(fill) : undefined;
   const iconFilter = isAnthracite ? EMBOSS_ICON_FILTER_DARK : EMBOSS_ICON_FILTER;
-  const textColor = coverAccentColor(fill);
+  // Text ist stärker transparent als Basis-Icons (0.5 statt 0.86) — die
+  // Farbe wird deshalb deutlich weiter Richtung Schwarz/Weiß abgedunkelt/
+  // aufgehellt (0.42/0.34 statt 0.26/0.21), sonst würde die höhere
+  // Transparenz die Prägung verwaschen statt nur die Körnung durchscheinen
+  // zu lassen.
+  const textColor = coverAccentColor(fill, isAnthracite ? 0.34 : 0.42);
   const textShadow = isAnthracite ? EMBOSS_TEXT_SHADOW_DARK : EMBOSS_TEXT_SHADOW;
   // Leicht transparent statt voll deckend — die Leder-Körnung darunter
-  // scheint dadurch durch Text und Basis-Icon hindurch statt komplett
-  // verdeckt zu werden.
+  // scheint dadurch durch Basis-Icons hindurch statt komplett verdeckt zu
+  // werden.
   const embossOpacity = 0.86;
+  const textOpacity = 0.5;
   // Typ-Icons/Set-Logos bekommen KEINE Transparenz (würde ihre kräftigen
   // Eigenfarben verwaschen) — stattdessen wird dieselbe Körnung direkt auf
   // die Icon-Fläche geblendet (multiply, auf die Icon-eigene Alpha-Form
@@ -237,8 +243,8 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
           <div className="absolute inset-x-0 top-0 flex items-center justify-center px-6" style={{ height: '30%' }}>
             {name && (
               <span
-                className="font-bold text-sm text-center leading-tight line-clamp-2"
-                style={{ color: textColor, textShadow, opacity: embossOpacity }}
+                className="font-extrabold text-[15px] text-center leading-tight line-clamp-2"
+                style={{ color: textColor, textShadow, opacity: textOpacity }}
               >
                 {name}
               </span>
@@ -270,8 +276,8 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
           )}
           {name && (
             <span
-              className="font-bold text-base text-center leading-tight line-clamp-3 px-6"
-              style={{ color: textColor, textShadow, opacity: embossOpacity }}
+              className="font-extrabold text-[17px] text-center leading-tight line-clamp-3 px-6"
+              style={{ color: textColor, textShadow, opacity: textOpacity }}
             >
               {name}
             </span>
