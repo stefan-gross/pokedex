@@ -92,7 +92,7 @@ const FOLDER_STITCH_PATH = (() => {
 // Seiten 2px eingezogen) sind zwei eigenständige Rechtecke, die exakt an
 // der Deckel-Unterkante zusammenschließen — kein Diagonal-Knick.
 const BOX_LID_HEIGHT = 131;
-const BOX_BODY_INSET = 2;
+const BOX_BODY_INSET = 4;
 const BOX_BODY_LEFT = 3 + BOX_BODY_INSET;
 const BOX_BODY_RIGHT = 297 - BOX_BODY_INSET;
 // Deckel-Unterkante rundet sich nach unten ab — Kubische Bezier mit
@@ -113,7 +113,7 @@ const BOX_BODY_PATH = `M${BOX_BODY_LEFT} ${BOX_LID_HEIGHT} C${BOX_BODY_LEFT} ${B
 // überall gleich dick und folgt der Rundung exakt statt (wie ein simpler
 // vertikaler Verlauf) an den Rändern anders anzusetzen als in der Mitte.
 // Bewusst schmal/dezent (kleines Band, niedrige Opacity).
-const BOX_SHADOW_BAND = 18;
+const BOX_SHADOW_BAND = 11;
 const BOX_SHADOW_PATH = `M${BOX_BODY_LEFT} ${BOX_LID_HEIGHT} C${BOX_BODY_LEFT} ${BOX_LID_HEIGHT + BOX_LID_DIP} ${BOX_BODY_RIGHT} ${BOX_LID_HEIGHT + BOX_LID_DIP} ${BOX_BODY_RIGHT} ${BOX_LID_HEIGHT} `
   + `L${BOX_BODY_RIGHT} ${BOX_LID_HEIGHT + BOX_SHADOW_BAND} `
   + `C${BOX_BODY_RIGHT} ${BOX_LID_HEIGHT + BOX_LID_DIP + BOX_SHADOW_BAND} ${BOX_BODY_LEFT} ${BOX_LID_HEIGHT + BOX_LID_DIP + BOX_SHADOW_BAND} ${BOX_BODY_LEFT} ${BOX_LID_HEIGHT + BOX_SHADOW_BAND} Z`;
@@ -254,7 +254,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
                 geraden Verlaufs-Bänder mehr), folgt der Rundung dadurch
                 exakt statt an den Rändern anders anzusetzen als in der
                 Mitte. Zusätzlich per bodyclip auf den Körper begrenzt. */}
-            <path d={BOX_SHADOW_PATH} fill="#000" fillOpacity=".28" filter={`url(#boxshadowblur-${uid})`} />
+            <path d={BOX_SHADOW_PATH} fill="#000" fillOpacity=".18" filter={`url(#boxshadowblur-${uid})`} />
           </g>
 
           {/* Feine Trennlinie an der Deckel-Unterkante — folgt derselben
