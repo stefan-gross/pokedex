@@ -52,7 +52,7 @@ const TILE_H = TILE_W * 4 / 3; // aspect-[3/4]
 // Radius der echten Kachel-Rundung (rounded-br-[20px] in ROUNDING.folder).
 const TILE_RADIUS = 20;
 const BANDEROLE_GAP = 6;
-const BANDEROLE_HEIGHT = 36;
+const BANDEROLE_HEIGHT = 28;
 
 /** Banderole-Pfad (nur Ordner) — statt eines unabhängigen, eigenen
  *  Eckenradius (sah bei der geringen Bandhöhe stark überproportioniert aus)
@@ -130,7 +130,7 @@ function PreviewTile({
             display: 'flex',
             alignItems: 'flex-end',
             justifyContent: 'space-between',
-            padding: '10px 14px',
+            padding: '6px 14px',
             // (Nur bei Bindern) derselbe linke Schatten-Verlauf wie am
             // Ordner-Cover selbst (BinderCover.tsx: "Leichter vertikaler
             // Schatten links"), vor die etwas aufgehellte Binderfarbe
@@ -151,8 +151,8 @@ function PreviewTile({
             clipPath: isBox ? undefined : banderoleClipPath(),
           }}
         >
-          <span className="font-sans" style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>≈ 42 €</span>
-          <span className="font-sans" style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>7 Karten</span>
+          <span className="font-sans" style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>≈ 42 €</span>
+          <span className="font-sans" style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>7 Karten</span>
         </div>
       </div>
     </div>
