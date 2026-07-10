@@ -7,6 +7,7 @@
 import { useId } from 'react';
 import { Fredoka } from 'next/font/google';
 import { BinderCover } from '@/components/binder/BinderCover';
+import { readableTextColor } from '@/lib/color-utils';
 
 // NUR zum Testen auf dieser temporären Seite — Kandidat für eine besser
 // zur Prägung passende Schrift (kräftig, rund), unabhängig vom App-Font.
@@ -99,8 +100,11 @@ function PreviewTile({
 }) {
   const grainUid = useId().replace(/:/g, '');
   const isBox = shape === 'box';
-  // Komplementärfarbe war schwer lesbar — erstmal zurück auf Weiß.
+  // Komplementärfarbe war schwer lesbar — erstmal zurück auf Weiß, außer
+  // bei hellen (z.B. weißen) Bindern: dort wäre Weiß auf der (ebenfalls
+  // hellen) Banderole unlesbar, deshalb dort dunkle Textfarbe.
   const bandColor = lightenColor(c.hex, 0.14);
+  const textColor = readableTextColor(bandColor);
 
   return (
     <div style={{ marginBottom: 28 }}>
@@ -151,8 +155,8 @@ function PreviewTile({
             clipPath: isBox ? undefined : banderoleClipPath(),
           }}
         >
-          <span className="font-sans" style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>≈ 42 €</span>
-          <span className="font-sans" style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>7 Karten</span>
+          <span className="font-sans" style={{ fontSize: 13, fontWeight: 700, color: textColor }}>≈ 42 €</span>
+          <span className="font-sans" style={{ fontSize: 13, fontWeight: 700, color: textColor }}>7 Karten</span>
         </div>
       </div>
     </div>
