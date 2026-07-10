@@ -129,11 +129,26 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   // scheint dadurch durch Text und Basis-Icon hindurch statt komplett
   // verdeckt zu werden.
   const embossOpacity = 0.86;
+  // Typ-Icons/Set-Logos bekommen KEINE Transparenz (würde ihre kräftigen
+  // Eigenfarben verwaschen) — stattdessen wird dieselbe Körnung direkt auf
+  // die Icon-Fläche geblendet (multiply, auf die Icon-eigene Alpha-Form
+  // geclippt), moduliert also die vorhandenen Farben statt sie zu verdecken.
+  const iconGrainFilter = `url(#icon-grain-${uid}) ${iconFilter}`;
 
   return (
     <div
       className={`relative aspect-[3/4] overflow-hidden ${rounding} ${className}`}
     >
+      <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+        <defs>
+          <filter id={`icon-grain-${uid}`}>
+            <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" result="noise" />
+            <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.18 0.18 0.18 0 0" result="grain" />
+            <feComposite in="grain" in2="SourceAlpha" operator="in" result="grainClipped" />
+            <feBlend in="SourceGraphic" in2="grainClipped" mode="multiply" />
+          </filter>
+        </defs>
+      </svg>
       {isBox ? (
         <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 300 400" fill="none" preserveAspectRatio="none">
           <defs>
@@ -235,7 +250,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
               <BinderIcon
                 name={icon}
                 size={56}
-                style={{ color: iconColor, filter: iconFilter, opacity: isColorableIcon ? embossOpacity : undefined, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
+                style={{ color: iconColor, filter: isColorableIcon ? iconFilter : iconGrainFilter, opacity: isColorableIcon ? embossOpacity : undefined, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
               />
             )}
           </div>
@@ -249,7 +264,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
               <BinderIcon
                 name={icon}
                 size={56}
-                style={{ color: iconColor, filter: iconFilter, opacity: isColorableIcon ? embossOpacity : undefined, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
+                style={{ color: iconColor, filter: isColorableIcon ? iconFilter : iconGrainFilter, opacity: isColorableIcon ? embossOpacity : undefined, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
               />
             </div>
           )}
