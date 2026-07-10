@@ -125,6 +125,10 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   const iconFilter = isAnthracite ? EMBOSS_ICON_FILTER_DARK : EMBOSS_ICON_FILTER;
   const textColor = coverAccentColor(fill);
   const textShadow = isAnthracite ? EMBOSS_TEXT_SHADOW_DARK : EMBOSS_TEXT_SHADOW;
+  // Leicht transparent statt voll deckend — die Leder-Körnung darunter
+  // scheint dadurch durch Text und Basis-Icon hindurch statt komplett
+  // verdeckt zu werden.
+  const embossOpacity = 0.86;
 
   return (
     <div
@@ -219,7 +223,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
             {name && (
               <span
                 className="font-bold text-sm text-center leading-tight line-clamp-2"
-                style={{ color: textColor, textShadow: textShadow }}
+                style={{ color: textColor, textShadow, opacity: embossOpacity }}
               >
                 {name}
               </span>
@@ -231,7 +235,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
               <BinderIcon
                 name={icon}
                 size={56}
-                style={{ color: iconColor, filter: iconFilter, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
+                style={{ color: iconColor, filter: iconFilter, opacity: isColorableIcon ? embossOpacity : undefined, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
               />
             )}
           </div>
@@ -245,14 +249,14 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
               <BinderIcon
                 name={icon}
                 size={56}
-                style={{ color: iconColor, filter: iconFilter, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
+                style={{ color: iconColor, filter: iconFilter, opacity: isColorableIcon ? embossOpacity : undefined, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
               />
             </div>
           )}
           {name && (
             <span
               className="font-bold text-base text-center leading-tight line-clamp-3 px-6"
-              style={{ color: textColor, textShadow: textShadow }}
+              style={{ color: textColor, textShadow, opacity: embossOpacity }}
             >
               {name}
             </span>
