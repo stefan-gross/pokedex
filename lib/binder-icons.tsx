@@ -57,6 +57,19 @@ export function BinderIcon({ name, size = 20, className, style, strokeWidth }: {
       />
     );
   }
+  // Gleiche Wrapper-Struktur wie beim Typ-Icon oben: das <svg> selbst bleibt
+  // bei einer festen, eindeutigen Pixelgröße (keine CSS-Overrides direkt
+  // drauf), die flexible Größenlogik (maxWidth/auto/maxHeight) trägt
+  // stattdessen der Wrapper. Vorher lag `width:'auto'`+`maxHeight` direkt
+  // auf dem <svg>, was bei echtem Browser-Zoom (anders als bei
+  // CSS-`zoom`/`transform:scale` in Tests) nicht zuverlässig neu berechnet
+  // wurde — das <svg> "fror" auf einer alten Größe ein, während Text und
+  // Typ-Icon (deren <svg> immer eine feste Attribut-Größe hatte) korrekt
+  // mitskalierten.
   const Icon = (name && BINDER_ICON_MAP[name]) ? BINDER_ICON_MAP[name] : Folder;
-  return <Icon size={size} className={className} style={style} strokeWidth={strokeWidth} />;
+  return (
+    <span style={{ display: 'inline-flex', ...style }}>
+      <Icon size={size} className={className} strokeWidth={strokeWidth} />
+    </span>
+  );
 }
