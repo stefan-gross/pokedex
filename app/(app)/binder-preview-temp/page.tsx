@@ -61,6 +61,18 @@ const BANDEROLE_HEIGHT = 36;
  *  Kachel-Rundung (TILE_RADIUS), nur um 1px nach rechts verschoben. Da die
  *  Banderole viel niedriger ist als die Kachel, ist nur ein kleiner
  *  Bogen-Abschnitt sichtbar — daher die sanfte statt starke Rundung. */
+/** Etwas hellere Variante der Binderfarbe für die Banderole (Nutzerwunsch:
+ *  "gleiche Farbe, ein bisschen heller"). Einfache Mischung Richtung Weiß,
+ *  analog zu embossTextColor() in BinderCover.tsx. */
+function lightenColor(hex: string, amount: number): string {
+  const full = hex.replace('#', '');
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  const mix = (v: number) => Math.round(v + (255 - v) * amount);
+  return `#${[r, g, b].map(mix).map(v => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
 function banderoleClipPath(): string {
   const w = TILE_W + 2; // Div-Breite: -1 bis TILE_W+1
   const h = BANDEROLE_HEIGHT;
@@ -81,6 +93,7 @@ function PreviewTile({
   const grainUid = useId().replace(/:/g, '');
   const isBox = shape === 'box';
   const textColor = complementaryColor(c.hex);
+  const bandColor = lightenColor(c.hex, 0.14);
 
   return (
     <div style={{ marginBottom: 28 }}>
@@ -95,7 +108,7 @@ function PreviewTile({
           <defs>
             <filter id={`banderole-grain-${grainUid}`}>
               <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" result="noise" />
-              <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.15 0.15 0.15 0 0" result="grain" />
+              <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.1 0.1 0.1 0 0" result="grain" />
               <feComposite in="grain" in2="SourceAlpha" operator="in" result="grainClipped" />
               <feBlend in="SourceGraphic" in2="grainClipped" mode="multiply" />
             </filter>
@@ -111,7 +124,10 @@ function PreviewTile({
             alignItems: 'flex-end',
             justifyContent: 'space-between',
             padding: '10px 14px',
-            background: c.hex,
+            // Gleicher linker Schatten-Verlauf wie am Ordner-Cover selbst
+            // (BinderCover.tsx: "Leichter vertikaler Schatten links"), vor
+            // die etwas aufgehellte Binderfarbe gelegt.
+            background: `linear-gradient(90deg, rgba(0,0,0,.3) 0%, rgba(0,0,0,0) 9%), ${bandColor}`,
             boxShadow: '0 3px 6px rgba(0,0,0,.35)',
             filter: `url(#banderole-grain-${grainUid})`,
             // Box: keine Eckenrundung, einfaches Rechteck. Binder: rechte
