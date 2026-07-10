@@ -25,7 +25,7 @@ const EMBOSS_ICON_FILTER_DARK = 'drop-shadow(-1px -1px 1px rgba(0,0,0,.45)) drop
  *  sich willkürlich anfühlte. Standard: immer Richtung Schwarz abgedunkelt;
  *  nur der Anthrazit-Sonderfall (siehe coverAccentColor) hellt auf, da er
  *  selbst schon nahe Schwarz ist. */
-function embossTextColor(bg: string, amount = 0.22, target: 0 | 255 = 0): string {
+function embossTextColor(bg: string, amount = 0.28, target: 0 | 255 = 0): string {
   if (!bg?.startsWith('#')) return '#ffffff';
   const hex = bg.replace('#', '');
   const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
@@ -51,8 +51,8 @@ function coverFillColor(bg: string): string {
  *  Sonderfall mehr (vorher reines Weiß) — läuft durch dieselbe Abdunkeln-
  *  Logik wie jede andere Paletten-Farbe. */
 function coverAccentColor(bg: string): string {
-  if (bg?.toLowerCase() === '#2c2e33') return embossTextColor(bg, 0.18, 255);
-  return embossTextColor(bg, 0.22, 0);
+  if (bg?.toLowerCase() === '#2c2e33') return embossTextColor(bg, 0.22, 255);
+  return embossTextColor(bg, 0.28, 0);
 }
 
 interface Props {
