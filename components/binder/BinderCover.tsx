@@ -3,18 +3,6 @@
 import { useId, type CSSProperties } from 'react';
 import { BinderIcon } from '@/lib/binder-icons';
 
-/** Geprägter Look für Titel-Text UND "Basis"-Icons (Lucide, z.B. Ordner/
- *  Blitz/Stern — kein Set-Logo, kein Typ-Icon) — Licht kommt gedanklich von
- *  oben links: Schatten oben links (dort, wo die gestanzte Kante vom Licht
- *  abgewandt ist), Schein unten rechts (dort, wo die Kante das Licht
- *  reflektiert). Set-Logos/Typ-Icons bleiben ohne Prägung (eigene Farben/
- *  Detailgrafik, siehe readableTextColor). */
-const EMBOSS_ICON_FILTER = 'drop-shadow(1px 1px 2px rgba(255,255,255,.5))';
-// Auf der (dunklen) Anthrazit-Fläche liest sich ein schwarzer Schatten kaum
-// (dunkel auf dunkel) — dort Schatten kräftiger schwarz + Glanz kräftiger
-// weiß, damit die Prägung überhaupt sichtbar bleibt.
-const EMBOSS_ICON_FILTER_DARK = 'drop-shadow(1px 1px 2px rgba(255,255,255,.5))';
-
 function hexToRgba(hex: string, alpha: number): string {
   const full = hex.replace('#', '');
   const r = parseInt(full.slice(0, 2), 16);
@@ -122,36 +110,33 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   const fill = coverFillColor(color);
   const isAnthracite = fill?.toLowerCase() === '#2c2e33';
   // NUR Basis-Icons (Lucide, kein type:/set:-Präfix) werden wie der
-  // Titel-Text eingefärbt+geprägt. Typ-Icons (EnergyIcon) und Set-Logos
-  // behalten ihre eigenen Farben (Detailgrafik bzw. Typ-Branding) und
-  // bekommen nur den Prägeschatten obendrauf, keine Farbänderung — gilt
-  // gleichermaßen für Binder und Box (gleicher Code-Pfad, siehe unten).
+  // Titel-Text eingefärbt. Typ-Icons (EnergyIcon) und Set-Logos behalten
+  // ihre eigenen Farben (Detailgrafik bzw. Typ-Branding) — alle drei
+  // Icon-Arten UND der Text teilen sich aber denselben Schatten/Körnung.
   const isColorableIcon = !!icon && !icon.startsWith('type:') && !icon.startsWith('set:');
-  const iconColor = isColorableIcon ? coverAccentColor(fill) : undefined;
-  const iconFilter = isAnthracite ? EMBOSS_ICON_FILTER_DARK : EMBOSS_ICON_FILTER;
-  // Leicht transparent statt voll deckend — die Leder-Körnung darunter
-  // scheint dadurch durch Basis-Icons hindurch statt komplett verdeckt zu
-  // werden.
-  const embossOpacity = 0.86;
-  // Text: ECHTE (deckende) Textfarbe, leicht dunkler als die Fläche
-  // (coverAccentColor, 15%) — der background-clip:text-Trick wurde wieder
-  // verworfen, weil der helle Schein bei unserer kleinen Schriftgröße
-  // (15-19px) breiter als die Strichstärke selbst war und die dunklere
-  // Füllfarbe komplett überdeckt hat, sodass der Text trotz dunklerer
-  // Grundfarbe insgesamt heller als der Hintergrund wirkte. Mit einer
-  // deckenden dunkleren Farbe ist der Kontrast garantiert richtig herum;
-  // der Schein bleibt nur noch als dezenter Zusatz obendrauf.
+  // ECHTE (deckende) Farbe, leicht dunkler als die Fläche (coverAccentColor,
+  // 40%/15% Anthrazit) — der background-clip:text-Trick wurde verworfen,
+  // weil der helle Schein bei unserer kleinen Schriftgröße (15-19px) breiter
+  // als die Strichstärke selbst war und die dunklere Füllfarbe komplett
+  // überdeckt hat, sodass Text/Icon trotz dunklerer Grundfarbe insgesamt
+  // heller als der Hintergrund wirkten. Mit einer deckenden dunkleren Farbe
+  // ist der Kontrast garantiert richtig herum; der Schein bleibt nur noch
+  // als dezenter Zusatz obendrauf.
   const textBgColor = coverAccentColor(fill, isAnthracite ? 0.15 : 0.4);
   const textShadowColor = hexToRgba(embossTextColor(fill, isAnthracite ? 0.6 : 0.55, 255), 0.28);
   const engravedTextStyle: CSSProperties = {
     color: textBgColor,
     textShadow: `${textShadowColor} 0.5px 0.8px 0.4px`,
   };
-  // Typ-Icons/Set-Logos bekommen KEINE Transparenz (würde ihre kräftigen
-  // Eigenfarben verwaschen) — stattdessen wird dieselbe Körnung direkt auf
-  // die Icon-Fläche geblendet (multiply, auf die Icon-eigene Alpha-Form
-  // geclippt), moduliert also die vorhandenen Farben statt sie zu verdecken.
-  const iconGrainFilter = `url(#icon-grain-${uid}) ${iconFilter}`;
+  // Icons: dieselbe Schein-Farbe/-Versatz wie beim Text, aber als
+  // drop-shadow-Filter (wirkt auf SVG/Bild statt auf Text). Zusätzlich die
+  // Leder-Körnung direkt auf die Icon-Fläche geblendet (multiply, auf die
+  // Icon-eigene Alpha-Form geclippt) — bei Typ-Icons/Set-Logos ist das die
+  // einzige Textur-Quelle, da sie (anders als Basis-Icons/Text) keine
+  // eigene deckende Farbe bekommen, deren Kontrastrichtung wir steuern
+  // könnten (ihre Originalfarben bleiben unverändert erhalten).
+  const iconShadowFilter = `url(#icon-grain-${uid}) drop-shadow(${textShadowColor} 0.5px 0.8px 0.4px)`;
+  const iconColor = isColorableIcon ? textBgColor : undefined;
 
   return (
     <div
@@ -268,7 +253,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
               <BinderIcon
                 name={icon}
                 size={56}
-                style={{ color: iconColor, filter: isColorableIcon ? iconFilter : iconGrainFilter, opacity: isColorableIcon ? embossOpacity : undefined, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
+                style={{ color: iconColor, filter: iconShadowFilter, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
               />
             )}
           </div>
@@ -282,7 +267,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
               <BinderIcon
                 name={icon}
                 size={56}
-                style={{ color: iconColor, filter: isColorableIcon ? iconFilter : iconGrainFilter, opacity: isColorableIcon ? embossOpacity : undefined, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
+                style={{ color: iconColor, filter: iconShadowFilter, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 56 }}
               />
             </div>
           )}
