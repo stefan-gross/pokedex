@@ -139,6 +139,11 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
     textShadow: isAnthracite
       ? `${hexToRgba(embossTextColor(fill, 0.6, 0), 0.35)} -0.5px -0.8px 0.4px, ${textShineColor} 0.5px 0.8px 0.4px`
       : `${textShineColor} 0.5px 0.8px 0.4px`,
+    // Gleicher Körnungs-Filter wie bei Typ-/Set-Icons (feBlend multiply auf
+    // die Text-Alpha-Form geclippt) — funktioniert unabhängig von der
+    // Deckkraft, verwäscht die Textfarbe also nicht (anders als der frühere
+    // Opacity-Ansatz).
+    filter: `url(#icon-grain-${uid})`,
   };
   // Icons: gleiche (aus der Binderfarbe abgeleitete) Schein-Farbe wie beim
   // Text, aber kräftiger als der Text-Schatten — auf einer durchgehenden
