@@ -75,7 +75,7 @@ function lightenColor(hex: string, amount: number): string {
 // Sehr kleine Rundung an den "normalen" Ecken (oben links/rechts, unten
 // links) — nur die Binder-Ecke unten rechts bekommt stattdessen die an die
 // Kachel-Rundung angeglichene große Kurve (siehe unten).
-const BANDEROLE_SMALL_RADIUS = 3;
+const BANDEROLE_SMALL_RADIUS = 1.5;
 
 function banderoleClipPath(): string {
   const w = TILE_W + 2; // Div-Breite: -1 bis TILE_W+1
@@ -151,8 +151,8 @@ function PreviewTile({
             clipPath: isBox ? undefined : banderoleClipPath(),
           }}
         >
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>≈ 42 €</span>
-          <span style={{ fontSize: 12, color: '#fff', opacity: 0.85 }}>7 Karten</span>
+          <span className="font-sans" style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>≈ 42 €</span>
+          <span className="font-sans" style={{ fontSize: 15, color: '#fff', opacity: 0.85 }}>7 Karten</span>
         </div>
       </div>
     </div>
