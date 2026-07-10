@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useId } from 'react';
 import Link from 'next/link';
 import { Plus, Folder, Heart } from 'lucide-react';
 import { getBinders, deleteBinder } from '@/lib/firestore/binders';
@@ -9,6 +9,7 @@ import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { BinderCover } from '@/components/binder/BinderCover';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
+import { complementaryColor } from '@/lib/color-utils';
 import type { BinderDoc, CardDoc } from '@/types';
 
 export default function BindersPage() {
@@ -116,6 +117,10 @@ function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; 
   const isBox     = binder.collectionType === 'box';
   const totalValue = useTotalValue(binderCards);
   const wishlistCount = binder.wishlistCardIds?.length ?? 0;
+  const grainUid = useId().replace(/:/g, '');
+  // Komplementärfarbe statt Weiß+Schlagschatten — deckende, kräftige
+  // Kontrastfarbe direkt auf der Banderole, kein Schatten mehr nötig.
+  const banderoleTextColor = complementaryColor(binder.color);
 
   return (
     <Link href={`/binders/${binder.id}`} className="block active:scale-[.98] transition-transform">
@@ -139,28 +144,47 @@ function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; 
           </span>
         )}
 
+        {/* Leder-Körnung für die Banderole — gleiches feBlend/multiply-Rezept
+            wie in BinderCover.tsx, aber mit eigener uid, da die Banderole
+            außerhalb von BinderCover liegt und dessen SVG-Filter-IDs nicht
+            kennt. */}
+        <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+          <defs>
+            <filter id={`banderole-grain-${grainUid}`}>
+              <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" result="noise" />
+              <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.15 0.15 0.15 0 0" result="grain" />
+              <feComposite in="grain" in2="SourceAlpha" operator="in" result="grainClipped" />
+              <feBlend in="SourceGraphic" in2="grainClipped" mode="multiply" />
+            </filter>
+          </defs>
+        </svg>
+
         {/* Banderole — eigene Farbfläche in der Sammlungsfarbe, nur 1px
             breiter als der Körper, auf dem sie liegt (nicht die ganze
             Kachel — die Box-Körper-Form ist selbst schon BOX_BODY_INSET
             (4 von 300 SVG-Einheiten) schmaler als die Kachel, siehe
             BinderCover.tsx). Ein paar Pixel Abstand nach unten, statt
             direkt an der Kachel-Unterkante zu kleben. Eigener
-            Schlagschatten, Eckenradius spiegelt die jeweilige Cover-Form. */}
+            Schlagschatten, Eckenradius spiegelt die jeweilige Cover-Form
+            (Ordner: rechter Radius 21 statt 20 — gleicht den 1px-Überstand
+            aus, sonst reißt die Kurve am Kachel-Rundungsübergang sichtbar ab). */}
         <div
-          className={`absolute bottom-1.5 flex items-end justify-between px-3.5 py-2.5 ${isBox ? 'rounded-b-[4px]' : 'rounded-bl-[4px] rounded-br-[20px]'}`}
+          className={`absolute bottom-1.5 flex items-end justify-between px-3.5 py-2.5 ${isBox ? 'rounded-b-[4px]' : 'rounded-bl-[4px]'}`}
           style={{
             left: isBox ? 'calc(4 / 300 * 100% - 1px)' : -1,
             right: isBox ? 'calc(4 / 300 * 100% - 1px)' : -1,
+            borderBottomRightRadius: isBox ? undefined : 21,
             background: binder.color,
             boxShadow: '0 3px 6px rgba(0,0,0,.35)',
+            filter: `url(#banderole-grain-${grainUid})`,
           }}
         >
-          <span className="text-xs font-bold truncate text-white drop-shadow-[0_1px_2px_rgba(0,0,0,.4)]">
+          <span className="text-xs font-bold truncate" style={{ color: banderoleTextColor }}>
             {!totalValue.loading && totalValue.withPrice > 0
               ? `≈ ${totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
               : ''}
           </span>
-          <span className="text-xs text-white/85 shrink-0 tabular-nums drop-shadow-[0_1px_2px_rgba(0,0,0,.4)]">
+          <span className="text-xs shrink-0 tabular-nums" style={{ color: banderoleTextColor, opacity: 0.85 }}>
             {cardCount} {cardCount === 1 ? 'Karte' : 'Karten'}
           </span>
         </div>
