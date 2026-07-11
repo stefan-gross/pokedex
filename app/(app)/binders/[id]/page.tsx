@@ -278,7 +278,7 @@ export default function BinderDetailPage({ params }: Props) {
             className="w-11 h-11 rounded-md glass-inner flex items-center justify-center text-glass"
             aria-label="Aktionen"
           >
-            <Settings size={15} />
+            <Settings size={20} />
           </button>
         </div>
 
@@ -574,7 +574,7 @@ function SheetTile({
             style={DELETE_GLASS_STYLE}
             aria-label="Blatt löschen"
           >
-            <X size={13} strokeWidth={3} />
+            <X size={16} strokeWidth={3} />
           </button>
         )}
       </div>

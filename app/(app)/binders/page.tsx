@@ -75,7 +75,7 @@ export default function BindersPage() {
           <button
             onClick={() => setEditMode(false)}
             className="inline-flex items-center gap-1.5 h-11 px-3 rounded-full text-xs font-semibold"
-            style={{ background: 'var(--pokedex-red)', color: '#fff', border: 'none' }}
+            style={{ background: 'var(--pokedex-blue)', color: '#fff', border: 'none' }}
           >
             <Check size={13} />
             Fertig
@@ -285,7 +285,7 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
             style={tintedGlassStyle('#c53030')}
             aria-label="Sammlung löschen"
           >
-            <X size={15} strokeWidth={3} />
+            <X size={20} strokeWidth={3} />
           </button>
         )}
 

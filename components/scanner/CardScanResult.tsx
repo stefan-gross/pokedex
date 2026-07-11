@@ -48,7 +48,7 @@ export function CardScanResult({ card, candidates, language, confidence, preVari
         <button
           onClick={onManualSearch}
           className="flex items-center gap-2 mx-auto px-4 py-2 rounded-xl text-sm"
-          style={{ color: 'var(--pokedex-red)' }}
+          style={{ color: 'var(--pokedex-blue)' }}
         >
           <Search size={14} /> Manuell suchen
         </button>
@@ -131,7 +131,7 @@ export function CardScanResult({ card, candidates, language, confidence, preVari
           <button
             onClick={() => setShowModal(true)}
             className="w-full h-11 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2"
-            style={{ background: 'var(--pokedex-red)' }}
+            style={{ background: 'var(--action-add)' }}
           >
             <Plus size={16} /> Zur Sammlung hinzufügen
           </button>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Plus } from 'lucide-react';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition, CardLanguage, CardVariant, CardDoc, BinderDoc } from '@/types';
 import { addCard, getCardsByTcgId } from '@/lib/firestore/cards';
@@ -268,9 +268,10 @@ export function AddToCollectionModal({
         <button
           onClick={save}
           disabled={saving}
-          className="w-full rounded-[15px] font-bold text-white disabled:opacity-50 transition-opacity shrink-0"
+          className="w-full rounded-[15px] font-bold text-white disabled:opacity-50 transition-opacity shrink-0 flex items-center justify-center gap-1.5"
           style={{ height: 54, fontSize: 17, background: '#22c55e', boxShadow: '0 6px 20px rgba(34,197,94,0.4)' }}
         >
+          {!saving && <Plus size={18} strokeWidth={2.5} />}
           {saving ? 'Wird gespeichert…' : 'Hinzufügen'}
         </button>
       </div>

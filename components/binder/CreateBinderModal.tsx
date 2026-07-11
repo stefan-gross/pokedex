@@ -18,11 +18,14 @@ type PickerTab = 'icons' | 'types' | 'set';
 
 const COLORS = ['#1a1a1a', '#ffffff', '#e53e3e', '#4299e1', '#ecc94b', '#48bb78', '#667eea'];
 
-/** Fixer Akzent für die Auswahl-Hervorhebungen im Drawer (Typ-/Icon-Picker,
- *  Speichern-Button) — bewusst UNABHÄNGIG von der gewählten Sammlungsfarbe,
- *  sonst würde z.B. ein weißer/schwarzer Farbwahl den Speichern-Button oder
- *  andere UI-Elemente im Drawer mitverfärben. */
+/** Fixer Akzent für die Auswahl-Hervorhebungen im Drawer (Typ-/Icon-Picker)
+ *  — bewusst UNABHÄNGIG von der gewählten Sammlungsfarbe, sonst würde z.B.
+ *  ein weißer/schwarzer Farbwahl die Hervorhebungen mitverfärben. */
 const ACCENT = '#e53e3e';
+// Footer-Button: Neu anlegen = Hinzufügen-Grün (wie die "Neue Sammlung"-
+// Kachel/CTA anderswo), Bestehendes bearbeiten = normales Primary-Blau.
+const ADD_ACCENT = '#2f855a';
+const PRIMARY_ACCENT = '#3182ce';
 
 interface Props {
   existing?: BinderDoc;
@@ -113,7 +116,7 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold">{existing ? 'Sammlung bearbeiten' : 'Neue Sammlung'}</h2>
           <button onClick={onClose} className="w-11 h-11 rounded-full glass-inner flex items-center justify-center" aria-label="Schließen">
-            <X size={14} />
+            <X size={20} />
           </button>
         </div>
 
@@ -349,7 +352,7 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
             onClick={save}
             disabled={!name.trim() || saving}
             className="w-full h-11 rounded-xl font-semibold text-sm text-white disabled:opacity-40"
-            style={tintedGlassStyle(ACCENT)}
+            style={tintedGlassStyle(existing ? PRIMARY_ACCENT : ADD_ACCENT)}
           >
             {saving ? 'Speichern…' : existing ? 'Änderungen speichern' : 'Sammlung erstellen'}
           </button>

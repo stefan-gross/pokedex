@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Check, Loader2 } from 'lucide-react';
+import { Check, Loader2, Plus } from 'lucide-react';
 import type { CardCondition, CardLanguage, CardVariant, BinderDoc } from '@/types';
 import type { CardInfo } from '@/lib/card-info';
 import { addCard } from '@/lib/firestore/cards';
@@ -214,7 +214,10 @@ export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved
               Speichere … {progress}/{jobs.length}
             </>
           ) : (
-            `${jobs.length} ${jobs.length === 1 ? 'Karte' : 'Karten'} hinzufügen`
+            <>
+              <Plus size={18} strokeWidth={2.5} />
+              {jobs.length} {jobs.length === 1 ? 'Karte' : 'Karten'} hinzufügen
+            </>
           )}
         </button>
       </div>

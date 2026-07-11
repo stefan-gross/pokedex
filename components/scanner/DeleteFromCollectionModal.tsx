@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Trash2 } from 'lucide-react';
+import { Minus } from 'lucide-react';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardDoc, BinderDoc } from '@/types';
 import { deleteCard, getCardsByTcgId } from '@/lib/firestore/cards';
@@ -212,7 +212,7 @@ export function DeleteFromCollectionModal({ card, fromScanner = false, onClose, 
                       style={isConfirm ? { background: 'var(--action-delete)' } : undefined}
                       aria-label={isConfirm ? 'Wirklich löschen?' : 'Exemplar löschen'}
                     >
-                      {isDeleting ? <span className="text-[10px]">…</span> : <Trash2 size={15} />}
+                      {isDeleting ? <span className="text-[10px]">…</span> : <Minus size={16} strokeWidth={2.5} />}
                     </button>
                   </div>
                 );
@@ -225,13 +225,14 @@ export function DeleteFromCollectionModal({ card, fromScanner = false, onClose, 
           <button
             onClick={deleteAll}
             disabled={deletingAll}
-            className="w-full rounded-[15px] font-bold text-white disabled:opacity-50 transition-opacity shrink-0"
+            className="w-full rounded-[15px] font-bold text-white disabled:opacity-50 transition-opacity shrink-0 flex items-center justify-center gap-1.5"
             style={{
               height: 54, fontSize: 17,
               background: 'var(--action-delete)',
               boxShadow: '0 6px 20px rgba(197,48,48,0.4)',
             }}
           >
+            {!deletingAll && <Minus size={18} strokeWidth={2.5} />}
             {deletingAll ? 'Wird gelöscht…' : confirmAll ? 'Wirklich überall löschen?' : 'Überall löschen'}
           </button>
         )}

@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { X, Plus, Heart, CheckCircle2, ChevronDown, ChevronRight, ChevronLeft, Trash2, Info, Repeat2, LayoutGrid } from 'lucide-react';
+import { X, Plus, Minus, Heart, CheckCircle2, ChevronDown, ChevronRight, ChevronLeft, Info, Repeat2, LayoutGrid } from 'lucide-react';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
@@ -891,7 +891,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                         onSaved?.();
                                       }}
                                       className="text-role-label px-2 py-1 rounded flex items-center gap-1 shrink-0 text-white"
-                                      style={{ background: 'var(--action-delete)' }}
+                                      style={{ background: 'var(--pokedex-blue)' }}
                                     >
                                       <CheckCircle2 size={11} /> Prüfen
                                     </button>
@@ -959,7 +959,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                     ? <span className="text-role-badge">…</span>
                                     : isConfirm
                                       ? <span className="text-role-badge">OK?</span>
-                                      : <Trash2 size={16} />
+                                      : <Minus size={16} strokeWidth={2.5} />
                                   }
                                 </button>
                               </div>

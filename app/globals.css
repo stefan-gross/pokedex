@@ -100,6 +100,13 @@
   --action-add-hover: #276749;
   --action-delete: #c53030;
   --action-delete-hover: #9b2c2c;
+  /* Primary-Akzent für alle "normalen" Aktions-Buttons (Speichern, Bestätigen,
+     Weiter, …) — bewusst NICHT das App-Rot (das ist für Löschen reserviert).
+     Scan-Lila stammt vom bestehenden Scan-FAB (BottomNav), hier zentralisiert. */
+  --pokedex-blue: #3182ce;
+  --pokedex-blue-hover: #2b6cb0;
+  --pokedex-purple: #8b5cf6;
+  --pokedex-purple-hover: #7c3aed;
 }
 
 /* Dark Mode (class — next-themes) */

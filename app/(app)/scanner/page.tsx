@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Trash2, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle, EyeOff, SearchX, LayoutGrid, Square, Flag, Bug } from 'lucide-react';
+import { X, Loader2, AlertCircle, Check, Plus, Minus, ChevronLeft, AlertTriangle, EyeOff, SearchX, LayoutGrid, Square, Flag, Bug } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
@@ -1333,7 +1333,7 @@ export default function ScannerPage() {
                         style={{ background: 'var(--action-delete)' }}
                         aria-label="Entfernen"
                       >
-                        <Trash2 size={14} />
+                        <Minus size={16} strokeWidth={2.5} />
                       </button>
                       {canOpen && !job.added && (
                         <button
@@ -1503,7 +1503,7 @@ export default function ScannerPage() {
                         style={{ background: 'var(--action-delete)' }}
                         aria-label="Entfernen"
                       >
-                        <Trash2 size={18} />
+                        <Minus size={20} strokeWidth={2.5} />
                       </button>
                       {jCanOpen && !j.added && (
                         <button
@@ -2082,7 +2082,7 @@ export default function ScannerPage() {
               className="flex-1 h-11 rounded-md text-sm font-semibold text-white flex items-center justify-center gap-1.5"
               style={{ background: 'var(--action-delete)' }}
             >
-              <Trash2 size={15} color="#fff" />
+              <Minus size={16} strokeWidth={2.5} color="#fff" />
               Alle löschen
             </button>
             <button
@@ -2237,20 +2237,16 @@ export default function ScannerPage() {
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={removeAndClose}
-                  className="flex-1 h-11 rounded-full font-semibold text-sm flex items-center justify-center gap-1.5"
-                  style={{
-                    background: 'rgba(255,255,255,0.08)',
-                    color: 'var(--foreground)',
-                    border: '1px solid var(--border)',
-                  }}
+                  className="flex-1 h-11 rounded-full font-semibold text-sm text-white flex items-center justify-center gap-1.5"
+                  style={{ background: 'var(--action-delete)' }}
                 >
-                  <Trash2 size={15} color="#ef4444" />
+                  <Minus size={15} strokeWidth={2.5} />
                   Entfernen
                 </button>
                 <button
                   onClick={close}
                   className="flex-1 h-11 rounded-full font-semibold text-sm text-white"
-                  style={{ background: 'var(--pokedex-red)' }}
+                  style={{ background: 'var(--pokedex-blue)' }}
                 >
                   Schließen
                 </button>
@@ -2735,7 +2731,7 @@ function ScannedCardTile({
           style={{ background: 'var(--action-delete)' }}
           aria-label="Entfernen"
         >
-          <Trash2 size={14} />
+          <Minus size={16} strokeWidth={2.5} />
         </button>
 
         {/* Wert-Badge unten links — sichtbar nur ab Tier 'wertvoll' */}

@@ -744,7 +744,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
               <button
                 onClick={() => { streamHealthyRef.current = false; setError(null); startCamera(); }}
                 className="mt-2 px-6 py-3 rounded-xl font-semibold text-white"
-                style={{ background: 'var(--pokedex-red)' }}
+                style={{ background: 'var(--pokedex-blue)' }}
               >
                 Tippe zum Neustart
               </button>
@@ -766,7 +766,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
               <button
                 onClick={() => { streamHealthyRef.current = false; setError(null); startCamera(); }}
                 className="mt-2 px-6 py-3 rounded-xl font-semibold text-white"
-                style={{ background: 'var(--pokedex-red)' }}
+                style={{ background: 'var(--pokedex-blue)' }}
               >
                 Erneut versuchen
               </button>
@@ -780,7 +780,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
               <button
                 onClick={() => { streamHealthyRef.current = false; setError(null); startCamera(); }}
                 className="mt-2 px-6 py-3 rounded-xl font-semibold text-white"
-                style={{ background: 'var(--pokedex-red)' }}
+                style={{ background: 'var(--pokedex-blue)' }}
               >
                 Erneut versuchen
               </button>

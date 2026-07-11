@@ -250,7 +250,7 @@ export default function DashboardPage() {
               <Link
                 href="/sets"
                 className="text-role-title px-4 py-2 rounded-xl"
-                style={{ background: 'var(--pokedex-red)', color: '#fff' }}
+                style={{ background: 'var(--pokedex-blue)', color: '#fff' }}
               >
                 Alle Zyklen & Sets ansehen
               </Link>
@@ -293,7 +293,7 @@ export default function DashboardPage() {
           <div className="text-4xl">📦</div>
           <p className="text-role-title text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Noch keine Karten</p>
           <p className="text-role-label text-glass-muted max-w-[220px]">Scanne deine erste Karte oder suche sie in der Kartendatenbank.</p>
-          <Link href="/scanner" className="mt-2 px-4 py-2 rounded-xl text-role-title text-white" style={{ background: 'var(--pokedex-red)' }}>
+          <Link href="/scanner" className="mt-2 px-4 py-2 rounded-xl text-role-title text-white" style={{ background: 'var(--pokedex-purple)' }}>
             Karte scannen
           </Link>
         </div>
