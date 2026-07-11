@@ -934,7 +934,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                         title="Aus Sammlung entfernen"
                                         aria-label="Aus Sammlung entfernen"
                                       >
-                                        <X size={12} strokeWidth={3} />
+                                        <Minus size={12} strokeWidth={3} />
                                       </button>
                                     ) : (
                                       <ChevronRight size={13} style={{ opacity: 0.7 }} />

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useId, useRef, useLayoutEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Folder, Heart, Check, X } from 'lucide-react';
+import { Plus, Folder, Heart, Check, Minus } from 'lucide-react';
 import { getBinders, deleteBinderCascade } from '@/lib/firestore/binders';
 import { getCards } from '@/lib/firestore/cards';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
@@ -285,7 +285,7 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
             style={tintedGlassStyle('#c53030')}
             aria-label="Sammlung löschen"
           >
-            <X size={20} strokeWidth={3} />
+            <Minus size={20} strokeWidth={3} />
           </button>
         )}
 

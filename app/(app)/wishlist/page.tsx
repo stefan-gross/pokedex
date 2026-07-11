@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Heart, X } from 'lucide-react';
+import { Heart, Minus } from 'lucide-react';
 import { getWishlists, ensureDefaultWishlist, removeItemFromWishlist } from '@/lib/firestore/wishlists';
 import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
 import { getCardsByTcgId } from '@/lib/firestore/cards';
@@ -103,7 +103,7 @@ export default function WishlistPage() {
                     style={{ background: 'rgba(0,0,0,.6)' }}
                     aria-label="Von Wunschliste entfernen"
                   >
-                    <X size={14} color="#fff" />
+                    <Minus size={14} strokeWidth={3} color="#fff" />
                   </button>
                   {price != null && (
                     <div
@@ -137,7 +137,7 @@ export default function WishlistPage() {
                 {item.notes && <p className="text-role-label text-glass-muted truncate">{item.notes}</p>}
               </div>
               <button onClick={() => handleRemove(item)} className="text-glass-muted shrink-0" aria-label="Entfernen">
-                <X size={16} />
+                <Minus size={16} strokeWidth={2.5} />
               </button>
             </div>
           ))}

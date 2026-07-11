@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, Settings, LayoutGrid, BookOpen, FileText, Pencil, Eye,
-  Plus, X, ChevronRight, ChevronDown,
+  Plus, Minus, ChevronRight, ChevronDown,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, TouchSensor, useSensor, useSensors,
@@ -574,7 +574,7 @@ function SheetTile({
             style={DELETE_GLASS_STYLE}
             aria-label="Blatt löschen"
           >
-            <X size={16} strokeWidth={3} />
+            <Minus size={16} strokeWidth={3} />
           </button>
         )}
       </div>
@@ -1150,7 +1150,7 @@ function DraggableCardSlot({
           style={DELETE_GLASS_STYLE}
           aria-label="Aus Slot entfernen"
         >
-          <X size={10} strokeWidth={3} />
+          <Minus size={10} strokeWidth={3} />
         </button>
       )}
     </div>
