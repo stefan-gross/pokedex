@@ -212,7 +212,7 @@ function BinderTile({ binder, binderCards, editMode, onDelete }: { binder: Binde
         ref={tileRef}
         style={{
           ...(isBox ? { transform: 'scale(0.92)', transformOrigin: 'center' } : {}),
-          animation: editMode && !isProtected ? 'binder-wiggle 0.5s ease-in-out infinite alternate' : undefined,
+          animation: editMode && !isProtected ? 'binder-wiggle 0.25s ease-in-out infinite alternate' : undefined,
         }}
       >
         <BinderCover
@@ -231,19 +231,19 @@ function BinderTile({ binder, binderCards, editMode, onDelete }: { binder: Binde
           </span>
         )}
 
-        {/* Lösch-X — links oben (Wunschlisten-Badge belegt bereits rechts
-            oben), nur im Bearbeiten-Modus und nicht bei geschützten Bindern
-            (Inbox/Standard). Gleiches Styling wie das Blatt-Lösch-X auf der
-            Detailseite (DELETE_GLASS_STYLE). */}
+        {/* Lösch-X — direkt in der oberen linken Ecke (Wunschlisten-Badge
+            belegt bereits rechts oben), 44px (App-weite Touch-Target-
+            Mindestgröße), nur im Bearbeiten-Modus und nicht bei geschützten
+            Bindern (Inbox/Standard). */}
         {editMode && !isProtected && (
           <button
             onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
-            className="absolute top-2.5 left-2.5 w-9 h-9 rounded-full flex items-center justify-center text-white"
+            className="absolute -top-1 -left-1 w-11 h-11 rounded-full flex items-center justify-center text-white"
             style={tintedGlassStyle('#c53030')}
             aria-label="Sammlung löschen"
           >
-            <X size={13} strokeWidth={3} />
+            <X size={15} strokeWidth={3} />
           </button>
         )}
 
