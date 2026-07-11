@@ -254,7 +254,7 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
         ref={tileRef}
         style={{
           ...(isBox ? { transform: 'scale(0.92)', transformOrigin: 'center' } : {}),
-          animation: editMode && !isProtected ? 'binder-wiggle 0.25s ease-in-out infinite alternate' : undefined,
+          animation: editMode && !isProtected ? 'binder-wiggle 0.18s ease-in-out infinite alternate' : undefined,
           animationDelay: editMode && !isProtected ? `${wiggleOffset}s` : undefined,
         }}
       >

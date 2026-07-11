@@ -727,7 +727,7 @@ function SortableSheetTile({
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.3 : 1,
-    animation: editMode && !isDragging && !isOver ? 'binder-wiggle 0.25s ease-in-out infinite alternate' : undefined,
+    animation: editMode && !isDragging && !isOver ? 'binder-wiggle 0.18s ease-in-out infinite alternate' : undefined,
     animationDelay: editMode && !isDragging && !isOver ? `${wiggleDelay(id)}s` : undefined,
     touchAction: editMode ? 'none' : undefined,
     borderColor: isOver ? accent : undefined,
@@ -1181,7 +1181,7 @@ function DraggableCardSlot({
         boxShadow: isOver ? `0 0 0 4px ${accent}40` : undefined,
         transform: isOver ? 'scale(1.04)' : undefined,
         transition: 'border-color 150ms ease-out, box-shadow 150ms ease-out, transform 150ms ease-out',
-        animation: editMode && !isDragging && !isOver ? 'binder-wiggle 0.25s ease-in-out infinite alternate' : undefined,
+        animation: editMode && !isDragging && !isOver ? 'binder-wiggle 0.18s ease-in-out infinite alternate' : undefined,
         animationDelay: editMode && !isDragging && !isOver ? `${wiggleDelay(id)}s` : undefined,
         touchAction: editMode ? 'none' : undefined,
       }}
