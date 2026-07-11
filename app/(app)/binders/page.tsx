@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useMemo, useId, useRef, useLayoutEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Folder, Heart } from 'lucide-react';
-import { getBinders, deleteBinder } from '@/lib/firestore/binders';
+import { Plus, Folder, Heart, Pencil, Eye, X } from 'lucide-react';
+import { getBinders, deleteBinderCascade } from '@/lib/firestore/binders';
 import { getCards } from '@/lib/firestore/cards';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { BinderCover } from '@/components/binder/BinderCover';
@@ -17,6 +17,7 @@ export default function BindersPage() {
   const [cards, setCards] = useState<CardDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [editMode, setEditMode] = useState(false);
 
   const load = async () => {
     try {
@@ -37,6 +38,20 @@ export default function BindersPage() {
 
   useEffect(() => { load(); }, []);
 
+  // Gleiches bedingtes Confirm-Muster wie deleteSheet auf der Detailseite
+  // (app/(app)/binders/[id]/page.tsx) — nur bei nicht-leerem Binder nachfragen.
+  const handleDeleteBinder = async (binder: BinderDoc) => {
+    if (binder.cardIds.length > 0) {
+      const ok = confirm(
+        `„${binder.name}" enthält ${binder.cardIds.length} Karte(n). ` +
+        `Sie werden zurück nach „Meine Sammlung" verschoben. Fortfahren?`
+      );
+      if (!ok) return;
+    }
+    await deleteBinderCascade(binder);
+    load();
+  };
+
   const cardsById = useMemo(() => {
     const m = new Map<string, CardDoc>();
     for (const c of cards) m.set(c.id, c);
@@ -52,11 +67,12 @@ export default function BindersPage() {
           <p className="text-role-body text-glass-muted">{binders.length} {binders.length === 1 ? 'Sammlung' : 'Sammlungen'}</p>
         </div>
         <button
-          onClick={() => setShowCreate(true)}
-          className="w-11 h-11 rounded-full flex items-center justify-center text-white"
-          style={tintedGlassStyle('#2f855a')}
+          onClick={() => setEditMode(e => !e)}
+          className={`inline-flex items-center gap-1.5 h-11 px-3 rounded-full text-xs font-semibold transition-colors ${editMode ? '' : 'glass-inner text-glass-muted'}`}
+          style={editMode ? { background: 'var(--pokedex-red)', color: '#fff', border: 'none' } : undefined}
         >
-          <Plus size={20} />
+          {editMode ? <Eye size={13} /> : <Pencil size={13} />}
+          {editMode ? 'Ansicht' : 'Bearbeiten'}
         </button>
       </div>
 
@@ -92,10 +108,12 @@ export default function BindersPage() {
                 key={binder.id}
                 binder={binder}
                 binderCards={binderCards}
-                onDeleted={load}
+                editMode={editMode}
+                onDelete={() => handleDeleteBinder(binder)}
               />
             );
           })}
+          {editMode && !loading && <AddBinderTile onClick={() => setShowCreate(true)} />}
         </div>
       </div>
 
@@ -153,7 +171,7 @@ function banderoleClipPath(tileWidthPx: number): string {
  *  Wert/Kartenanzahl als Banderole (eigene Farbfläche, etwas heller als der
  *  Binder, mit Leder-Körnung) unten. Boxen nutzen automatisch das Box-Icon
  *  statt des Ordner-Icons (binder.icon-Fallback), sehen sonst identisch aus. */
-function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; binderCards: CardDoc[]; onDeleted: () => void }) {
+function BinderTile({ binder, binderCards, editMode, onDelete }: { binder: BinderDoc; binderCards: CardDoc[]; editMode: boolean; onDelete: () => void }) {
   const cardCount = binder.cardIds.length;
   const isBox     = binder.collectionType === 'box';
   const totalValue = useTotalValue(binderCards);
@@ -163,6 +181,10 @@ function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; 
   // Bei hellen Sammlungsfarben (z.B. Weiß) wäre weißer Text auf der
   // ebenfalls hellen Banderole unlesbar — luminanzbasierte Kontrastfarbe.
   const bandTextColor = readableTextColor(bandColor);
+  // Inbox und Standard-Binder sind strukturell wichtig (u.a. Scanner-Ziel)
+  // — im Bearbeiten-Modus weder wackeln noch löschbar, analog zum
+  // bestehenden `!binder.isDefault`-Schutz im Aktionen-Menü der Detailseite.
+  const isProtected = !!binder.isDefault || !!binder.isInbox;
 
   // Tatsächliche Kachelbreite messen (responsives Grid, kein fester Wert)
   // — die Bogenberechnung für die Binder-Ecke unten rechts braucht echte
@@ -175,11 +197,24 @@ function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; 
   }, []);
 
   return (
-    <Link href={`/binders/${binder.id}`} className="block active:scale-[.98] transition-transform">
+    <Link
+      href={`/binders/${binder.id}`}
+      className="block active:scale-[.98] transition-transform"
+      onClick={e => { if (editMode) e.preventDefault(); }}
+    >
       {/* Boxen etwas kleiner als Ordner darstellen (Karton wirkt kompakter) —
           Skalierung auf einem eigenen relative-Wrapper, damit Badge/Footer
-          mitschrumpfen und weiterhin korrekt am Cover ausgerichtet bleiben. */}
-      <div className="relative" ref={tileRef} style={isBox ? { transform: 'scale(0.92)', transformOrigin: 'center' } : undefined}>
+          mitschrumpfen und weiterhin korrekt am Cover ausgerichtet bleiben.
+          Wackel-Animation (Bearbeiten-Modus) auf demselben Wrapper, gleiche
+          Keyframe wie auf der Detailseite (app/globals.css: binder-wiggle). */}
+      <div
+        className="relative"
+        ref={tileRef}
+        style={{
+          ...(isBox ? { transform: 'scale(0.92)', transformOrigin: 'center' } : {}),
+          animation: editMode && !isProtected ? 'binder-wiggle 0.5s ease-in-out infinite alternate' : undefined,
+        }}
+      >
         <BinderCover
           color={binder.color}
           name={binder.name}
@@ -194,6 +229,22 @@ function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; 
           >
             +{wishlistCount} <Heart size={9} fill="currentColor" />
           </span>
+        )}
+
+        {/* Lösch-X — links oben (Wunschlisten-Badge belegt bereits rechts
+            oben), nur im Bearbeiten-Modus und nicht bei geschützten Bindern
+            (Inbox/Standard). Gleiches Styling wie das Blatt-Lösch-X auf der
+            Detailseite (DELETE_GLASS_STYLE). */}
+        {editMode && !isProtected && (
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
+            className="absolute top-2.5 left-2.5 w-9 h-9 rounded-full flex items-center justify-center text-white"
+            style={tintedGlassStyle('#c53030')}
+            aria-label="Sammlung löschen"
+          >
+            <X size={13} strokeWidth={3} />
+          </button>
         )}
 
         {/* Leder-Körnung für die Banderole — gleiches feBlend/multiply-Rezept
@@ -249,5 +300,24 @@ function BinderTile({ binder, binderCards, onDeleted: _ }: { binder: BinderDoc; 
         </div>
       </div>
     </Link>
+  );
+}
+
+/** Inline "+"-Kachel im Grid (nur Bearbeiten-Modus) statt eines separaten
+ *  Header-Buttons — analog zur "Neues Blatt"-Kachel auf der Detailseite,
+ *  nur im Cover-Format (aspect-[3/4], gleiche Eckenrundung wie BinderCover
+ *  im Ordner-Zustand). */
+function AddBinderTile({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label="Neue Sammlung"
+      className="relative aspect-[3/4] rounded-tl-[4px] rounded-bl-[4px] rounded-tr-[20px] rounded-br-[20px] glass-inner border-2 border-dashed border-border flex flex-col items-center justify-center gap-2"
+    >
+      <span className="w-12 h-12 rounded-full flex items-center justify-center text-white" style={tintedGlassStyle('#2f855a')}>
+        <Plus size={24} strokeWidth={3} />
+      </span>
+      <span className="text-xs text-glass-muted">Neue Sammlung</span>
+    </button>
   );
 }

@@ -16,7 +16,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  getBinder, deleteBinder, setBinderPages, cardIdsToPages,
+  getBinder, deleteBinderCascade, setBinderPages, cardIdsToPages,
   ensureDefaultBinder, addCardToBinder,
 } from '@/lib/firestore/binders';
 import { getCard } from '@/lib/firestore/cards';
@@ -135,7 +135,7 @@ export default function BinderDetailPage({ params }: Props) {
   const handleDelete = async () => {
     if (!binder) return;
     if (!confirm(`Sammlung „${binder.name}" löschen?`)) return;
-    await deleteBinder(binder.id);
+    await deleteBinderCascade(binder);
     router.push('/binders');
   };
 

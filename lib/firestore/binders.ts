@@ -109,3 +109,21 @@ export async function removeCardFromBinderAndCleanup(binderId: string, cardId: s
     await deleteBinder(binderId);
   }
 }
+
+/** Löscht einen ganzen Binder sicher: enthaltene Karten werden zuerst zurück
+ *  nach „Meine Sammlung" verschoben (wie beim Sheet-Löschen auf der
+ *  Detailseite), statt beim Löschen des Binder-Dokuments verwaist zu
+ *  bleiben (cardIds referenzieren die Karten nur einseitig — ohne diesen
+ *  Schritt wären sie in keinem Binder mehr sichtbar). Von der
+ *  Sammlungsübersicht UND der Detailseite gemeinsam genutzt. */
+export async function deleteBinderCascade(binder: BinderDoc): Promise<void> {
+  if (binder.cardIds.length > 0) {
+    const defaultId = await ensureDefaultBinder();
+    if (defaultId !== binder.id) {
+      for (const cid of binder.cardIds) {
+        await addCardToBinder(defaultId, cid);
+      }
+    }
+  }
+  await deleteBinder(binder.id);
+}
