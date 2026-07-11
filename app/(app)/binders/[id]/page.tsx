@@ -242,8 +242,6 @@ export default function BinderDetailPage({ params }: Props) {
 
   return (
     <div className="min-h-screen pb-24">
-      <div className="h-1.5 w-full" style={{ background: binderColor }} />
-
       <div className="sticky top-safe z-20 mx-3 mt-2 glass rounded-[20px] px-4 pt-4 pb-3">
         <div className="flex items-center gap-3">
           <button onClick={() => router.back()} className="text-glass" aria-label="Zurück">
