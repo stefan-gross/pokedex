@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  ChevronLeft, Settings, LayoutGrid, BookOpen, FileText, Pencil, Eye,
+  ChevronLeft, Settings, LayoutGrid, BookOpen, FileText, Check,
   Plus, Minus, ChevronRight, ChevronDown,
 } from 'lucide-react';
 import {
@@ -49,6 +49,9 @@ const MILKY_BG = 'rgba(255, 255, 255, 0.55)';
 
 const ADD_GLASS_STYLE    = tintedGlassStyle('#2f855a');
 const DELETE_GLASS_STYLE = tintedGlassStyle('#c53030');
+// Bearbeiten-Modus startet per Long-Press auf eine Kachel (wie iOS-Homescreen,
+// analog zur Sammlungsübersicht) statt über einen separaten Toggle-Button.
+const LONG_PRESS_MS = 500;
 
 function resolvePageBg(setting: 'black' | 'white' | 'transparent' | undefined): string {
   switch (setting) {
@@ -290,17 +293,17 @@ export default function BinderDetailPage({ params }: Props) {
               <ViewBtn icon={<LayoutGrid size={15} />} active={view === 'grid'} onClick={() => { setView('grid'); setEditMode(false); }} color={binderColor} label="Liste" />
             </div>
           )}
-          {!isBox && view !== 'grid' && (
+          {/* Bearbeiten-Modus startet per Long-Press auf eine Kachel (wie iOS-
+              Homescreen) — kein separater Einstiegs-Button mehr nötig. Zum
+              Beenden bleibt ein "Fertig"-Button, analog zur Sammlungsübersicht. */}
+          {editMode && (
             <button
-              onClick={() => setEditMode(e => !e)}
-              className={`inline-flex items-center gap-1.5 h-11 px-3 rounded-full text-xs font-semibold transition-colors ${editMode ? '' : 'glass-inner text-glass-muted'}`}
-              style={editMode
-                ? { background: binderColor, color: '#fff', border: 'none' }
-                : undefined
-              }
+              onClick={() => setEditMode(false)}
+              className="inline-flex items-center gap-1.5 h-11 px-3 rounded-full text-xs font-semibold"
+              style={{ background: 'var(--pokedex-blue)', color: '#fff', border: 'none' }}
             >
-              {editMode ? <Eye size={13} /> : <Pencil size={13} />}
-              {editMode ? 'Ansicht' : 'Bearbeiten'}
+              <Check size={13} />
+              Fertig
             </button>
           )}
         </div>
@@ -329,6 +332,7 @@ export default function BinderDetailPage({ params }: Props) {
           accent={binderColor}
           pageBg={pageBg}
           editMode={editMode}
+          onLongPress={() => setEditMode(true)}
           onOpenSheet={(sheetIdx) => {
             // Sheet n öffnet die Vorderseite des Blatts = pageIdx 2n
             setPageIdx(sheetIdx * 2);
@@ -348,6 +352,7 @@ export default function BinderDetailPage({ params }: Props) {
           accent={binderColor}
           pageBg={pageBg}
           editMode={editMode}
+          onLongPress={() => setEditMode(true)}
           onChangePageIdx={setPageIdx}
           onSwap={swapSlots}
           onClearSlot={clearSlot}
@@ -585,7 +590,7 @@ function SheetTile({
 // ── Binder Overview — Sheets als Sortable mit dnd-kit ─────────────────────
 function BinderOverview({
   sheets, cols, cardsById, accent, pageBg, editMode,
-  onOpenSheet, onAddSheet, onDeleteSheet, onMoveSheet,
+  onLongPress, onOpenSheet, onAddSheet, onDeleteSheet, onMoveSheet,
 }: {
   sheets: { front: BinderPage; back: BinderPage; sheetIdx: number }[];
   cols: number;
@@ -593,6 +598,7 @@ function BinderOverview({
   accent: string;
   pageBg: string;
   editMode: boolean;
+  onLongPress: () => void;
   onOpenSheet: (sheetIdx: number) => void;
   onAddSheet: () => void;
   onDeleteSheet: (sheetIdx: number) => void;
@@ -630,6 +636,7 @@ function BinderOverview({
               accent={accent}
               pageBg={pageBg}
               editMode={editMode}
+              onLongPress={onLongPress}
               onOpen={() => onOpenSheet(sheet.sheetIdx)}
               onDelete={() => onDeleteSheet(sheet.sheetIdx)}
             />
@@ -682,7 +689,7 @@ function BinderOverview({
 }
 
 function SortableSheetTile({
-  id, sheet, cols, cardsById, accent, pageBg, editMode, onOpen, onDelete,
+  id, sheet, cols, cardsById, accent, pageBg, editMode, onLongPress, onOpen, onDelete,
 }: {
   id: string;
   sheet: { front: BinderPage; back: BinderPage; sheetIdx: number };
@@ -691,6 +698,7 @@ function SortableSheetTile({
   accent: string;
   pageBg: string;
   editMode: boolean;
+  onLongPress: () => void;
   onOpen: () => void;
   onDelete: () => void;
 }) {
@@ -698,6 +706,23 @@ function SortableSheetTile({
     id,
     disabled: !editMode,
   });
+
+  // Bearbeiten-Modus per Long-Press starten (wie auf der Sammlungsübersicht)
+  // — nur relevant außerhalb des Bearbeiten-Modus, da dnd-kit's eigene
+  // Pointer-Listener sonst schon das Sortieren übernehmen.
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFired = useRef(false);
+  const startLongPress = () => {
+    if (editMode) return;
+    longPressFired.current = false;
+    longPressTimer.current = setTimeout(() => {
+      longPressFired.current = true;
+      onLongPress();
+    }, LONG_PRESS_MS);
+  };
+  const cancelLongPress = () => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+  };
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -713,7 +738,18 @@ function SortableSheetTile({
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      onPointerDown={e => { listeners?.onPointerDown?.(e); startLongPress(); }}
+      onPointerUp={e => { listeners?.onPointerUp?.(e); cancelLongPress(); }}
+      onPointerLeave={e => { listeners?.onPointerLeave?.(e); cancelLongPress(); }}
+      onPointerCancel={e => { listeners?.onPointerCancel?.(e); cancelLongPress(); }}
+      onContextMenu={e => e.preventDefault()}
+      onClickCapture={e => { if (longPressFired.current) { e.stopPropagation(); longPressFired.current = false; } }}
+    >
       <SheetTile
         sheet={sheet}
         cols={cols}
@@ -738,10 +774,11 @@ type FlipState = {
 
 function SinglePageView({
   pages, pageIdx, cols, binderSize, cardsById, accent, pageBg, editMode,
-  onChangePageIdx, onSwap, onClearSlot, onAddToSlot, onBack, onCardTap,
+  onLongPress, onChangePageIdx, onSwap, onClearSlot, onAddToSlot, onBack, onCardTap,
 }: {
   pages: BinderPage[]; pageIdx: number; cols: number; binderSize: number;
   cardsById: Map<string, CardDoc>; accent: string; pageBg: string; editMode: boolean;
+  onLongPress: () => void;
   onChangePageIdx: (i: number) => void;
   onSwap: (pA: number, sA: number, pB: number, sB: number) => void;
   onClearSlot: (pageIdx: number, slotIdx: number) => void;
@@ -791,6 +828,7 @@ function SinglePageView({
               accent={accent}
               pageBg={pageBg}
               editMode={editMode}
+              onLongPress={onLongPress}
               isDragging={activeSlot?.pageIdx === pIdx && activeSlot?.slotIdx === slotI}
               onTap={() => onCardTap(card)}
               onDelete={() => onClearSlot(pIdx, slotI)}
@@ -1094,13 +1132,14 @@ function SinglePageView({
 
 // ── Draggable Card-Slot ───────────────────────────────────────────────────
 function DraggableCardSlot({
-  id, card, accent, pageBg, editMode, isDragging, onTap, onDelete,
+  id, card, accent, pageBg, editMode, onLongPress, isDragging, onTap, onDelete,
 }: {
   id: string;
   card: CardDoc;
   accent: string;
   pageBg: string;
   editMode: boolean;
+  onLongPress: () => void;
   isDragging: boolean;
   onTap: () => void;
   onDelete: () => void;
@@ -1109,6 +1148,23 @@ function DraggableCardSlot({
     id,
     disabled: !editMode,
   });
+
+  // Bearbeiten-Modus per Long-Press starten (wie auf der Sammlungsübersicht) —
+  // `listeners` sind hier ohnehin nur bei bereits aktivem editMode gebunden,
+  // also keine Kollision mit dnd-kit's eigenen Pointer-Handlern.
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFired = useRef(false);
+  const startLongPress = () => {
+    if (editMode) return;
+    longPressFired.current = false;
+    longPressTimer.current = setTimeout(() => {
+      longPressFired.current = true;
+      onLongPress();
+    }, LONG_PRESS_MS);
+  };
+  const cancelLongPress = () => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+  };
 
   return (
     <div
@@ -1128,7 +1184,15 @@ function DraggableCardSlot({
         animation: editMode && !isDragging && !isOver ? 'binder-wiggle 0.25s ease-in-out infinite alternate' : undefined,
         touchAction: editMode ? 'none' : undefined,
       }}
-      onClick={() => { if (!editMode) onTap(); }}
+      onPointerDown={startLongPress}
+      onPointerUp={cancelLongPress}
+      onPointerLeave={cancelLongPress}
+      onPointerCancel={cancelLongPress}
+      onContextMenu={e => e.preventDefault()}
+      onClick={() => {
+        if (longPressFired.current) { longPressFired.current = false; return; }
+        if (!editMode) onTap();
+      }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
