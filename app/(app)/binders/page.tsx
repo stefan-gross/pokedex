@@ -307,20 +307,23 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
         {/* Banderole — eigene, etwas hellere Farbfläche in der
             Sammlungsfarbe, nur 1px breiter als der Körper, auf dem sie
             liegt (nicht die ganze Kachel — die Box-Körper-Form ist selbst
-            schon BOX_BODY_INSET (4 von 300 SVG-Einheiten) schmaler als die
-            Kachel, siehe BinderCover.tsx). Ein paar Pixel Abstand nach
-            unten, statt direkt an der Kachel-Unterkante zu kleben. Links
-            (nur bei Bindern) derselbe Schatten-Verlauf wie am Ordner-Cover
-            selbst. Sehr kleine Rundung an 3 Ecken, unten rechts bei
-            Bindern folgt stattdessen exakt der Kachel-Rundung. */}
+            schon BOX_BODY_LEFT/RIGHT (7 von 300 SVG-Einheiten, siehe
+            BinderCover.tsx: BOX_BODY_LEFT = 3 + BOX_BODY_INSET(4)) schmaler
+            als die Kachel — der Einzug bezieht sich auf die volle
+            Kachelbreite (0-300), nicht nur auf den Lid-Bereich (3-297),
+            daher 7/300 statt der reinen BOX_BODY_INSET-Zahl 4). Ein paar
+            Pixel Abstand nach unten, statt direkt an der Kachel-Unterkante
+            zu kleben. Links (nur bei Bindern) derselbe Schatten-Verlauf wie
+            am Ordner-Cover selbst. Sehr kleine Rundung an 3 Ecken, unten
+            rechts bei Bindern folgt stattdessen exakt der Kachel-Rundung. */}
         <div
           className="absolute flex items-end justify-between px-3.5"
           style={{
             paddingTop: 6,
             paddingBottom: 6,
             bottom: BANDEROLE_GAP,
-            left: isBox ? 'calc(4 / 300 * 100% - 1px)' : -1,
-            right: isBox ? 'calc(4 / 300 * 100% - 1px)' : -1,
+            left: isBox ? 'calc(7 / 300 * 100% - 1px)' : -1,
+            right: isBox ? 'calc(7 / 300 * 100% - 1px)' : -1,
             background: [
               ...(isBox ? [] : ['linear-gradient(90deg, rgba(0,0,0,.3) 0px, rgba(0,0,0,0) 26px)']),
               bandColor,
