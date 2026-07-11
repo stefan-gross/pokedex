@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useId, useRef, useLayoutEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Folder, Heart, Pencil, Eye, X } from 'lucide-react';
+import { Plus, Folder, Heart, Check, X } from 'lucide-react';
 import { getBinders, deleteBinderCascade } from '@/lib/firestore/binders';
 import { getCards } from '@/lib/firestore/cards';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
@@ -66,14 +66,21 @@ export default function BindersPage() {
           <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Sammlungen</h1>
           <p className="text-role-body text-glass-muted">{binders.length} {binders.length === 1 ? 'Sammlung' : 'Sammlungen'}</p>
         </div>
-        <button
-          onClick={() => setEditMode(e => !e)}
-          className={`inline-flex items-center gap-1.5 h-11 px-3 rounded-full text-xs font-semibold transition-colors ${editMode ? '' : 'glass-inner text-glass-muted'}`}
-          style={editMode ? { background: 'var(--pokedex-red)', color: '#fff', border: 'none' } : undefined}
-        >
-          {editMode ? <Eye size={13} /> : <Pencil size={13} />}
-          {editMode ? 'Ansicht' : 'Bearbeiten'}
-        </button>
+        {/* Kein eigener "Bearbeiten"-Einstiegsbutton mehr — der Modus wird
+            per Long-Press auf eine Kachel gestartet (wie beim iOS-
+            Homescreen). Zum Beenden bleibt aber ein "Fertig"-Button nötig,
+            genau wie iOS beim Verlassen des Wackel-Modus einen "Fertig"-
+            Button oben zeigt. */}
+        {editMode && (
+          <button
+            onClick={() => setEditMode(false)}
+            className="inline-flex items-center gap-1.5 h-11 px-3 rounded-full text-xs font-semibold"
+            style={{ background: 'var(--pokedex-red)', color: '#fff', border: 'none' }}
+          >
+            <Check size={13} />
+            Fertig
+          </button>
+        )}
       </div>
 
       <div className="px-4 py-4">
@@ -110,6 +117,7 @@ export default function BindersPage() {
                 binderCards={binderCards}
                 editMode={editMode}
                 onDelete={() => handleDeleteBinder(binder)}
+                onLongPress={() => setEditMode(true)}
               />
             );
           })}
@@ -171,7 +179,9 @@ function banderoleClipPath(tileWidthPx: number): string {
  *  Wert/Kartenanzahl als Banderole (eigene Farbfläche, etwas heller als der
  *  Binder, mit Leder-Körnung) unten. Boxen nutzen automatisch das Box-Icon
  *  statt des Ordner-Icons (binder.icon-Fallback), sehen sonst identisch aus. */
-function BinderTile({ binder, binderCards, editMode, onDelete }: { binder: BinderDoc; binderCards: CardDoc[]; editMode: boolean; onDelete: () => void }) {
+const LONG_PRESS_MS = 500;
+
+function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { binder: BinderDoc; binderCards: CardDoc[]; editMode: boolean; onDelete: () => void; onLongPress: () => void }) {
   const cardCount = binder.cardIds.length;
   const isBox     = binder.collectionType === 'box';
   const totalValue = useTotalValue(binderCards);
@@ -185,6 +195,10 @@ function BinderTile({ binder, binderCards, editMode, onDelete }: { binder: Binde
   // — im Bearbeiten-Modus weder wackeln noch löschbar, analog zum
   // bestehenden `!binder.isDefault`-Schutz im Aktionen-Menü der Detailseite.
   const isProtected = !!binder.isDefault || !!binder.isInbox;
+  // Negativer Start-Versatz (aus der Binder-ID abgeleitet, daher stabil
+  // zwischen Renders) — sonst wackeln alle Kacheln exakt synchron, echtes
+  // iOS wirkt dagegen asynchron/organisch, da jedes Icon zufällig phasenverschoben ist.
+  const wiggleDelay = -((Array.from(binder.id).reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % 25) / 100);
 
   // Tatsächliche Kachelbreite messen (responsives Grid, kein fester Wert)
   // — die Bogenberechnung für die Binder-Ecke unten rechts braucht echte
@@ -196,11 +210,38 @@ function BinderTile({ binder, binderCards, editMode, onDelete }: { binder: Binde
     if (tileRef.current) setTileWidth(tileRef.current.offsetWidth);
   }, []);
 
+  // Long-Press startet den Bearbeiten-Modus (wie iOS Homescreen) — kein
+  // separater Header-Button mehr nötig. `longPressFired` wird sofort (per
+  // Ref, nicht State) gesetzt, damit der anschließende Klick zuverlässig
+  // unterdrückt werden kann, auch bevor `editMode` im Parent aktualisiert ist.
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFired = useRef(false);
+  const startLongPress = () => {
+    // Long-Press auf JEDER Kachel startet den globalen Bearbeiten-Modus —
+    // auch auf geschützten Bindern (Inbox/Standard), analog zu iOS, wo das
+    // Long-Press auf ein beliebiges (auch nicht löschbares System-)Icon den
+    // Wackel-Modus für den ganzen Homescreen auslöst.
+    if (editMode) return;
+    longPressFired.current = false;
+    longPressTimer.current = setTimeout(() => {
+      longPressFired.current = true;
+      onLongPress();
+    }, LONG_PRESS_MS);
+  };
+  const cancelLongPress = () => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+  };
+
   return (
     <Link
       href={`/binders/${binder.id}`}
       className="block active:scale-[.98] transition-transform"
-      onClick={e => { if (editMode) e.preventDefault(); }}
+      onPointerDown={startLongPress}
+      onPointerUp={cancelLongPress}
+      onPointerLeave={cancelLongPress}
+      onPointerCancel={cancelLongPress}
+      onContextMenu={e => e.preventDefault()}
+      onClick={e => { if (editMode || longPressFired.current) e.preventDefault(); }}
     >
       {/* Boxen etwas kleiner als Ordner darstellen (Karton wirkt kompakter) —
           Skalierung auf einem eigenen relative-Wrapper, damit Badge/Footer
@@ -213,6 +254,7 @@ function BinderTile({ binder, binderCards, editMode, onDelete }: { binder: Binde
         style={{
           ...(isBox ? { transform: 'scale(0.92)', transformOrigin: 'center' } : {}),
           animation: editMode && !isProtected ? 'binder-wiggle 0.25s ease-in-out infinite alternate' : undefined,
+          animationDelay: editMode && !isProtected ? `${wiggleDelay}s` : undefined,
         }}
       >
         <BinderCover

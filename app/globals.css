@@ -402,8 +402,8 @@
 
 /* Binder Edit-Mode: dezentes Wackeln à la iOS Home-Screen */
 @keyframes binder-wiggle {
-  0%   { transform: rotate(-0.6deg); }
-  100% { transform: rotate(0.6deg); }
+  0%   { transform: rotate(-1.5deg); }
+  100% { transform: rotate(1.5deg); }
 }
 
 /* Karte „lebendig" während Drag — sanftes Auf-Ab-Bobbing */
