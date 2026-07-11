@@ -270,11 +270,16 @@
     height: env(safe-area-inset-top, 0px);
   }
   /* Unterdrückt iOS Safaris natives Touch-Callout (Link-Vorschau/"Öffnen in
-     neuem Tab"-Menü bzw. "Sichern"-Menü auf Bildern) bei Touch-and-Hold —
+     neuem Tab"-Menü bzw. "Sichern"-Menü auf Bildern) UND Text-/Bild-Auswahl
+     (die sonst nach Wegfall der Vorschau als nächstes bei Touch-and-Hold
+     greift, inkl. Drag-Ghost zum Kopieren/Verschieben) bei Touch-and-Hold —
      kollidiert sonst mit unserer eigenen Long-Press-Geste (Bearbeiten-Modus
      starten) auf Binder-/Blatt-/Karten-Kacheln. */
   .no-callout {
     -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-user-drag: none;
   }
   /* Elevation-System — ersetzt border border-border auf Cards */
   .shadow-card {
