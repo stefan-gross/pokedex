@@ -269,6 +269,13 @@
   .h-safe-top {
     height: env(safe-area-inset-top, 0px);
   }
+  /* Unterdrückt iOS Safaris natives Touch-Callout (Link-Vorschau/"Öffnen in
+     neuem Tab"-Menü bzw. "Sichern"-Menü auf Bildern) bei Touch-and-Hold —
+     kollidiert sonst mit unserer eigenen Long-Press-Geste (Bearbeiten-Modus
+     starten) auf Binder-/Blatt-/Karten-Kacheln. */
+  .no-callout {
+    -webkit-touch-callout: none;
+  }
   /* Elevation-System — ersetzt border border-border auf Cards */
   .shadow-card {
     box-shadow: 0 2px 16px rgba(30,40,80,0.08), 0 1px 4px rgba(30,40,80,0.04);

@@ -740,6 +740,7 @@ function SortableSheetTile({
   return (
     <div
       ref={setNodeRef}
+      className="no-callout"
       style={style}
       {...attributes}
       {...listeners}
@@ -1171,7 +1172,7 @@ function DraggableCardSlot({
       ref={setNodeRef}
       {...attributes}
       {...(editMode ? listeners : {})}
-      className="relative rounded-xl overflow-hidden aspect-[2.5/3.5] w-full"
+      className="relative rounded-xl overflow-hidden aspect-[2.5/3.5] w-full no-callout"
       style={{
         borderColor: isOver ? accent : `${accent}55`,
         borderStyle: isOver ? 'dashed' : 'solid',
@@ -1199,7 +1200,7 @@ function DraggableCardSlot({
       <img
         src={card.tcgImageUrl ?? `https://images.pokemontcg.io/${card.setId}/${card.number.split('/')[0]}_hires.png`}
         alt={card.name}
-        className="w-full h-full object-cover pointer-events-none"
+        className="w-full h-full object-cover pointer-events-none no-callout"
         draggable={false}
       />
       {card.quantity > 1 && !editMode && (

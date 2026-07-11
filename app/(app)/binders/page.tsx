@@ -236,7 +236,7 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
   return (
     <Link
       href={`/binders/${binder.id}`}
-      className="block active:scale-[.98] transition-transform"
+      className="block active:scale-[.98] transition-transform no-callout"
       onPointerDown={startLongPress}
       onPointerUp={cancelLongPress}
       onPointerLeave={cancelLongPress}
