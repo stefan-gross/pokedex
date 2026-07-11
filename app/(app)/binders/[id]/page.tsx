@@ -35,6 +35,7 @@ import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
 import { findVariantPrice, PRICE_COLOR } from '@/lib/prices/value-tier';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import { readableTextColor } from '@/lib/color-utils';
+import { wiggleDelay } from '@/lib/utils';
 import type { PriceResult } from '@/lib/prices/types';
 import type { BinderDoc, BinderPage, CardDoc } from '@/types';
 
@@ -727,6 +728,7 @@ function SortableSheetTile({
     transition,
     opacity: isDragging ? 0.3 : 1,
     animation: editMode && !isDragging && !isOver ? 'binder-wiggle 0.25s ease-in-out infinite alternate' : undefined,
+    animationDelay: editMode && !isDragging && !isOver ? `${wiggleDelay(id)}s` : undefined,
     touchAction: editMode ? 'none' : undefined,
     borderColor: isOver ? accent : undefined,
     borderStyle: isOver ? 'dashed' : undefined,
@@ -1180,6 +1182,7 @@ function DraggableCardSlot({
         transform: isOver ? 'scale(1.04)' : undefined,
         transition: 'border-color 150ms ease-out, box-shadow 150ms ease-out, transform 150ms ease-out',
         animation: editMode && !isDragging && !isOver ? 'binder-wiggle 0.25s ease-in-out infinite alternate' : undefined,
+        animationDelay: editMode && !isDragging && !isOver ? `${wiggleDelay(id)}s` : undefined,
         touchAction: editMode ? 'none' : undefined,
       }}
       onPointerDown={startLongPress}

@@ -10,6 +10,7 @@ import { BinderCover } from '@/components/binder/BinderCover';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import { readableTextColor } from '@/lib/color-utils';
+import { wiggleDelay } from '@/lib/utils';
 import type { BinderDoc, CardDoc } from '@/types';
 
 export default function BindersPage() {
@@ -198,7 +199,7 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
   // Negativer Start-Versatz (aus der Binder-ID abgeleitet, daher stabil
   // zwischen Renders) — sonst wackeln alle Kacheln exakt synchron, echtes
   // iOS wirkt dagegen asynchron/organisch, da jedes Icon zufällig phasenverschoben ist.
-  const wiggleDelay = -((Array.from(binder.id).reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % 25) / 100);
+  const wiggleOffset = wiggleDelay(binder.id);
 
   // Tatsächliche Kachelbreite messen (responsives Grid, kein fester Wert)
   // — die Bogenberechnung für die Binder-Ecke unten rechts braucht echte
@@ -254,7 +255,7 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
         style={{
           ...(isBox ? { transform: 'scale(0.92)', transformOrigin: 'center' } : {}),
           animation: editMode && !isProtected ? 'binder-wiggle 0.25s ease-in-out infinite alternate' : undefined,
-          animationDelay: editMode && !isProtected ? `${wiggleDelay}s` : undefined,
+          animationDelay: editMode && !isProtected ? `${wiggleOffset}s` : undefined,
         }}
       >
         <BinderCover
