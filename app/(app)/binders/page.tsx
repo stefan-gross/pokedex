@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useId, useRef, useLayoutEffect } from 'react';
+import { Fragment, useState, useEffect, useMemo, useId, useRef, useLayoutEffect } from 'react';
 import Link from 'next/link';
 import { Plus, Folder, Heart, Check, Minus } from 'lucide-react';
 import { getBinders, deleteBinderCascade } from '@/lib/firestore/binders';
@@ -59,6 +59,14 @@ export default function BindersPage() {
     return m;
   }, [cards]);
 
+  // Anzahl der fest vorangestellten, ungelöschbaren Binder (Inbox „Neue
+  // Karten" + Standard „Meine Sammlung") — die "+"-Kachel wird direkt
+  // dahinter eingefügt statt ganz ans Grid-Ende.
+  const protectedCount = useMemo(
+    () => binders.filter(b => b.isInbox || b.isDefault).length,
+    [binders],
+  );
+
   return (
     <div className="min-h-screen">
       {/* Header */}
@@ -107,22 +115,32 @@ export default function BindersPage() {
         )}
 
         <div className="grid grid-cols-2 gap-3">
-          {binders.map(binder => {
+          {binders.map((binder, i) => {
             const binderCards = binder.cardIds
               .map(id => cardsById.get(id))
               .filter((c): c is CardDoc => !!c);
             return (
-              <BinderTile
-                key={binder.id}
-                binder={binder}
-                binderCards={binderCards}
-                editMode={editMode}
-                onDelete={() => handleDeleteBinder(binder)}
-                onLongPress={() => setEditMode(true)}
-              />
+              <Fragment key={binder.id}>
+                {/* Direkt hinter den beiden festen Ordnern (Inbox/Standard) statt
+                    ganz am Ende — sonst fällt die "+"-Kachel bei mehreren
+                    Sammlungen aus dem sichtbaren Bereich und man merkt gar
+                    nicht, dass man neue anlegen kann. */}
+                {editMode && !loading && i === protectedCount && (
+                  <AddBinderTile onClick={() => setShowCreate(true)} />
+                )}
+                <BinderTile
+                  binder={binder}
+                  binderCards={binderCards}
+                  editMode={editMode}
+                  onDelete={() => handleDeleteBinder(binder)}
+                  onLongPress={() => setEditMode(true)}
+                />
+              </Fragment>
             );
           })}
-          {editMode && !loading && <AddBinderTile onClick={() => setShowCreate(true)} />}
+          {editMode && !loading && protectedCount >= binders.length && (
+            <AddBinderTile onClick={() => setShowCreate(true)} />
+          )}
         </div>
       </div>
 
@@ -358,9 +376,9 @@ function AddBinderTile({ onClick }: { onClick: () => void }) {
     <button
       onClick={onClick}
       aria-label="Neue Sammlung"
-      className="relative aspect-[3/4] rounded-tl-[4px] rounded-bl-[4px] rounded-tr-[20px] rounded-br-[20px] glass-inner border-2 border-dashed border-border flex flex-col items-center justify-center gap-2"
+      className="relative aspect-[3/4] rounded-tl-[4px] rounded-bl-[4px] rounded-tr-[20px] rounded-br-[20px] border-2 border-dashed border-border/70 bg-white/[0.04] dark:bg-white/[0.03] flex flex-col items-center justify-center gap-2 opacity-75 hover:opacity-100 active:scale-[.98] transition-all"
     >
-      <span className="w-12 h-12 rounded-full flex items-center justify-center text-white" style={tintedGlassStyle('#2f855a')}>
+      <span className="w-12 h-12 rounded-full flex items-center justify-center text-white opacity-90" style={tintedGlassStyle('#2f855a')}>
         <Plus size={24} strokeWidth={3} />
       </span>
       <span className="text-xs text-glass-muted">Neue Sammlung</span>
