@@ -74,31 +74,41 @@ export async function addWishlistCardToBinder(binderId: string, wishlistCardId: 
   await updateDoc(doc(db, COL, binderId), { wishlistCardIds: arrayUnion(wishlistCardId) });
 }
 
+/** „Unsortiert" (früher „Meine Sammlung"): Standard-Ablage für alle Karten
+ *  ohne gezielte Binder-Zuordnung. Icon 'cards' + Farbe Weiß — siehe
+ *  Migration in `app/(app)/binders/page.tsx`, die Bestandsdaten einmalig
+ *  auf Name/Icon/Farbe anhebt. */
 export async function ensureDefaultBinder(): Promise<string> {
   const binders = await getBinders();
   const byFlag = binders.find(b => b.isDefault);
   if (byFlag) return byFlag.id;
   // Existierenden Binder gleichen Namens übernehmen statt Duplikat anlegen
-  const byName = binders.find(b => b.name === 'Meine Sammlung');
+  const byName = binders.find(b => b.name === 'Meine Sammlung' || b.name === 'Unsortiert');
   if (byName) {
-    await updateBinder(byName.id, { isDefault: true, sortOrder: -1, collectionType: 'box' });
+    await updateBinder(byName.id, { isDefault: true, sortOrder: -1, collectionType: 'box', name: 'Unsortiert', color: '#ffffff', icon: 'cards' });
     return byName.id;
   }
-  return addBinder({ name: 'Meine Sammlung', isDefault: true, sortOrder: -1, collectionType: 'box' });
+  return addBinder({ name: 'Unsortiert', isDefault: true, sortOrder: -1, collectionType: 'box', color: '#ffffff', icon: 'cards' });
 }
 
-/** „Neue Karten"-Inbox: Sammelt ungespeicherte Karten beim Verlassen des Scanners.
- *  Persistent — wird NICHT auto-gelöscht wenn leer (UI blendet ihn dann aus). */
+/** „Eingang"-Inbox (früher „Neue Karten"): Sammelt ungespeicherte Karten beim
+ *  Verlassen des Scanners. Persistent — wird NICHT auto-gelöscht wenn leer
+ *  (UI blendet ihn dann aus). Icon 'alert' + Farbe Weiß, siehe Migration in
+ *  `app/(app)/binders/page.tsx`. */
 export async function ensureInboxBinder(): Promise<string> {
   const binders = await getBinders();
   const byFlag = binders.find(b => b.isInbox);
-  if (byFlag) return byFlag.id;
-  const byName = binders.find(b => b.name === 'Neue Karten');
+  if (byFlag) {
+    // Alte, noch nicht umbenannte Bestandsdaten migrieren.
+    if (byFlag.name === 'Neue Karten') await updateBinder(byFlag.id, { name: 'Eingang' });
+    return byFlag.id;
+  }
+  const byName = binders.find(b => b.name === 'Neue Karten' || b.name === 'Eingang');
   if (byName) {
-    await updateBinder(byName.id, { isInbox: true, sortOrder: -2, collectionType: 'box' });
+    await updateBinder(byName.id, { isInbox: true, sortOrder: -2, collectionType: 'box', name: 'Eingang', color: '#ffffff', icon: 'alert' });
     return byName.id;
   }
-  return addBinder({ name: 'Neue Karten', isInbox: true, sortOrder: -2, collectionType: 'box' });
+  return addBinder({ name: 'Eingang', isInbox: true, sortOrder: -2, collectionType: 'box', color: '#ffffff', icon: 'alert' });
 }
 
 /** Entfernt eine Karte aus einem Binder und löscht den Default-Binder automatisch wenn er danach leer ist. */

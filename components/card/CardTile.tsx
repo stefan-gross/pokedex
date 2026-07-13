@@ -1,5 +1,6 @@
 'use client';
 
+import { ExclamationMark } from '@/lib/binder-icons';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardDoc } from '@/types';
 import { CardImage } from '@/components/card/CardImage';
@@ -30,12 +31,13 @@ interface Props {
 }
 
 export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWishlisted, sublabel, sublabelColor, sublabelLoading, setSymbolUrl, setCode, numberPrefixCode, numberPrefixSymbolUrl }: Props) {
-  const totalOwned = ownedCards.reduce((s, c) => s + c.quantity, 0);
-  const isOwned    = totalOwned > 0;
+  const totalOwned    = ownedCards.reduce((s, c) => s + c.quantity, 0);
+  const isOwned       = totalOwned > 0;
+  const needsReview   = ownedCards.some(c => c.needsReview);
 
   return (
     <div className="relative flex flex-col">
-      {/* Card image — tap → Detail */}
+      {/* Card image — tap → Detail (öffnet dort auch den "Prüfen"-Button je Exemplar) */}
       <div
         className="relative rounded-[8px] overflow-hidden shadow-card cursor-pointer"
         onClick={onCardClick}
@@ -61,14 +63,17 @@ export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWis
           />
         </div>
 
-        {/* Set-Badge — oben links, spiegelbildlich zum Owned-Badge oben rechts */}
+        {/* Set-Badge — oben links, spiegelbildlich zum Owned-Badge oben rechts.
+            Leicht aus der Kachel-Ecke herausgeschoben (negativer Offset),
+            statt bündig innen zu sitzen — analog zum Lösch-Icon auf den
+            Sammlungs-Kacheln. */}
         {setSymbolUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={setSymbolUrl}
             alt={setCode ?? ''}
             title={setCode}
-            className="absolute top-1.5 left-1.5 w-[18px] h-[18px] object-contain rounded-[4px] p-[2px]"
+            className="absolute -top-1.5 -left-1.5 w-[22px] h-[22px] object-contain rounded-[5px] p-[2px]"
             style={{ background: 'rgba(0,0,0,.55)' }}
           />
         )}
@@ -76,10 +81,25 @@ export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWis
         {/* Owned badge — grün, analog zum Scan-Erkennungs-Rahmen */}
         {isOwned && (
           <div
-            className="absolute top-1.5 right-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-md"
+            className="absolute -top-1.5 -right-1.5 text-[11px] font-bold px-2 py-0.5 rounded-md"
             style={{ background: 'rgba(53,209,90,.9)', color: '#fff' }}
           >
             ×{totalOwned}
+          </div>
+        )}
+
+        {/* Prüfen-Badge — gelb, nur bei ungeprüften eigenen Exemplaren (bottom-right
+            ist bei besessenen Karten frei, da der Wunschlisten-Herz nur bei
+            nicht-besessenen Karten dort sitzt). Gleiches Symbol wie das
+            Eingang-Ordner-Icon (ExclamationMark). */}
+        {needsReview && (
+          <div
+            className="absolute -bottom-1.5 -right-1.5 w-[22px] h-[22px] rounded-full flex items-center justify-center"
+            style={{ background: 'var(--pokedex-yellow)', boxShadow: '0 1px 3px rgba(0,0,0,.4)' }}
+            aria-label="Ungeprüft"
+            title="Ungeprüft"
+          >
+            <ExclamationMark size={13} strokeWidth={3} className="text-white" />
           </div>
         )}
 
@@ -88,11 +108,11 @@ export function CardTile({ card, ownedCards = [], onCardClick, onWishlist, isWis
         {!isOwned && (
           <button
             onClick={e => { e.stopPropagation(); onWishlist?.(); }} // stoppt Click-Bubbling zum Detail
-            className="absolute bottom-1.5 right-1.5 flex items-center justify-center"
+            className="absolute -bottom-1.5 -right-1.5 flex items-center justify-center"
             style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.6))' }}
             aria-label="Zur Wunschliste"
           >
-            <svg width="20" height="18" viewBox="0 0 24 22" fill={isWishlisted ? '#ef4444' : 'none'} stroke={isWishlisted ? '#ef4444' : '#fff'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="24" height="22" viewBox="0 0 24 22" fill={isWishlisted ? '#ef4444' : 'none'} stroke={isWishlisted ? '#ef4444' : '#fff'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
             </svg>
           </button>

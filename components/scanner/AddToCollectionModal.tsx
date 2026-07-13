@@ -65,7 +65,7 @@ export function AddToCollectionModal({
       if (copy.variant !== variant || copy.condition !== condition || copy.language !== language) continue;
       const binder = allBinders.find(b => b.cardIds.includes(copy.id));
       // Der echte Default-Binder (isDefault) zählt genauso als Sentinel '' wie
-      // "in gar keinem Binder" — beides zeigt in der UI als "Meine Sammlung".
+      // "in gar keinem Binder" — beides zeigt in der UI als "Unsortiert".
       ids.add(binder && !binder.isDefault ? binder.id : '');
     }
     return ids;
@@ -81,7 +81,7 @@ export function AddToCollectionModal({
   // (verhindert ein leeres Dropdown, falls jede Sammlung diese Kombination schon hat).
   const showDefaultOption = !matchingBinderIds.has('') || binderOptions.length === 0;
 
-  // '' = Default-Binder „Meine Sammlung" (vorausgewählt)
+  // '' = Default-Binder „Unsortiert" (vorausgewählt)
   const [selectedBinderId, setSelectedBinderId] = useState<string>('');
   useEffect(() => {
     const validIds = new Set([...(showDefaultOption ? [''] : []), ...binderOptions.map(b => b.id)]);
@@ -133,6 +133,7 @@ export function AddToCollectionModal({
         isFirstEd: variant === '1st-ed',
         quantity: 1,
         tcgImageUrl: card.imgLargeDe || card.imgLarge,
+        needsReview: true,
       });
       const binderId = selectedBinderId || await ensureDefaultBinder();
       await addCardToBinder(binderId, cardId);
@@ -150,7 +151,7 @@ export function AddToCollectionModal({
           setTemplateHint(
             own.event === 'filled'
               ? `Füllt Lücke in ${own.binderName}`
-              : `Ersetzt eine Karte in ${own.binderName} — liegt jetzt in Meine Sammlung`,
+              : `Ersetzt eine Karte in ${own.binderName} — liegt jetzt in Unsortiert`,
           );
           setTimeout(onSaved, 1400);
           return;
@@ -253,7 +254,7 @@ export function AddToCollectionModal({
             <div className="flex flex-col gap-1.5 mb-4">
               {ownedCopies.map(copy => {
                 const binder = allBinders.find(b => b.cardIds.includes(copy.id));
-                const binderName = binder?.name ?? 'Meine Sammlung';
+                const binderName = binder?.name ?? 'Unsortiert';
                 const binderColor = binder?.color ?? 'var(--muted-foreground)';
                 const condColor = CONDITION_COLOR[copy.condition] ?? 'var(--muted-foreground)';
                 return (
@@ -284,7 +285,7 @@ export function AddToCollectionModal({
           {/* Sammlung — Single-Select, Default vorausgewählt */}
           <div className="mb-4">
             <ThemedSelect label="Sammlung" value={selectedBinderId} onChange={setSelectedBinderId}>
-              {showDefaultOption && <option value="">Meine Sammlung</option>}
+              {showDefaultOption && <option value="">Unsortiert</option>}
               {binderOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </ThemedSelect>
           </div>

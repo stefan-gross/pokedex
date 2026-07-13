@@ -3,7 +3,7 @@
 import { Fragment, useState, useEffect, useMemo, useId, useRef, useLayoutEffect } from 'react';
 import Link from 'next/link';
 import { Plus, Folder, Heart, Check, Minus, LayoutTemplate, FolderPlus, X } from 'lucide-react';
-import { getBinders, deleteBinderCascade } from '@/lib/firestore/binders';
+import { getBinders, deleteBinderCascade, updateBinder } from '@/lib/firestore/binders';
 import { getCards } from '@/lib/firestore/cards';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { CreateTemplateBinderModal } from '@/components/binder/CreateTemplateBinderModal';
@@ -25,7 +25,21 @@ export default function BindersPage() {
   const load = async () => {
     try {
       const [binderData, cardData] = await Promise.all([getBinders(), getCards()]);
-      // Inbox „Neue Karten" und Default „Meine Sammlung" immer zuerst — danach normal nach sortOrder.
+      // Alte Bestandsdaten (Name/Icon/Farbe der beiden Systemsammlungen)
+      // einmalig auf den aktuellen Stand anheben: Eingang war „Neue Karten",
+      // Unsortiert war „Meine Sammlung" — beide bekommen zusätzlich Icon +
+      // weiße Farbe, falls das bei der Erstellung noch fehlte.
+      const inbox = binderData.find(b => b.isInbox);
+      if (inbox && (inbox.name !== 'Eingang' || inbox.icon !== 'alert' || inbox.color !== '#ffffff')) {
+        await updateBinder(inbox.id, { name: 'Eingang', color: '#ffffff', icon: 'alert' });
+        Object.assign(inbox, { name: 'Eingang', color: '#ffffff', icon: 'alert' });
+      }
+      const def = binderData.find(b => b.isDefault);
+      if (def && (def.name !== 'Unsortiert' || def.icon !== 'cards' || def.color !== '#ffffff')) {
+        await updateBinder(def.id, { name: 'Unsortiert', color: '#ffffff', icon: 'cards' });
+        Object.assign(def, { name: 'Unsortiert', color: '#ffffff', icon: 'cards' });
+      }
+      // Inbox „Eingang" und Default „Unsortiert" immer zuerst — danach normal nach sortOrder.
       const sorted = [...binderData].sort((a, b) => {
         const aRank = a.isInbox ? 0 : a.isDefault ? 1 : 2;
         const bRank = b.isInbox ? 0 : b.isDefault ? 1 : 2;
@@ -47,7 +61,7 @@ export default function BindersPage() {
     if (binder.cardIds.length > 0) {
       const ok = confirm(
         `„${binder.name}" enthält ${binder.cardIds.length} Karte(n). ` +
-        `Sie werden zurück nach „Meine Sammlung" verschoben. Fortfahren?`
+        `Sie werden zurück nach „Unsortiert" verschoben. Fortfahren?`
       );
       if (!ok) return;
     }
@@ -330,17 +344,17 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
         />
 
         {(!editMode || isProtected) && (
-          <div className="absolute top-2.5 left-2.5">
+          <div className="absolute -top-1.5 -left-1.5">
             <CollectionTypeBadge binder={binder} />
           </div>
         )}
 
         {wishlistCount > 0 && (
           <span
-            className="absolute top-2.5 right-2.5 inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+            className="absolute -top-1.5 -right-1.5 inline-flex items-center gap-0.5 text-[11px] font-bold px-2 py-1 rounded-full"
             style={{ background: 'rgba(0,0,0,.35)', color: '#fff' }}
           >
-            +{wishlistCount} <Heart size={9} fill="currentColor" />
+            +{wishlistCount} <Heart size={10} fill="currentColor" />
           </span>
         )}
 

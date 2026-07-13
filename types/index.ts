@@ -63,7 +63,7 @@ export interface BinderDoc {
    *  'transparent' (App-Hintergrund scheint durch). */
   pageBackground?: 'black' | 'white' | 'transparent';
   isDefault?: boolean;
-  /** „Neue Karten"-Inbox: Auffang für ungespeicherte Scans beim Verlassen des Scanners. Wird ausgeblendet wenn leer. */
+  /** „Eingang"-Inbox: Auffang für ungespeicherte Scans beim Verlassen des Scanners. Wird ausgeblendet wenn leer. */
   isInbox?: boolean;
   /** Vorhanden = Vorlagen-Binder (automatisch befüllt, gesperrt für manuelle
    *  Bearbeitung). Fehlt = normaler manueller Binder (Standardfall). */

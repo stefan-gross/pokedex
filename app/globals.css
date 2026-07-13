@@ -107,6 +107,11 @@
   --pokedex-blue-hover: #2b6cb0;
   --pokedex-purple: #8b5cf6;
   --pokedex-purple-hover: #7c3aed;
+  /* Warn-/Hinweisfarbe für "ungeprüft" (Eingang-Icon + Karten-Badge + Prüfen-Button) —
+     bewusst gelb statt blau/weiß: eindeutig als Hinweis erkennbar, kollidiert nicht
+     mit der weißen Eingang/Unsortiert-Ordnerfarbe. */
+  --pokedex-yellow: #ecc94b;
+  --pokedex-yellow-hover: #d6a91f;
 }
 
 /* Dark Mode (class — next-themes) */

@@ -6,7 +6,7 @@ import type { BinderDoc } from '@/types';
  *  Karten-Vorschauzeile im Mehrfachscan) ihn ohne Fake-Objekt verwenden
  *  können. */
 export function AutomaticBadge({ size = 'md' }: { size?: 'sm' | 'md' }) {
-  const dim = size === 'sm' ? 16 : 20;
+  const dim = size === 'sm' ? 18 : 24;
   return (
     <span
       aria-label="Automatische Sammlung"
@@ -19,9 +19,9 @@ export function AutomaticBadge({ size = 'md' }: { size?: 'sm' | 'md' }) {
   );
 }
 
-/** Pin-Badge für feste System-Sammlungen (Neue Karten/Meine Sammlung). */
+/** Pin-Badge für feste System-Sammlungen (Eingang/Meine Sammlung). */
 export function SystemBadge({ size = 'md' }: { size?: 'sm' | 'md' }) {
-  const dim = size === 'sm' ? 16 : 20;
+  const dim = size === 'sm' ? 18 : 24;
   return (
     <span
       aria-label="Feste Sammlung"

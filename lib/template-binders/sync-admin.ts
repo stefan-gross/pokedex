@@ -34,13 +34,13 @@ export async function syncTemplateBindersAdmin(opts?: { binderIds?: string[] }):
   // (lib/firestore/binders.ts), hier gegen Admin SDK dupliziert.
   let defaultBinderId = allBinders.find(b => b.isDefault)?.id;
   if (!defaultBinderId) {
-    const byName = allBinders.find(b => b.name === 'Meine Sammlung');
+    const byName = allBinders.find(b => b.name === 'Meine Sammlung' || b.name === 'Unsortiert');
     if (byName) {
-      await db.collection('binders').doc(byName.id).update({ isDefault: true, sortOrder: -1, collectionType: 'box' });
+      await db.collection('binders').doc(byName.id).update({ isDefault: true, sortOrder: -1, collectionType: 'box', name: 'Unsortiert', color: '#ffffff', icon: 'cards' });
       defaultBinderId = byName.id;
     } else {
       const ref = await db.collection('binders').add({
-        name: 'Meine Sammlung', isDefault: true, sortOrder: -1, collectionType: 'box',
+        name: 'Unsortiert', isDefault: true, sortOrder: -1, collectionType: 'box', color: '#ffffff', icon: 'cards',
         cardIds: [], wishlistCardIds: [], createdAt: Timestamp.now(),
       });
       defaultBinderId = ref.id;

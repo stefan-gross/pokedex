@@ -26,7 +26,7 @@ import { resolveSlotWinners } from '@/lib/template-binders/slot-winner';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { CollectionTypeBadge } from '@/components/binder/CollectionTypeBadge';
-import { BinderIcon } from '@/lib/binder-icons';
+import { BinderIcon, ExclamationMark } from '@/lib/binder-icons';
 import { binderSizeLabel, binderSizeCols, type BinderSize } from '@/lib/binder-sizes';
 import {
   pagesToSheets, sheetsToPages, ensureEvenPages, pageLabel,
@@ -223,7 +223,7 @@ export default function BinderDetailPage({ params }: Props) {
     if (cardIdsOnSheet.length > 0) {
       const ok = confirm(
         `Blatt ${sheetIdx + 1} enthält ${cardIdsOnSheet.length} Karte(n). ` +
-        `Sie werden zurück in „Meine Sammlung" verschoben. Fortfahren?`
+        `Sie werden zurück in „Unsortiert" verschoben. Fortfahren?`
       );
       if (!ok) return;
     }
@@ -266,6 +266,7 @@ export default function BinderDetailPage({ params }: Props) {
     );
   }
 
+  const isProtected = !!binder.isDefault || !!binder.isInbox;
   const binderColor = binder.color ?? 'var(--pokedex-red)';
   const layoutCols = binderSizeCols(binderSize);
   const layoutLabel = isBox ? 'Box' : binderSizeLabel(binderSize);
@@ -310,13 +311,15 @@ export default function BinderDetailPage({ params }: Props) {
               </span>
             )}
           </div>
-          <button
-            onClick={() => setShowActions(a => !a)}
-            className="w-11 h-11 rounded-md glass-inner flex items-center justify-center text-glass"
-            aria-label="Aktionen"
-          >
-            <Settings size={20} />
-          </button>
+          {!isProtected && (
+            <button
+              onClick={() => setShowActions(a => !a)}
+              className="w-11 h-11 rounded-md glass-inner flex items-center justify-center text-glass"
+              aria-label="Aktionen"
+            >
+              <Settings size={20} />
+            </button>
+          )}
         </div>
 
         <div className="flex items-center justify-between gap-2 mt-3">
@@ -552,14 +555,24 @@ function GridView({ cards, onCardTap, prices }: {
               alt={c.name}
               className="w-full aspect-[2.5/3.5] object-cover"
             />
+            {c.needsReview && (
+              <div
+                className="absolute -top-1.5 -left-1.5 w-[20px] h-[20px] rounded-full flex items-center justify-center"
+                style={{ background: 'var(--pokedex-yellow)', boxShadow: '0 1px 3px rgba(0,0,0,.4)' }}
+                aria-label="Ungeprüft"
+                title="Ungeprüft"
+              >
+                <ExclamationMark size={12} strokeWidth={3} className="text-white" />
+              </div>
+            )}
             {c.quantity > 1 && (
-              <div className="absolute top-1 right-1 text-[9px] font-bold px-1 py-0.5 rounded bg-black/70 text-white">
+              <div className="absolute -top-1.5 -right-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-black/70 text-white">
                 ×{c.quantity}
               </div>
             )}
             {price != null && (
               <div
-                className="absolute bottom-1 left-1 text-[9px] font-bold px-1 py-0.5 rounded bg-black/70"
+                className="absolute -bottom-1.5 -left-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-black/70"
                 style={{ color: PRICE_COLOR }}
               >
                 {price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}

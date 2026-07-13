@@ -613,7 +613,7 @@ export default function ScannerPage() {
     setBulkModalOpen(true);
   }, [jobs]);
 
-  // Auto-Save beim Verlassen des Scanners → Inbox-Binder „Neue Karten"
+  // Auto-Save beim Verlassen des Scanners → Inbox-Binder „Eingang"
   const [closingSaving, setClosingSaving] = useState(false);
   const handleClose = useCallback(async () => {
     if (closingSaving) return;
@@ -647,6 +647,7 @@ export default function ScannerPage() {
             isFirstEd: v === '1st-ed',
             quantity: 1,
             tcgImageUrl: card.imgLargeDe || card.imgLarge,
+            needsReview: true,
           });
           await addCardToBinder(inboxId, cardId);
         } catch (err) {

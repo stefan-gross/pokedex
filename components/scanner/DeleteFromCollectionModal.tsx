@@ -185,7 +185,7 @@ export function DeleteFromCollectionModal({ card, fromScanner = false, onClose, 
             ) : (
               ownedCopies.map(copy => {
                 const binder = allBinders.find(b => b.cardIds.includes(copy.id));
-                const binderName = binder?.name ?? 'Meine Sammlung';
+                const binderName = binder?.name ?? 'Unsortiert';
                 const binderColor = binder?.color ?? 'var(--muted-foreground)';
                 const condColor = CONDITION_COLOR[copy.condition] ?? 'var(--muted-foreground)';
                 const isConfirm = confirmId === copy.id;

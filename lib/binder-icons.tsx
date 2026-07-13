@@ -2,12 +2,27 @@
 
 import {
   Folder, Package, Zap, Flame, Droplets, Leaf, Flower2, Moon,
-  Star, Layers, Trophy, Gem, Sparkles, Archive, type LucideIcon,
+  Star, Layers, Trophy, Gem, Sparkles, Archive, FileStack, type LucideIcon,
 } from 'lucide-react';
 import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
 import { useSetMeta } from '@/lib/hooks/use-set-meta';
 
-export const BINDER_ICON_MAP: Record<string, LucideIcon> = {
+type IconComponent = LucideIcon | React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
+
+/** Reines Ausrufezeichen (Strich + Punkt, ohne umgebende Form wie Dreieck/
+ *  Kreis) — es gibt kein passendes Lucide-Icon dafür (nur "…-alert"-Varianten
+ *  mit Dreieck/Kreis/Achteck als Rahmen). Gleicher Stroke-Stil wie Lucide
+ *  (currentColor, round Caps), damit es sich nahtlos einreiht. */
+export function ExclamationMark({ size = 24, className, strokeWidth = 2.5 }: { size?: number; className?: string; strokeWidth?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <line x1="12" y1="3" x2="12" y2="14" />
+      <line x1="12" y1="19" x2="12.01" y2="19" />
+    </svg>
+  );
+}
+
+export const BINDER_ICON_MAP: Record<string, IconComponent> = {
   folder:   Folder,
   box:      Package,
   zap:      Zap,
@@ -22,6 +37,8 @@ export const BINDER_ICON_MAP: Record<string, LucideIcon> = {
   gem:      Gem,
   sparkles: Sparkles,
   archive:  Archive,
+  alert:    ExclamationMark,
+  cards:    FileStack,
 };
 
 export const BINDER_ICON_KEYS = Object.keys(BINDER_ICON_MAP);

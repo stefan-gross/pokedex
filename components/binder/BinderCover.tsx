@@ -158,6 +158,13 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   // die Strichstärke kräftiger, nicht die Größe.
   const iconSize = 56;
   const iconStrokeWidth = isColorableIcon ? 2.75 : undefined;
+  // "file-stack" (Unsortiert) besteht aus 3 dünnen, verschachtelten Karten
+  // statt einer einzelnen kräftigen Fläche wie "folder"/"trophy" — bei
+  // identischer Bounding-Box (per getBBox geprüft) wirkt es dadurch deutlich
+  // leichter/kleiner. Gezielter Größenausgleich nur für dieses eine Icon,
+  // damit es optisch mit den übrigen Basis-Icons mithält.
+  const ICON_SIZE_MULTIPLIER: Record<string, number> = { cards: 1.35 };
+  const iconRenderSize = iconSize * (ICON_SIZE_MULTIPLIER[icon ?? ''] ?? 1);
   // ECHTE (deckende) Farbe, leicht dunkler als die Fläche (coverAccentColor,
   // 40%/15% Anthrazit) — der background-clip:text-Trick wurde verworfen,
   // weil der helle Schein bei unserer kleinen Schriftgröße (15-19px) breiter
@@ -321,9 +328,9 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
             {icon && (
               <BinderIcon
                 name={icon}
-                size={iconSize}
+                size={iconRenderSize}
                 strokeWidth={iconStrokeWidth}
-                style={{ color: iconColor, filter: iconShadowFilter, opacity: isColorableIcon ? 0.7 : 0.88, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: iconSize }}
+                style={{ color: iconColor, filter: iconShadowFilter, opacity: isColorableIcon ? 0.7 : 0.88, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: iconRenderSize }}
               />
             )}
           </div>
@@ -336,9 +343,9 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
             <div className="flex justify-center w-full px-[10px]">
               <BinderIcon
                 name={icon}
-                size={iconSize}
+                size={iconRenderSize}
                 strokeWidth={iconStrokeWidth}
-                style={{ color: iconColor, filter: iconShadowFilter, opacity: isColorableIcon ? 0.7 : 0.88, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: iconSize }}
+                style={{ color: iconColor, filter: iconShadowFilter, opacity: isColorableIcon ? 0.7 : 0.88, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: iconRenderSize }}
               />
             </div>
           )}

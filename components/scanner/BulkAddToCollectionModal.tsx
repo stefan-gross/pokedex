@@ -108,6 +108,7 @@ export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved
             isFirstEd: variant === '1st-ed',
             quantity: 1,
             tcgImageUrl: card.imgLargeDe || card.imgLarge,
+            needsReview: true,
           });
           await addCardToBinder(binderId, cardId);
           addedCardIds.push(cardId);
@@ -201,7 +202,7 @@ export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved
         <div className="mb-4">
           <div className="text-xs text-muted-foreground mb-1.5">Sammlung</div>
           <div className="flex flex-wrap gap-2">
-            {[{ id: DEFAULT_ID, name: 'Meine Sammlung', icon: undefined } as { id: string; name: string; icon?: string }, ...binders].map(b => (
+            {[{ id: DEFAULT_ID, name: 'Unsortiert', icon: undefined } as { id: string; name: string; icon?: string }, ...binders].map(b => (
               <button
                 key={b.id}
                 onClick={() => setSelectedBinder(b.id)}

@@ -3,7 +3,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { X, Plus, Minus, Heart, CheckCircle2, ChevronDown, ChevronRight, ChevronLeft, Info, Repeat2, LayoutGrid } from 'lucide-react';
+import { X, Plus, Minus, Heart, ChevronDown, ChevronRight, ChevronLeft, Info, Repeat2, LayoutGrid } from 'lucide-react';
+import { ExclamationMark } from '@/lib/binder-icons';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
@@ -879,7 +880,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                             const isDeleting = deletingId === copy.id;
                             const binder = copyBinders[0];
                             const isDefaultBinder = !binder || !!binder.isDefault;
-                            const binderName = binder?.name ?? 'Meine Sammlung';
+                            const binderName = binder?.name ?? 'Unsortiert';
                             const condColor  = CONDITION_COLOR[copy.condition] ?? 'var(--muted-foreground)';
                             return (
                               <div
@@ -897,9 +898,9 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                         onSaved?.();
                                       }}
                                       className="text-role-label px-2 py-1 rounded flex items-center gap-1 shrink-0 text-white"
-                                      style={{ background: 'var(--pokedex-blue)' }}
+                                      style={{ background: 'var(--pokedex-yellow)' }}
                                     >
-                                      <CheckCircle2 size={11} /> Prüfen
+                                      <ExclamationMark size={11} strokeWidth={3} /> Prüfen
                                     </button>
                                   )}
                                   <LanguageFlag lang={copy.language} size={16} />
