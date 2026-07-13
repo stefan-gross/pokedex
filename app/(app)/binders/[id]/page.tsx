@@ -148,7 +148,7 @@ export default function BinderDetailPage({ params }: Props) {
     const size = binder.size ?? 9;
     (async () => {
       const slots = await resolveTemplateSlots(template);
-      const languageAware = template.type === 'pokedex' || template.type === 'evolutionFamily';
+      const languageAware = template.type === 'pokedex';
       const resolutions = resolveSlotWinners(slots, cards, { languageAware }).sort((a, b) => a.order - b.order);
       if (cancelled) return;
       const map = new Map<string, CatalogCard>();

@@ -54,13 +54,19 @@ export async function resolvePokedexTemplate(): Promise<TemplateSlot[]> {
   return slots;
 }
 
-/** Eine Evolutionslinie — ein Slot pro Dex-Nummer der (bei Erstellung
- *  gecachten) Linie. */
-export async function resolveEvolutionFamilyTemplate(familyDexNumbers: number[]): Promise<TemplateSlot[]> {
-  const results = await Promise.all(familyDexNumbers.map(n => getCardsByDexNumber(n, 100)));
-  return familyDexNumbers
-    .map((n, i) => ({ key: String(n), order: i, catalog: results[i] }))
-    .filter(s => s.catalog.length > 0);
+/** Ein oder mehrere Pokémon (eine Dex-Nummer, oder inkl. Entwicklungslinie
+ *  mehrere) — wie bei Illustrator EIN Slot pro exakter Karte (kein
+ *  Gruppieren nach Dex-Nummer wie bei "pokedex"): jede existierende
+ *  Variante/Promo/VMAX/ex/GX/… bekommt ihre eigene Kachel, nichts wird
+ *  über die Slot-Gewinner-Regel versteckt. */
+export async function resolvePokemonTemplate(dexNumbers: number[]): Promise<TemplateSlot[]> {
+  const results = await Promise.all(dexNumbers.map(n => getCardsByDexNumber(n, 200)));
+  const all = results.flat();
+  all.sort((a, b) => {
+    if (a.nationalDexNumber !== b.nationalDexNumber) return (a.nationalDexNumber ?? 0) - (b.nationalDexNumber ?? 0);
+    return a.setId === b.setId ? sortByCardNumber(a, b) : a.setId.localeCompare(b.setId);
+  });
+  return all.map((c, i) => ({ key: c.id, order: i, catalog: [c] }));
 }
 
 /** Master-Set einer Erweiterung — ein Slot pro Kartennummer (nicht pro
@@ -82,9 +88,9 @@ export async function resolveMasterSetTemplate(setId: string): Promise<TemplateS
 
 export async function resolveTemplateSlots(template: BinderTemplate): Promise<TemplateSlot[]> {
   switch (template.type) {
-    case 'artist':          return resolveArtistTemplate(template.artist);
-    case 'pokedex':          return resolvePokedexTemplate();
-    case 'evolutionFamily':  return resolveEvolutionFamilyTemplate(template.familyDexNumbers);
-    case 'masterSet':        return resolveMasterSetTemplate(template.setId);
+    case 'artist':    return resolveArtistTemplate(template.artist);
+    case 'pokedex':   return resolvePokedexTemplate();
+    case 'pokemon':   return resolvePokemonTemplate(template.dexNumbers);
+    case 'masterSet': return resolveMasterSetTemplate(template.setId);
   }
 }

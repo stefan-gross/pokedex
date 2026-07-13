@@ -59,7 +59,10 @@ export async function computeBinderSyncPlan(
   if (!binder.template) throw new Error('computeBinderSyncPlan: Binder hat keine Vorlage');
 
   const slots = await resolveTemplateSlots(binder.template);
-  const languageAware = binder.template.type === 'pokedex' || binder.template.type === 'evolutionFamily';
+  // Nur "pokedex" gruppiert mehrere mögliche Drucke in EINEN Slot (Dex-
+  // Nummer) — "pokemon" hat wie "artist"/"masterSet" schon einen Slot pro
+  // exakter Karte, da greift die Sprach-Fallback-Frage nicht.
+  const languageAware = binder.template.type === 'pokedex';
   const resolutions = resolveSlotWinners(slots, ownedCards, { languageAware }).sort((a, b) => a.order - b.order);
 
   const size = binder.size ?? 9;

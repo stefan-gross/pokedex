@@ -41,7 +41,11 @@ export interface BinderPage {
 export type BinderTemplate =
   | { type: 'artist'; artist: string }
   | { type: 'pokedex' }
-  | { type: 'evolutionFamily'; baseDexNumber: number; familyDexNumbers: number[] }
+  /** Ein oder mehrere Pokédex-Nummern (mehrere = inkl. Entwicklungslinie) —
+   *  EIN Slot pro existierendem Druck (keine Gruppierung/Slot-Gewinner-
+   *  Auswahl wie bei "pokedex", jede Variante/Promo/VMAX/... bekommt ihre
+   *  eigene Kachel). */
+  | { type: 'pokemon'; dexNumbers: number[] }
   | { type: 'masterSet'; setId: string };
 
 export interface BinderDoc {

@@ -188,8 +188,8 @@ export default function BindersPage() {
               >
                 <LayoutTemplate size={20} className="text-glass-muted shrink-0" />
                 <div>
-                  <p className="text-sm font-semibold">Aus Vorlage (Master-Set)</p>
-                  <p className="text-xs text-muted-foreground">Füllt sich automatisch mit allen Karten eines Sets</p>
+                  <p className="text-sm font-semibold">Aus Vorlage</p>
+                  <p className="text-xs text-muted-foreground">Pokédex, Entwicklungslinie oder Master-Set — füllt sich automatisch</p>
                 </div>
               </button>
             </div>

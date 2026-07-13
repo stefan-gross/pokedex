@@ -16,12 +16,12 @@ export function matchTemplateBinders(
     const t = b.template;
     if (!t) return false;
     switch (t.type) {
-      case 'artist':          return catalogCard.artist === t.artist;
-      case 'pokedex':          return catalogCard.nationalDexNumber != null;
-      case 'evolutionFamily':  return catalogCard.nationalDexNumber != null
-        && t.familyDexNumbers.includes(catalogCard.nationalDexNumber);
-      case 'masterSet':        return catalogCard.setId === t.setId;
-      default:                 return false;
+      case 'artist':    return catalogCard.artist === t.artist;
+      case 'pokedex':   return catalogCard.nationalDexNumber != null;
+      case 'pokemon':   return catalogCard.nationalDexNumber != null
+        && t.dexNumbers.includes(catalogCard.nationalDexNumber);
+      case 'masterSet': return catalogCard.setId === t.setId;
+      default:          return false;
     }
   });
 }
