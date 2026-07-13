@@ -7,6 +7,8 @@ import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition, CardLanguage, CardVariant, CardDoc, BinderDoc } from '@/types';
 import { addCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { getBinders, addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
+import { matchTemplateBinders } from '@/lib/template-binders/match-hint';
+import { syncTemplateBinders } from '@/lib/template-binders/sync';
 import { LANGUAGES, CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
 import { CardPrice } from '@/components/card/CardPrice';
 import { BinderIcon } from '@/lib/binder-icons';
@@ -87,6 +89,7 @@ export function AddToCollectionModal({
   }, [selectedBinderId, binderOptions, showDefaultOption]);
 
   const [saving, setSaving] = useState(false);
+  const [templateHint, setTemplateHint] = useState<string | null>(null);
 
   // Slide-In + Swipe-Down — gleiche Mechanik wie CardDetailSheet
   const [visible, setVisible] = useState(false);
@@ -131,6 +134,17 @@ export function AddToCollectionModal({
       });
       const binderId = selectedBinderId || await ensureDefaultBinder();
       await addCardToBinder(binderId, cardId);
+
+      // Vorlagen-Binder, die zu dieser Karte passen, gleich mitsynchen
+      // (Slot-Gewinner kann sich geändert haben) — und dem Nutzer kurz
+      // zeigen, wo die Karte überall „reinpasst".
+      const matched = matchTemplateBinders(card, allBinders.filter(b => b.template));
+      if (matched.length > 0) {
+        await syncTemplateBinders({ binderIds: matched.map(b => b.id) });
+        setTemplateHint(`Passt auch in: ${matched.map(b => b.name).join(', ')}`);
+        setTimeout(onSaved, 1400);
+        return;
+      }
       onSaved();
     } catch (err) {
       console.error('Save error:', err);
@@ -265,9 +279,12 @@ export function AddToCollectionModal({
           </div>
         </div>
 
+        {templateHint && (
+          <p className="text-center text-xs text-glass-muted mb-2 px-2">{templateHint}</p>
+        )}
         <button
           onClick={save}
-          disabled={saving}
+          disabled={saving || templateHint != null}
           className="w-full rounded-[15px] font-bold text-white disabled:opacity-50 transition-opacity shrink-0 flex items-center justify-center gap-1.5"
           style={{ height: 54, fontSize: 17, background: '#22c55e', boxShadow: '0 6px 20px rgba(34,197,94,0.4)' }}
         >

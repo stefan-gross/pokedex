@@ -9,6 +9,8 @@ import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSub
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { markReviewed, deleteCard } from '@/lib/firestore/cards';
 import { getBinders, addCardToBinder, removeCardFromBinder, removeCardFromBinderAndCleanup, ensureDefaultBinder } from '@/lib/firestore/binders';
+import { matchTemplateBinders } from '@/lib/template-binders/match-hint';
+import { syncTemplateBinders } from '@/lib/template-binders/sync';
 import { getWishlists, ensureDefaultWishlist, addItemToWishlist, removeItemFromWishlist } from '@/lib/firestore/wishlists';
 import { getCardsByEvolutionFamily, getCardsByDexNumber } from '@/lib/firestore/catalog';
 import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
@@ -447,6 +449,10 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     try {
       await Promise.all(bindersOf(copy).map(b => removeCardFromBinderAndCleanup(b.id, copy.id)));
       await deleteCard(copy.id);
+      if (card) {
+        const matched = matchTemplateBinders(card, resolvedBinders.filter(b => b.template));
+        if (matched.length > 0) await syncTemplateBinders({ binderIds: matched.map(b => b.id) });
+      }
       onSaved?.();
     } finally { setDeletingId(null); }
   }

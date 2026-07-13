@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Search } from 'lucide-react';
 import { addBinder, updateBinder } from '@/lib/firestore/binders';
+import { syncTemplateBinders } from '@/lib/template-binders/sync';
 import { BINDER_ICON_KEYS, BinderIcon } from '@/lib/binder-icons';
 import { EnergyIcon } from '@/components/ui/EnergyIcon';
 import { ButtonGroup } from '@/components/ui/button-group';
@@ -12,7 +13,7 @@ import { SERIES_NAMES_DE } from '@/lib/card-constants';
 import { BINDER_SIZES, type BinderSize } from '@/lib/binder-sizes';
 import { initialSheetCount } from '@/lib/binder-sheets';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
-import type { BinderDoc, BinderPage } from '@/types';
+import type { BinderDoc, BinderPage, BinderTemplate } from '@/types';
 
 type PickerTab = 'icons' | 'types' | 'set';
 
@@ -29,20 +30,33 @@ const PRIMARY_ACCENT = '#3182ce';
 
 interface Props {
   existing?: BinderDoc;
+  /** Gesetzt = Vorlagen-Binder wird angelegt (Illustrator/Pokédex/
+   *  Evolutionslinie/Master-Set) — Name/Icon/Farbe unten sind Vorschläge,
+   *  die vor dem Erstellen noch angepasst werden können; Typ ist dann
+   *  immer 'binder' (kein Box-Vorlagen-Binder, da Vorlagen positionale
+   *  Slots brauchen). Nach dem Erstellen läuft sofort ein erster Sync,
+   *  damit der Binder nicht leer bleibt, bis der nächste Cron-Lauf kommt. */
+  templateDraft?: BinderTemplate;
+  initialName?: string;
+  initialIcon?: string;
+  initialColor?: string;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
+export function CreateBinderModal({ existing, templateDraft, initialName, initialIcon, initialColor, onClose, onSaved }: Props) {
   const [collectionType, setCollectionType] = useState<'binder' | 'box'>(existing?.collectionType ?? 'binder');
-  const [name,   setName]   = useState(existing?.name ?? '');
-  const [icon,   setIcon]   = useState(existing?.icon ?? 'folder');
-  const [color,  setColor]  = useState(existing?.color ?? '#e53e3e');
+  const [name,   setName]   = useState(existing?.name ?? initialName ?? '');
+  const [icon,   setIcon]   = useState(existing?.icon ?? initialIcon ?? 'folder');
+  const [color,  setColor]  = useState(existing?.color ?? initialColor ?? '#e53e3e');
   const [size,     setSize]     = useState<BinderSize>((existing?.size as BinderSize) ?? 9);
   const [capacity, setCapacity] = useState<string>(existing?.capacity != null ? String(existing.capacity) : '');
   const [pageBg,   setPageBg]   = useState<'black' | 'white' | 'transparent'>(existing?.pageBackground ?? 'black');
   const [saving,   setSaving]   = useState(false);
-  const [pickerTab,  setPickerTab]  = useState<PickerTab>('icons');
+  const initialIconValue = existing?.icon ?? initialIcon ?? 'folder';
+  const [pickerTab,  setPickerTab]  = useState<PickerTab>(
+    initialIconValue.startsWith('set:') ? 'set' : initialIconValue.startsWith('type:') ? 'types' : 'icons',
+  );
   const [setQuery,   setSetQuery]   = useState('');
   const [allSets,    setAllSets]    = useState<TcgSet[]>([]);
   const setsLoadedRef = useRef(false);
@@ -86,12 +100,16 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
         const initialPages: BinderPage[] = isBinder
           ? Array.from({ length: sheetCount * 2 }, () => ({ slots: Array(size).fill(null) }))
           : [];
-        await addBinder({
+        const newId = await addBinder({
           ...data,
           size: isBinder ? size : 9,
           sortOrder: Date.now(),
+          ...(templateDraft ? { template: templateDraft } : {}),
           ...(initialPages.length > 0 ? { pages: initialPages } : {}),
         });
+        // Vorlagen-Binder sofort einmal befüllen, statt auf den nächsten
+        // Cron-Lauf zu warten.
+        if (templateDraft) await syncTemplateBinders({ binderIds: [newId] });
       }
       onSaved();
     } finally {
@@ -120,8 +138,9 @@ export function CreateBinderModal({ existing, onClose, onSaved }: Props) {
           </button>
         </div>
 
-        {/* Typ-Auswahl — nur beim Erstellen */}
-        {!existing && (
+        {/* Typ-Auswahl — nur beim Erstellen, nicht für Vorlagen-Binder
+            (immer 'binder', da Vorlagen positionale Slots brauchen) */}
+        {!existing && !templateDraft && (
           <div className="mb-4">
             <label className="text-xs text-muted-foreground mb-1.5 block">Typ</label>
             <div className="grid grid-cols-2 gap-2">

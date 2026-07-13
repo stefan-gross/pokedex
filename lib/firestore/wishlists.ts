@@ -27,12 +27,15 @@ export async function addWishlist(name: string, description?: string): Promise<s
   return ref.id;
 }
 
-/** Einzelne Standard-Wishlist — analog zu `ensureDefaultBinder`. Legt bei
- *  Bedarf eine an, statt mehrere benannte Wishlists zu verwalten (bewusst
- *  minimal, siehe Plan „Preis-Versorgung"). */
+/** Einzelne freie Standard-Wishlist — analog zu `ensureDefaultBinder`.
+ *  Explizit die erste NICHT an einen Vorlagen-Binder gekoppelte Liste
+ *  (`!templateBinderId`) — sonst würde z.B. „Auf Wunschliste setzen" im
+ *  Kartendetail eine automatisch verwaltete Vorlagen-Wunschliste treffen,
+ *  falls die zufällig neuer/zuerst in der Sortierung ist. */
 export async function ensureDefaultWishlist(): Promise<WishlistDoc> {
   const lists = await getWishlists();
-  if (lists[0]) return lists[0];
+  const free = lists.find(l => !l.templateBinderId);
+  if (free) return free;
   const id = await addWishlist('Wunschliste');
   return { id, name: 'Wunschliste', description: '', items: [], createdAt: Timestamp.now() };
 }

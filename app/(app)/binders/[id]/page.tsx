@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, Settings, LayoutGrid, BookOpen, FileText, Check,
-  Plus, Minus, ChevronRight, ChevronDown,
+  Plus, Minus, ChevronRight, ChevronDown, Lock,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, TouchSensor, useSensor, useSensors,
@@ -20,7 +20,9 @@ import {
   ensureDefaultBinder, addCardToBinder,
 } from '@/lib/firestore/binders';
 import { getCard } from '@/lib/firestore/cards';
-import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
+import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
+import { resolveTemplateSlots } from '@/lib/template-binders/resolve';
+import { resolveSlotWinners } from '@/lib/template-binders/slot-winner';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { BinderIcon } from '@/lib/binder-icons';
@@ -102,6 +104,10 @@ export default function BinderDetailPage({ params }: Props) {
   const [pickerSlot, setPickerSlot] = useState<{ pageIdx: number; slotIdx: number } | null>(null);
   const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
   const [detailOwned, setDetailOwned] = useState<CardDoc[]>([]);
+  // Fehlende Karten eines Vorlagen-Binders — Katalog-Platzhalter fürs exakt
+  // richtige Slot (Key "pageIdx-slotIdx"), damit man wie in der Suche sieht,
+  // welche Karte an dieser Stelle noch fehlt statt nur einer leeren Fläche.
+  const [missingCards, setMissingCards] = useState<Map<string, CatalogCard>>(new Map());
 
   const totalValue = useTotalValue(cards);
   // Preis pro Karte für die Grid-Ansicht — dieselbe Batch-Route wie überall,
@@ -129,6 +135,31 @@ export default function BinderDetailPage({ params }: Props) {
   }, [id, router]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Platzhalter-Karten für fehlende Slots eines Vorlagen-Binders — dieselbe
+  // Regel-Engine wie der Sync (lib/template-binders/*), aber rein lesend
+  // (keine Schreibvorgänge). Läuft nach jedem `load()`, da sich sowohl das
+  // Template als auch der Kartenbestand geändert haben können.
+  useEffect(() => {
+    if (!binder?.template) { setMissingCards(new Map()); return; }
+    let cancelled = false;
+    const template = binder.template;
+    const size = binder.size ?? 9;
+    (async () => {
+      const slots = await resolveTemplateSlots(template);
+      const languageAware = template.type === 'pokedex' || template.type === 'evolutionFamily';
+      const resolutions = resolveSlotWinners(slots, cards, { languageAware }).sort((a, b) => a.order - b.order);
+      if (cancelled) return;
+      const map = new Map<string, CatalogCard>();
+      resolutions.forEach((r, i) => {
+        if (r.winnerCardId === null && r.missingCatalog) {
+          map.set(`${Math.floor(i / size)}-${i % size}`, r.missingCatalog);
+        }
+      });
+      setMissingCards(map);
+    })();
+    return () => { cancelled = true; };
+  }, [binder?.id, binder?.template, binder?.size, cards]);
 
   const persistPages = useCallback(async (newPages: BinderPage[]) => {
     setPages(newPages);
@@ -255,7 +286,12 @@ export default function BinderDetailPage({ params }: Props) {
             className="shrink-0"
           />
           <div className="flex-1 min-w-0">
-            <h1 className="text-role-h2 truncate text-glass">{binder.name}</h1>
+            <h1 className="text-role-h2 truncate text-glass flex items-center gap-1.5">
+              {binder.name}
+              {binder.template && (
+                <Lock size={13} className="text-glass-muted shrink-0" aria-label="Vorlagen-Binder, automatisch verwaltet" />
+              )}
+            </h1>
             <p className="text-role-label text-glass-muted">
               {layoutLabel}
               {!totalValue.loading && totalValue.withPrice > 0 && (
@@ -328,10 +364,11 @@ export default function BinderDetailPage({ params }: Props) {
           sheets={sheets}
           cols={layoutCols}
           cardsById={cardsById}
+          missingCards={missingCards}
           accent={binderColor}
           pageBg={pageBg}
           editMode={editMode}
-          onLongPress={() => setEditMode(true)}
+          onLongPress={() => { if (!binder?.template) setEditMode(true); }}
           onOpenSheet={(sheetIdx) => {
             // Sheet n öffnet die Vorderseite des Blatts = pageIdx 2n
             setPageIdx(sheetIdx * 2);
@@ -348,10 +385,11 @@ export default function BinderDetailPage({ params }: Props) {
           cols={layoutCols}
           binderSize={binderSize}
           cardsById={cardsById}
+          missingCards={missingCards}
           accent={binderColor}
           pageBg={pageBg}
           editMode={editMode}
-          onLongPress={() => setEditMode(true)}
+          onLongPress={() => { if (!binder?.template) setEditMode(true); }}
           onChangePageIdx={setPageIdx}
           onSwap={swapSlots}
           onClearSlot={clearSlot}
@@ -435,8 +473,15 @@ function RingsCol() {
 
 // ── Mini-Page-Grid ────────────────────────────────────────────────────────
 function MiniPageGrid({
-  slots, cols, cardsById, dim, pageBg,
-}: { slots: (string | null)[]; cols: number; cardsById: Map<string, CardDoc>; dim?: boolean; pageBg?: string }) {
+  slots, cols, cardsById, dim, pageBg, missingCards, pageIdx,
+}: {
+  slots: (string | null)[]; cols: number; cardsById: Map<string, CardDoc>; dim?: boolean; pageBg?: string;
+  /** Vorlagen-Binder: Katalog-Platzhalter für fehlende Slots (Key
+   *  "pageIdx-slotIdx"), damit man wie in der Suche sieht, welche Karte
+   *  hier noch fehlt statt nur einer leeren Fläche. */
+  missingCards?: Map<string, CatalogCard>;
+  pageIdx?: number;
+}) {
   const { bg: slotBg, border: slotBorder } = pageBg
     ? slotColors(pageBg)
     : { bg: 'var(--secondary)', border: 'var(--border)' };
@@ -447,21 +492,29 @@ function MiniPageGrid({
     >
       {slots.map((slotId, slotI) => {
         const card = slotId ? cardsById.get(slotId) : undefined;
+        const missing = !card && pageIdx != null ? missingCards?.get(`${pageIdx}-${slotI}`) : undefined;
+        const imgSrc = card
+          ? (card.tcgImageUrl ?? `https://images.pokemontcg.io/${card.setId}/${card.number.split('/')[0]}_hires.png`)
+          : missing?.imgSmallDe ?? missing?.imgSmall;
         return (
           <div
             key={slotI}
-            className="aspect-[2.5/3.5] rounded-md overflow-hidden"
+            className="relative aspect-[2.5/3.5] rounded-md overflow-hidden"
             style={{
-              background: card ? '#1a1a1a' : slotBg,
-              border: card ? 'none' : `1px dashed ${slotBorder}`,
+              background: card || missing ? '#1a1a1a' : slotBg,
+              border: card || missing ? 'none' : `1px dashed ${slotBorder}`,
             }}
           >
-            {card && (
+            {missing && !card && (
+              <div className="absolute inset-0 bg-[#c9c9c9] dark:bg-[#5b5d63]" />
+            )}
+            {imgSrc && (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
-                src={card.tcgImageUrl ?? `https://images.pokemontcg.io/${card.setId}/${card.number.split('/')[0]}_hires.png`}
+                src={imgSrc}
                 alt=""
-                className="w-full h-full object-cover"
+                className="relative w-full h-full object-cover"
+                style={!card ? { filter: 'grayscale(0.35) contrast(0.7)', opacity: 0.62 } : undefined}
               />
             )}
           </div>
@@ -522,11 +575,12 @@ function GridView({ cards, onCardTap, prices }: {
 
 // ── Sheet-Tile (Vorder + Rück mit Ringen an beiden Außenrändern) ──────────
 function SheetTile({
-  sheet, cols, cardsById, accent, pageBg, editMode, onOpen, onDelete, isOverlay,
+  sheet, cols, cardsById, missingCards, accent, pageBg, editMode, onOpen, onDelete, isOverlay,
 }: {
   sheet: { front: BinderPage; back: BinderPage; sheetIdx: number };
   cols: number;
   cardsById: Map<string, CardDoc>;
+  missingCards: Map<string, CatalogCard>;
   accent: string;
   pageBg: string;
   editMode: boolean;
@@ -552,13 +606,13 @@ function SheetTile({
       <div className="relative flex items-stretch gap-1.5">
         <RingsCol />
         <div className="flex-1 min-w-0">
-          <MiniPageGrid slots={sheet.front.slots} cols={cols} cardsById={cardsById} pageBg={pageBg} />
+          <MiniPageGrid slots={sheet.front.slots} cols={cols} cardsById={cardsById} pageBg={pageBg} missingCards={missingCards} pageIdx={sheet.sheetIdx * 2} />
           <div className="text-[9px] text-center mt-1" style={{ color: pageTextColor, opacity: 0.75 }}>Vorder</div>
         </div>
         {/* Buchrücken-Knick */}
         <div className="self-stretch w-px" style={{ background: pageTextColor, opacity: 0.25 }} />
         <div className="flex-1 min-w-0">
-          <MiniPageGrid slots={sheet.back.slots} cols={cols} cardsById={cardsById} pageBg={pageBg} />
+          <MiniPageGrid slots={sheet.back.slots} cols={cols} cardsById={cardsById} pageBg={pageBg} missingCards={missingCards} pageIdx={sheet.sheetIdx * 2 + 1} />
           <div className="text-[9px] text-center mt-1" style={{ color: pageTextColor, opacity: 0.75 }}>Rück</div>
         </div>
         <RingsCol />
@@ -588,12 +642,13 @@ function SheetTile({
 
 // ── Binder Overview — Sheets als Sortable mit dnd-kit ─────────────────────
 function BinderOverview({
-  sheets, cols, cardsById, accent, pageBg, editMode,
+  sheets, cols, cardsById, missingCards, accent, pageBg, editMode,
   onLongPress, onOpenSheet, onAddSheet, onDeleteSheet, onMoveSheet,
 }: {
   sheets: { front: BinderPage; back: BinderPage; sheetIdx: number }[];
   cols: number;
   cardsById: Map<string, CardDoc>;
+  missingCards: Map<string, CatalogCard>;
   accent: string;
   pageBg: string;
   editMode: boolean;
@@ -632,6 +687,7 @@ function BinderOverview({
               sheet={sheet}
               cols={cols}
               cardsById={cardsById}
+              missingCards={missingCards}
               accent={accent}
               pageBg={pageBg}
               editMode={editMode}
@@ -677,7 +733,7 @@ function BinderOverview({
               if (!s) return null;
               return (
                 <div style={{ transform: 'rotate(-1.5deg) scale(1.03)' }}>
-                  <SheetTile sheet={s} cols={cols} cardsById={cardsById} accent={accent} pageBg={pageBg} editMode={false} isOverlay />
+                  <SheetTile sheet={s} cols={cols} cardsById={cardsById} missingCards={missingCards} accent={accent} pageBg={pageBg} editMode={false} isOverlay />
                 </div>
               );
             })()
@@ -688,12 +744,13 @@ function BinderOverview({
 }
 
 function SortableSheetTile({
-  id, sheet, cols, cardsById, accent, pageBg, editMode, onLongPress, onOpen, onDelete,
+  id, sheet, cols, cardsById, missingCards, accent, pageBg, editMode, onLongPress, onOpen, onDelete,
 }: {
   id: string;
   sheet: { front: BinderPage; back: BinderPage; sheetIdx: number };
   cols: number;
   cardsById: Map<string, CardDoc>;
+  missingCards: Map<string, CatalogCard>;
   accent: string;
   pageBg: string;
   editMode: boolean;
@@ -755,6 +812,7 @@ function SortableSheetTile({
         sheet={sheet}
         cols={cols}
         cardsById={cardsById}
+        missingCards={missingCards}
         accent={accent}
         pageBg={pageBg}
         editMode={editMode}
@@ -774,11 +832,11 @@ type FlipState = {
 } | null;
 
 function SinglePageView({
-  pages, pageIdx, cols, binderSize, cardsById, accent, pageBg, editMode,
+  pages, pageIdx, cols, binderSize, cardsById, missingCards, accent, pageBg, editMode,
   onLongPress, onChangePageIdx, onSwap, onClearSlot, onAddToSlot, onBack, onCardTap,
 }: {
   pages: BinderPage[]; pageIdx: number; cols: number; binderSize: number;
-  cardsById: Map<string, CardDoc>; accent: string; pageBg: string; editMode: boolean;
+  cardsById: Map<string, CardDoc>; missingCards: Map<string, CatalogCard>; accent: string; pageBg: string; editMode: boolean;
   onLongPress: () => void;
   onChangePageIdx: (i: number) => void;
   onSwap: (pA: number, sA: number, pB: number, sB: number) => void;
@@ -842,6 +900,7 @@ function SinglePageView({
               editMode={editMode}
               accent={accent}
               pageBg={pageBg}
+              missingCard={missingCards.get(`${pIdx}-${slotI}`)}
               onAdd={() => onAddToSlot(pIdx, slotI)}
             />
           );
@@ -1225,13 +1284,16 @@ function DraggableCardSlot({
 
 // ── Droppable Empty-Slot ──────────────────────────────────────────────────
 function DroppableEmptySlot({
-  id, n, editMode, accent, pageBg, onAdd,
+  id, n, editMode, accent, pageBg, missingCard, onAdd,
 }: {
   id: string;
   n: number;
   editMode: boolean;
   accent: string;
   pageBg: string;
+  /** Vorlagen-Binder: Katalog-Platzhalter für diesen fehlenden Slot —
+   *  gleiche Optik wie fehlende Karten in der Suche (CardTile). */
+  missingCard?: CatalogCard;
   onAdd: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id, disabled: !editMode });
@@ -1239,7 +1301,7 @@ function DroppableEmptySlot({
   return (
     <div
       ref={setNodeRef}
-      className="relative rounded-xl border border-dashed aspect-[2.5/3.5] w-full"
+      className="relative rounded-xl border border-dashed aspect-[2.5/3.5] w-full overflow-hidden"
       style={{
         background: emptyBg,
         borderColor: isOver ? accent : emptyBorder,
@@ -1249,6 +1311,18 @@ function DroppableEmptySlot({
         transition: 'border-color 150ms ease-out, box-shadow 150ms ease-out, transform 150ms ease-out',
       }}
     >
+      {missingCard && (
+        <>
+          <div className="absolute inset-0 bg-[#c9c9c9] dark:bg-[#5b5d63]" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={missingCard.imgSmallDe ?? missingCard.imgSmall}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{ filter: 'grayscale(0.35) contrast(0.7)', opacity: 0.62 }}
+          />
+        </>
+      )}
       <div className="absolute inset-0 flex items-center justify-center">
         {editMode ? (
           <button
@@ -1259,9 +1333,9 @@ function DroppableEmptySlot({
           >
             <Plus size={16} strokeWidth={3} />
           </button>
-        ) : (
+        ) : !missingCard ? (
           <span className="text-glass-muted/50 text-xs">{n}</span>
-        )}
+        ) : null}
       </div>
     </div>
   );

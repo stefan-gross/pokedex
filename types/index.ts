@@ -33,6 +33,17 @@ export interface BinderPage {
   slots: (string | null)[];
 }
 
+/** Vorlagen-Binder: Regel statt manueller Kartenliste. Karten werden von
+ *  `syncTemplateBinders()` (lib/template-binders/sync.ts) automatisch
+ *  ein-/aussortiert — Nutzer können den Binder nicht manuell bearbeiten.
+ *  `familyDexNumbers` wird bei Erstellung einmalig per PokéAPI aufgelöst
+ *  und gecacht (kein wiederholter PokéAPI-Call bei jedem Sync). */
+export type BinderTemplate =
+  | { type: 'artist'; artist: string }
+  | { type: 'pokedex' }
+  | { type: 'evolutionFamily'; baseDexNumber: number; familyDexNumbers: number[] }
+  | { type: 'masterSet'; setId: string };
+
 export interface BinderDoc {
   id: string;
   name: string;
@@ -54,8 +65,15 @@ export interface BinderDoc {
   isDefault?: boolean;
   /** „Neue Karten"-Inbox: Auffang für ungespeicherte Scans beim Verlassen des Scanners. Wird ausgeblendet wenn leer. */
   isInbox?: boolean;
+  /** Vorhanden = Vorlagen-Binder (automatisch befüllt, gesperrt für manuelle
+   *  Bearbeitung). Fehlt = normaler manueller Binder (Standardfall). */
+  template?: BinderTemplate;
   sortOrder: number;
   cardIds: string[];
+  /** @deprecated Totes Feld — wird geschrieben (addWishlistCardToBinder), aber
+   *  nirgends außer für einen Zähler-Badge gelesen. Nicht für neue Features
+   *  verwenden (siehe lib/firestore/wishlists.ts + WishlistDoc.templateBinderId
+   *  für die echte Wunschlisten-Anbindung). */
   wishlistCardIds: string[];
   createdAt: Timestamp;
 }
@@ -78,6 +96,11 @@ export interface WishlistDoc {
   id: string;
   name: string;
   description?: string;
+  /** Vorhanden = automatisch generierte Wunschliste eines Vorlagen-Binders
+   *  (Zurückverweis auf BinderDoc.id) — Items werden von
+   *  `syncTemplateBinders()` verwaltet, nicht manuell entfernbar. Fehlt =
+   *  normale/freie Wunschliste (heutiges Standardverhalten). */
+  templateBinderId?: string;
   createdAt: Timestamp;
   items: WishlistItem[];
 }

@@ -7,6 +7,8 @@ import type { CardInfo } from '@/lib/card-info';
 import type { CardDoc, BinderDoc } from '@/types';
 import { deleteCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { getBinders, removeCardFromBinderAndCleanup } from '@/lib/firestore/binders';
+import { matchTemplateBinders } from '@/lib/template-binders/match-hint';
+import { syncTemplateBinders } from '@/lib/template-binders/sync';
 import { CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
 import { CardPrice } from '@/components/card/CardPrice';
 import { BinderIcon } from '@/lib/binder-icons';
@@ -81,6 +83,8 @@ export function DeleteFromCollectionModal({ card, fromScanner = false, onClose, 
       await deleteCard(copy.id);
       const remaining = ownedCopies.filter(c => c.id !== copy.id);
       setOwnedCopies(remaining);
+      const matched = matchTemplateBinders(card, allBinders.filter(b => b.template));
+      if (matched.length > 0) await syncTemplateBinders({ binderIds: matched.map(b => b.id) });
       onDeleted();
       if (remaining.length === 0) handleClose();
     } finally {
@@ -97,6 +101,8 @@ export function DeleteFromCollectionModal({ card, fromScanner = false, onClose, 
         await Promise.all(bindersOf(copy).map(b => removeCardFromBinderAndCleanup(b.id, copy.id)));
         await deleteCard(copy.id);
       }
+      const matched = matchTemplateBinders(card, allBinders.filter(b => b.template));
+      if (matched.length > 0) await syncTemplateBinders({ binderIds: matched.map(b => b.id) });
       onDeleted();
       handleClose();
     } finally {
