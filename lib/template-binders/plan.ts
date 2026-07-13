@@ -3,12 +3,26 @@ import { resolveTemplateSlots } from './resolve';
 import { resolveSlotWinners } from './slot-winner';
 import type { BinderDoc, BinderPage, WishlistItem, CardDoc } from '@/types';
 
+/** Ein Slot, dessen Gewinner sich durch diesen Sync-Lauf geändert hat —
+ *  `event: 'filled'` wenn die Position vorher leer war, `'replaced'` wenn
+ *  dort vorher eine andere (jetzt verlierende) Karte lag. Reiner Vorher-/
+ *  Nachher-Vergleich der Pages, keine zusätzlichen Queries nötig — wird
+ *  genutzt, um dem Nutzer beim Hinzufügen einer Karte genau zu sagen, was
+ *  in der automatischen Sammlung passiert ist (Lücke gefüllt vs. Variante
+ *  ersetzt vs. gar keine Änderung bei reinen Duplikaten). */
+export interface SlotChangeEvent {
+  cardId: string;
+  event: 'filled' | 'replaced';
+  previousCardId?: string;
+}
+
 export interface BinderSyncPlan {
   pages: BinderPage[];
   pagesChanged: boolean;
   winnerCardIds: string[];
   loserCardIds: string[];
   wishlistItems: WishlistItem[];
+  changedCardEvents: SlotChangeEvent[];
 }
 
 /** Baut das Seiten-Layout eines Vorlagen-Binders direkt aus der geordneten
@@ -75,5 +89,22 @@ export async function computeBinderSyncPlan(
       };
     });
 
-  return { pages, pagesChanged, winnerCardIds, loserCardIds, wishlistItems };
+  // Vorher/Nachher-Vergleich pro Slot-Position — deckt sowohl neue Sheets
+  // (alte Position existiert nicht → wie leer behandelt) als auch
+  // geschrumpfte/gewachsene Vorlagen ab.
+  const oldFlat = (binder.pages ?? []).flatMap(p => p.slots);
+  const newFlat = pages.flatMap(p => p.slots);
+  const changedCardEvents: SlotChangeEvent[] = [];
+  newFlat.forEach((cardId, i) => {
+    if (!cardId) return;
+    const previous = oldFlat[i] ?? null;
+    if (previous === cardId) return;
+    changedCardEvents.push({
+      cardId,
+      event: previous === null ? 'filled' : 'replaced',
+      previousCardId: previous ?? undefined,
+    });
+  });
+
+  return { pages, pagesChanged, winnerCardIds, loserCardIds, wishlistItems, changedCardEvents };
 }

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, Settings, LayoutGrid, BookOpen, FileText, Check,
-  Plus, Minus, ChevronRight, ChevronDown, Lock,
+  Plus, Minus, ChevronRight, ChevronDown,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, TouchSensor, useSensor, useSensors,
@@ -25,6 +25,7 @@ import { resolveTemplateSlots } from '@/lib/template-binders/resolve';
 import { resolveSlotWinners } from '@/lib/template-binders/slot-winner';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
+import { CollectionTypeBadge } from '@/components/binder/CollectionTypeBadge';
 import { BinderIcon } from '@/lib/binder-icons';
 import { binderSizeLabel, binderSizeCols, type BinderSize } from '@/lib/binder-sizes';
 import {
@@ -288,9 +289,7 @@ export default function BinderDetailPage({ params }: Props) {
           <div className="flex-1 min-w-0">
             <h1 className="text-role-h2 truncate text-glass flex items-center gap-1.5">
               {binder.name}
-              {binder.template && (
-                <Lock size={13} className="text-glass-muted shrink-0" aria-label="Vorlagen-Binder, automatisch verwaltet" />
-              )}
+              <CollectionTypeBadge binder={binder} size="sm" />
             </h1>
             <p className="text-role-label text-glass-muted">
               {layoutLabel}

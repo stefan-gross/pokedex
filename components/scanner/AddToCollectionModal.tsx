@@ -72,7 +72,9 @@ export function AddToCollectionModal({
   }, [ownedCopies, allBinders, variant, condition, language]);
 
   const binderOptions = useMemo(
-    () => allBinders.filter(b => !b.isDefault && !matchingBinderIds.has(b.id)),
+    // Vorlagen-Binder sind hier keine wählbare Option — der Sync entscheidet
+    // ohnehin selbst, ob/wo eine Karte in eine automatische Sammlung passt.
+    () => allBinders.filter(b => !b.isDefault && !b.template && !matchingBinderIds.has(b.id)),
     [allBinders, matchingBinderIds]
   );
   // Fallback: Default-Option bleibt sichtbar, wenn sonst keine Sammlung übrig wäre
@@ -136,14 +138,23 @@ export function AddToCollectionModal({
       await addCardToBinder(binderId, cardId);
 
       // Vorlagen-Binder, die zu dieser Karte passen, gleich mitsynchen
-      // (Slot-Gewinner kann sich geändert haben) — und dem Nutzer kurz
-      // zeigen, wo die Karte überall „reinpasst".
+      // (Slot-Gewinner kann sich geändert haben). Hinweis nur, wenn sich
+      // durch DIESE Karte tatsächlich etwas geändert hat (Lücke gefüllt
+      // oder eine Variante ersetzt) — ein reines Duplikat (Karte passt zur
+      // Regel, ändert aber nichts) bekommt bewusst keinen Sonder-Hinweis.
       const matched = matchTemplateBinders(card, allBinders.filter(b => b.template));
       if (matched.length > 0) {
-        await syncTemplateBinders({ binderIds: matched.map(b => b.id) });
-        setTemplateHint(`Passt auch in: ${matched.map(b => b.name).join(', ')}`);
-        setTimeout(onSaved, 1400);
-        return;
+        const { changedCardEvents } = await syncTemplateBinders({ binderIds: matched.map(b => b.id) });
+        const own = changedCardEvents.find(e => e.cardId === cardId);
+        if (own) {
+          setTemplateHint(
+            own.event === 'filled'
+              ? `Füllt Lücke in ${own.binderName}`
+              : `Ersetzt eine Karte in ${own.binderName} — liegt jetzt in Meine Sammlung`,
+          );
+          setTimeout(onSaved, 1400);
+          return;
+        }
       }
       onSaved();
     } catch (err) {

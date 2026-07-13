@@ -13,7 +13,7 @@ import type { SyncResult } from './sync';
  *  (`computeBinderSyncPlan`) ist mit der Client-Variante (`sync.ts`)
  *  geteilt, nur das Firestore-I/O ist dupliziert. */
 export async function syncTemplateBindersAdmin(opts?: { binderIds?: string[] }): Promise<SyncResult> {
-  const result: SyncResult = { synced: 0, moved: 0, errored: 0 };
+  const result: SyncResult = { synced: 0, moved: 0, errored: 0, changedCardEvents: [] };
   const db = getAdminDb();
 
   const bindersSnap = await db.collection('binders').get();
@@ -85,6 +85,9 @@ export async function syncTemplateBindersAdmin(opts?: { binderIds?: string[] }):
 
       result.synced++;
       result.moved += moved;
+      result.changedCardEvents.push(
+        ...plan.changedCardEvents.map(e => ({ ...e, binderId: binder.id, binderName: binder.name })),
+      );
     } catch (e) {
       console.error('[template-binders] admin sync error', binder.id, e);
       result.errored++;

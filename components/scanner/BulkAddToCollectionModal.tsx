@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Check, Loader2, Plus } from 'lucide-react';
 import type { CardCondition, CardLanguage, CardVariant, BinderDoc } from '@/types';
 import type { CardInfo } from '@/lib/card-info';
 import { addCard } from '@/lib/firestore/cards';
 import { getBinders, addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
+import { matchTemplateBinders } from '@/lib/template-binders/match-hint';
+import { syncTemplateBinders } from '@/lib/template-binders/sync';
+import { AutomaticBadge } from '@/components/binder/CollectionTypeBadge';
 import { LANGUAGES, CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
 
 const DEFAULT_ID = '__default__';
@@ -50,15 +53,22 @@ export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved
   const [condition, setCondition] = useState<CardCondition>(defaultCondition);
   const [language, setLanguage]   = useState<CardLanguage>(defaultLanguage);
   const [selectedBinder, setSelectedBinder] = useState<string>(DEFAULT_ID);
-  const [binders, setBinders] = useState<BinderDoc[]>([]);
+  const [allBinders, setAllBinders] = useState<BinderDoc[]>([]);
   const [saving, setSaving] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [summary, setSummary] = useState<string | null>(null);
 
   useEffect(() => {
-    getBinders()
-      .then(b => setBinders(b.filter(x => !x.isDefault && !x.isInbox)))
-      .catch(() => {});
+    getBinders().then(setAllBinders).catch(() => {});
   }, []);
+
+  // Vorlagen-Binder sind keine wählbare Option — der Sync entscheidet
+  // ohnehin selbst, ob/wo eine Karte in eine automatische Sammlung passt.
+  const binders = useMemo(
+    () => allBinders.filter(x => !x.isDefault && !x.isInbox && !x.template),
+    [allBinders],
+  );
+  const templateBinders = useMemo(() => allBinders.filter(b => b.template), [allBinders]);
 
   // Verfügbare Varianten = Schnittmenge aller Job-Karten — fallback alle
   const availableVariants: CardVariant[] = (() => {
@@ -76,6 +86,8 @@ export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved
       const binderId = selectedBinder === DEFAULT_ID
         ? await ensureDefaultBinder()
         : selectedBinder;
+      const addedCardIds: string[] = [];
+      const affectedTemplateBinderIds = new Set<string>();
       for (const job of jobs) {
         const card = job.card;
         try {
@@ -98,11 +110,31 @@ export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved
             tcgImageUrl: card.imgLargeDe || card.imgLarge,
           });
           await addCardToBinder(binderId, cardId);
+          addedCardIds.push(cardId);
+          matchTemplateBinders(card, templateBinders).forEach(b => affectedTemplateBinderIds.add(b.id));
           onJobSaved(job.id);
         } catch (err) {
           console.error('[bulk-modal] error for job', job.id, err);
         }
         setProgress(p => p + 1);
+      }
+
+      // Vorlagen-Sync einmal gebündelt nach dem ganzen Batch (nicht pro
+      // Karte) — genauso automatisch wie im Einzelscan, nur mit einer
+      // Sammel-Zusammenfassung statt Einzel-Hinweisen pro Karte.
+      if (affectedTemplateBinderIds.size > 0) {
+        const { changedCardEvents } = await syncTemplateBinders({ binderIds: [...affectedTemplateBinderIds] });
+        const ownEvents = changedCardEvents.filter(e => addedCardIds.includes(e.cardId));
+        const filled = ownEvents.filter(e => e.event === 'filled').length;
+        const replaced = ownEvents.filter(e => e.event === 'replaced').length;
+        if (filled > 0 || replaced > 0) {
+          const parts: string[] = [];
+          if (filled > 0) parts.push(`${filled} ${filled === 1 ? 'Karte' : 'Karten'} automatisch einsortiert`);
+          if (replaced > 0) parts.push(`${replaced} ${replaced === 1 ? 'Karte' : 'Karten'} ersetzt`);
+          setSummary(parts.join(', '));
+          setTimeout(onAllSaved, 1800);
+          return;
+        }
       }
       onAllSaved();
     } finally {
@@ -193,18 +225,26 @@ export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved
         {jobs.length > 0 && (
           <div className="mb-4 max-h-32 overflow-y-auto rounded-lg border border-border bg-secondary/40 p-2">
             <ul className="text-xs text-muted-foreground space-y-0.5">
-              {jobs.map(j => (
-                <li key={j.id} className="truncate">
-                  <span className="font-mono">{j.card.setCode ?? '—'} {j.card.number}</span> · {j.card.name}
-                </li>
-              ))}
+              {jobs.map(j => {
+                const matchesTemplate = matchTemplateBinders(j.card, templateBinders).length > 0;
+                return (
+                  <li key={j.id} className="truncate flex items-center gap-1.5">
+                    <span className="font-mono">{j.card.setCode ?? '—'} {j.card.number}</span> · {j.card.name}
+                    {matchesTemplate && <AutomaticBadge size="sm" />}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
 
+        {summary && (
+          <p className="text-xs text-center text-muted-foreground mb-2">{summary}</p>
+        )}
+
         <button
           onClick={save}
-          disabled={saving || jobs.length === 0}
+          disabled={saving || jobs.length === 0 || summary != null}
           className="w-full h-11 rounded-md font-semibold text-sm text-white disabled:opacity-50 transition-opacity flex items-center justify-center gap-2"
           style={{ background: 'var(--action-add)' }}
         >
