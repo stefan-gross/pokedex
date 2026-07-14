@@ -32,10 +32,11 @@ import {
   pagesToSheets, sheetsToPages, ensureEvenPages, pageLabel,
 } from '@/lib/binder-sheets';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
+import { CardImage } from '@/components/card/CardImage';
 import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
-import { findVariantPrice, PRICE_COLOR } from '@/lib/prices/value-tier';
+import { findVariantPrice, pickTrendPrice, PRICE_COLOR } from '@/lib/prices/value-tier';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import { readableTextColor } from '@/lib/color-utils';
 import { wiggleDelay } from '@/lib/utils';
@@ -109,13 +110,34 @@ export default function BinderDetailPage({ params }: Props) {
   // richtige Slot (Key "pageIdx-slotIdx"), damit man wie in der Suche sieht,
   // welche Karte an dieser Stelle noch fehlt statt nur einer leeren Fläche.
   const [missingCards, setMissingCards] = useState<Map<string, CatalogCard>>(new Map());
+  // Fortschritt eines Vorlagen-Binders (besessene / gesamt Slots) — aus
+  // derselben Auflösung wie `missingCards`, damit beide konsistent bleiben.
+  const [templateProgress, setTemplateProgress] = useState<{ owned: number; total: number } | null>(null);
 
   const totalValue = useTotalValue(cards);
   // Preis pro Karte für die Grid-Ansicht — dieselbe Batch-Route wie überall,
   // liefert volle Varianten-Daten (Standard/Reverse Holo/…), Auflösung pro
   // Karte über `findVariantPrice` (identisch zu `useTotalValue`).
-  const cardTcgIds = useMemo(() => Array.from(new Set(cards.map(c => c.tcgId).filter((x): x is string => !!x))), [cards]);
+  const cardTcgIds = useMemo(() => {
+    const ids = cards.map(c => c.tcgId).filter((x): x is string => !!x);
+    // Vorlagen-Binder: zusätzlich die Katalog-Platzhalter fehlender Slots
+    // mit einpreisen, für den "komplette Sammlung"-Wert unten im Header.
+    const missingIds = Array.from(missingCards.values()).map(c => c.id);
+    return Array.from(new Set([...ids, ...missingIds]));
+  }, [cards, missingCards]);
   const { prices: cardPrices } = usePricesBatch(cardTcgIds);
+  // Preis-Summe der noch fehlenden Karten (ein Preis pro Platzhalter-Katalog-
+  // eintrag, wie beim Preis-Sortieren auf der Set-Detailseite) — addiert auf
+  // den bereits vorhandenen `totalValue.total` ergibt den Wert der KOMPLETTEN
+  // (fertigen) Sammlung, nicht nur der schon besessenen Karten.
+  const missingValue = useMemo(() => {
+    let sum = 0;
+    missingCards.forEach(cc => {
+      const price = pickTrendPrice(cardPrices?.get(cc.id));
+      if (price != null) sum += price;
+    });
+    return sum;
+  }, [missingCards, cardPrices]);
 
   const binderSize = (binder?.size ?? 9) as BinderSize;
   const isBox = binder?.collectionType === 'box';
@@ -142,7 +164,7 @@ export default function BinderDetailPage({ params }: Props) {
   // (keine Schreibvorgänge). Läuft nach jedem `load()`, da sich sowohl das
   // Template als auch der Kartenbestand geändert haben können.
   useEffect(() => {
-    if (!binder?.template) { setMissingCards(new Map()); return; }
+    if (!binder?.template) { setMissingCards(new Map()); setTemplateProgress(null); return; }
     let cancelled = false;
     const template = binder.template;
     const size = binder.size ?? 9;
@@ -152,12 +174,16 @@ export default function BinderDetailPage({ params }: Props) {
       const resolutions = resolveSlotWinners(slots, cards, { languageAware }).sort((a, b) => a.order - b.order);
       if (cancelled) return;
       const map = new Map<string, CatalogCard>();
+      let owned = 0;
       resolutions.forEach((r, i) => {
         if (r.winnerCardId === null && r.missingCatalog) {
           map.set(`${Math.floor(i / size)}-${i % size}`, r.missingCatalog);
+        } else if (r.winnerCardId !== null) {
+          owned++;
         }
       });
       setMissingCards(map);
+      setTemplateProgress(resolutions.length > 0 ? { owned, total: resolutions.length } : null);
     })();
     return () => { cancelled = true; };
   }, [binder?.id, binder?.template, binder?.size, cards]);
@@ -270,20 +296,24 @@ export default function BinderDetailPage({ params }: Props) {
   const binderColor = binder.color ?? 'var(--pokedex-red)';
   const layoutCols = binderSizeCols(binderSize);
   const layoutLabel = isBox ? 'Box' : binderSizeLabel(binderSize);
-  const totalCapacity = isBox ? null : (binder.capacity ?? null);
   const pageBg = resolvePageBg(binder.pageBackground);
   const sheets = pagesToSheets(pages, binderSize);
 
   return (
     <div className="min-h-screen pb-24">
-      <div className="sticky top-safe z-20 mx-3 mt-2 glass rounded-[20px] px-4 pt-4 pb-3">
+      {/* ── Sticky top bar (außerhalb des Panels, wie bei der Set-Detailseite) ── */}
+      <div className="sticky top-safe z-20 px-4 pt-4 pb-3">
+        <button onClick={() => router.back()} className="inline-flex items-center gap-1 text-role-body text-glass-muted" aria-label="Zurück">
+          <ChevronLeft size={18} strokeWidth={2} />
+          Sammlungen
+        </button>
+      </div>
+
+      <div className="sticky z-20 mx-3 mb-3 glass rounded-[20px] px-4 pt-4 pb-3" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 49px)' }}>
         <div className="flex items-center gap-3">
-          <button onClick={() => router.back()} className="text-glass" aria-label="Zurück">
-            <ChevronLeft size={22} />
-          </button>
           <BinderIcon
             name={binder.icon ?? (isBox ? 'box' : 'folder')}
-            size={26}
+            size={40}
             style={{ color: binderColor }}
             className="shrink-0"
           />
@@ -292,24 +322,7 @@ export default function BinderDetailPage({ params }: Props) {
               {binder.name}
               <CollectionTypeBadge binder={binder} size="sm" />
             </h1>
-            <p className="text-role-label text-glass-muted">
-              {layoutLabel}
-              {!totalValue.loading && totalValue.withPrice > 0 && (
-                <span className="ml-1.5 font-semibold" style={{ color: binderColor }}>
-                  · ≈ {totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
-                </span>
-              )}
-            </p>
-          </div>
-          <div className="flex flex-col items-end shrink-0 leading-none">
-            <span className="text-[36px] font-extrabold tabular-nums" style={{ color: binderColor }}>
-              {cards.length}
-            </span>
-            {totalCapacity != null && (
-              <span className="text-[11px] text-glass-muted opacity-70 mt-0.5 tabular-nums">
-                von {totalCapacity}
-              </span>
-            )}
+            <p className="text-role-label text-glass-muted">{layoutLabel}</p>
           </div>
           {!isProtected && (
             <button
@@ -321,6 +334,54 @@ export default function BinderDetailPage({ params }: Props) {
             </button>
           )}
         </div>
+
+        {/* Manuelle Binder: kein "von X"-Kapazitätswert mehr — nur Preis
+            (links) + Kartenanzahl (unten rechts). Kein Fortschrittsbalken,
+            der bleibt automatischen Vorlagen-Bindern vorbehalten. */}
+        {!binder.template && (
+          <div className="flex items-center justify-between mt-3">
+            <span className="text-role-label font-semibold" style={{ color: binderColor }}>
+              {!totalValue.loading && totalValue.withPrice > 0
+                ? `≈ ${totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
+                : ''}
+            </span>
+            <span className="text-role-title text-glass tabular-nums">{cards.length} Karten</span>
+          </div>
+        )}
+
+        {/* Fortschritt — nur bei automatischen (Vorlagen-)Bindern, analog zur Set-Detailseite. */}
+        {binder.template && templateProgress && templateProgress.total > 0 && (
+          <div className="space-y-1.5 mt-3">
+            <div className="flex justify-between items-baseline">
+              <span className="text-role-title text-glass">{templateProgress.owned} / {templateProgress.total} Karten</span>
+              <span className="text-role-label text-glass-muted">{Math.round((templateProgress.owned / templateProgress.total) * 100)}%</span>
+            </div>
+            <div className="h-2 rounded-full glass-inner overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${Math.round((templateProgress.owned / templateProgress.total) * 100)}%`,
+                  background: templateProgress.owned === templateProgress.total ? '#48bb78' : binderColor,
+                }}
+              />
+            </div>
+            {/* Wert-Zeile: links der Preis der KOMPLETTEN Sammlung (besessen +
+                fehlend), rechts der Wert dessen, was du aktuell besitzt —
+                spiegelbildlich zur Preis/Anzahl-Zeile der manuellen Binder. */}
+            <div className="flex items-center justify-between pt-1.5">
+              <span className="text-role-label font-semibold" style={{ color: binderColor }}>
+                {!totalValue.loading && (totalValue.withPrice > 0 || missingValue > 0)
+                  ? `≈ ${(totalValue.total + missingValue).toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })} komplett`
+                  : ''}
+              </span>
+              <span className="text-role-title text-glass tabular-nums">
+                {!totalValue.loading && totalValue.withPrice > 0
+                  ? `≈ ${totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
+                  : ''}
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-between gap-2 mt-3">
           {!isBox && (
@@ -495,9 +556,6 @@ function MiniPageGrid({
       {slots.map((slotId, slotI) => {
         const card = slotId ? cardsById.get(slotId) : undefined;
         const missing = !card && pageIdx != null ? missingCards?.get(`${pageIdx}-${slotI}`) : undefined;
-        const imgSrc = card
-          ? (card.tcgImageUrl ?? `https://images.pokemontcg.io/${card.setId}/${card.number.split('/')[0]}_hires.png`)
-          : missing?.imgSmallDe ?? missing?.imgSmall;
         return (
           <div
             key={slotI}
@@ -510,13 +568,25 @@ function MiniPageGrid({
             {missing && !card && (
               <div className="absolute inset-0 bg-[#c9c9c9] dark:bg-[#5b5d63]" />
             )}
-            {imgSrc && (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={imgSrc}
+            {card && (
+              <CardImage
+                srcDe={undefined}
+                src={card.tcgImageUrl ?? `https://images.pokemontcg.io/${card.setId}/${card.number.split('/')[0]}_hires.png`}
                 alt=""
+                width={245}
+                height={342}
                 className="relative w-full h-full object-cover"
-                style={!card ? { filter: 'grayscale(0.35) contrast(0.7)', opacity: 0.62 } : undefined}
+              />
+            )}
+            {!card && missing && (
+              <CardImage
+                srcDe={missing.imgSmallDe}
+                src={missing.imgSmall}
+                alt=""
+                width={245}
+                height={342}
+                className="relative w-full h-full object-cover"
+                style={{ filter: 'grayscale(0.35) contrast(0.7)', opacity: 0.62 }}
               />
             )}
           </div>
@@ -1326,10 +1396,12 @@ function DroppableEmptySlot({
       {missingCard && (
         <>
           <div className="absolute inset-0 bg-[#c9c9c9] dark:bg-[#5b5d63]" />
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={missingCard.imgSmallDe ?? missingCard.imgSmall}
-            alt=""
+          <CardImage
+            srcDe={missingCard.imgSmallDe}
+            src={missingCard.imgSmall}
+            alt={missingCard.nameDe ?? missingCard.name}
+            width={245}
+            height={342}
             className="absolute inset-0 w-full h-full object-cover"
             style={{ filter: 'grayscale(0.35) contrast(0.7)', opacity: 0.62 }}
           />

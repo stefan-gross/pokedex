@@ -2,8 +2,22 @@ import {
   getCardsBySetId, getCardsByDexNumber, searchCatalogByArtist,
   type CatalogCard,
 } from '@/lib/firestore/catalog';
+import { getAllSets } from '@/lib/firestore/sets';
+import { SPECIAL_MECHANIC_KEYS } from '@/lib/card-constants';
 import type { BinderTemplate } from '@/types';
 import { NATIONAL_DEX_TOTAL } from './constants';
+
+/** Reihenfolge für "pokemon"-Vorlagen: erst Basis, dann Phase 1, dann
+ *  Phase 2, dann Sonderformen (EX/GX/VMAX/…) als letzte Gruppe — unabhängig
+ *  davon, von welcher Entwicklungsstufe die Sonderform eigentlich ist
+ *  (entspricht der Erwartung "erst normale Entwicklungslinie, dann alles
+ *  Besondere hinterher"). */
+function stageRank(subtypes?: string[]): number {
+  if (subtypes?.some(s => (SPECIAL_MECHANIC_KEYS as readonly string[]).includes(s))) return 3;
+  if (subtypes?.includes('Stage 2')) return 2;
+  if (subtypes?.includes('Stage 1')) return 1;
+  return 0;
+}
 
 /** Ein theoretischer Platz im Vorlagen-Binder. `key` ist der Identitäts-
  *  Schlüssel für die Slot-Gewinner-Logik (exakte tcgId bei Illustrator/
@@ -58,12 +72,26 @@ export async function resolvePokedexTemplate(): Promise<TemplateSlot[]> {
  *  mehrere) — wie bei Illustrator EIN Slot pro exakter Karte (kein
  *  Gruppieren nach Dex-Nummer wie bei "pokedex"): jede existierende
  *  Variante/Promo/VMAX/ex/GX/… bekommt ihre eigene Kachel, nichts wird
- *  über die Slot-Gewinner-Regel versteckt. */
+ *  über die Slot-Gewinner-Regel versteckt.
+ *
+ *  Sortierung: erst Entwicklungsstufe (Basis → Phase 1 → Phase 2 →
+ *  Sonderformen), innerhalb einer Stufe chronologisch nach Erscheinungs-
+ *  datum des Sets (älteste zuerst) — nicht nach Dex-Nummer, die bei
+ *  verzweigten Linien (mehrere Phase-1-Zweige) oder alphabetischer
+ *  Set-Sortierung nicht die tatsächliche Stufe/Chronologie abbildet. */
 export async function resolvePokemonTemplate(dexNumbers: number[]): Promise<TemplateSlot[]> {
-  const results = await Promise.all(dexNumbers.map(n => getCardsByDexNumber(n, 200)));
+  const [results, allSets] = await Promise.all([
+    Promise.all(dexNumbers.map(n => getCardsByDexNumber(n, 200))),
+    getAllSets(),
+  ]);
+  const releaseDateBySetId = new Map(allSets.map(s => [s.id, s.releaseDate ?? '']));
   const all = results.flat();
   all.sort((a, b) => {
-    if (a.nationalDexNumber !== b.nationalDexNumber) return (a.nationalDexNumber ?? 0) - (b.nationalDexNumber ?? 0);
+    const stageDiff = stageRank(a.subtypes) - stageRank(b.subtypes);
+    if (stageDiff !== 0) return stageDiff;
+    const dateA = releaseDateBySetId.get(a.setId) ?? '';
+    const dateB = releaseDateBySetId.get(b.setId) ?? '';
+    if (dateA !== dateB) return dateA.localeCompare(dateB);
     return a.setId === b.setId ? sortByCardNumber(a, b) : a.setId.localeCompare(b.setId);
   });
   return all.map((c, i) => ({ key: c.id, order: i, catalog: [c] }));

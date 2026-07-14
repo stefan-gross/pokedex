@@ -5,6 +5,7 @@ import { X, Search, BookOpen, Repeat2, Package, ChevronLeft } from 'lucide-react
 import { getAllSets, filterSets, type TcgSet } from '@/lib/firestore/sets';
 import { SERIES_NAMES_DE } from '@/lib/card-constants';
 import { searchCatalog, type CatalogCard } from '@/lib/firestore/catalog';
+import { CardImage } from '@/components/card/CardImage';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import {
   resolveMasterSetTemplate, resolvePokedexTemplate, resolvePokemonTemplate,
@@ -388,10 +389,12 @@ export function CreateTemplateBinderModal({ onClose, onSaved }: Props) {
                         className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg glass-inner text-left"
                       >
                         <div className="w-10 shrink-0 flex items-center justify-center">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={c.imgSmallDe || c.imgSmall}
+                          <CardImage
+                            srcDe={c.imgSmallDe}
+                            src={c.imgSmall}
                             alt={c.nameDe ?? c.name}
+                            width={40}
+                            height={56}
                             className="max-h-9 max-w-[40px] object-contain rounded"
                           />
                         </div>

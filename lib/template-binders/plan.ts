@@ -86,7 +86,7 @@ export async function computeBinderSyncPlan(
         setName: cc.setName,
         setId: cc.setId,
         number: cc.number,
-        tcgImageUrl: cc.imgSmallDe ?? cc.imgSmall,
+        tcgImageUrl: cc.imgSmallDe || cc.imgSmall,
         priority: 2,
         acquired: false,
       };
