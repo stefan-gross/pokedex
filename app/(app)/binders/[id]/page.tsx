@@ -209,6 +209,14 @@ export default function BinderDetailPage({ params }: Props) {
     setDetailCard(catalogCardToInfo(cc));
   };
 
+  // Tap auf eine fehlende (Platzhalter-)Karte eines Vorlagen-Binders — öffnet
+  // dasselbe Kartendetail wie eine unbesessene Karte in der Suche (0 eigene
+  // Exemplare, aber Preis/Wunschliste einsehbar), statt tot zu sein.
+  const openMissingDetail = (catalogCard: CatalogCard) => {
+    setDetailOwned([]);
+    setDetailCard(catalogCardToInfo(catalogCard));
+  };
+
   // ── Slot-Operationen (über Page-Index) ─────────────────────────────────
   const swapSlots = (pA: number, sA: number, pB: number, sB: number) => {
     if (pA === pB && sA === sB) return;
@@ -300,16 +308,16 @@ export default function BinderDetailPage({ params }: Props) {
   const sheets = pagesToSheets(pages, binderSize);
 
   return (
-    <div className="min-h-screen pb-24">
+    <div className="min-h-screen">
       {/* ── Sticky top bar (außerhalb des Panels, wie bei der Set-Detailseite) ── */}
-      <div className="sticky top-safe z-20 px-4 pt-4 pb-3">
+      <div className="sticky top-safe z-20 px-4 pt-3 pb-2">
         <button onClick={() => router.back()} className="inline-flex items-center gap-1 text-role-body text-glass-muted" aria-label="Zurück">
           <ChevronLeft size={18} strokeWidth={2} />
           Sammlungen
         </button>
       </div>
 
-      <div className="sticky z-20 mx-3 mb-3 glass rounded-[20px] px-4 pt-4 pb-3" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 49px)' }}>
+      <div className="sticky z-20 mx-3 mb-2 glass rounded-[20px] px-4 pt-3 pb-2" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 41px)' }}>
         <div className="flex items-center gap-3">
           <BinderIcon
             name={binder.icon ?? (isBox ? 'box' : 'folder')}
@@ -335,20 +343,6 @@ export default function BinderDetailPage({ params }: Props) {
           )}
         </div>
 
-        {/* Manuelle Binder: kein "von X"-Kapazitätswert mehr — nur Preis
-            (links) + Kartenanzahl (unten rechts). Kein Fortschrittsbalken,
-            der bleibt automatischen Vorlagen-Bindern vorbehalten. */}
-        {!binder.template && (
-          <div className="flex items-center justify-between mt-3">
-            <span className="text-role-label font-semibold" style={{ color: binderColor }}>
-              {!totalValue.loading && totalValue.withPrice > 0
-                ? `≈ ${totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
-                : ''}
-            </span>
-            <span className="text-role-title text-glass tabular-nums">{cards.length} Karten</span>
-          </div>
-        )}
-
         {/* Fortschritt — nur bei automatischen (Vorlagen-)Bindern, analog zur Set-Detailseite. */}
         {binder.template && templateProgress && templateProgress.total > 0 && (
           <div className="space-y-1.5 mt-3">
@@ -365,44 +359,62 @@ export default function BinderDetailPage({ params }: Props) {
                 }}
               />
             </div>
-            {/* Wert-Zeile: links der Preis der KOMPLETTEN Sammlung (besessen +
-                fehlend), rechts der Wert dessen, was du aktuell besitzt —
-                spiegelbildlich zur Preis/Anzahl-Zeile der manuellen Binder. */}
-            <div className="flex items-center justify-between pt-1.5">
-              <span className="text-role-label font-semibold" style={{ color: binderColor }}>
-                {!totalValue.loading && (totalValue.withPrice > 0 || missingValue > 0)
-                  ? `≈ ${(totalValue.total + missingValue).toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })} komplett`
-                  : ''}
-              </span>
-              <span className="text-role-title text-glass tabular-nums">
-                {!totalValue.loading && totalValue.withPrice > 0
-                  ? `≈ ${totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
-                  : ''}
-              </span>
-            </div>
           </div>
         )}
 
+        {/* Ansichts-Switch + Seiten-Sprung (nur "Seite"-Ansicht) + Preis in
+            EINER Zeile statt drei separaten — spart auf 3x3-Bindern genug
+            Höhe, damit die Seiten-Ansicht ohne Scrollen passt. */}
         <div className="flex items-center justify-between gap-2 mt-3">
-          {!isBox && (
-            <div className="flex rounded-full p-0.5 glass-inner">
-              <ViewBtn icon={<BookOpen size={15} />} active={view === 'binder'} onClick={() => { setView('binder'); setEditMode(false); }} color={binderColor} label="Blätter" />
-              <ViewBtn icon={<FileText size={15} />} active={view === 'page'} onClick={() => { setView('page'); setEditMode(false); }} color={binderColor} label="Seite" />
-              <ViewBtn icon={<LayoutGrid size={15} />} active={view === 'grid'} onClick={() => { setView('grid'); setEditMode(false); }} color={binderColor} label="Liste" />
-            </div>
-          )}
+          <div className="flex items-center gap-2 min-w-0">
+            {!isBox && (
+              <div className="flex rounded-full p-0.5 glass-inner shrink-0">
+                <ViewBtn icon={<BookOpen size={15} />} active={view === 'binder'} onClick={() => { setView('binder'); setEditMode(false); }} color={binderColor} label="Blätter" />
+                <ViewBtn icon={<FileText size={15} />} active={view === 'page'} onClick={() => { setView('page'); setEditMode(false); }} color={binderColor} label="Seite" />
+                <ViewBtn icon={<LayoutGrid size={15} />} active={view === 'grid'} onClick={() => { setView('grid'); setEditMode(false); }} color={binderColor} label="Liste" />
+              </div>
+            )}
+            {!isBox && view === 'page' && pages.length > 2 && (
+              <label className="relative inline-flex items-center shrink-0">
+                <select
+                  value={Math.floor(pageIdx / 2)}
+                  onChange={e => setPageIdx(Number(e.target.value) * 2)}
+                  className="appearance-none pl-2.5 pr-6 h-7 rounded-full text-[12px] font-bold tabular-nums glass-inner text-glass focus:outline-none"
+                  aria-label="Blatt auswählen"
+                >
+                  {Array.from({ length: Math.ceil(pages.length / 2) }, (_, i) => (
+                    <option key={i} value={i}>Blatt {i + 1}</option>
+                  ))}
+                </select>
+                <ChevronDown size={11} className="absolute right-1.5 pointer-events-none text-glass-muted" />
+              </label>
+            )}
+          </div>
           {/* Bearbeiten-Modus startet per Long-Press auf eine Kachel (wie iOS-
               Homescreen) — kein separater Einstiegs-Button mehr nötig. Zum
               Beenden bleibt ein "Fertig"-Button, analog zur Sammlungsübersicht. */}
-          {editMode && (
+          {editMode ? (
             <button
               onClick={() => setEditMode(false)}
-              className="inline-flex items-center gap-1.5 h-11 px-3 rounded-full text-xs font-semibold"
+              className="inline-flex items-center gap-1.5 h-11 px-3 rounded-full text-xs font-semibold shrink-0"
               style={{ background: 'var(--pokedex-blue)', color: '#fff', border: 'none' }}
             >
               <Check size={13} />
               Fertig
             </button>
+          ) : binder.template ? (
+            <span className="text-role-label font-semibold text-right shrink-0" style={{ color: binderColor }}>
+              {!totalValue.loading && (totalValue.withPrice > 0 || missingValue > 0)
+                ? `≈${(totalValue.total + missingValue).toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
+                : ''}
+            </span>
+          ) : (
+            <span className="text-role-label font-semibold text-right shrink-0" style={{ color: binderColor }}>
+              {!totalValue.loading && totalValue.withPrice > 0
+                ? `≈${totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
+                : ''}
+              {' · '}{cards.length} Karten
+            </span>
           )}
         </div>
 
@@ -459,6 +471,7 @@ export default function BinderDetailPage({ params }: Props) {
           onAddToSlot={(pIdx, slotIdx) => setPickerSlot({ pageIdx: pIdx, slotIdx })}
           onBack={() => setView('binder')}
           onCardTap={openDetail}
+          onMissingTap={openMissingDetail}
         />
       )}
 
@@ -559,7 +572,7 @@ function MiniPageGrid({
         return (
           <div
             key={slotI}
-            className="relative aspect-[2.5/3.5] rounded-md overflow-hidden"
+            className="relative aspect-[2.5/3.5] rounded-[3px] overflow-hidden"
             style={{
               background: card || missing ? '#1a1a1a' : slotBg,
               border: card || missing ? 'none' : `1px dashed ${slotBorder}`,
@@ -617,7 +630,7 @@ function GridView({ cards, onCardTap, prices }: {
           <button
             key={`${c.id}-${i}`}
             onClick={() => onCardTap(c)}
-            className="relative rounded-xl overflow-hidden shadow-card cursor-pointer"
+            className="relative rounded-[8px] overflow-hidden shadow-card cursor-pointer"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -915,7 +928,7 @@ type FlipState = {
 
 function SinglePageView({
   pages, pageIdx, cols, binderSize, cardsById, missingCards, accent, pageBg, editMode,
-  onLongPress, onChangePageIdx, onSwap, onClearSlot, onAddToSlot, onBack, onCardTap,
+  onLongPress, onChangePageIdx, onSwap, onClearSlot, onAddToSlot, onBack, onCardTap, onMissingTap,
 }: {
   pages: BinderPage[]; pageIdx: number; cols: number; binderSize: number;
   cardsById: Map<string, CardDoc>; missingCards: Map<string, CatalogCard>; accent: string; pageBg: string; editMode: boolean;
@@ -926,6 +939,7 @@ function SinglePageView({
   onAddToSlot: (pageIdx: number, slotIdx: number) => void;
   onBack: () => void;
   onCardTap: (c: CardDoc) => void;
+  onMissingTap: (c: CatalogCard) => void;
 }) {
   const page = pages[pageIdx];
   const totalPages = pages.length;
@@ -984,6 +998,7 @@ function SinglePageView({
               pageBg={pageBg}
               missingCard={missingCards.get(`${pIdx}-${slotI}`)}
               onAdd={() => onAddToSlot(pIdx, slotI)}
+              onMissingTap={onMissingTap}
             />
           );
         })}
@@ -995,7 +1010,7 @@ function SinglePageView({
     return (
       <div
         key={key}
-        className={`flex items-stretch gap-2 px-3 py-3 mx-3 rounded-xl border${isBg ? '' : ' shadow-card'}`}
+        className={`flex items-stretch gap-2 px-3 py-2 mx-3 rounded-xl border${isBg ? '' : ' shadow-card'}`}
         style={{ background: pageBg, borderColor: 'var(--border)' }}
       >
         {pageIsFront && <RingsCol />}
@@ -1100,25 +1115,8 @@ function SinglePageView({
 
 
   const sideLabel = isFront ? 'Vorderseite' : 'Rückseite';
-  const totalSheets = Math.ceil(totalPages / 2);
   return (
     <div>
-      <div className="flex items-center justify-center px-4 pt-2 pb-3">
-        <label className="relative inline-flex items-center">
-          <select
-            value={label.sheet - 1}
-            onChange={e => onChangePageIdx(Number(e.target.value) * 2)}
-            className="appearance-none pl-3 pr-7 h-8 rounded-full text-[13px] font-bold tabular-nums glass-inner text-glass focus:outline-none"
-            aria-label="Blatt auswählen"
-          >
-            {Array.from({ length: totalSheets }, (_, i) => (
-              <option key={i} value={i}>Blatt {i + 1}</option>
-            ))}
-          </select>
-          <ChevronDown size={13} className="absolute right-2 pointer-events-none text-glass-muted" />
-        </label>
-      </div>
-
       {editMode ? (
         <DndContext
           sensors={sensors}
@@ -1141,7 +1139,7 @@ function SinglePageView({
           <DragOverlay dropAnimation={{ duration: 220, easing: 'cubic-bezier(.2,.9,.3,1)' }}>
             {activeCard ? (
               <div
-                className="rounded-xl overflow-hidden border-2"
+                className="rounded-[4px] overflow-hidden border-2"
                 style={{
                   borderColor: accent,
                   background: '#1a1a1a',
@@ -1313,7 +1311,7 @@ function DraggableCardSlot({
       ref={setNodeRef}
       {...attributes}
       {...(editMode ? listeners : {})}
-      className="relative rounded-xl overflow-hidden aspect-[2.5/3.5] w-full no-callout"
+      className="relative rounded-[5px] overflow-hidden aspect-[2.5/3.5] w-full no-callout"
       style={{
         borderColor: isOver ? accent : `${accent}55`,
         borderStyle: isOver ? 'dashed' : 'solid',
@@ -1366,7 +1364,7 @@ function DraggableCardSlot({
 
 // ── Droppable Empty-Slot ──────────────────────────────────────────────────
 function DroppableEmptySlot({
-  id, n, editMode, accent, pageBg, missingCard, onAdd,
+  id, n, editMode, accent, pageBg, missingCard, onAdd, onMissingTap,
 }: {
   id: string;
   n: number;
@@ -1377,13 +1375,16 @@ function DroppableEmptySlot({
    *  gleiche Optik wie fehlende Karten in der Suche (CardTile). */
   missingCard?: CatalogCard;
   onAdd: () => void;
+  /** Tap auf eine fehlende Karte außerhalb des Bearbeiten-Modus — öffnet ihr
+   *  Kartendetail (0 eigene Exemplare), analog zu unbesessenen Karten in der Suche. */
+  onMissingTap?: (c: CatalogCard) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id, disabled: !editMode });
   const { bg: emptyBg, border: emptyBorder } = slotColors(pageBg);
   return (
     <div
       ref={setNodeRef}
-      className="relative rounded-xl border border-dashed aspect-[2.5/3.5] w-full overflow-hidden"
+      className="relative rounded-[5px] border border-dashed aspect-[2.5/3.5] w-full overflow-hidden"
       style={{
         background: emptyBg,
         borderColor: isOver ? accent : emptyBorder,
@@ -1391,7 +1392,9 @@ function DroppableEmptySlot({
         boxShadow: isOver ? `0 0 0 4px ${accent}40` : undefined,
         transform: isOver ? 'scale(1.04)' : undefined,
         transition: 'border-color 150ms ease-out, box-shadow 150ms ease-out, transform 150ms ease-out',
+        cursor: !editMode && missingCard ? 'pointer' : undefined,
       }}
+      onClick={() => { if (!editMode && missingCard) onMissingTap?.(missingCard); }}
     >
       {missingCard && (
         <>
