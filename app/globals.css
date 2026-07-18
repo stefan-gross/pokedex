@@ -306,22 +306,35 @@
      Dark liegt auf Anthrazit (#14121c) → transluzentes Weiß. Nicht
      verschachteln — nur auf den großen Panels (Hero, Chip-Row, Sets-Card,
      Tab-Bar), nicht auf einzelnen Zeilen darin (backdrop-filter ist teuer). */
+  /* Inset-Highlight nach Apples eigener Spec für den "Lift"-Effekt von
+     Liquid-Glass-Flächen (offiziell dokumentiert: "apply an inner shadow —
+     white 30%, blur 6 — for lift", https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass)
+     — rundum diffus statt nur als 1px-Kante oben, wie zuvor. Dark-Variante
+     proportional gedämpft (gleiches Verhältnis wie schon zuvor zwischen
+     Light- und Dark-Alpha), da 30% Weiß auf dunklem Glas sonst zu dominant
+     wirkt. */
   .glass {
-    background: rgba(255,255,255,0.55);
-    backdrop-filter: blur(22px) saturate(1.4);
-    -webkit-backdrop-filter: blur(22px) saturate(1.4);
+    /* Transparenz/Blur/Sättigung kommen jetzt aus CSS-Variablen
+       (`--glass-alpha`/`--glass-blur`/`--glass-saturate`), gesetzt von
+       `lib/ui/glass-theme.ts` auf `:root` — Fallback-Werte hier sind die
+       bisherigen Fixwerte, falls das Theme-Modul (noch) nicht geladen hat.
+       Light UND Dark auf demselben Wert (wie zuvor schon bei primary/
+       Glas-auf-Glas). Live einstellbar auf `/design-system-preview`. */
+    background: rgba(255,255,255,var(--glass-alpha, 0.15));
+    backdrop-filter: blur(var(--glass-blur, 22px)) saturate(var(--glass-saturate, 1.4));
+    -webkit-backdrop-filter: blur(var(--glass-blur, 22px)) saturate(var(--glass-saturate, 1.4));
     border: 1px solid rgba(255,255,255,0.7);
     box-shadow:
-      inset 0 1px 1px rgba(255,255,255,0.8),
+      inset 0 0 6px rgba(255,255,255,0.3),
       0 8px 26px rgba(30,40,80,0.1);
   }
   .dark .glass {
-    background: rgba(255,255,255,0.13);
-    backdrop-filter: blur(22px) saturate(1.4);
-    -webkit-backdrop-filter: blur(22px) saturate(1.4);
+    background: rgba(255,255,255,var(--glass-alpha, 0.15));
+    backdrop-filter: blur(var(--glass-blur, 22px)) saturate(var(--glass-saturate, 1.4));
+    -webkit-backdrop-filter: blur(var(--glass-blur, 22px)) saturate(var(--glass-saturate, 1.4));
     border: 1px solid rgba(255,255,255,0.22);
     box-shadow:
-      inset 0 1px 1px rgba(255,255,255,0.28),
+      inset 0 0 6px rgba(255,255,255,0.12),
       0 8px 26px rgba(0,0,0,0.32);
   }
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -331,6 +344,55 @@
     .dark .glass {
       background: rgba(30,30,38,0.85);
     }
+  }
+
+  /* Gemeinsames Hover-/Press-/Schatten-Verhalten — adaptiert aus einem vom
+     Nutzer gefundenen CSS-Snippet (Press-Zustand verdunkelt den Schatten
+     statt ihn nur zu verkleinern, eigene Easing-Kurve). Ursprünglich nur für
+     `primary`, jetzt auch von `destructive` genutzt — beide teilen sich
+     dieses Verhalten, nur der `background` bleibt jeweils eigenständig
+     (Verlauf bei `primary`, flache Tönung bei `destructive`, siehe
+     `primaryGlassStyle`/`tintedGlassStyle` in lib/ui/tinted-glass.ts). */
+  /* Schatten-GEOMETRIE (`--btn-shadow-y`/`--btn-shadow-blur`/`--btn-inset-
+     opacity`) kommt jetzt live aus `getGlassTheme().primary`
+     (`primaryGlassStyle`, lib/ui/tinted-glass.ts) — Fallbacks hier
+     entsprechen den bisherigen Fixwerten. `box-shadow` selbst bleibt
+     bewusst CSS-getrieben (nicht inline), da `:active` unten eine andere
+     Geometrie braucht — ein inline `boxShadow` würde das per Kaskade-
+     Priorität dauerhaft überschreiben und die Press-Verdunkelung kaputt
+     machen. */
+  .btn-glass-interactive {
+    box-shadow:
+      inset 0 1px 0 0 rgba(255,255,255,var(--btn-inset-opacity, 0.3)),
+      0 var(--btn-shadow-y, 4px) var(--btn-shadow-blur, 12px) 0 var(--btn-shadow-color);
+    transition: transform 0.2s cubic-bezier(0.25,1,0.5,1), opacity 0.2s ease, box-shadow 0.2s ease;
+  }
+  /* Opacity 0.95 allein ist auf einer bereits halbtransparenten Füllung
+     kaum wahrnehmbar — zusätzlicher Lift (wie bei den übrigen getönten
+     Varianten) macht den Hover-Zustand tatsächlich sichtbar. */
+  .btn-glass-interactive:hover:not(:disabled) { opacity: 0.95; transform: translateY(-1px); }
+  .btn-glass-interactive:active:not(:disabled) {
+    transform: scale(0.96);
+    opacity: 0.85;
+    box-shadow:
+      inset 0 1px 0 0 rgba(0,0,0,0.1),
+      0 calc(var(--btn-shadow-y, 4px) / 2) calc(var(--btn-shadow-blur, 12px) / 2) 0 var(--btn-shadow-color);
+  }
+
+  /* Nur `primary`: schmalerer, aber kräftigerer Schatten als der gemeinsame
+     Standard — geringerer Blur/Spread-Radius, dafür höhere Farbintensität
+     (siehe `--btn-shadow-color`-Alpha 0.55 statt 0.4 in `primaryGlassStyle`).
+     Zwei Klassen kombiniert = höhere Spezifität als `.btn-glass-interactive`
+     allein, damit die schmaleren Werte gewinnen. */
+  .btn-primary-shadow.btn-glass-interactive {
+    box-shadow:
+      inset 0 1px 0 0 rgba(255,255,255,var(--btn-inset-opacity, 0.3)),
+      0 var(--btn-shadow-y, 3px) var(--btn-shadow-blur, 8px) 0 var(--btn-shadow-color);
+  }
+  .btn-primary-shadow.btn-glass-interactive:active:not(:disabled) {
+    box-shadow:
+      inset 0 1px 0 0 rgba(0,0,0,0.1),
+      0 calc(var(--btn-shadow-y, 3px) / 3) calc(var(--btn-shadow-blur, 8px) / 2) 0 var(--btn-shadow-color);
   }
 
   /* Sheet-Glas — Bottom-Sheet/Drawer-Muster (Handoff design_handoff_drawer_pattern),
@@ -373,7 +435,7 @@
     background: rgba(255,255,255,0.13);
     border: 1px solid rgba(255,255,255,0.22);
     box-shadow:
-      inset 0 1px 1px rgba(255,255,255,0.28),
+      inset 0 0 6px rgba(255,255,255,0.12),
       0 8px 26px rgba(0,0,0,0.32);
     backdrop-filter: blur(22px) saturate(1.4);
     -webkit-backdrop-filter: blur(22px) saturate(1.4);
@@ -402,6 +464,22 @@
     background: rgba(255,255,255,0.06);
     border: 1px solid rgba(255,255,255,0.1);
   }
+  /* Durchscheinende Variante von `.glass-inner` — für eigenständige Elemente
+     (Input, ButtonGroup-Track) statt Lese-Flächen INNERHALB von Panels/
+     Sheets (die bleiben bei `.glass-inner`, bewusst deckender für Lesbarkeit,
+     siehe Kommentar oben). `.glass-inner` selbst ist in Light-Mode komplett
+     blickdicht (`#F2F5FA`, kein Alpha) — hier stattdessen echtes rgba()+Blur,
+     analog zum `.glass`-Rezept, nur dezenter/kleiner skaliert. */
+  .glass-inner-clear {
+    background: rgba(255,255,255,0.4);
+    backdrop-filter: blur(14px) saturate(1.3);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  }
+  .dark .glass-inner-clear {
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(14px) saturate(1.3);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  }
 
   /* Text auf .glass/farbigem Untergrund (Dashboard, Settings, Login, Home-
      Tab-Bar) — bisher an jeder Stelle als `text-[#1E2024] dark:text-white`
@@ -411,10 +489,15 @@
      abweichende Dark-Opazität (60–90%) — hier auf einen einheitlichen Wert
      konsolidiert, siehe Session-Vorgabe „so viel wie möglich wiederverwenden". */
   .text-glass {
-    color: #1E2024;
+    /* Graustufe per CSS-Var aus dem geteilten Theme (lib/ui/glass-theme.ts,
+       `textColor.light`/`.dark`) — Fallback entspricht dem bisherigen Fixwert
+       `#1E2024` (Graustufe ≈32, minimal wärmerer Blaustich, kaum sichtbarer
+       Unterschied). Beide `--text-glass-*`-Vars sind immer beide gesetzt,
+       dieser Selektor greift nur im Light Mode. */
+    color: rgb(var(--text-glass-light, 32) var(--text-glass-light, 32) var(--text-glass-light, 32));
   }
   .dark .text-glass {
-    color: #fff;
+    color: rgb(var(--text-glass-dark, 255) var(--text-glass-dark, 255) var(--text-glass-dark, 255));
   }
   .text-glass-muted {
     color: #6B6E77;
@@ -430,9 +513,55 @@
   100% { transform: rotate(1.5deg); }
 }
 
+/* Gooey Stauch-Wabbler für den gleitenden Indikator der iconOnly-
+   `ButtonGroup` (components/ui/button-group.tsx) — Stauchen/Wabbern per
+   Keyframe, bewusst OHNE SVG-Blur-Filter (erster Versuch machte die Ränder
+   während der gesamten Animation unscharf). Läuft NUR auf dem inneren
+   Kreis (der äußere Wrapper trägt die Positions-`transition`), siehe
+   Kommentar dort. */
+@keyframes goo-squish {
+  0%   { transform: scale(1); }
+  35%  { transform: scaleX(1.35) scaleY(0.8); }
+  65%  { transform: scaleX(0.9) scaleY(1.08); }
+  100% { transform: scale(1); }
+}
+.goo-squish {
+  /* Muss mit `GOO_DURATION_MS` in components/ui/button-group.tsx
+     übereinstimmen. */
+  animation: goo-squish 420ms cubic-bezier(.36,.07,.19,.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  .goo-squish { animation: none; }
+}
+
 /* Karte „lebendig" während Drag — sanftes Auf-Ab-Bobbing */
 @keyframes binder-card-bob {
   0%   { transform: translateY(0); }
   50%  { transform: translateY(-2px); }
   100% { transform: translateY(0); }
+}
+
+/* "Hologramm"-Effekt für fehlende Karten (Card/CardTile, "Missing"-Look) —
+   ein dezentes, animiertes Regenbogen-Band per `color-dodge`-Blend-Mode über
+   dem (entsättigten) Kartenbild, spielt mit dem Holo-Foil-Thema echter
+   Pokémon-Karten: ein kleiner Vorgeschmack auf den Glanz einer Karte, die man
+   noch nicht besitzt. */
+@keyframes holo-shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+.missing-card-hologram {
+  /* `overlay` statt `color-dodge` — Letzteres brennt auf einem bereits
+     entsättigten/hellen Kartenbild schnell zu reinem Weiß aus (der
+     Regenbogen verschwindet dabei fast komplett), `overlay` mischt die
+     Farben sichtbar ein, ohne die Kachel zu überbelichten. */
+  background: linear-gradient(115deg,
+    transparent 15%, rgba(255,0,150,.55) 28%, rgba(0,200,255,.55) 40%,
+    rgba(255,230,0,.55) 52%, transparent 65%);
+  background-size: 250% 250%;
+  mix-blend-mode: overlay;
+  animation: holo-shimmer 3s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .missing-card-hologram { animation: none; background-position: 50% 50%; }
 }
