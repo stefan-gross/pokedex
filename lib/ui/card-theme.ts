@@ -49,17 +49,23 @@ function badgeLayoutForOffset(o: number): CardTileBadgeLayout {
   };
 }
 
-export const DEFAULT_MISSING_CARD_STYLE: MissingCardStyle = { opacity: 0.62, blur: 0, saturate: 0.3, effect: 'flat' };
+export const DEFAULT_MISSING_CARD_STYLE: MissingCardStyle = { opacity: 0.35, blur: 0, saturate: 0, effect: 'outline' };
 
-// Entspricht den bisherigen Fixwerten aus `components/card/Card.tsx`
-// (`CARD_SIZE_PRESETS`) — diese Konstante ist jetzt die kanonische Quelle.
+// Entspricht dem zuletzt auf `/design-system-preview` bestätigten und
+// gespeicherten Stand (aus `localStorage` übernommen, siehe Commit-Historie)
+// — diese Konstante ist die kanonische Quelle. Die Badge-Offsets skalieren
+// proportional zum Größenverhältnis der `imageSizes`-Referenzbreiten in
+// `CARD_SIZE_PRESETS` (120/200/320px ≈ 1 : 1.667 : 2.667), analog zu
+// `CARD_SIZE_PRESETS.badgeSize/badgeIconSize` in `components/card/Card.tsx`
+// — sonst wirken die Badges bei `md`/`lg` relativ zur größeren Karte kleiner
+// statt mitzuskalieren.
 export const DEFAULT_CARD_VISUAL_THEME: CardVisualTheme = {
   missingStyle: DEFAULT_MISSING_CARD_STYLE,
-  cornerRadius: { sm: 8, md: 10, lg: 14 },
+  cornerRadius: { sm: 6, md: 6, lg: 6 },
   badgeLayout: {
     sm: badgeLayoutForOffset(-6),
-    md: badgeLayoutForOffset(-8),
-    lg: badgeLayoutForOffset(-10),
+    md: badgeLayoutForOffset(-10),
+    lg: badgeLayoutForOffset(-16),
   },
 };
 

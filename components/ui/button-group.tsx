@@ -62,7 +62,7 @@ export function ButtonGroup<T extends string>({
   value,
   onChange,
   className = '',
-  accentColor = '#e53e3e', // var(--pokedex-red) als Hex — s.o.
+  accentColor = '#3182ce', // var(--pokedex-blue), gleiche Default-Akzentfarbe wie Button variant="primary"
   iconOnly = false,
   activeStyle,
   trackStyle,

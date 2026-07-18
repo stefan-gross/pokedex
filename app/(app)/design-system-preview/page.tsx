@@ -1113,7 +1113,7 @@ export default function DesignSystemPreviewPage() {
             { value: 'owned', label: 'Vorhanden', count: 12 },
             { value: 'missing', label: 'Fehlen', count: 0 },
           ]}
-          activeStyle={buttonGroupTextDemoStyle('#e53e3e')}
+          activeStyle={buttonGroupTextDemoStyle('#3182ce')}
           trackStyle={buttonGroupTextTrackStyle}
         />
         {/* Eigenes Theme (`draftGlassTheme.buttonGroupText`) — unabhängig
