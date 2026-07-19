@@ -46,6 +46,14 @@ export function AddToCollectionModal({
   const [condition, setCondition] = useState<CardCondition>(preCondition ?? 'NM');
   const [language, setLanguage] = useState<CardLanguage>(preLanguage ?? 'de');
 
+  // Variante/Sprache kommen aus dem Aufruf-Kontext bereits feststehend (z.B.
+  // der "+"-Button einer bestimmten Variantenzeile im Kartendetail, oder
+  // erkannt/bestätigt im Scan) — dann nur noch als Pill anzeigen statt als
+  // änderbares Dropdown. Ohne `pre*`-Wert (z.B. genereller Suche-Treffer ohne
+  // Variantenkontext) bleibt das Feld ein editierbares Dropdown wie bisher.
+  const variantKnown = preVariant != null;
+  const languageKnown = preLanguage != null;
+
   // DE-Setname + gedruckte Nummer/Gesamtzahl (z.B. "052/172") — exakt wie bei
   // der gescannten Karte (RecognizedCardLarge), statt der rohen Katalog-Felder.
   const setMeta = useSetMeta(card.setId, undefined, card.setName);
@@ -267,29 +275,37 @@ export function AddToCollectionModal({
               alt={card.name}
               className="w-10 h-14 rounded-[3px] object-cover shrink-0"
             />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="text-base font-bold truncate"><CardNameLabel card={card} /></div>
               <div className="text-xs text-muted-foreground truncate">{setMeta?.nameDe ?? card.setName} · {cardNumDisplay}</div>
             </div>
-            <CardPrice tcgId={card.id} plain fontSize={15} className="ml-auto font-extrabold shrink-0" />
+            <div className="flex items-center gap-1.5 shrink-0">
+              {variantKnown && <InfoPill>{VARIANT_LABELS[variant]}</InfoPill>}
+              {languageKnown && <InfoPill>{LANGUAGES.find(l => l.value === language)?.label ?? language.toUpperCase()}</InfoPill>}
+              <CardPrice tcgId={card.id} plain fontSize={15} className="font-extrabold shrink-0" />
+            </div>
           </div>
 
-          {/* Zustand + Sprache — je 50% */}
-          <div className="grid grid-cols-2 gap-2.5 mb-2.5">
+          {/* Zustand (+ Sprache, sofern nicht schon bekannt — siehe Pill oben) */}
+          <div className={languageKnown ? 'mb-2.5' : 'grid grid-cols-2 gap-2.5 mb-2.5'}>
             <ThemedSelect label="Zustand" value={condition} onChange={v => setCondition(v as CardCondition)}>
               {CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </ThemedSelect>
-            <ThemedSelect label="Sprache" value={language} onChange={v => setLanguage(v as CardLanguage)}>
-              {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
-            </ThemedSelect>
+            {!languageKnown && (
+              <ThemedSelect label="Sprache" value={language} onChange={v => setLanguage(v as CardLanguage)}>
+                {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+              </ThemedSelect>
+            )}
           </div>
 
-          {/* Variante — 100% */}
-          <div className="mb-4">
-            <ThemedSelect label="Variante" value={variant} onChange={v => setVariant(v as CardVariant)} disabled={variantOptions.length <= 1}>
-              {variantOptions.map(v => <option key={v} value={v}>{VARIANT_LABELS[v]}</option>)}
-            </ThemedSelect>
-          </div>
+          {/* Variante — nur editierbar, wenn nicht schon bekannt (sonst Pill oben) */}
+          {!variantKnown && (
+            <div className="mb-4">
+              <ThemedSelect label="Variante" value={variant} onChange={v => setVariant(v as CardVariant)} disabled={variantOptions.length <= 1}>
+                {variantOptions.map(v => <option key={v} value={v}>{VARIANT_LABELS[v]}</option>)}
+              </ThemedSelect>
+            </div>
+          )}
 
           {/* Bereits vorhanden — eine Zeile pro Exemplar, ohne Anzahl-Badge */}
           {ownedCopies.length > 0 && (
@@ -353,6 +369,17 @@ export function AddToCollectionModal({
       </div>
     </div>
   ), document.body);
+}
+
+/** Kleines schreibgeschütztes Badge für bereits feststehende Werte (Variante/
+ *  Sprache) — sitzt in der Karten-Kopfzeile links neben dem Preis, statt ein
+ *  eigenes (dann nutzloses, da nicht wirklich änderbares) Dropdown zu zeigen. */
+function InfoPill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="glass-inner text-[11px] font-semibold px-2.5 py-1 rounded-full shrink-0 whitespace-nowrap">
+      {children}
+    </span>
+  );
 }
 
 /** Themen-bewusster <select> — nutzt `.glass-inner` (folgt Light/Dark automatisch,
