@@ -8,8 +8,9 @@ import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
 import { getCardsByTcgId } from '@/lib/firestore/cards';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
+import { Card } from '@/components/card/Card';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
-import { pickTrendPrice, PRICE_COLOR } from '@/lib/prices/value-tier';
+import { pickTrendPrice } from '@/lib/prices/value-tier';
 import type { WishlistDoc, WishlistItem, CardDoc } from '@/types';
 
 interface Props {
@@ -108,51 +109,19 @@ export default function WishlistDetailPage({ params }: Props) {
           {withTcgId.map(item => {
             const price = pickTrendPrice(prices.get(item.tcgId!));
             return (
-              <div key={item.id} className="relative flex flex-col">
-                <div
-                  className="relative rounded-[8px] overflow-hidden glass cursor-pointer"
-                  onClick={() => openDetail(item)}
-                >
-                  {item.tcgImageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={item.tcgImageUrl}
-                      alt={item.name}
-                      className="w-full aspect-[2.5/3.5] object-cover"
-                    />
-                  ) : (
-                    <div className="w-full aspect-[2.5/3.5] flex items-center justify-center text-glass-muted text-xs">
-                      {item.name}
-                    </div>
-                  )}
-                  {!isTemplateList && (
-                    <button
-                      onClick={e => { e.stopPropagation(); handleRemove(item); }}
-                      className="absolute top-1 right-1 w-8 h-8 rounded-full flex items-center justify-center"
-                      style={{ background: 'rgba(0,0,0,.6)' }}
-                      aria-label="Von Wunschliste entfernen"
-                    >
-                      <Minus size={14} strokeWidth={3} color="#fff" />
-                    </button>
-                  )}
-                  {price != null && (
-                    <div
-                      className="absolute bottom-1.5 left-1.5 text-role-badge px-1.5 py-0.5 rounded-md"
-                      style={{ background: 'rgba(0,0,0,.7)', color: PRICE_COLOR }}
-                    >
-                      {price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
-                    </div>
-                  )}
-                </div>
-                <div className="text-[11px] text-glass text-center mt-1.5 truncate px-0.5 leading-tight">
-                  {item.name}
-                </div>
-                {item.setName && (
-                  <div className="text-[10px] text-glass-muted text-center truncate px-0.5 leading-tight">
-                    {item.setName}{item.number ? ` · ${item.number}` : ''}
-                  </div>
-                )}
-              </div>
+              <Card
+                key={item.id}
+                card={{
+                  id: item.tcgId!, name: item.name, number: item.number ?? '',
+                  setId: item.setId ?? '', setName: item.setName ?? '',
+                  imgSmall: item.tcgImageUrl ?? '', imgLarge: item.tcgImageUrl ?? '',
+                }}
+                onCardClick={() => openDetail(item)}
+                sublabel={item.setName ? `${item.setName}${item.number ? ` · ${item.number}` : ''}` : item.name}
+                price={price != null ? price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : undefined}
+                isWishlisted
+                onWishlist={isTemplateList ? undefined : () => handleRemove(item)}
+              />
             );
           })}
         </div>

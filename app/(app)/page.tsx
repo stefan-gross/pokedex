@@ -16,6 +16,7 @@ import { db } from '@/lib/firebase/client';
 import { SetListItem } from '@/components/set/SetListItem';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
+import { Card } from '@/components/card/Card';
 import type { CardDoc, BinderDoc } from '@/types';
 
 type SetView = 'recent' | 'complete' | 'favorites';
@@ -266,7 +267,17 @@ export default function DashboardPage() {
           <h2 className="text-role-h2 mb-3 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.25)]">Zuletzt hinzugefügt</h2>
           <div className="grid grid-cols-3 gap-2.5">
             {recentCards.map(card => (
-              <RecentCard key={card.id} name={card.name} img={card.tcgImageUrl!} onClick={() => openDetail(card)} />
+              <Card
+                key={card.id}
+                card={{
+                  id: card.tcgId ?? card.id, name: card.name, number: card.number,
+                  setId: card.setId, setName: card.setName,
+                  imgSmall: card.tcgImageUrl ?? '', imgLarge: card.tcgImageUrl ?? '',
+                }}
+                ownedCards={[card]}
+                sublabel={card.name}
+                onCardClick={() => openDetail(card)}
+              />
             ))}
           </div>
         </section>
@@ -382,21 +393,6 @@ function StatChip({ label, value }: { label: string; value: string }) {
   );
 }
 
-
-function RecentCard({ name, img, onClick }: { name: string; img: string; onClick: () => void }) {
-  return (
-    <button onClick={onClick} className="flex flex-col items-center gap-1 text-left w-full">
-      <div
-        className="w-full aspect-[63/88] rounded-[6px] overflow-hidden bg-black/5 dark:bg-white/10 border border-[rgba(30,40,80,0.12)] dark:border-white/40"
-        style={{ boxShadow: '0 6px 18px rgba(0,0,0,.18)' }}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={img} alt={name} className="w-full h-full object-cover" />
-      </div>
-      <span className="text-role-label text-center truncate w-full mt-0.5 text-glass">{name}</span>
-    </button>
-  );
-}
 
 /** Generischer pulsierender Platzhalter-Balken — Basis aller Skeletons unten.
  *  Deckt die Ladephase ab, in der `getCards()`/`getBinders()`/`getWishlists()`

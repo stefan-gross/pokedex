@@ -26,18 +26,19 @@ import { resolveSlotWinners } from '@/lib/template-binders/slot-winner';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { CollectionTypeBadge } from '@/components/binder/CollectionTypeBadge';
-import { BinderIcon, ExclamationMark } from '@/lib/binder-icons';
+import { BinderIcon } from '@/lib/binder-icons';
 import { binderSizeLabel, binderSizeCols, type BinderSize } from '@/lib/binder-sizes';
 import {
   pagesToSheets, sheetsToPages, ensureEvenPages, pageLabel,
 } from '@/lib/binder-sheets';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { CardImage } from '@/components/card/CardImage';
+import { Card } from '@/components/card/Card';
 import { Switch } from '@/components/ui/switch';
 import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
-import { findVariantPrice, pickTrendPrice, PRICE_COLOR } from '@/lib/prices/value-tier';
+import { findVariantPrice, pickTrendPrice } from '@/lib/prices/value-tier';
 import { VARIANT_LABELS } from '@/lib/card-constants';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import { readableTextColor } from '@/lib/color-utils';
@@ -642,41 +643,18 @@ function GridView({ cards, onCardTap, prices }: {
         const variantPrice = priceResult ? findVariantPrice(priceResult.variants, c.variant) : undefined;
         const price = variantPrice?.trend ?? variantPrice?.market;
         return (
-          <button
+          <Card
             key={`${c.id}-${i}`}
-            onClick={() => onCardTap(c)}
-            className="relative rounded-[8px] overflow-hidden shadow-card cursor-pointer"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={c.tcgImageUrl ?? `https://images.pokemontcg.io/${c.setId}/${c.number.split('/')[0]}_hires.png`}
-              alt={c.name}
-              className="w-full aspect-[2.5/3.5] object-cover"
-            />
-            {c.needsReview && (
-              <div
-                className="absolute -top-1.5 -left-1.5 w-[20px] h-[20px] rounded-full flex items-center justify-center"
-                style={{ background: 'var(--pokedex-yellow)', boxShadow: '0 1px 3px rgba(0,0,0,.4)' }}
-                aria-label="Ungeprüft"
-                title="Ungeprüft"
-              >
-                <ExclamationMark size={12} strokeWidth={3} className="text-white" />
-              </div>
-            )}
-            {c.quantity > 1 && (
-              <div className="absolute -top-1.5 -right-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-black/70 text-white">
-                ×{c.quantity}
-              </div>
-            )}
-            {price != null && (
-              <div
-                className="absolute -bottom-1.5 -left-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-black/70"
-                style={{ color: PRICE_COLOR }}
-              >
-                {price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
-              </div>
-            )}
-          </button>
+            card={{
+              id: c.tcgId ?? c.id, name: c.name, number: c.number,
+              setId: c.setId, setName: c.setName,
+              imgSmall: c.tcgImageUrl ?? `https://images.pokemontcg.io/${c.setId}/${c.number.split('/')[0]}_hires.png`,
+              imgLarge: c.tcgImageUrl ?? `https://images.pokemontcg.io/${c.setId}/${c.number.split('/')[0]}_hires.png`,
+            }}
+            ownedCards={[c]}
+            onCardClick={() => onCardTap(c)}
+            price={price != null ? price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : undefined}
+          />
         );
       })}
     </div>
