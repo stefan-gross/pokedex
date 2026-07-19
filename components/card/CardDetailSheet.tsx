@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { X, Plus, Minus, Heart, ChevronDown, ChevronRight, ChevronLeft, Info, Repeat2, LayoutGrid } from 'lucide-react';
-import { ExclamationMark } from '@/lib/binder-icons';
+import { ExclamationMark, BinderIcon } from '@/lib/binder-icons';
+import { Button } from '@/components/ui/button';
+import { Sheet } from '@/components/ui/modal';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
@@ -209,13 +211,13 @@ function AccHeader({
       className="w-full flex items-center justify-between px-4 min-h-[52px] text-left transition-colors"
       style={{ borderTop: border ? '1px solid color-mix(in srgb, var(--border) 50%, transparent)' : 'none' }}
     >
-      <div className="flex items-center gap-2.5 text-role-title">
-        <span className="text-muted-foreground">{icon}</span>
+      <div className="flex items-center gap-2.5 text-role-title text-glass">
+        <span className="text-glass-muted">{icon}</span>
         {title}
       </div>
       <ChevronDown
         size={18}
-        className="text-muted-foreground transition-transform duration-200 shrink-0"
+        className="text-glass-muted transition-transform duration-200 shrink-0"
         style={{ transform: open ? 'rotate(180deg)' : 'none' }}
       />
     </button>
@@ -225,11 +227,10 @@ function AccHeader({
 /* ── Component ───────────────────────────────────────────────── */
 export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMeta, onClose, onSaved }: Props) {
   const router = useRouter();
-  const [visible,      setVisible]      = useState(false);
+  // Slide-Animation + Swipe-Down-Drag übernimmt jetzt `Sheet` (components/ui/modal.tsx)
+  // selbst — hier nur noch das einfache offen/zu.
+  const [sheetOpen,    setSheetOpen]    = useState(true);
   const [zoomed,       setZoomed]       = useState(false);
-  // Swipe-Down-State: Y-Offset während des Drags (px, nur positiv)
-  const [dragY,        setDragY]        = useState(0);
-  const dragStartYRef                   = useRef<number | null>(null);
   const [openSec,      setOpenSec]      = useState<Set<Section>>(new Set(['cards']));
   const [imgSrcDe,     setImgSrcDe]     = useState<string | undefined>(undefined);
   const [addVariant,   setAddVariant]   = useState<CardVariant | null>(null);
@@ -253,12 +254,12 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   /* Reset + load on card change */
   useEffect(() => {
     let cancelled = false;
-    if (!card) { setVisible(false); return; }
+    if (!card) { setSheetOpen(false); return; }
+    setSheetOpen(true);
     setSpecies(null); setSpeciesLoaded(false);
     setEvoCards([]); setEvoLoaded(false); setEvoTree(null); setSpecialForms([]);
     // DE-Bild direkt aus Firestore, falls vorhanden (|| fängt auch leere Strings ab)
     setImgSrcDe(card.imgLargeDe || undefined);
-    requestAnimationFrame(() => setVisible(true));
     getBinders().then(setResolvedBinders).catch(() => {});
     setWishlistItem(null);
     getWishlists().then(lists => {
@@ -407,7 +408,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   function toggle(s: Section) {
     setOpenSec(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n; });
   }
-  function handleClose() { setVisible(false); setTimeout(onClose, 250); }
+  function handleClose() { setSheetOpen(false); setTimeout(onClose, 250); }
 
   async function toggleWishlist() {
     if (!card) return;
@@ -458,107 +459,54 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     } finally { setDeletingId(null); }
   }
 
+  // ── Karten-Header (wie echte Pokémon-Karte) — als `header`-Slot an `Sheet`
+  // übergeben, bleibt dadurch außerhalb des scrollenden Bereichs (shrink-0).
+  const header = (
+    <div className="flex items-center justify-between px-4 pb-2.5 gap-2 shrink-0">
+      {/* Links: Back-Pfeil (wenn auf Evo-Karte navigiert) ODER Evolutionsstufe */}
+      {cardStack.length > 0 ? (
+        <Button
+          variant="secondary" size="sm"
+          icon={<ChevronLeft size={16} />}
+          onClick={() => setCardStack(s => s.slice(0, -1))}
+          className="shrink-0"
+        >
+          Zurück
+        </Button>
+      ) : stage ? (
+        <span
+          className="text-role-label font-bold px-3 py-1 rounded-full shrink-0"
+          style={{ background: 'color-mix(in srgb, var(--pokedex-blue) 12%, transparent)', color: 'var(--pokedex-blue)' }}
+        >
+          {stage}
+        </span>
+      ) : <span />}
+
+      {/* Mitte: Pokémon-Name */}
+      <h2 className="flex-1 text-center text-role-h2 leading-tight tracking-tight truncate">
+        <CardNameLabel card={card} />
+      </h2>
+
+      {/* Rechts: KP + Typ-Icons */}
+      <div className="flex items-center gap-2 shrink-0">
+        {card.hp && (
+          <span className="text-base font-bold text-muted-foreground">KP {card.hp}</span>
+        )}
+        {energyTypes.map(t => (
+          <EnergyIcon key={t} type={t} size={26} />
+        ))}
+      </div>
+    </div>
+  );
+
   // Portal direkt in document.body: verhindert, dass das Sheet in einem trapped
   // Stacking-Context landet (z.B. Scanner-Root ist selbst `position: fixed`, was
   // IMMER einen eigenen Stacking-Context erzeugt — jedes z-index darin wird nur
   // lokal verglichen und kann nie über Geschwister-Elemente wie die BottomNav
   // hinausragen, egal wie hoch der Wert ist — siehe gleicher Fix in AddToCollectionModal).
   return createPortal((
-    <div className="fixed inset-0 z-[60] flex items-end">
-      {/* Backdrop — entsättigt & dimmt die Seite dahinter statt einer reinen
-          Schwarz-Abdunkelung, damit der Fokus aufs Sheet wandert, ohne die
-          bunte Karten-/Holo-Fläche komplett zu verdecken. */}
-      <div
-        className="absolute inset-0 transition-opacity duration-[250ms] glass-sheet-backdrop"
-        style={{ opacity: visible ? 1 : 0 }}
-        onClick={handleClose}
-      />
-
-      {/* Sheet */}
-      <div
-        className="relative w-full rounded-t-2xl glass-sheet max-h-[93dvh] flex flex-col"
-        style={{
-          transform: visible
-            ? `translateY(${dragY}px)`
-            : 'translateY(100%)',
-          transition: dragStartYRef.current != null
-            ? 'none'
-            : 'transform 250ms ease-out',
-        }}
-      >
-        {/* Handle — swipe-down zum Schließen + größeres Touch-Target */}
-        <div
-          className="flex items-center justify-center pt-3 pb-2 shrink-0 cursor-grab touch-none"
-          style={{ touchAction: 'none' }}
-          onPointerDown={e => {
-            dragStartYRef.current = e.clientY;
-            setDragY(0);
-            (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
-          }}
-          onPointerMove={e => {
-            if (dragStartYRef.current == null) return;
-            const dy = e.clientY - dragStartYRef.current;
-            setDragY(Math.max(0, dy)); // nur nach unten
-          }}
-          onPointerUp={e => {
-            if (dragStartYRef.current == null) return;
-            const dy = e.clientY - dragStartYRef.current;
-            dragStartYRef.current = null;
-            try { (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ }
-            if (dy > 80) {
-              handleClose();
-            } else {
-              setDragY(0);
-            }
-          }}
-          onPointerCancel={() => {
-            dragStartYRef.current = null;
-            setDragY(0);
-          }}
-        >
-          <div className="w-9 h-1 rounded-full bg-[rgba(46,46,50,0.2)] dark:bg-white/30" />
-        </div>
-
-        {/* ── Karten-Header (wie echte Pokémon-Karte) ───────── */}
-        <div className="flex items-center justify-between px-4 pb-2.5 gap-2 shrink-0">
-          {/* Links: Back-Pfeil (wenn auf Evo-Karte navigiert) ODER Evolutionsstufe */}
-          {cardStack.length > 0 ? (
-            <button
-              onClick={() => setCardStack(s => s.slice(0, -1))}
-              className="flex items-center gap-1 h-8 pl-2 pr-3 rounded-full shrink-0"
-              style={{ background: 'var(--secondary)' }}
-              aria-label="Zurück"
-            >
-              <ChevronLeft size={16} />
-              <span className="text-[12px] font-semibold">Zurück</span>
-            </button>
-          ) : stage ? (
-            <span
-              className="text-[13px] font-bold px-3 py-1 rounded-full border shrink-0"
-              style={{ background: 'rgba(66,153,225,.12)', color: 'var(--blue, #4299e1)', borderColor: 'rgba(66,153,225,.3)' }}
-            >
-              {stage}
-            </span>
-          ) : <span />}
-
-          {/* Mitte: Pokémon-Name */}
-          <h2 className="flex-1 text-center text-role-h2 leading-tight tracking-tight truncate">
-            <CardNameLabel card={card} />
-          </h2>
-
-          {/* Rechts: KP + Typ-Icons */}
-          <div className="flex items-center gap-2 shrink-0">
-            {card.hp && (
-              <span className="text-[16px] font-bold text-muted-foreground">KP {card.hp}</span>
-            )}
-            {energyTypes.map(t => (
-              <EnergyIcon key={t} type={t} size={26} />
-            ))}
-          </div>
-        </div>
-
-        {/* ── Scrollbarer Inhalt ────────────────────────────── */}
-        <div className="overflow-y-auto pb-24 flex-1">
+    <>
+      <Sheet open={sheetOpen} onClose={handleClose} header={header} dragToClose bodyClassName="pb-24">
 
           {/* ── Hero: Kartenbild links · Set-Info rechts ───── */}
           <div className="flex gap-3.5 px-4 pt-1 pb-4">
@@ -630,7 +578,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           </div>
 
           {/* ── 1 · Details (eigene Glas-Karte) ─────────────── */}
-          <div className="drawer-panel mx-4 rounded-[18px] overflow-hidden mb-3">
+          <div className="glass mx-4 rounded-[18px] overflow-hidden mb-3">
             <AccHeader
               icon={<Info size={16} />}
               title="Details"
@@ -641,8 +589,8 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
             {openSec.has('details') && (
               <div className="px-4 pb-4">
                 {card.artist && (
-                  <p className="text-role-body text-muted-foreground pt-3">
-                    Illustration: <span className="font-medium text-foreground">{card.artist}</span>
+                  <p className="text-role-body text-glass-muted pt-3">
+                    Illustration: <span className="font-medium text-glass">{card.artist}</span>
                   </p>
                 )}
                 {species ? (
@@ -650,7 +598,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                     {(species.genus || species.isLegendary || species.isMythical) && (
                       <div className={`flex items-center gap-2 mb-3 ${card.artist ? '' : 'pt-3'}`}>
                         {species.genus && (
-                          <p className="text-role-body text-muted-foreground">{species.genus}</p>
+                          <p className="text-role-body text-glass-muted">{species.genus}</p>
                         )}
                         {(species.isLegendary || species.isMythical) && (
                           <span
@@ -664,38 +612,38 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                     )}
                     <div className="grid grid-cols-2 gap-2 mb-3">
                       {species.height > 0 && (
-                        <div className="glass-inner rounded-[14px] px-3 py-2.5">
+                        <div className="glass rounded-[14px] px-3 py-2.5">
                           <div className="text-[15px] font-bold">{(species.height / 10).toFixed(1)} m</div>
-                          <div className="text-role-label text-muted-foreground mt-0.5">Größe</div>
+                          <div className="text-role-label text-glass-muted mt-0.5">Größe</div>
                         </div>
                       )}
                       {species.weight > 0 && (
-                        <div className="glass-inner rounded-[14px] px-3 py-2.5">
+                        <div className="glass rounded-[14px] px-3 py-2.5">
                           <div className="text-[15px] font-bold">{(species.weight / 10).toFixed(1)} kg</div>
-                          <div className="text-role-label text-muted-foreground mt-0.5">Gewicht</div>
+                          <div className="text-role-label text-glass-muted mt-0.5">Gewicht</div>
                         </div>
                       )}
                       {species.region && (
-                        <div className="glass-inner rounded-[14px] px-3 py-2.5">
+                        <div className="glass rounded-[14px] px-3 py-2.5">
                           <div className="text-[15px] font-bold">{species.region}</div>
-                          <div className="text-role-label text-muted-foreground mt-0.5">Region</div>
+                          <div className="text-role-label text-glass-muted mt-0.5">Region</div>
                         </div>
                       )}
                       {card.nationalDexNumber && (
-                        <div className="glass-inner rounded-[14px] px-3 py-2.5">
+                        <div className="glass rounded-[14px] px-3 py-2.5">
                           <div className="text-[15px] font-bold">#{String(card.nationalDexNumber).padStart(3, '0')}</div>
-                          <div className="text-role-label text-muted-foreground mt-0.5">Pokédex</div>
+                          <div className="text-role-label text-glass-muted mt-0.5">Pokédex</div>
                         </div>
                       )}
                     </div>
                     {species.abilities && species.abilities.length > 0 && (
                       <div className="mb-3">
-                        <div className="text-role-label text-muted-foreground mb-1.5">Fähigkeiten</div>
+                        <div className="text-role-label text-glass-muted mb-1.5">Fähigkeiten</div>
                         <div className="flex flex-wrap gap-1.5">
                           {species.abilities.map(a => (
                             <span key={a.name} className="glass-inner text-role-label px-2.5 py-1 rounded-full">
                               {a.name}
-                              {a.hidden && <span className="text-muted-foreground"> (Versteckt)</span>}
+                              {a.hidden && <span className="text-glass-muted"> (Versteckt)</span>}
                             </span>
                           ))}
                         </div>
@@ -703,13 +651,13 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                     )}
                     {species.stats && (
                       <div className="mb-3">
-                        <div className="text-role-label text-muted-foreground mb-1.5">Basiswerte</div>
+                        <div className="text-role-label text-glass-muted mb-1.5">Basiswerte</div>
                         <div className="flex flex-col gap-1.5">
                           {STAT_ROWS.map(({ key, label }) => {
                             const value = species.stats![key];
                             return (
                               <div key={key} className="flex items-center gap-2">
-                                <span className="text-role-label text-muted-foreground w-[92px] shrink-0">{label}</span>
+                                <span className="text-role-label text-glass-muted w-[92px] shrink-0">{label}</span>
                                 <div className="flex-1 h-2 rounded-full bg-secondary overflow-hidden">
                                   <div
                                     className="h-full rounded-full"
@@ -724,7 +672,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                       </div>
                     )}
                     {species.flavorText && (
-                      <p className="text-role-body text-muted-foreground leading-relaxed italic">
+                      <p className="text-role-body text-glass-muted leading-relaxed italic">
                         „{species.flavorText}"
                       </p>
                     )}
@@ -732,17 +680,17 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 ) : speciesLoaded ? (
                   <div className={card.artist ? '' : 'pt-3'}>
                     {card.nationalDexNumber && (
-                      <div className="glass-inner rounded-[14px] px-3 py-2.5 w-fit mb-3">
+                      <div className="glass rounded-[14px] px-3 py-2.5 w-fit mb-3">
                         <div className="text-[15px] font-bold">#{String(card.nationalDexNumber).padStart(3, '0')}</div>
-                        <div className="text-role-label text-muted-foreground mt-0.5">Pokédex</div>
+                        <div className="text-role-label text-glass-muted mt-0.5">Pokédex</div>
                       </div>
                     )}
-                    {!card.artist && <p className="text-role-body text-muted-foreground">Keine Details verfügbar</p>}
+                    {!card.artist && <p className="text-role-body text-glass-muted">Keine Details verfügbar</p>}
                   </div>
                 ) : (
                   <div className={`flex items-center gap-2 ${card.artist ? '' : 'pt-3'}`}>
                     <div className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin shrink-0" />
-                    <p className="text-role-body text-muted-foreground">Lade Details…</p>
+                    <p className="text-role-body text-glass-muted">Lade Details…</p>
                   </div>
                 )}
               </div>
@@ -750,7 +698,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           </div>
 
           {/* ── 2 · Evolutionslinie (eigene Glas-Karte) ─────── */}
-          <div className="drawer-panel mx-4 rounded-[18px] overflow-hidden mb-3">
+          <div className="glass mx-4 rounded-[18px] overflow-hidden mb-3">
             <AccHeader
               icon={<Repeat2 size={16} />}
               title="Evolutionslinie"
@@ -763,7 +711,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 {!evoLoaded ? (
                   <div className="flex items-center gap-2 pt-3">
                     <div className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin shrink-0" />
-                    <p className="text-role-body text-muted-foreground">Lade Evolutionslinie…</p>
+                    <p className="text-role-body text-glass-muted">Lade Evolutionslinie…</p>
                   </div>
                 ) : evoCards.length > 1 || specialForms.length > 0 ? (
                   <>
@@ -779,7 +727,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                       // Ohne Baum darüber (z.B. einstufige Legendäre wie Miraidon)
                       // keinen Trenner/Einzug — die Zeile steht dann für sich allein.
                       <div className={evoCards.length > 1 ? 'mt-2 pt-3 border-t border-[rgba(255,255,255,0.1)]' : 'pt-1'}>
-                        <div className="text-role-label text-muted-foreground mb-2">Auch verfügbar als</div>
+                        <div className="text-role-label text-glass-muted mb-2">Auch verfügbar als</div>
                         <div className="flex gap-2 overflow-x-auto">
                           {specialForms.map(sf => (
                             <button
@@ -800,7 +748,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                   />
                                 </div>
                               </div>
-                              <span className="text-[8px] text-center max-w-[52px] truncate text-muted-foreground">
+                              <span className="text-[8px] text-center max-w-[52px] truncate text-glass-muted">
                                 <CardNameLabel card={sf} secondaryClassName="opacity-80" />
                               </span>
                             </button>
@@ -810,14 +758,14 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                     )}
                   </>
                 ) : (
-                  <p className="text-role-body text-muted-foreground pt-3">Keine Evolutionslinie</p>
+                  <p className="text-role-body text-glass-muted pt-3">Keine Evolutionslinie</p>
                 )}
               </div>
             )}
           </div>
 
           {/* ── 3 · Karten & Preise (eigene Glas-Karte) ─────── */}
-          <div className="drawer-panel mx-4 rounded-[18px] overflow-hidden mb-3">
+          <div className="glass mx-4 rounded-[18px] overflow-hidden mb-3">
             <AccHeader
               icon={<LayoutGrid size={16} />}
               title="Karten & Preise"
@@ -845,7 +793,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                           {isOwned && (
                             <span
                               className="text-role-badge px-1.5 py-0.5 rounded-full shrink-0"
-                              style={{ background: 'rgba(72,187,120,.15)', color: 'var(--green, #48bb78)' }}
+                              style={{ background: 'color-mix(in srgb, #48bb78 15%, transparent)', color: '#48bb78' }}
                             >
                               ✓
                             </span>
@@ -853,21 +801,12 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <CardVariantPrice tcgId={card.id} variant={variant} />
-                          {/* Hinzufügen — getöntes grünes Glas (Handoff design_handoff_card_detail) */}
-                          <button
+                          <Button
+                            variant="primary" accentColor="#2f855a"
+                            icon={<Plus strokeWidth={3} />}
                             onClick={() => setAddVariant(variant)}
-                            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                            style={{
-                              background: 'rgba(34,197,94,0.9)',
-                              backdropFilter: 'blur(8px) saturate(1.4)',
-                              WebkitBackdropFilter: 'blur(8px) saturate(1.4)',
-                              border: '1.5px solid rgba(255,255,255,0.55)',
-                              boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.6), 0 3px 12px rgba(34,197,94,0.4)',
-                            }}
                             aria-label="Hinzufügen"
-                          >
-                            <Plus size={18} color="#fff" strokeWidth={3} />
-                          </button>
+                          />
                         </div>
                       </div>
 
@@ -922,16 +861,16 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                     onKeyDown={(e) => e.key === 'Enter' && router.push(binder ? `/binders/${binder.id}` : '/binders')}
                                     className="text-role-title pl-3 pr-2 py-1.5 rounded-full flex items-center gap-1.5 cursor-pointer shrink-0 ml-auto truncate"
                                     style={{
-                                      background: isDefaultBinder ? 'var(--secondary)' : 'rgba(66,153,225,.12)',
+                                      background: isDefaultBinder ? 'var(--secondary)' : 'color-mix(in srgb, var(--pokedex-blue) 12%, transparent)',
                                       border: isDefaultBinder
                                         ? '1px dashed var(--border)'
-                                        : '1px solid rgba(66,153,225,.35)',
-                                      color: isDefaultBinder ? 'var(--muted-foreground)' : '#4299e1',
+                                        : '1px solid color-mix(in srgb, var(--pokedex-blue) 35%, transparent)',
+                                      color: isDefaultBinder ? 'var(--muted-foreground)' : 'var(--pokedex-blue)',
                                       maxWidth: 180,
                                       minHeight: 32,
                                     }}
                                   >
-                                    {binder?.icon && <span>{binder.icon}</span>}
+                                    {binder?.icon && <BinderIcon name={binder.icon} size={13} className="shrink-0" />}
                                     <span className="truncate">{binderName}</span>
                                     {!isDefaultBinder && binder ? (
                                       <button
@@ -949,26 +888,20 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                   </div>
                                 </div>
 
-                                {/* Löschen — "Ghost-Trash": dezent im Ruhezustand, erst bei
-                                    Bestätigung rot (Handoff design_handoff_card_detail). */}
-                                <button
+                                {/* Löschen — durchgehend rotes Glas (`primary` + `--action-delete`,
+                                    analog zum "Löschen"-Demo auf der Testseite), Inhalt wechselt nur
+                                    zwischen Minus-Icon/„OK?"/„…" je nach Bestätigungs-Zustand. */}
+                                <Button
+                                  variant="primary"
+                                  accentColor="#c53030"
                                   onClick={() => handleDelete(copy)}
                                   disabled={isDeleting}
-                                  className={`shrink-0 w-10 h-10 rounded-[11px] flex items-center justify-center transition-colors ${
-                                    isConfirm
-                                      ? 'text-white'
-                                      : 'bg-[rgba(46,46,50,0.06)] dark:bg-white/8 border border-[rgba(46,46,50,0.12)] dark:border-white/15 text-[#9aa0ac] dark:text-white/50'
-                                  }`}
-                                  style={isConfirm ? { background: 'var(--action-delete)' } : undefined}
+                                  icon={!isDeleting && !isConfirm ? <Minus size={16} strokeWidth={2.5} /> : undefined}
+                                  className="shrink-0"
                                   aria-label="Karte löschen"
                                 >
-                                  {isDeleting
-                                    ? <span className="text-role-badge">…</span>
-                                    : isConfirm
-                                      ? <span className="text-role-badge">OK?</span>
-                                      : <Minus size={16} strokeWidth={2.5} />
-                                  }
-                                </button>
+                                  {isDeleting ? '…' : isConfirm ? 'OK?' : undefined}
+                                </Button>
                               </div>
                             );
                           })}
@@ -992,8 +925,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
               {wishlistItem ? 'Von Wunschliste entfernen' : 'Auf Wunschliste setzen'}
             </button>
           </div>
-        </div>
-      </div>
+      </Sheet>
 
       {/* ── Zoom-Overlay ──────────────────────────────────────── */}
       {zoomed && (
@@ -1032,6 +964,6 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           onSaved={() => { setAddVariant(null); onSaved?.(); }}
         />
       )}
-    </div>
+    </>
   ), document.body);
 }

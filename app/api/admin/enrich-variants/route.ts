@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
       const body = await req.json();
       reset = !!body?.reset;
     } catch { /* kein Body → reset bleibt false */ }
-    const result = await enrichVariants(500, reset);
+    const result = await enrichVariants(150, reset);
     return NextResponse.json(result);
   } catch (e) {
     console.error('[enrich-variants]', e);

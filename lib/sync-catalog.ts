@@ -307,6 +307,23 @@ async function fetchDeCardsForSet(tcgdexSetId: string): Promise<Map<string, Tcgd
   }
 }
 
+/** Holt die ECHTEN Pro-Karten-Varianten von TCGdex — nur der Einzelkarten-
+ *  Endpunkt liefert ein `variants`-Objekt (`{normal,holo,reverse,firstEdition,
+ *  wPromo}`), das pro Druck korrekt ist (z.B. Grundset-Karten: `reverse:
+ *  false`, da Reverse Holo erst ab der e-Card/EX-Ära existiert) — der
+ *  /sets-Bulk-Endpoint liefert dort nur `id/image/localId/name`. Ein Request
+ *  pro Karte, daher gepaced wie `fetchTcgdexIllustrator`. */
+async function fetchTcgdexCardVariants(tcgdexCardId: string): Promise<TcgdexCardVariants | null> {
+  try {
+    const res = await fetch(`https://api.tcgdex.net/v2/de/cards/${tcgdexCardId}`);
+    if (!res.ok) return null;
+    const data: { variants?: TcgdexCardVariants } = await res.json();
+    return data.variants ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Mappt TCGdex-Variants-Objekt auf unser CardVariant[]-Format.
  *  alt-art und promo kommen nicht von TCGdex → werden aus rarity ergänzt. */
 function tcgdexVariantsToCardVariants(v: TcgdexCardVariants | undefined, rarity: string): CardVariant[] {
@@ -527,6 +544,13 @@ export async function enrichArtistFromTcgdex(batchSize = 150): Promise<EnrichArt
 // das nur Karten ohne nameDe anpackt), holt TCGdex-Variants und überschreibt
 // das variants-Array. Behebt das Problem, dass Karten mit schon-angereichertem
 // nameDe nie ein Variants-Update bekommen haben.
+//
+// Holt pro Karte den ECHTEN Einzelkarten-Endpunkt (fetchTcgdexCardVariants) —
+// der /sets-Bulk-Endpoint liefert dort kein `variants`-Objekt, nur der
+// Fallback (detectVariants(rarity)) wäre sonst möglich, der z.B. Grundset-
+// Karten fälschlich "Reverse Holo" andichtet (das Feature gab's dort noch
+// nicht). Ein Request pro Karte → kleinerer Default-Batch als bei den
+// set-weisen Anreicherungen, analog zu enrichArtistFromTcgdex.
 
 export interface EnrichVariantsResult {
   status: 'complete' | 'in-progress' | 'up-to-date';
@@ -535,7 +559,7 @@ export interface EnrichVariantsResult {
   remaining: number;
 }
 
-export async function enrichVariants(batchSize = 500, reset = false): Promise<EnrichVariantsResult> {
+export async function enrichVariants(batchSize = 150, reset = false): Promise<EnrichVariantsResult> {
   const db = getAdminDb();
 
   const cursorRef = db.doc('tcg_catalog_meta/variants_enrichment_cursor');
@@ -562,8 +586,13 @@ export async function enrichVariants(batchSize = 500, reset = false): Promise<En
   const hasMore = snap.docs.length > batchSize;
   const batchDocs = snap.docs.slice(0, batchSize);
 
+  // Defensiv: einzelne (fehlerhafte/unvollständige) Dokumente ohne setId/number
+  // überspringen, statt toTcgdexId()/split() an undefined abstürzen zu lassen
+  // und damit die ganze Batch zu verlieren (gleiches Muster wie enrichArtistFromTcgdex).
+  const validDocs = batchDocs.filter(d => { const data = d.data(); return data.setId && data.number; });
+
   // Distinct setIds dieser Batch
-  const setIds = [...new Set(batchDocs.map(d => (d.data() as CatalogCard).setId))];
+  const setIds = [...new Set(validDocs.map(d => (d.data() as CatalogCard).setId))];
 
   // TCGdex set-weise holen (max 8 parallel, nutzt vorhandenen Cache von enrichGermanNames)
   const CONCURRENCY = 8;
@@ -571,30 +600,47 @@ export async function enrichVariants(batchSize = 500, reset = false): Promise<En
     await Promise.all(setIds.slice(i, i + CONCURRENCY).map(id => fetchDeCardsForSet(toTcgdexId(id))));
   }
 
-  // Batch-Update: rechne neue Variants für jede Karte
-  // TCGdex's /sets-Endpoint liefert keine `variants`-Stub-Daten pro Karte —
-  // diese gibt's nur im Detail-Endpoint. Daher nutzen wir hier den Fallback in
-  // tcgdexVariantsToCardVariants() (→ detectVariants(rarity)-Heuristik).
-  // Common/Uncommon/Rare bekommen damit ['standard', 'reverse'] als Default.
-  let enriched = 0;
-  for (let i = 0; i < batchDocs.length; i += 500) {
-    const batch = db.batch();
-    batchDocs.slice(i, i + 500).forEach(doc => {
-      const card = doc.data() as CatalogCard;
-      const tcgdexId = toTcgdexId(card.setId);
-      const cardMap = tcgdexSetCache.get(tcgdexId);
-      const rawNum    = card.number.split('/')[0];
-      const normNum   = String(parseInt(rawNum) || 0) || rawNum;
-      const tcgdexCard = cardMap?.get(rawNum) ?? cardMap?.get(normNum);
-      // Auch ohne TCGdex-Daten: Heuristik anwenden (Fallback in der Helper-Func)
-      const newVariants = tcgdexVariantsToCardVariants(tcgdexCard?.variants, card.rarity ?? '');
+  // Pro Karte den Einzelkarten-Endpunkt abfragen (echte Varianten), max 8
+  // parallel — der Bulk-Cache (fetchDeCardsForSet) liefert nur die TCGdex-
+  // Karten-ID, mit der wir den Detail-Request adressieren.
+  const ENRICH_CONCURRENCY = 8;
+  const toUpdate: { ref: FirebaseFirestore.DocumentReference; variants: CardVariant[] }[] = [];
+  for (let i = 0; i < validDocs.length; i += ENRICH_CONCURRENCY) {
+    const chunk = validDocs.slice(i, i + ENRICH_CONCURRENCY);
+    const computed = await Promise.all(chunk.map(async doc => {
+      try {
+        const card = doc.data() as CatalogCard;
+        const tcgdexId = toTcgdexId(card.setId);
+        const cardMap = tcgdexSetCache.get(tcgdexId);
+        const rawNum    = card.number.split('/')[0];
+        const normNum   = String(parseInt(rawNum) || 0) || rawNum;
+        const tcgdexCard = cardMap?.get(rawNum) ?? cardMap?.get(normNum);
+        // Echte Pro-Karten-Varianten vom Detail-Endpunkt; ohne TCGdex-Treffer
+        // oder bei Request-Fehler bleibt der Fallback in tcgdexVariantsToCardVariants().
+        const realVariants = tcgdexCard ? await fetchTcgdexCardVariants(tcgdexCard.id) : null;
+        const newVariants = tcgdexVariantsToCardVariants(realVariants ?? undefined, card.rarity ?? '');
+        return { ref: doc.ref, card, newVariants };
+      } catch (e) {
+        console.warn('[enrich-variants] Karte übersprungen (Fehler)', doc.id, e);
+        return null;
+      }
+    }));
+    computed.forEach(item => {
+      if (!item) return;
+      const { ref, card, newVariants } = item;
       // Nur schreiben wenn sich was ändert (vermeidet unnötige writes)
       const current = (card.variants ?? []).slice().sort().join(',');
       const next    = newVariants.slice().sort().join(',');
-      if (current !== next) {
-        batch.update(doc.ref, { variants: newVariants });
-        enriched++;
-      }
+      if (current !== next) toUpdate.push({ ref, variants: newVariants });
+    });
+  }
+
+  let enriched = 0;
+  for (let i = 0; i < toUpdate.length; i += 500) {
+    const batch = db.batch();
+    toUpdate.slice(i, i + 500).forEach(({ ref, variants }) => {
+      batch.update(ref, { variants });
+      enriched++;
     });
     await batch.commit();
   }
