@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CardTile } from '@/components/card/CardTile';
+import { Card } from '@/components/card/Card';
 import { CardDetailSheet, type SetMeta } from '@/components/card/CardDetailSheet';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardDoc, BinderDoc } from '@/types';
@@ -124,8 +124,9 @@ export function CardGrid({
           const isSymbolOnlySet = !!series && SYMBOL_ONLY_SERIES.includes(series);
           const numberPrefixSymbolUrl = isSymbolOnlySet ? set?.symbolUrl : undefined;
           return (
-          <CardTile
+          <Card
             key={card.id}
+            size="md"
             card={card}
             ownedCards={ownedMap.get(card.id)}
             onCardClick={() => setSelected(card)}
