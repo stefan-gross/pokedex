@@ -96,8 +96,6 @@ const CONDITION_COLOR: Record<string, string> = {
   HP: '#f87171',
   Poor: '#9ca3af',
 };
-const LANGUAGE_SHORT: Record<string, string> = { de: 'DE', en: 'EN', fr: 'FR', jp: 'JP' };
-
 // Swipe-nach-links auf einer Karten-Kopie: schon ab CATCH (kleine Strecke)
 // "fängt" die Geste — beim Loslassen bleibt die Löschen-Fläche bei REVEAL
 // offen stehen, statt bei jeder kleinen Bewegung zurückzuspringen. Der
@@ -207,14 +205,15 @@ function OwnedCopyRow({
         <Minus size={16} strokeWidth={2.5} /> Löschen
       </button>
 
-      {/* Vordergrund — Inhalt der Zeile, per Swipe verschiebbar */}
+      {/* Vordergrund — Inhalt der Zeile, per Swipe verschiebbar. Bleibt beim
+          Löschen voll deckend (kein Opacity-Fade) — nur die Verschiebung
+          nach links macht sie unsichtbar (Container hat `overflow-hidden`). */}
       <div
         className="glass-inner flex items-center gap-2 rounded-xl px-2.5 py-2 relative"
         style={{
           minHeight: 48,
           transform: `translateX(${dragX}px)`,
-          transition: dragging ? 'none' : 'transform 200ms ease-out, opacity 200ms ease-out',
-          opacity: committed ? 0 : 1,
+          transition: dragging ? 'none' : 'transform 200ms ease-out',
           border: copy.needsReview ? '2px solid var(--pokedex-yellow)' : '2px solid transparent',
         }}
         onPointerDown={handlePointerDown}
@@ -223,12 +222,8 @@ function OwnedCopyRow({
         onPointerCancel={handlePointerCancel}
       >
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <span
-            className="text-role-label px-2 py-1 rounded-full border shrink-0 flex items-center gap-1"
-            style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
-          >
-            <LanguageFlag lang={copy.language} size={13} />
-            {LANGUAGE_SHORT[copy.language] ?? copy.language.toUpperCase()}
+          <span className="w-7 h-7 rounded-full overflow-hidden shrink-0 flex items-center justify-center">
+            <LanguageFlag lang={copy.language} size={28} />
           </span>
           <span
             className="text-role-label px-2 py-1 rounded-full border shrink-0"
