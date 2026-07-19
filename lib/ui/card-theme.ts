@@ -63,9 +63,9 @@ export const DEFAULT_CARD_VISUAL_THEME: CardVisualTheme = {
   missingStyle: DEFAULT_MISSING_CARD_STYLE,
   cornerRadius: { sm: 6, md: 6, lg: 6 },
   badgeLayout: {
-    sm: badgeLayoutForOffset(-6),
-    md: badgeLayoutForOffset(-10),
-    lg: badgeLayoutForOffset(-16),
+    sm: badgeLayoutForOffset(-8),
+    md: badgeLayoutForOffset(-13),
+    lg: badgeLayoutForOffset(-20),
   },
 };
 
