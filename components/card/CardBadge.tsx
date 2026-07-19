@@ -26,13 +26,19 @@ export interface CardBadgeProps {
   onClick?: (e: React.MouseEvent) => void;
   ariaLabel?: string;
   title?: string;
+  /** 'circle' (Default) = Breite fest gleich `size`, für Icons/kurze Zahlen
+   *  wie "×2". 'pill' = Höhe bleibt `size`, Breite wird automatisch (mit
+   *  horizontalem Innenabstand) — für längere Textinhalte wie einen Preis
+   *  ("4,59 €"), die in einem echten Kreis nicht lesbar wären. */
+  shape?: 'circle' | 'pill';
 }
 
 export function CardBadge({
   children, size = 22, color = 'rgba(0,0,0,.55)', background = true, textColor = '#fff',
-  className, style, onClick, ariaLabel, title,
+  className, style, onClick, ariaLabel, title, shape = 'circle',
 }: CardBadgeProps) {
   const Tag = onClick ? 'button' : 'div';
+  const isPill = shape === 'pill';
   return (
     <Tag
       onClick={onClick}
@@ -40,11 +46,12 @@ export function CardBadge({
       title={title}
       className={cn('absolute rounded-full flex items-center justify-center font-bold leading-none', className)}
       style={{
-        width: size,
+        width: isPill ? 'auto' : size,
         height: size,
+        ...(isPill ? { paddingInline: size * 0.28, whiteSpace: 'nowrap' } : undefined),
         background: background ? color : 'transparent',
         color: textColor,
-        fontSize: size * 0.45,
+        fontSize: size * (isPill ? 0.38 : 0.45),
         // Ohne Kreis-Hintergrund (z.B. Wunschlisten-Herz) sorgt ein
         // `drop-shadow`-Filter statt `box-shadow` für Kontrast auf hellen
         // Kartenmotiven — `box-shadow` bräuchte eine gefüllte Box, die es

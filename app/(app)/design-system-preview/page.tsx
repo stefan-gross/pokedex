@@ -986,9 +986,9 @@ export default function DesignSystemPreviewPage() {
               Badge-/Button-Position (px, Doppelklick = zurücksetzen)
             </p>
             {([
-              { key: 'setBadge', title: 'Set-Badge', axes: ['top', 'left'] as const },
+              { key: 'reviewBadge', title: 'Prüfen-Badge', axes: ['top', 'left'] as const },
               { key: 'ownedBadge', title: 'Owned-Badge', axes: ['top', 'right'] as const },
-              { key: 'reviewBadge', title: 'Prüfen-Badge', axes: ['bottom', 'right'] as const },
+              { key: 'priceBadge', title: 'Preis-Badge', axes: ['bottom', 'left'] as const },
               { key: 'wishlistBadge', title: 'Wunschlisten-Herz', axes: ['bottom', 'right'] as const },
             ] as const).map(({ key, title, axes }) => (
               <div key={key} className="flex items-center gap-2 flex-wrap">

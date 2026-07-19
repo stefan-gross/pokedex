@@ -30,9 +30,12 @@ export const MISSING_CARD_EFFECTS: { value: MissingCardEffect; label: string }[]
 export interface MissingCardStyle { opacity: number; blur: number; saturate: number; effect: MissingCardEffect }
 
 export interface CardTileBadgeLayout {
-  setBadge: { top: number; left: number };
+  /** Ungeprüft-Ausrufezeichen — oben links (ersetzt den früheren, entfernten
+   *  Set-Badge an derselben Stelle). */
+  reviewBadge: { top: number; left: number };
   ownedBadge: { top: number; right: number };
-  reviewBadge: { bottom: number; right: number };
+  /** Vorformatierter Preis — unten links. */
+  priceBadge: { bottom: number; left: number };
   wishlistBadge: { bottom: number; right: number };
 }
 
@@ -44,8 +47,8 @@ export interface CardVisualTheme {
 
 function badgeLayoutForOffset(o: number): CardTileBadgeLayout {
   return {
-    setBadge: { top: o, left: o }, ownedBadge: { top: o, right: o },
-    reviewBadge: { bottom: o, right: o }, wishlistBadge: { bottom: o, right: o },
+    reviewBadge: { top: o, left: o }, ownedBadge: { top: o, right: o },
+    priceBadge: { bottom: o, left: o }, wishlistBadge: { bottom: o, right: o },
   };
 }
 

@@ -18,10 +18,11 @@ interface Props {
   sublabel?: string;
   sublabelColor?: string;
   sublabelLoading?: boolean;
-  setSymbolUrl?: string;
   setCode?: string;
   numberPrefixCode?: string;
   numberPrefixSymbolUrl?: string;
+  price?: string;
+  border?: 'green' | 'yellow' | 'red';
   missingStyle?: import('@/components/card/Card').MissingCardStyle;
   badgeLayout?: import('@/components/card/Card').CardTileBadgeLayout;
 }

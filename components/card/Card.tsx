@@ -86,17 +86,21 @@ interface Props {
   /** Zeigt statt des Sublabels einen animierten Platzhalter — z.B. während
    *  der Preis noch per Batch-Route nachgeladen wird. */
   sublabelLoading?: boolean;
-  /** Kleines Set-Symbol oben links — zeigt, aus welchem Set die Karte stammt
-   *  (z.B. bei einer Namenssuche, die mehrere Sets umfasst). */
-  setSymbolUrl?: string;
-  /** Tooltip/Alt-Text für das Set-Symbol, z.B. das Set-Kürzel. */
-  setCode?: string;
   /** Set-Kürzel als gerahmtes Badge vor der Nummer (nur bei Nummern-Sortierung
    *  sinnvoll) — z.B. "SSP" bei modernen Sets mit aufgedrucktem Kürzel. */
   numberPrefixCode?: string;
   /** Set-Symbol vor der Nummer statt eines Kürzels — bei alten Sets ohne
    *  aufgedrucktes Kürzel (siehe SYMBOL_ONLY_SERIES). Hat Vorrang vor `numberPrefixCode`. */
   numberPrefixSymbolUrl?: string;
+  /** Alt-Text fürs Set-Symbol (Kürzel), falls `numberPrefixSymbolUrl` gesetzt ist. */
+  setCode?: string;
+  /** Vorformatierter Preis (z.B. "4,59 €") — Badge unten links, Pillenform
+   *  statt Kreis (siehe `CardBadge`'s `shape="pill"`). */
+  price?: string;
+  /** Farbiger Statusrahmen ums Kartenbild — z.B. beim Scan: grün = erkannt/
+   *  hinzugefügt, gelb = unsicher/Prüfung nötig, rot = Fälschungsverdacht.
+   *  Generische Prop — welche Farbe wann zutrifft, entscheidet der Aufrufer. */
+  border?: 'green' | 'yellow' | 'red';
   /** Größenstufe — steuert Ecken-Radius/Badge-Größe/Bild-`sizes`. Default
    *  `'sm'` = bisheriges `CardTile`-Verhalten. */
   size?: CardSize;
@@ -109,9 +113,15 @@ interface Props {
   cornerRadius?: number;
 }
 
+const BORDER_COLORS: Record<'green' | 'yellow' | 'red', string> = {
+  green: '#35d15a',
+  yellow: 'var(--pokedex-yellow)',
+  red: '#ef4444',
+};
+
 export function Card({
   card, ownedCards = [], onCardClick, onWishlist, isWishlisted, sublabel, sublabelColor, sublabelLoading,
-  setSymbolUrl, setCode, numberPrefixCode, numberPrefixSymbolUrl, size = 'sm',
+  numberPrefixCode, numberPrefixSymbolUrl, setCode, price, border, size = 'sm',
   missingStyle = getCardVisualTheme().missingStyle,
   cornerRadius = getCardVisualTheme().cornerRadius[size],
   badgeLayout = getCardVisualTheme().badgeLayout[size],
@@ -181,31 +191,43 @@ export function Card({
           />
         )}
 
-        {/* Set-Badge — oben links, spiegelbildlich zum Owned-Badge oben rechts. */}
-        {setSymbolUrl && (
-          <CardBadge size={preset.badgeSize} style={{ top: layout.setBadge.top, left: layout.setBadge.left }} title={setCode}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={setSymbolUrl} alt={setCode ?? ''} className="w-[65%] h-[65%] object-contain" />
+        {/* Statusrahmen — z.B. Scan-Erkennung (grün/gelb/rot), generisch je
+            nach Aufrufer-Kontext. Eigene Overlay-Ebene analog zum Silhouette-
+            Rahmen oben, damit `border-box`-Sizing des Bildes unangetastet bleibt. */}
+        {border && (
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{ borderRadius: radius, border: `2.5px solid ${BORDER_COLORS[border]}` }}
+            aria-hidden="true"
+          />
+        )}
+
+        {/* Prüfen-Badge — gelb, oben links, nur bei ungeprüften eigenen Exemplaren. */}
+        {needsReview && (
+          <CardBadge
+            size={preset.badgeSize} color="var(--pokedex-yellow)"
+            style={{ top: layout.reviewBadge.top, left: layout.reviewBadge.left }}
+            ariaLabel="Ungeprüft" title="Ungeprüft"
+          >
+            <ExclamationMark size={preset.badgeIconSize} strokeWidth={3} className="text-white" />
           </CardBadge>
         )}
 
-        {/* Owned badge — grün, analog zum Scan-Erkennungs-Rahmen */}
+        {/* Owned badge — grün, oben rechts */}
         {isOwned && (
           <CardBadge size={preset.badgeSize} color="rgba(53,209,90,.9)" style={{ top: layout.ownedBadge.top, right: layout.ownedBadge.right }}>
             ×{totalOwned}
           </CardBadge>
         )}
 
-        {/* Prüfen-Badge — gelb, nur bei ungeprüften eigenen Exemplaren (bottom-right
-            ist bei besessenen Karten frei, da der Wunschlisten-Herz nur bei
-            nicht-besessenen Karten dort sitzt). */}
-        {needsReview && (
+        {/* Preis — unten links, Pillenform statt Kreis (siehe CardBadge shape="pill"). */}
+        {price && (
           <CardBadge
-            size={preset.badgeSize} color="var(--pokedex-yellow)"
-            style={{ bottom: layout.reviewBadge.bottom, right: layout.reviewBadge.right }}
-            ariaLabel="Ungeprüft" title="Ungeprüft"
+            size={preset.badgeSize} shape="pill" color="rgba(0,0,0,.72)"
+            style={{ bottom: layout.priceBadge.bottom, left: layout.priceBadge.left }}
+            ariaLabel="Preis"
           >
-            <ExclamationMark size={preset.badgeIconSize} strokeWidth={3} className="text-white" />
+            {price}
           </CardBadge>
         )}
 

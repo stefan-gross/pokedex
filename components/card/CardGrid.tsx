@@ -134,7 +134,6 @@ export function CardGrid({
             sublabelLoading={isPriceSort && pricesLoading && priceMap?.get(card.id) == null}
             isWishlisted={wishlistIds?.has(card.id)}
             onWishlist={() => onToggleWishlist?.(card)}
-            setSymbolUrl={showSetBadge ? set?.symbolUrl : undefined}
             setCode={numberPrefixCode}
             numberPrefixCode={showNumberPrefix && !numberPrefixSymbolUrl ? numberPrefixCode : undefined}
             numberPrefixSymbolUrl={showNumberPrefix ? numberPrefixSymbolUrl : undefined}
