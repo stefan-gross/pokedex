@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { X, Plus, Minus, Heart, ChevronDown, ChevronRight, ChevronLeft, Info, Repeat2, LayoutGrid } from 'lucide-react';
-import { ExclamationMark, BinderIcon } from '@/lib/binder-icons';
+import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/modal';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
@@ -96,6 +96,186 @@ const CONDITION_COLOR: Record<string, string> = {
   HP: '#f87171',
   Poor: '#9ca3af',
 };
+const LANGUAGE_SHORT: Record<string, string> = { de: 'DE', en: 'EN', fr: 'FR', jp: 'JP' };
+
+// Swipe-nach-links auf einer Karten-Kopie: schon ab CATCH (kleine Strecke)
+// "fängt" die Geste — beim Loslassen bleibt die Löschen-Fläche bei REVEAL
+// offen stehen, statt bei jeder kleinen Bewegung zurückzuspringen. Der
+// Nutzer tippt dann den freigelegten Button. Ab COMMIT (viel weiter gezogen)
+// löst ein Loslassen die Löschung direkt aus, ohne zusätzlichen Tap.
+const SWIPE_CATCH_PX  = 28;
+const SWIPE_REVEAL_PX = 88;
+const SWIPE_COMMIT_PX = 160;
+
+/** Eine Zeile "eigene Kopie" im Kartendetail: Sprache/Zustand/Sammlung als
+ *  Pills, gelber Rahmen statt Pill für den Prüfen-Status (Tap auf die Zeile
+ *  markiert als geprüft), Swipe nach links legt eine Löschen-Fläche frei und
+ *  löscht bei genug Schwung sofort — ersetzt den vorherigen, immer sichtbaren
+ *  Lösch-Button. */
+function OwnedCopyRow({
+  copy, condColor, binder, isDefaultBinder, binderName,
+  onMarkReviewed, onNavigateToBinder, onRemoveFromBinder, onDelete, isDeleting,
+}: {
+  copy: CardDoc;
+  condColor: string;
+  binder: BinderDoc | undefined;
+  isDefaultBinder: boolean;
+  binderName: string;
+  onMarkReviewed: () => void;
+  onNavigateToBinder: () => void;
+  onRemoveFromBinder: () => void;
+  onDelete: () => void;
+  isDeleting: boolean;
+}) {
+  const [dragX, setDragX]         = useState(0);
+  const [dragging, setDragging]   = useState(false);
+  const [committed, setCommitted] = useState(false);
+  const startXRef  = useRef<number | null>(null);
+  const movedRef   = useRef(false);
+  const openRef    = useRef(false); // Reveal-Zustand bleibt zwischen Gesten erhalten
+  // Aktueller Drag-Wert synchron in einem Ref mitgeführt — `dragX` (State)
+  // kann in schnellen Ereignisfolgen kurzzeitig hinter dem tatsächlichen
+  // Zeigerstand zurückliegen (Render/Batching), die Schwellwert-Entscheidung
+  // in `handlePointerUp` braucht aber den exakt aktuellen Wert.
+  const dragXRef   = useRef(0);
+
+  function applyDragX(x: number) {
+    dragXRef.current = x;
+    setDragX(x);
+  }
+
+  function commitDelete() {
+    setCommitted(true);
+    applyDragX(-500);
+    setTimeout(onDelete, 200);
+  }
+
+  function handlePointerDown(e: React.PointerEvent) {
+    if (isDeleting || committed) return;
+    movedRef.current = false;
+    startXRef.current = e.clientX;
+    setDragging(true);
+    try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
+  }
+  function handlePointerMove(e: React.PointerEvent) {
+    if (startXRef.current == null) return;
+    const dx = e.clientX - startXRef.current;
+    if (Math.abs(dx) > 6) movedRef.current = true;
+    const base = openRef.current ? -SWIPE_REVEAL_PX : 0;
+    applyDragX(Math.min(0, Math.max(-(SWIPE_COMMIT_PX + 20), base + dx)));
+  }
+  function handlePointerUp() {
+    if (startXRef.current == null) return;
+    startXRef.current = null;
+    setDragging(false);
+    if (!movedRef.current) {
+      // Reiner Tap ohne Bewegung: bei aufgeklappter Löschen-Fläche schließen,
+      // sonst (falls "Prüfen" aktiv) als geprüft markieren.
+      if (openRef.current) { openRef.current = false; applyDragX(0); }
+      else if (copy.needsReview) onMarkReviewed();
+      return;
+    }
+    if (dragXRef.current <= -SWIPE_COMMIT_PX) { commitDelete(); return; }
+    if (dragXRef.current <= -SWIPE_CATCH_PX) { openRef.current = true; applyDragX(-SWIPE_REVEAL_PX); }
+    else { openRef.current = false; applyDragX(0); }
+  }
+  function handlePointerCancel() {
+    startXRef.current = null;
+    setDragging(false);
+    applyDragX(openRef.current ? -SWIPE_REVEAL_PX : 0);
+  }
+
+  return (
+    <div className="relative rounded-xl overflow-hidden" style={{ minHeight: 48 }}>
+      {/* Löschen-Fläche — liegt hinter der Zeile, wird durch den Swipe freigelegt.
+          Sobald überhaupt gezogen wird, voll deckendes Rot (kein Auf-/Abblenden
+          über die Zugstrecke) — sonst wirkt die Fläche blass/wie ein kleiner
+          Button statt einer klar roten Zeile. Nur im Ruhezustand (dragX===0)
+          komplett ausgeblendet, da `glass-inner` sonst transluzent durchscheint. */}
+      <button
+        onClick={commitDelete}
+        disabled={isDeleting}
+        className="absolute inset-0 flex items-center justify-end gap-1.5 pr-4 text-white text-role-title"
+        style={{
+          background: 'var(--action-delete)',
+          opacity: dragX === 0 ? 0 : 1,
+          transition: dragging ? 'none' : 'opacity 150ms ease-out',
+          pointerEvents: dragX === 0 ? 'none' : 'auto',
+        }}
+        aria-label="Karte löschen"
+      >
+        <Minus size={16} strokeWidth={2.5} /> Löschen
+      </button>
+
+      {/* Vordergrund — Inhalt der Zeile, per Swipe verschiebbar */}
+      <div
+        className="glass-inner flex items-center gap-2 rounded-xl px-2.5 py-2 relative"
+        style={{
+          minHeight: 48,
+          transform: `translateX(${dragX}px)`,
+          transition: dragging ? 'none' : 'transform 200ms ease-out, opacity 200ms ease-out',
+          opacity: committed ? 0 : 1,
+          border: copy.needsReview ? '2px solid var(--pokedex-yellow)' : '2px solid transparent',
+        }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+      >
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <span
+            className="text-role-label px-2 py-1 rounded-full border shrink-0 flex items-center gap-1"
+            style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+          >
+            <LanguageFlag lang={copy.language} size={13} />
+            {LANGUAGE_SHORT[copy.language] ?? copy.language.toUpperCase()}
+          </span>
+          <span
+            className="text-role-label px-2 py-1 rounded-full border shrink-0"
+            style={{ borderColor: condColor, color: condColor }}
+          >
+            {CONDITION_LABEL[copy.condition] ?? copy.condition}
+          </span>
+          {/* Sammlung-Pill — größer für mobile Touch-Targets */}
+          <div
+            role="button"
+            tabIndex={0}
+            onPointerDown={e => e.stopPropagation()}
+            onClick={onNavigateToBinder}
+            onKeyDown={(e) => e.key === 'Enter' && onNavigateToBinder()}
+            className="text-role-title pl-3 pr-2 py-1.5 rounded-full flex items-center gap-1.5 cursor-pointer shrink-0 ml-auto truncate"
+            style={{
+              background: isDefaultBinder ? 'var(--secondary)' : 'color-mix(in srgb, var(--pokedex-blue) 12%, transparent)',
+              border: isDefaultBinder
+                ? '1px dashed var(--border)'
+                : '1px solid color-mix(in srgb, var(--pokedex-blue) 35%, transparent)',
+              color: isDefaultBinder ? 'var(--muted-foreground)' : 'var(--pokedex-blue)',
+              maxWidth: 180,
+              minHeight: 32,
+            }}
+          >
+            {binder?.icon && <BinderIcon name={binder.icon} size={13} className="shrink-0" />}
+            <span className="truncate">{binderName}</span>
+            {!isDefaultBinder && binder ? (
+              <button
+                onPointerDown={e => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); onRemoveFromBinder(); }}
+                className="rounded-full p-1 transition-colors shrink-0 text-white"
+                style={{ background: 'var(--action-delete)' }}
+                title="Aus Sammlung entfernen"
+                aria-label="Aus Sammlung entfernen"
+              >
+                <Minus size={12} strokeWidth={3} />
+              </button>
+            ) : (
+              <ChevronRight size={13} style={{ opacity: 0.7 }} />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const VALID_ENERGY = new Set([
   'Fire','Water','Grass','Lightning','Psychic',
@@ -246,7 +426,6 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   const [evoLoaded,    setEvoLoaded]    = useState(false);
   const [specialForms, setSpecialForms] = useState<CardInfo[]>([]);
   const [deletingId,   setDeletingId]   = useState<string | null>(null);
-  const [confirmId,    setConfirmId]    = useState<string | null>(null);
   const resolvedMeta = useSetMeta(card?.setId, setMeta, card?.setName);
   const [resolvedBinders, setResolvedBinders] = useState<BinderDoc[]>(binders ?? []);
   const [wishlistItem, setWishlistItem] = useState<{ listId: string; itemId: string } | null>(null);
@@ -440,13 +619,10 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     onSaved?.();
   }
 
+  // Bestätigung passiert jetzt über die Swipe-Geste selbst (Reveal + Tap bzw.
+  // genug Schwung fürs Loslassen, siehe `OwnedCopyRow`) statt über einen
+  // zweiten Tap auf einen dauerhaft sichtbaren Button.
   async function handleDelete(copy: CardDoc) {
-    if (confirmId !== copy.id) {
-      setConfirmId(copy.id);
-      setTimeout(() => setConfirmId(c => c === copy.id ? null : c), 3000);
-      return;
-    }
-    setConfirmId(null);
     setDeletingId(copy.id);
     try {
       await Promise.all(bindersOf(copy).map(b => removeCardFromBinderAndCleanup(b.id, copy.id)));
@@ -815,94 +991,29 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                         <div className="flex flex-col gap-1.5">
                           {copies.map(copy => {
                             const copyBinders = bindersOf(copy);
-                            const isConfirm = confirmId === copy.id;
                             const isDeleting = deletingId === copy.id;
                             const binder = copyBinders[0];
                             const isDefaultBinder = !binder || !!binder.isDefault;
                             const binderName = binder?.name ?? 'Unsortiert';
                             const condColor  = CONDITION_COLOR[copy.condition] ?? 'var(--muted-foreground)';
                             return (
-                              <div
+                              <OwnedCopyRow
                                 key={copy.id}
-                                className="glass-inner flex items-center gap-2 rounded-xl px-2.5 py-2"
-                                style={{ minHeight: 48 }}
-                              >
-                                {/* Chips */}
-                                <div className="flex items-center gap-2 flex-1 min-w-0">
-                                  {copy.needsReview && (
-                                    <button
-                                      onClick={async () => {
-                                        await markReviewed(copy.id);
-                                        window.dispatchEvent(new Event('review-count-changed'));
-                                        onSaved?.();
-                                      }}
-                                      className="text-role-label px-2 py-1 rounded flex items-center gap-1 shrink-0 text-white"
-                                      style={{ background: 'var(--pokedex-yellow)' }}
-                                    >
-                                      <ExclamationMark size={11} strokeWidth={3} /> Prüfen
-                                    </button>
-                                  )}
-                                  <LanguageFlag lang={copy.language} size={16} />
-                                  <span
-                                    className="text-role-label px-2 py-1 rounded border shrink-0"
-                                    style={{
-                                      borderColor: condColor,
-                                      color: condColor,
-                                      background: 'transparent',
-                                    }}
-                                  >
-                                    {CONDITION_LABEL[copy.condition] ?? copy.condition}
-                                  </span>
-                                  {/* Sammlung-Pill — größer für mobile Touch-Targets */}
-                                  <div
-                                    role="button"
-                                    tabIndex={0}
-                                    onClick={() => router.push(binder ? `/binders/${binder.id}` : '/binders')}
-                                    onKeyDown={(e) => e.key === 'Enter' && router.push(binder ? `/binders/${binder.id}` : '/binders')}
-                                    className="text-role-title pl-3 pr-2 py-1.5 rounded-full flex items-center gap-1.5 cursor-pointer shrink-0 ml-auto truncate"
-                                    style={{
-                                      background: isDefaultBinder ? 'var(--secondary)' : 'color-mix(in srgb, var(--pokedex-blue) 12%, transparent)',
-                                      border: isDefaultBinder
-                                        ? '1px dashed var(--border)'
-                                        : '1px solid color-mix(in srgb, var(--pokedex-blue) 35%, transparent)',
-                                      color: isDefaultBinder ? 'var(--muted-foreground)' : 'var(--pokedex-blue)',
-                                      maxWidth: 180,
-                                      minHeight: 32,
-                                    }}
-                                  >
-                                    {binder?.icon && <BinderIcon name={binder.icon} size={13} className="shrink-0" />}
-                                    <span className="truncate">{binderName}</span>
-                                    {!isDefaultBinder && binder ? (
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); handleRemoveFromBinder(copy, binder.id); }}
-                                        className="rounded-full p-1 transition-colors shrink-0 text-white"
-                                        style={{ background: 'var(--action-delete)' }}
-                                        title="Aus Sammlung entfernen"
-                                        aria-label="Aus Sammlung entfernen"
-                                      >
-                                        <Minus size={12} strokeWidth={3} />
-                                      </button>
-                                    ) : (
-                                      <ChevronRight size={13} style={{ opacity: 0.7 }} />
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* Löschen — durchgehend rotes Glas (`primary` + `--action-delete`,
-                                    analog zum "Löschen"-Demo auf der Testseite), Inhalt wechselt nur
-                                    zwischen Minus-Icon/„OK?"/„…" je nach Bestätigungs-Zustand. */}
-                                <Button
-                                  variant="primary"
-                                  accentColor="#c53030"
-                                  onClick={() => handleDelete(copy)}
-                                  disabled={isDeleting}
-                                  icon={!isDeleting && !isConfirm ? <Minus size={16} strokeWidth={2.5} /> : undefined}
-                                  className="shrink-0"
-                                  aria-label="Karte löschen"
-                                >
-                                  {isDeleting ? '…' : isConfirm ? 'OK?' : undefined}
-                                </Button>
-                              </div>
+                                copy={copy}
+                                condColor={condColor}
+                                binder={binder}
+                                isDefaultBinder={isDefaultBinder}
+                                binderName={binderName}
+                                isDeleting={isDeleting}
+                                onMarkReviewed={async () => {
+                                  await markReviewed(copy.id);
+                                  window.dispatchEvent(new Event('review-count-changed'));
+                                  onSaved?.();
+                                }}
+                                onNavigateToBinder={() => router.push(binder ? `/binders/${binder.id}` : '/binders')}
+                                onRemoveFromBinder={() => binder && handleRemoveFromBinder(copy, binder.id)}
+                                onDelete={() => handleDelete(copy)}
+                              />
                             );
                           })}
                         </div>
