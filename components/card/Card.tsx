@@ -64,12 +64,11 @@ interface CardSizePreset {
   imageSizes: string;
 }
 
-// `badgeSize`/`badgeIconSize` skalieren proportional zur `imageSizes`-
-// Referenzbreite jeder Stufe (120/200/320px ≈ 1 : 1.667 : 2.667). Anker-Wert
-// für `sm` auf Nutzerwunsch angehoben (Badges wirkten insgesamt zu klein) —
-// md/lg bleiben im selben Verhältnis dazu, damit sie weiter mitskalieren.
+// `badgeSize`/`badgeIconSize` — `sm` übernimmt auf Nutzerwunsch dieselben
+// Werte wie `md` (Badges wirkten in 2-spaltigen Grids trotz vorheriger
+// Anhebung noch zu klein). `lg` bleibt eigenständig größer fürs Kartendetail.
 export const CARD_SIZE_PRESETS: Record<CardSize, CardSizePreset> = {
-  sm: { badgeSize: 28, badgeIconSize: 16, sublabelClassName: 'text-[11px]', imageSizes: '(max-width: 400px) 30vw, 120px' },
+  sm: { badgeSize: 47, badgeIconSize: 27, sublabelClassName: 'text-[11px]', imageSizes: '(max-width: 400px) 30vw, 120px' },
   md: { badgeSize: 47, badgeIconSize: 27, sublabelClassName: 'text-sm', imageSizes: '200px' },
   lg: { badgeSize: 75, badgeIconSize: 43, sublabelClassName: 'text-base', imageSizes: '320px' },
 };
