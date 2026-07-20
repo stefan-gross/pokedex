@@ -182,12 +182,27 @@ export function OwnedCopyRow({
     tapOnChildRef.current = !!(e.target as HTMLElement).closest('[data-swipe-passthrough]');
     startXRef.current = e.clientX;
     setDragging(true);
-    try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
+    // Pointer-Capture NICHT sofort setzen, wenn die Geste auf einem eigenen
+    // klickbaren Kind (Sammlung-Pill) beginnt — Capture retargeted alle
+    // folgenden Pointer-Events (inkl. pointerup) auf die Zeile, wodurch der
+    // Browser bei einem reinen Tap keinen "click" mehr auf dem Kind-Button
+    // synthetisiert (Dropdown öffnete sich dadurch nie bei echtem Antippen,
+    // nur bei programmatischem `.click()`). Bei echtem Ziehen wird die
+    // Capture stattdessen verzögert in `handlePointerMove` gesetzt, sobald
+    // Bewegung erkannt wird — für die Swipe-Verfolgung reicht das.
+    if (!tapOnChildRef.current) {
+      try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
+    }
   }
   function handlePointerMove(e: React.PointerEvent) {
     if (startXRef.current == null) return;
     const dx = e.clientX - startXRef.current;
-    if (Math.abs(dx) > 6) movedRef.current = true;
+    if (Math.abs(dx) > 6) {
+      if (!movedRef.current && tapOnChildRef.current) {
+        try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
+      }
+      movedRef.current = true;
+    }
     applyDragX(rubberBand(Math.min(0, dx)));
   }
   function handlePointerUp() {
