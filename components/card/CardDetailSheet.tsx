@@ -104,6 +104,23 @@ const CONDITION_COLOR: Record<string, string> = {
 const SWIPE_CATCH_PX  = 28;
 const SWIPE_REVEAL_PX = 88;
 const SWIPE_COMMIT_PX = 160;
+// Visuelle Obergrenze für den Gummiband-Widerstand jenseits von COMMIT —
+// nie hart gedeckelt (kein abruptes "gegen die Wand laufen"), nähert sich
+// aber asymptotisch diesem Wert an, je weiter/schneller gezogen wird.
+const SWIPE_MAX_PX = SWIPE_COMMIT_PX + 60;
+// Leichtes Überschwingen beim Einrasten (Reveal/Schließen) — federartig statt
+// linear, dadurch fühlt sich das Fangen/Zurückschnappen weniger robotisch an.
+const SWIPE_SPRING_EASE = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
+
+/** Jenseits von COMMIT wächst der Widerstand — jeder zusätzliche Zieh-Pixel
+ *  bewegt die Zeile immer weniger weit (Gummiband), statt bei einem festen
+ *  Maximalwert hart zu stoppen. */
+function rubberBand(raw: number): number {
+  if (raw >= -SWIPE_COMMIT_PX) return raw;
+  const over = -raw - SWIPE_COMMIT_PX;
+  const damped = (SWIPE_MAX_PX - SWIPE_COMMIT_PX) * (1 - 1 / (1 + over / 70));
+  return -(SWIPE_COMMIT_PX + damped);
+}
 
 /** Eine Zeile "eigene Kopie" im Kartendetail: Sprache/Zustand/Sammlung als
  *  Pills, gelber Rahmen statt Pill für den Prüfen-Status (Tap auf die Zeile
@@ -160,7 +177,8 @@ function OwnedCopyRow({
     const dx = e.clientX - startXRef.current;
     if (Math.abs(dx) > 6) movedRef.current = true;
     const base = openRef.current ? -SWIPE_REVEAL_PX : 0;
-    applyDragX(Math.min(0, Math.max(-(SWIPE_COMMIT_PX + 20), base + dx)));
+    const raw = Math.min(0, base + dx);
+    applyDragX(rubberBand(raw));
   }
   function handlePointerUp() {
     if (startXRef.current == null) return;
@@ -183,26 +201,48 @@ function OwnedCopyRow({
     applyDragX(openRef.current ? -SWIPE_REVEAL_PX : 0);
   }
 
+  // Kontinuierlicher Aufdeck-Fortschritt (0–1) — treibt Icon/Label-Skalierung
+  // im Löschen-Button, damit der Button mit dem Finger mitzuwachsen scheint
+  // statt bei einer festen Breite ein-/auszublenden (iOS-Swipe-Actions-Gefühl).
+  const revealProgress = Math.min(1, Math.abs(dragX) / SWIPE_REVEAL_PX);
+  // Beim Loslassen/Einrasten (nicht während des aktiven Ziehens) federnd statt
+  // linear — beim Wegfliegen (Löschen) dagegen beschleunigend statt federnd,
+  // ein Bounce beim Verschwinden sähe unnatürlich aus.
+  const settleTransition = committed
+    ? 'transform 220ms cubic-bezier(0.4, 0, 1, 1)'
+    : `transform 320ms ${SWIPE_SPRING_EASE}`;
+
   return (
     <div className="relative rounded-xl overflow-hidden" style={{ minHeight: 48 }}>
       {/* Löschen-Fläche — liegt hinter der Zeile, wird durch den Swipe freigelegt.
-          Sobald überhaupt gezogen wird, voll deckendes Rot (kein Auf-/Abblenden
-          über die Zugstrecke) — sonst wirkt die Fläche blass/wie ein kleiner
-          Button statt einer klar roten Zeile. Nur im Ruhezustand (dragX===0)
-          komplett ausgeblendet, da `glass-inner` sonst transluzent durchscheint. */}
+          Opacity rampt binnen weniger Pixel auf voll deckendes Rot hoch (kein
+          Auf-/Abblenden über die ganze Zugstrecke, sonst wirkt es blass) — nur
+          exakt im Ruhezustand (dragX===0) komplett ausgeblendet, da `glass-inner`
+          sonst transluzent durchscheint. Icon+Label wachsen zusätzlich mit der
+          Zugstrecke mit (`revealProgress`), damit der Button mit dem Finger
+          mitzuwachsen scheint statt einfach aufzupoppen. */}
       <button
         onClick={commitDelete}
         disabled={isDeleting}
         className="absolute inset-0 flex items-center justify-end gap-1.5 pr-4 text-white text-role-title"
         style={{
           background: 'var(--action-delete)',
-          opacity: dragX === 0 ? 0 : 1,
+          opacity: Math.min(1, Math.abs(dragX) / 8),
           transition: dragging ? 'none' : 'opacity 150ms ease-out',
           pointerEvents: dragX === 0 ? 'none' : 'auto',
         }}
         aria-label="Karte löschen"
       >
-        <Minus size={16} strokeWidth={2.5} /> Löschen
+        <span
+          className="flex items-center gap-1.5 shrink-0"
+          style={{
+            transform: `scale(${0.7 + 0.3 * revealProgress})`,
+            transformOrigin: 'right center',
+            transition: dragging ? 'none' : `transform 320ms ${SWIPE_SPRING_EASE}`,
+          }}
+        >
+          <Minus size={16} strokeWidth={2.5} /> Löschen
+        </span>
       </button>
 
       {/* Vordergrund — Inhalt der Zeile, per Swipe verschiebbar. Bleibt beim
@@ -213,7 +253,7 @@ function OwnedCopyRow({
         style={{
           minHeight: 48,
           transform: `translateX(${dragX}px)`,
-          transition: dragging ? 'none' : 'transform 200ms ease-out',
+          transition: dragging ? 'none' : settleTransition,
           border: copy.needsReview ? '2px solid var(--pokedex-yellow)' : '2px solid transparent',
         }}
         onPointerDown={handlePointerDown}
