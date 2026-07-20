@@ -24,8 +24,9 @@ import {
   getCardVisualTheme, setCardVisualTheme, DEFAULT_CARD_VISUAL_THEME, type CardVisualTheme,
 } from '@/lib/ui/card-theme';
 import { CardBadge } from '@/components/card/CardBadge';
+import { OwnedCopyRow } from '@/components/card/CardDetailSheet';
 import type { CardInfo } from '@/lib/card-info';
-import type { CardDoc } from '@/types';
+import type { CardDoc, BinderDoc } from '@/types';
 
 // Auf Wunsch reduziert von 8 auf 3 strukturelle Varianten — "Löschen"/
 // "Hinzufügen" sind kein eigener Typ mehr, sondern `variant="primary"` +
@@ -480,6 +481,27 @@ export default function DesignSystemPreviewPage() {
   const [badgeColor, setBadgeColor] = useState('#35d15a');
   const [badgeContent, setBadgeContent] = useState<'icon' | 'number' | 'letter' | 'heart'>('number');
   const [badgeBackground, setBadgeBackground] = useState(true);
+
+  // "OwnedCopyRow"-Sektion: rein lokale Demo-Kopien (keine Firestore-Calls,
+  // kein echtes Löschen) — Swipe-Physik hier gefahrlos iterierbar, ohne bei
+  // jedem Testlauf echte Sammlungsdaten zu riskieren (siehe Vorfall im Chat:
+  // Testen der Geste direkt im Kartendetail hat zweimal echte Karten gelöscht).
+  const DEMO_BINDER: BinderDoc = {
+    id: 'demo-binder', name: 'Fatale Flammen', icon: 'star', sortOrder: 0, cardIds: [], wishlistCardIds: [],
+    createdAt: null as unknown as BinderDoc['createdAt'],
+  };
+  const makeDemoCopy = (id: string, overrides: Partial<CardDoc>): CardDoc => ({
+    id, tcgId: 'demo', name: 'Giflor', setId: 'me2', setName: 'Fatale Flammen', number: '003',
+    variant: 'holo', condition: 'NM', language: 'de', isFoil: false, isFirstEd: false, quantity: 1,
+    addedAt: null as unknown as CardDoc['addedAt'], updatedAt: null as unknown as CardDoc['updatedAt'],
+    ...overrides,
+  });
+  const [demoCopies, setDemoCopies] = useState<CardDoc[]>([
+    makeDemoCopy('demo-1', { needsReview: true }),
+    makeDemoCopy('demo-2', { condition: 'LP', language: 'en', needsReview: false }),
+    makeDemoCopy('demo-3', { condition: 'HP', language: 'jp', quantity: 3 }),
+  ]);
+  const [demoLog, setDemoLog] = useState<string>('—');
 
   const [chipA, setChipA] = useState(true);
   const [chipB, setChipB] = useState(false);
@@ -1012,6 +1034,56 @@ export default function DesignSystemPreviewPage() {
                 })}
               </div>
             ))}
+          </div>
+        </div>
+      </Section>
+
+      {/* OwnedCopyRow — die "eigene Kopie"-Zeile im Kartendetail (Sprache/
+          Zustand/Sammlung als Pills, Prüfen-Rahmen, Swipe-to-Delete). Rein
+          lokale Demo-Kopien, kein Firestore — Gesten-Physik hier gefahrlos
+          iterierbar, ohne echte Sammlungsdaten zu riskieren. */}
+      <Section title="OwnedCopyRow (Kartendetail-Zeile)">
+        <div className="space-y-3">
+          <p className="text-role-label text-glass-muted">
+            Swipe nach links: leichter Zug legt die Löschen-Fläche frei (Tap zum
+            Bestätigen), genug Schwung löscht direkt — hier ohne Risiko, da rein
+            lokale Demo-Daten. Tap auf eine Zeile mit gelbem Rahmen markiert sie
+            als geprüft. Letztes Ereignis: <strong>{demoLog}</strong>
+          </p>
+          <div className="flex flex-col gap-1.5 max-w-md">
+            {demoCopies.map(copy => (
+              <OwnedCopyRow
+                key={copy.id}
+                copy={copy}
+                condColor={{ NM: '#48bb78', LP: '#facc15', MP: '#fb923c', HP: '#f87171', Poor: '#9ca3af' }[copy.condition] ?? '#9ca3af'}
+                binder={DEMO_BINDER}
+                isDefaultBinder={false}
+                binderName={DEMO_BINDER.name}
+                isDeleting={false}
+                onMarkReviewed={() => {
+                  setDemoCopies(cs => cs.map(c => c.id === copy.id ? { ...c, needsReview: false } : c));
+                  setDemoLog(`"${copy.id}" als geprüft markiert`);
+                }}
+                onNavigateToBinder={() => setDemoLog(`Navigiert zu Sammlung "${DEMO_BINDER.name}"`)}
+                onRemoveFromBinder={() => setDemoLog(`"${copy.id}" aus Sammlung entfernt`)}
+                onDelete={() => {
+                  setDemoCopies(cs => cs.filter(c => c.id !== copy.id));
+                  setDemoLog(`"${copy.id}" gelöscht`);
+                }}
+              />
+            ))}
+            {demoCopies.length === 0 && (
+              <button
+                onClick={() => setDemoCopies([
+                  makeDemoCopy('demo-1', { needsReview: true }),
+                  makeDemoCopy('demo-2', { condition: 'LP', language: 'en', needsReview: false }),
+                  makeDemoCopy('demo-3', { condition: 'HP', language: 'jp', quantity: 3 }),
+                ])}
+                className="text-role-label text-glass-muted underline self-start"
+              >
+                Demo-Zeilen zurücksetzen
+              </button>
+            )}
           </div>
         </div>
       </Section>

@@ -96,30 +96,27 @@ const CONDITION_COLOR: Record<string, string> = {
   HP: '#f87171',
   Poor: '#9ca3af',
 };
-// Swipe-nach-links auf einer Karten-Kopie: schon ab CATCH (kleine Strecke)
-// "fängt" die Geste — beim Loslassen bleibt die Löschen-Fläche bei REVEAL
-// offen stehen, statt bei jeder kleinen Bewegung zurückzuspringen. Der
-// Nutzer tippt dann den freigelegten Button. Ab COMMIT (viel weiter gezogen)
-// löst ein Loslassen die Löschung direkt aus, ohne zusätzlichen Tap.
-const SWIPE_CATCH_PX  = 28;
-const SWIPE_REVEAL_PX = 88;
-const SWIPE_COMMIT_PX = 160;
-// Visuelle Obergrenze für den Gummiband-Widerstand jenseits von COMMIT —
+// Swipe-nach-links auf einer Karten-Kopie: es gibt bewusst KEINEN
+// Zwischenzustand ("Fläche bleibt offen stehen"). Beim Loslassen entweder
+// (a) weit genug gezogen → Löschung wird sofort ausgeführt, oder
+// (b) nicht weit genug → schnappt zurück auf 0. Nichts dazwischen.
+const SWIPE_DELETE_PX = 130;
+// Visuelle Obergrenze für den Gummiband-Widerstand jenseits von DELETE —
 // nie hart gedeckelt (kein abruptes "gegen die Wand laufen"), nähert sich
 // aber asymptotisch diesem Wert an, je weiter/schneller gezogen wird.
-const SWIPE_MAX_PX = SWIPE_COMMIT_PX + 60;
-// Leichtes Überschwingen beim Einrasten (Reveal/Schließen) — federartig statt
-// linear, dadurch fühlt sich das Fangen/Zurückschnappen weniger robotisch an.
+const SWIPE_MAX_PX = SWIPE_DELETE_PX + 60;
+// Leichtes Überschwingen beim Zurückschnappen — federartig statt linear,
+// dadurch fühlt sich das Zurückspringen weniger robotisch an.
 const SWIPE_SPRING_EASE = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
 
-/** Jenseits von COMMIT wächst der Widerstand — jeder zusätzliche Zieh-Pixel
+/** Jenseits von DELETE wächst der Widerstand — jeder zusätzliche Zieh-Pixel
  *  bewegt die Zeile immer weniger weit (Gummiband), statt bei einem festen
  *  Maximalwert hart zu stoppen. */
 function rubberBand(raw: number): number {
-  if (raw >= -SWIPE_COMMIT_PX) return raw;
-  const over = -raw - SWIPE_COMMIT_PX;
-  const damped = (SWIPE_MAX_PX - SWIPE_COMMIT_PX) * (1 - 1 / (1 + over / 70));
-  return -(SWIPE_COMMIT_PX + damped);
+  if (raw >= -SWIPE_DELETE_PX) return raw;
+  const over = -raw - SWIPE_DELETE_PX;
+  const damped = (SWIPE_MAX_PX - SWIPE_DELETE_PX) * (1 - 1 / (1 + over / 70));
+  return -(SWIPE_DELETE_PX + damped);
 }
 
 /** Eine Zeile "eigene Kopie" im Kartendetail: Sprache/Zustand/Sammlung als
@@ -127,7 +124,7 @@ function rubberBand(raw: number): number {
  *  markiert als geprüft), Swipe nach links legt eine Löschen-Fläche frei und
  *  löscht bei genug Schwung sofort — ersetzt den vorherigen, immer sichtbaren
  *  Lösch-Button. */
-function OwnedCopyRow({
+export function OwnedCopyRow({
   copy, condColor, binder, isDefaultBinder, binderName,
   onMarkReviewed, onNavigateToBinder, onRemoveFromBinder, onDelete, isDeleting,
 }: {
@@ -147,7 +144,6 @@ function OwnedCopyRow({
   const [committed, setCommitted] = useState(false);
   const startXRef  = useRef<number | null>(null);
   const movedRef   = useRef(false);
-  const openRef    = useRef(false); // Reveal-Zustand bleibt zwischen Gesten erhalten
   // Aktueller Drag-Wert synchron in einem Ref mitgeführt — `dragX` (State)
   // kann in schnellen Ereignisfolgen kurzzeitig hinter dem tatsächlichen
   // Zeigerstand zurückliegen (Render/Batching), die Schwellwert-Entscheidung
@@ -176,36 +172,33 @@ function OwnedCopyRow({
     if (startXRef.current == null) return;
     const dx = e.clientX - startXRef.current;
     if (Math.abs(dx) > 6) movedRef.current = true;
-    const base = openRef.current ? -SWIPE_REVEAL_PX : 0;
-    const raw = Math.min(0, base + dx);
-    applyDragX(rubberBand(raw));
+    applyDragX(rubberBand(Math.min(0, dx)));
   }
   function handlePointerUp() {
     if (startXRef.current == null) return;
     startXRef.current = null;
     setDragging(false);
     if (!movedRef.current) {
-      // Reiner Tap ohne Bewegung: bei aufgeklappter Löschen-Fläche schließen,
-      // sonst (falls "Prüfen" aktiv) als geprüft markieren.
-      if (openRef.current) { openRef.current = false; applyDragX(0); }
-      else if (copy.needsReview) onMarkReviewed();
+      // Reiner Tap ohne Bewegung (falls "Prüfen" aktiv) markiert als geprüft.
+      if (copy.needsReview) onMarkReviewed();
       return;
     }
-    if (dragXRef.current <= -SWIPE_COMMIT_PX) { commitDelete(); return; }
-    if (dragXRef.current <= -SWIPE_CATCH_PX) { openRef.current = true; applyDragX(-SWIPE_REVEAL_PX); }
-    else { openRef.current = false; applyDragX(0); }
+    // Kein Zwischenzustand: entweder weit genug gezogen → sofort löschen,
+    // oder zurück auf 0 — nie "offen stehen bleiben".
+    if (dragXRef.current <= -SWIPE_DELETE_PX) { commitDelete(); return; }
+    applyDragX(0);
   }
   function handlePointerCancel() {
     startXRef.current = null;
     setDragging(false);
-    applyDragX(openRef.current ? -SWIPE_REVEAL_PX : 0);
+    applyDragX(0);
   }
 
-  // Kontinuierlicher Aufdeck-Fortschritt (0–1) — treibt Icon/Label-Skalierung
-  // im Löschen-Button, damit der Button mit dem Finger mitzuwachsen scheint
-  // statt bei einer festen Breite ein-/auszublenden (iOS-Swipe-Actions-Gefühl).
-  const revealProgress = Math.min(1, Math.abs(dragX) / SWIPE_REVEAL_PX);
-  // Beim Loslassen/Einrasten (nicht während des aktiven Ziehens) federnd statt
+  // Kontinuierlicher Zug-Fortschritt (0–1) — treibt Icon/Label-Skalierung im
+  // Löschen-Button, damit der Button mit dem Finger mitzuwachsen scheint statt
+  // bei einer festen Breite ein-/auszublenden (iOS-Swipe-Actions-Gefühl).
+  const revealProgress = Math.min(1, Math.abs(dragX) / SWIPE_DELETE_PX);
+  // Beim Zurückschnappen (nicht während des aktiven Ziehens) federnd statt
   // linear — beim Wegfliegen (Löschen) dagegen beschleunigend statt federnd,
   // ein Bounce beim Verschwinden sähe unnatürlich aus.
   const settleTransition = committed
