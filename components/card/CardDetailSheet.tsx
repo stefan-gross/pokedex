@@ -144,6 +144,11 @@ export function OwnedCopyRow({
   const [committed, setCommitted] = useState(false);
   const startXRef  = useRef<number | null>(null);
   const movedRef   = useRef(false);
+  // War der Gestenstart auf einem eigenständig klickbaren Kind (Sammlung-Pill/
+  // Entfernen-Button)? Dann soll ein reiner Tap NUR dessen eigenes onClick
+  // auslösen (Navigation/Entfernen), nicht zusätzlich "als geprüft markieren"
+  // — Ziehen von dort aus soll aber trotzdem die ganze Zeile swipen können.
+  const tapOnChildRef = useRef(false);
   // Aktueller Drag-Wert synchron in einem Ref mitgeführt — `dragX` (State)
   // kann in schnellen Ereignisfolgen kurzzeitig hinter dem tatsächlichen
   // Zeigerstand zurückliegen (Render/Batching), die Schwellwert-Entscheidung
@@ -164,6 +169,7 @@ export function OwnedCopyRow({
   function handlePointerDown(e: React.PointerEvent) {
     if (isDeleting || committed) return;
     movedRef.current = false;
+    tapOnChildRef.current = !!(e.target as HTMLElement).closest('[data-swipe-passthrough]');
     startXRef.current = e.clientX;
     setDragging(true);
     try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
@@ -179,8 +185,10 @@ export function OwnedCopyRow({
     startXRef.current = null;
     setDragging(false);
     if (!movedRef.current) {
-      // Reiner Tap ohne Bewegung (falls "Prüfen" aktiv) markiert als geprüft.
-      if (copy.needsReview) onMarkReviewed();
+      // Reiner Tap ohne Bewegung (falls "Prüfen" aktiv) markiert als geprüft
+      // — außer der Tap war auf der Sammlung-Pill/Entfernen-Button, die haben
+      // ihr eigenes onClick (Navigation/Entfernen).
+      if (!tapOnChildRef.current && copy.needsReview) onMarkReviewed();
       return;
     }
     // Kein Zwischenzustand: entweder weit genug gezogen → sofort löschen,
@@ -268,8 +276,8 @@ export function OwnedCopyRow({
           <div
             role="button"
             tabIndex={0}
-            onPointerDown={e => e.stopPropagation()}
-            onClick={onNavigateToBinder}
+            data-swipe-passthrough
+            onClick={() => { if (!movedRef.current) onNavigateToBinder(); }}
             onKeyDown={(e) => e.key === 'Enter' && onNavigateToBinder()}
             className="text-role-title pl-3 pr-2 py-1.5 rounded-full flex items-center gap-1.5 cursor-pointer shrink-0 ml-auto truncate"
             style={{
@@ -286,8 +294,7 @@ export function OwnedCopyRow({
             <span className="truncate">{binderName}</span>
             {!isDefaultBinder && binder ? (
               <button
-                onPointerDown={e => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); onRemoveFromBinder(); }}
+                onClick={(e) => { e.stopPropagation(); if (!movedRef.current) onRemoveFromBinder(); }}
                 className="rounded-full p-1 transition-colors shrink-0 text-white"
                 style={{ background: 'var(--action-delete)' }}
                 title="Aus Sammlung entfernen"
