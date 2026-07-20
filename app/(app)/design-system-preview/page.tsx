@@ -490,6 +490,10 @@ export default function DesignSystemPreviewPage() {
     id: 'demo-binder', name: 'Fatale Flammen', icon: 'star', sortOrder: 0, cardIds: [], wishlistCardIds: [],
     createdAt: null as unknown as BinderDoc['createdAt'],
   };
+  const DEMO_OTHER_BINDER: BinderDoc = {
+    id: 'demo-binder-2', name: 'Wunschzettel-Doppelte', icon: 'heart', sortOrder: 1, cardIds: [], wishlistCardIds: [],
+    createdAt: null as unknown as BinderDoc['createdAt'],
+  };
   const makeDemoCopy = (id: string, overrides: Partial<CardDoc>): CardDoc => ({
     id, tcgId: 'demo', name: 'Giflor', setId: 'me2', setName: 'Fatale Flammen', number: '003',
     variant: 'holo', condition: 'NM', language: 'de', isFoil: false, isFirstEd: false, quantity: 1,
@@ -1059,13 +1063,13 @@ export default function DesignSystemPreviewPage() {
                 binder={DEMO_BINDER}
                 isDefaultBinder={false}
                 binderName={DEMO_BINDER.name}
+                assignableBinders={[DEMO_BINDER, DEMO_OTHER_BINDER]}
                 isDeleting={false}
                 onMarkReviewed={() => {
                   setDemoCopies(cs => cs.map(c => c.id === copy.id ? { ...c, needsReview: false } : c));
                   setDemoLog(`"${copy.id}" als geprüft markiert`);
                 }}
-                onNavigateToBinder={() => setDemoLog(`Navigiert zu Sammlung "${DEMO_BINDER.name}"`)}
-                onRemoveFromBinder={() => setDemoLog(`"${copy.id}" aus Sammlung entfernt`)}
+                onMoveToBinder={(targetId) => setDemoLog(targetId ? `Verschoben nach "${targetId === DEMO_BINDER.id ? DEMO_BINDER.name : DEMO_OTHER_BINDER.name}"` : 'Nach "Unsortiert" verschoben')}
                 onDelete={() => {
                   setDemoCopies(cs => cs.filter(c => c.id !== copy.id));
                   setDemoLog(`"${copy.id}" gelöscht`);

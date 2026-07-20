@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useRouter } from 'next/navigation';
-import { X, Plus, Minus, Heart, ChevronDown, ChevronRight, ChevronLeft, Info, Repeat2, LayoutGrid } from 'lucide-react';
+import { X, Plus, Minus, Heart, ChevronDown, ChevronLeft, Info, Repeat2, LayoutGrid } from 'lucide-react';
 import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/modal';
@@ -125,23 +124,34 @@ function rubberBand(raw: number): number {
  *  löscht bei genug Schwung sofort — ersetzt den vorherigen, immer sichtbaren
  *  Lösch-Button. */
 export function OwnedCopyRow({
-  copy, condColor, binder, isDefaultBinder, binderName,
-  onMarkReviewed, onNavigateToBinder, onRemoveFromBinder, onDelete, isDeleting,
+  copy, condColor, binder, isDefaultBinder, binderName, assignableBinders,
+  onMarkReviewed, onMoveToBinder, onDelete, isDeleting,
 }: {
   copy: CardDoc;
   condColor: string;
   binder: BinderDoc | undefined;
   isDefaultBinder: boolean;
   binderName: string;
+  /** Sammlungen, die sich direkt aus der Zeile auswählen lassen — normale
+   *  Sammlungen ohne Vorlagen-Binder (die sortieren sich selbst automatisch,
+   *  siehe `template-binders/sync.ts`) und ohne die Fest-Sammlungen (die sind
+   *  ohnehin schon über "Unsortiert" bzw. den aktuellen Eintrag erreichbar). */
+  assignableBinders: BinderDoc[];
   onMarkReviewed: () => void;
-  onNavigateToBinder: () => void;
-  onRemoveFromBinder: () => void;
+  /** `null` = "Unsortiert" (Default-Sammlung). */
+  onMoveToBinder: (targetBinderId: string | null) => void;
   onDelete: () => void;
   isDeleting: boolean;
 }) {
   const [dragX, setDragX]         = useState(0);
   const [dragging, setDragging]   = useState(false);
   const [committed, setCommitted] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // Position des Dropdown-Panels — wird per Portal in `document.body` gerendert
+  // (siehe unten), da die Zeile selbst `overflow-hidden` trägt (nötig für den
+  // Swipe-Clip) und ein Panel darin sonst unsichtbar abgeschnitten würde.
+  const [pickerPos, setPickerPos] = useState<{ top: number; right: number } | null>(null);
+  const pillBtnRef = useRef<HTMLButtonElement>(null);
   const startXRef  = useRef<number | null>(null);
   const movedRef   = useRef(false);
   // War der Gestenstart auf einem eigenständig klickbaren Kind (Sammlung-Pill/
@@ -272,38 +282,70 @@ export function OwnedCopyRow({
           >
             {CONDITION_LABEL[copy.condition] ?? copy.condition}
           </span>
-          {/* Sammlung-Pill — größer für mobile Touch-Targets */}
-          <div
-            role="button"
-            tabIndex={0}
-            data-swipe-passthrough
-            onClick={() => { if (!movedRef.current) onNavigateToBinder(); }}
-            onKeyDown={(e) => e.key === 'Enter' && onNavigateToBinder()}
-            className="text-role-title pl-3 pr-2 py-1.5 rounded-full flex items-center gap-1.5 cursor-pointer shrink-0 ml-auto truncate"
-            style={{
-              background: isDefaultBinder ? 'var(--secondary)' : 'color-mix(in srgb, var(--pokedex-blue) 12%, transparent)',
-              border: isDefaultBinder
-                ? '1px dashed var(--border)'
-                : '1px solid color-mix(in srgb, var(--pokedex-blue) 35%, transparent)',
-              color: isDefaultBinder ? 'var(--muted-foreground)' : 'var(--pokedex-blue)',
-              maxWidth: 180,
-              minHeight: 32,
-            }}
-          >
-            {binder?.icon && <BinderIcon name={binder.icon} size={13} className="shrink-0" />}
-            <span className="truncate">{binderName}</span>
-            {!isDefaultBinder && binder ? (
-              <button
-                onClick={(e) => { e.stopPropagation(); if (!movedRef.current) onRemoveFromBinder(); }}
-                className="rounded-full p-1 transition-colors shrink-0 text-white"
-                style={{ background: 'var(--action-delete)' }}
-                title="Aus Sammlung entfernen"
-                aria-label="Aus Sammlung entfernen"
-              >
-                <Minus size={12} strokeWidth={3} />
-              </button>
-            ) : (
-              <ChevronRight size={13} style={{ opacity: 0.7 }} />
+          {/* Sammlung-Pill — jetzt eine Dropdown-Auswahl statt reiner
+              Navigation: direktes Umsortieren spart den Umweg über den
+              separaten Sammlungsbereich. Größer für mobile Touch-Targets. */}
+          <div className="shrink-0 ml-auto" data-swipe-passthrough style={{ maxWidth: 180 }}>
+            <button
+              ref={pillBtnRef}
+              type="button"
+              onClick={() => {
+                if (movedRef.current) return;
+                if (!pickerOpen && pillBtnRef.current) {
+                  const rect = pillBtnRef.current.getBoundingClientRect();
+                  setPickerPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                }
+                setPickerOpen(o => !o);
+              }}
+              className="text-role-title pl-3 pr-2 py-1.5 rounded-full flex items-center gap-1.5 cursor-pointer w-full truncate"
+              style={{
+                background: isDefaultBinder ? 'var(--secondary)' : 'color-mix(in srgb, var(--pokedex-blue) 12%, transparent)',
+                border: isDefaultBinder
+                  ? '1px dashed var(--border)'
+                  : '1px solid color-mix(in srgb, var(--pokedex-blue) 35%, transparent)',
+                color: isDefaultBinder ? 'var(--muted-foreground)' : 'var(--pokedex-blue)',
+                minHeight: 32,
+              }}
+            >
+              {binder?.icon && <BinderIcon name={binder.icon} size={13} className="shrink-0" />}
+              <span className="truncate">{binderName}</span>
+              <ChevronDown size={13} style={{ opacity: 0.7 }} className="shrink-0 ml-auto" />
+            </button>
+
+            {/* Per Portal in `document.body` — die Zeile trägt `overflow-hidden`
+                (nötig für den Swipe-Clip), ein Panel darin wäre unsichtbar
+                abgeschnitten statt frei über dem restlichen Sheet zu schweben. */}
+            {pickerOpen && pickerPos && createPortal(
+              <>
+                {/* Backdrop — schließt den Picker bei Tap außerhalb */}
+                <div className="fixed inset-0 z-[200]" onClick={() => setPickerOpen(false)} />
+                <div
+                  className="glass-inner fixed rounded-xl overflow-y-auto py-1 z-[201]"
+                  style={{ top: pickerPos.top, right: pickerPos.right, minWidth: 180, maxHeight: 220, boxShadow: '0 8px 24px rgba(0,0,0,.25)' }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => { setPickerOpen(false); onMoveToBinder(null); }}
+                    className="w-full text-left px-3 py-2 text-role-body text-glass truncate"
+                    style={isDefaultBinder ? { fontWeight: 700 } : undefined}
+                  >
+                    Unsortiert
+                  </button>
+                  {assignableBinders.map(b => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => { setPickerOpen(false); onMoveToBinder(b.id); }}
+                      className="w-full text-left px-3 py-2 text-role-body text-glass truncate flex items-center gap-1.5"
+                      style={!isDefaultBinder && binder?.id === b.id ? { fontWeight: 700 } : undefined}
+                    >
+                      {b.icon && <BinderIcon name={b.icon} size={13} className="shrink-0" />}
+                      <span className="truncate">{b.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </>,
+              document.body,
             )}
           </div>
         </div>
@@ -441,7 +483,6 @@ function AccHeader({
 
 /* ── Component ───────────────────────────────────────────────── */
 export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMeta, onClose, onSaved }: Props) {
-  const router = useRouter();
   // Slide-Animation + Swipe-Down-Drag übernimmt jetzt `Sheet` (components/ui/modal.tsx)
   // selbst — hier nur noch das einfache offen/zu.
   const [sheetOpen,    setSheetOpen]    = useState(true);
@@ -645,10 +686,16 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     if (newItem) setWishlistItem({ listId: list.id, itemId: newItem.id });
   }
 
-  async function handleRemoveFromBinder(copy: CardDoc, binderId: string) {
-    await removeCardFromBinder(binderId, copy.id);
-    const defaultId = await ensureDefaultBinder();
-    await addCardToBinder(defaultId, copy.id);
+  // `targetBinderId` = null → "Unsortiert" (Default-Sammlung). Verallgemeinert
+  // das frühere reine "Entfernen" (das immer nach Unsortiert verschob) auf ein
+  // direktes Umsortieren in eine beliebige Sammlung — spart den Umweg über
+  // den separaten Sammlungsbereich, den ein Tap auf die Pill vorher gebraucht hätte.
+  async function handleMoveToBinder(copy: CardDoc, targetBinderId: string | null) {
+    const targetId = targetBinderId ?? await ensureDefaultBinder();
+    const currentBinderIds = bindersOf(copy).map(b => b.id);
+    if (currentBinderIds.includes(targetId)) return;
+    await Promise.all(currentBinderIds.map(id => removeCardFromBinder(id, copy.id)));
+    await addCardToBinder(targetId, copy.id);
     const fresh = await getBinders();
     setResolvedBinders(fresh);
     onSaved?.();
@@ -1024,7 +1071,12 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                       {/* Eigene Kopien */}
                       {copies.length > 0 && (
                         <div className="flex flex-col gap-1.5">
-                          {copies.map(copy => {
+                          {(() => {
+                            // Vorlagen-Binder sortieren automatisch (siehe sync.ts) — kein
+                            // sinnvolles manuelles Ziel. Default/Inbox sind bereits als
+                            // "Unsortiert" fest im Picker vertreten.
+                            const assignableBinders = resolvedBinders.filter(b => !b.template && !b.isDefault && !b.isInbox);
+                            return copies.map(copy => {
                             const copyBinders = bindersOf(copy);
                             const isDeleting = deletingId === copy.id;
                             const binder = copyBinders[0];
@@ -1039,18 +1091,19 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                 binder={binder}
                                 isDefaultBinder={isDefaultBinder}
                                 binderName={binderName}
+                                assignableBinders={assignableBinders}
                                 isDeleting={isDeleting}
                                 onMarkReviewed={async () => {
                                   await markReviewed(copy.id);
                                   window.dispatchEvent(new Event('review-count-changed'));
                                   onSaved?.();
                                 }}
-                                onNavigateToBinder={() => router.push(binder ? `/binders/${binder.id}` : '/binders')}
-                                onRemoveFromBinder={() => binder && handleRemoveFromBinder(copy, binder.id)}
+                                onMoveToBinder={(targetId) => handleMoveToBinder(copy, targetId)}
                                 onDelete={() => handleDelete(copy)}
                               />
                             );
-                          })}
+                          });
+                          })()}
                         </div>
                       )}
                     </div>
