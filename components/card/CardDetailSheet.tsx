@@ -273,14 +273,20 @@ export function OwnedCopyRow({
 
       {/* Vordergrund — Inhalt der Zeile, per Swipe verschiebbar. Bleibt beim
           Löschen voll deckend (kein Opacity-Fade) — nur die Verschiebung
-          nach links macht sie unsichtbar (Container hat `overflow-hidden`). */}
+          nach links macht sie unsichtbar (Container hat `overflow-hidden`).
+          `.glass` statt `.glass-inner` — "Glas auf Glas" (dieselbe Rezeptur
+          wie die umgebende "Karten & Preise"-Sektion, gestapelt), analog zum
+          "Details"-Abschnitt weiter oben, der seine Fakten-Zeilen ebenso in
+          verschachteltem `.glass` statt `.glass-inner` zeigt. */}
       <div
-        className="glass-inner flex items-center gap-2 rounded-xl px-2.5 py-2 relative"
+        className="glass flex items-center gap-2 rounded-xl px-2.5 py-2 relative"
         style={{
           minHeight: 48,
           transform: `translateX(${dragX}px)`,
           transition: dragging ? 'none' : settleTransition,
-          border: copy.needsReview ? '2px solid var(--pokedex-yellow)' : '2px solid transparent',
+          // Eigener Rahmen überschreibt `.glass`s Standardrahmen nur, wenn
+          // "Prüfen" aktiv ist — sonst soll der normale Glas-Rahmen durchscheinen.
+          ...(copy.needsReview ? { border: '2px solid var(--pokedex-yellow)' } : undefined),
         }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -335,7 +341,7 @@ export function OwnedCopyRow({
                 {/* Backdrop — schließt den Picker bei Tap außerhalb */}
                 <div className="fixed inset-0 z-[200]" onClick={() => setPickerOpen(false)} />
                 <div
-                  className="glass-inner fixed rounded-xl overflow-y-auto py-1 z-[201]"
+                  className="glass fixed rounded-xl overflow-y-auto py-1 z-[201]"
                   style={{ top: pickerPos.top, right: pickerPos.right, minWidth: 180, maxHeight: 220, boxShadow: '0 8px 24px rgba(0,0,0,.25)' }}
                 >
                   <button
