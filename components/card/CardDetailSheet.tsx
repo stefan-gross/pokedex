@@ -239,7 +239,12 @@ export function OwnedCopyRow({
     : `transform 320ms ${SWIPE_SPRING_EASE}`;
 
   return (
-    <div className="relative rounded-xl overflow-hidden" style={{ minHeight: 48 }}>
+    // `.glass` auch hier am äußeren Wrapper — dessen eigener Hintergrund ist
+    // irrelevant (immer vom Löschen-Button darüber verdeckt), aber NUR so
+    // rendert der Schatten sichtbar: der innere `.glass`-Zeile sitzt in einem
+    // `overflow-hidden`-Container (nötig für den Swipe-Clip), der ihren
+    // eigenen Schatten sonst abschneiden würde.
+    <div className="glass relative rounded-xl overflow-hidden" style={{ minHeight: 48 }}>
       {/* Löschen-Fläche — liegt hinter der Zeile, wird durch den Swipe freigelegt.
           Opacity rampt binnen weniger Pixel auf voll deckendes Rot hoch (kein
           Auf-/Abblenden über die ganze Zugstrecke, sonst wirkt es blass) — nur
