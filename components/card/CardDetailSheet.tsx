@@ -99,23 +99,59 @@ const CONDITION_COLOR: Record<string, string> = {
 // Zwischenzustand ("Fläche bleibt offen stehen"). Beim Loslassen entweder
 // (a) weit genug gezogen → Löschung wird sofort ausgeführt, oder
 // (b) nicht weit genug → schnappt zurück auf 0. Nichts dazwischen.
-const SWIPE_DELETE_PX = 130;
-// Visuelle Obergrenze für den Gummiband-Widerstand jenseits von DELETE —
-// nie hart gedeckelt (kein abruptes "gegen die Wand laufen"), nähert sich
-// aber asymptotisch diesem Wert an, je weiter/schneller gezogen wird.
-const SWIPE_MAX_PX = SWIPE_DELETE_PX + 60;
+// Kleiner Schwellwert — die Fläche zeigt nur ein einzelnes Icon (kein
+// großer Text-Button mehr), braucht also keine große Zugstrecke mehr, um
+// zu "aktivieren".
+const SWIPE_DELETE_PX = 80;
+// Ab hier (deutlich vor der Lösch-Schwelle, nicht erst kurz davor) setzt der
+// Gummiband-Widerstand ein — bis dahin folgt die Zeile 1:1 dem Finger, danach
+// bewegt sie sich zunehmend langsamer, bis der harte Anschlag exakt bei
+// `SWIPE_DELETE_PX` erreicht ist (siehe `rubberBand` unten). Es soll sich
+// nicht weiter ziehen lassen, als bis der Button aktiviert ist — nur das
+// "Wie" (linear vs. gedämpft) ändert sich.
+const SWIPE_RUBBER_START_PX = SWIPE_DELETE_PX * 0.4;
+// Zusätzliche Zieh-Distanz (über `SWIPE_RUBBER_START_PX` hinaus), die nötig
+// ist, um den Anschlag zu erreichen — je größer, desto zäher/deutlicher der
+// Widerstand. Ein fester Wert (statt einer reinen Rate) garantiert, dass der
+// Anschlag bei einer konkreten, endlichen Zug-Distanz sicher erreicht wird.
+const SWIPE_RUBBER_TRAVEL_PX = 130;
+// Der äußere Wrapper wird um diesen Betrag nach links verbreitert (per
+// negativem `marginLeft`, rechte Kante bleibt unverändert) — größer als
+// `SWIPE_DELETE_PX` (der Zug wird dort hart gedeckelt, siehe unten), damit
+// die Zeile beim Ziehen nie an einem harten Rand abgeschnitten wird. Der
+// Wrapper trägt nur `overflow-hidden` (Clip der Überbreite) — die sichtbare
+// Rundung kommt von der Zeile selbst (siehe `rounded-xl` unten), nicht vom
+// Wrapper-Rand, da dessen eigene Ecken weit links außerhalb des sichtbaren
+// Bereichs liegen.
+const OVERSCAN_PX = 160;
 // Leichtes Überschwingen beim Zurückschnappen — federartig statt linear,
 // dadurch fühlt sich das Zurückspringen weniger robotisch an.
 const SWIPE_SPRING_EASE = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
+// Die Löschen-Fläche reicht um diesen Betrag über ihre eigentliche Breite
+// hinaus nach LINKS unter die Zeile — größer als deren Eckenradius (14px).
+// Ohne das bleibt exakt in der gerundeten Ecke der Zeile ein winziger
+// Bereich frei, den weder die (dort weggeschnittene) Zeile noch die
+// bündig anschließende Löschen-Fläche abdecken — dort schimmert der
+// Hintergrund dahinter durch. Da die Zeile während des Ziehens blickdicht
+// ist (`.glass-swipe-solid`, kein Blur), verdeckt sie den überlappenden
+// Teil der Löschen-Fläche in der geraden Mitte vollständig — nur in der
+// Ecke, wo die Zeile selbst nichts mehr zeichnet, wird die Überlappung
+// sichtbar und schließt die Lücke.
+const DELETE_AREA_CORNER_OVERLAP_PX = 18;
 
-/** Jenseits von DELETE wächst der Widerstand — jeder zusätzliche Zieh-Pixel
- *  bewegt die Zeile immer weniger weit (Gummiband), statt bei einem festen
- *  Maximalwert hart zu stoppen. */
+/** Bis `SWIPE_RUBBER_START_PX` 1:1, danach eine Ease-Out-Kurve (anfangs noch
+ *  spürbar nachgebend, wird zum Anschlag hin zunehmend zäher) — landet exakt
+ *  bei `SWIPE_DELETE_PX`, sobald `SWIPE_RUBBER_TRAVEL_PX` zusätzliche
+ *  Zug-Distanz erreicht ist. Nie darüber hinaus (harter Anschlag genau an der
+ *  Aktivierungsgrenze des Buttons, kein Überschwingen). */
 function rubberBand(raw: number): number {
-  if (raw >= -SWIPE_DELETE_PX) return raw;
-  const over = -raw - SWIPE_DELETE_PX;
-  const damped = (SWIPE_MAX_PX - SWIPE_DELETE_PX) * (1 - 1 / (1 + over / 70));
-  return -(SWIPE_DELETE_PX + damped);
+  const dist = -raw;
+  if (dist <= SWIPE_RUBBER_START_PX) return raw;
+  const remaining = SWIPE_DELETE_PX - SWIPE_RUBBER_START_PX;
+  const t = Math.min(1, (dist - SWIPE_RUBBER_START_PX) / SWIPE_RUBBER_TRAVEL_PX);
+  const eased = 1 - (1 - t) * (1 - t);
+  const damped = SWIPE_RUBBER_START_PX + remaining * eased;
+  return -damped;
 }
 
 /** Eine Zeile "eigene Kopie" im Kartendetail: Sprache/Zustand/Sammlung als
@@ -227,10 +263,14 @@ export function OwnedCopyRow({
     applyDragX(0);
   }
 
-  // Kontinuierlicher Zug-Fortschritt (0–1) — treibt Icon/Label-Skalierung im
-  // Löschen-Button, damit der Button mit dem Finger mitzuwachsen scheint statt
-  // bei einer festen Breite ein-/auszublenden (iOS-Swipe-Actions-Gefühl).
-  const revealProgress = Math.min(1, Math.abs(dragX) / SWIPE_DELETE_PX);
+  // Löst ein Loslassen JETZT die Löschung aus? Steuert, ob der Button
+  // überhaupt antippbar ist (exakt ab der Schwelle, ab der ein Loslassen
+  // wirklich löschen würde).
+  const canConfirmDelete = dragX <= -SWIPE_DELETE_PX;
+  // 0 (Zug-Beginn) bis 1 (Schwelle erreicht) — treibt die kontinuierliche
+  // Farbblendung des Buttons von gedämpft zu voll rot (siehe unten), statt
+  // erst exakt an der Schwelle hart umzuschalten.
+  const swipeProgress = Math.min(1, -dragX / SWIPE_DELETE_PX);
   // Beim Zurückschnappen (nicht während des aktiven Ziehens) federnd statt
   // linear — beim Wegfliegen (Löschen) dagegen beschleunigend statt federnd,
   // ein Bounce beim Verschwinden sähe unnatürlich aus.
@@ -239,54 +279,98 @@ export function OwnedCopyRow({
     : `transform 320ms ${SWIPE_SPRING_EASE}`;
 
   return (
-    // `.glass` auch hier am äußeren Wrapper — dessen eigener Hintergrund ist
-    // irrelevant (immer vom Löschen-Button darüber verdeckt), aber NUR so
-    // rendert der Schatten sichtbar: der innere `.glass`-Zeile sitzt in einem
-    // `overflow-hidden`-Container (nötig für den Swipe-Clip), der ihren
-    // eigenen Schatten sonst abschneiden würde.
-    <div className="glass relative rounded-xl overflow-hidden" style={{ minHeight: 48 }}>
-      {/* Löschen-Fläche — liegt hinter der Zeile, wird durch den Swipe freigelegt.
-          Opacity rampt binnen weniger Pixel auf voll deckendes Rot hoch (kein
-          Auf-/Abblenden über die ganze Zugstrecke, sonst wirkt es blass) — nur
-          exakt im Ruhezustand (dragX===0) komplett ausgeblendet, da `glass-inner`
-          sonst transluzent durchscheint. Icon+Label wachsen zusätzlich mit der
-          Zugstrecke mit (`revealProgress`), damit der Button mit dem Finger
-          mitzuwachsen scheint statt einfach aufzupoppen. */}
-      <button
-        onClick={commitDelete}
-        disabled={isDeleting}
-        className="absolute inset-0 flex items-center justify-end gap-1.5 pr-4 text-white text-role-title"
+    // Nach links verbreitert (negativer `marginLeft`, siehe `OVERSCAN_PX`) —
+    // die rechte Kante bleibt exakt an ihrer ursprünglichen Position, die
+    // Zeile bekommt per `marginLeft`/`width`-Ausgleich wieder ihre normale
+    // Breite/Position zurück — dadurch kann sie beim Ziehen frei nach links
+    // wandern, ohne an einem harten Rand abgeschnitten zu werden. KEIN
+    // `overflow-hidden` hier (auch keine eigene `rounded-xl`-Klasse) — das
+    // hätte den rechten/unteren Schatten der Zeile abgeschnitten, da der
+    // Wrapper-Rand dort exakt an der Zeilen-Box klebt. Unnötig: `html`/`body`
+    // haben bereits global `overflow-x: clip` (siehe globals.css) als
+    // Sicherheitsnetz gegen horizontales Scrollen durch den negativen Margin
+    // — ein eigenes Clipping auf diesem Wrapper bringt nichts außer dem
+    // abgeschnittenen Schatten.
+    <div className="relative" style={{ minHeight: 48, marginLeft: -OVERSCAN_PX, width: `calc(100% + ${OVERSCAN_PX}px)` }}>
+      {/* Löschen-Fläche — flächiges Rot, rechtsbündig, ohne Text-Label. Breite
+          wächst mit der Zieh-Distanz (`Math.abs(dragX)`) statt die ganze
+          Zeilenbreite zu belegen — sie liegt dadurch NIE unter dem noch
+          sichtbaren Teil der transluzenten `.glass`-Zeile (die sonst durch
+          die Transparenz hindurchscheinen würde). Bleibt "deaktiviert"
+          (gedämpftes Rot, nicht antippbar), solange ein Loslassen JETZT noch
+          nicht löschen würde — springt erst ab der Lösch-Schwelle auf voll
+          rot/deckend/antippbar. */}
+      <div
+        className="absolute inset-y-0 right-0 overflow-hidden rounded-r-xl"
         style={{
-          background: 'var(--action-delete)',
-          opacity: Math.min(1, Math.abs(dragX) / 8),
-          transition: dragging ? 'none' : 'opacity 150ms ease-out',
-          pointerEvents: dragX === 0 ? 'none' : 'auto',
+          width: dragX === 0 ? 0 : Math.abs(dragX) + DELETE_AREA_CORNER_OVERLAP_PX,
+          transition: dragging ? 'none' : settleTransition,
         }}
-        aria-label="Karte löschen"
       >
-        <span
-          className="flex items-center gap-1.5 shrink-0"
+        {/* `inset-0` — der Button deckt IMMER die gesamte freigelegte Fläche
+            ab (kein Zusatzweg ins Rote ohne Button, sonst ließe sich über den
+            Button hinausziehen). Das Icon selbst wird NICHT mehr per Flexbox
+            innerhalb dieser wachsenden Box zentriert (das rechnete bei sehr
+            kleiner Zieh-Distanz falsch, weil Icon+Padding nicht hineinpassten
+            — sichtbar als leichtes Nachlinks-Rutschen zu Beginn des Swipes),
+            sondern eigenständig absolut auf den festen rechten Rand
+            positioniert (siehe `span` unten) — dadurch bleibt seine Position
+            über die ganze Ziehstrecke konstant, unabhängig von der Breite
+            dieser Box. */}
+        {/* Deaktiviert/aktiviert wird über eine ANDERE, aber weiterhin
+            voll deckende Rotvariante ausgedrückt (`--action-delete-muted`),
+            NICHT über `opacity` — `opacity` hätte mit dem durchgeschimmert,
+            was hinter dem Button liegt (unterschiedlich je nach Kontext),
+            wodurch der Button verwaschen/rosa statt erkennbar rot wirkte.
+            Die Blendung von gedämpft zu voll läuft kontinuierlich mit dem
+            Zug mit (`color-mix`, `swipeProgress` 0→1), statt erst exakt an
+            der Schwelle hart umzuschalten. */}
+        <button
+          onClick={commitDelete}
+          disabled={isDeleting || !canConfirmDelete}
+          className="absolute inset-0 text-white rounded-r-xl"
           style={{
-            transform: `scale(${0.7 + 0.3 * revealProgress})`,
-            transformOrigin: 'right center',
-            transition: dragging ? 'none' : `transform 320ms ${SWIPE_SPRING_EASE}`,
+            background: `color-mix(in srgb, var(--action-delete-muted), var(--action-delete) ${Math.round(swipeProgress * 100)}%)`,
+            transition: dragging ? 'none' : 'background-color 150ms ease-out',
+            pointerEvents: dragX === 0 ? 'none' : 'auto',
           }}
+          aria-label="Karte löschen"
         >
-          <Minus size={16} strokeWidth={2.5} /> Löschen
-        </span>
-      </button>
+          <span className="absolute top-1/2 right-4 -translate-y-1/2">
+            <Minus size={20} strokeWidth={2.5} />
+          </span>
+        </button>
+      </div>
 
       {/* Vordergrund — Inhalt der Zeile, per Swipe verschiebbar. Bleibt beim
           Löschen voll deckend (kein Opacity-Fade) — nur die Verschiebung
-          nach links macht sie unsichtbar (Container hat `overflow-hidden`).
-          `.glass` statt `.glass-inner` — "Glas auf Glas" (dieselbe Rezeptur
-          wie die umgebende "Karten & Preise"-Sektion, gestapelt), analog zum
-          "Details"-Abschnitt weiter oben, der seine Fakten-Zeilen ebenso in
-          verschachteltem `.glass` statt `.glass-inner` zeigt. */}
+          nach links macht sie unsichtbar. `.glass` statt `.glass-inner` —
+          "Glas auf Glas" (dieselbe Rezeptur wie die umgebende "Karten &
+          Preise"-Sektion, gestapelt), analog zum "Details"-Abschnitt weiter
+          oben, der seine Fakten-Zeilen ebenso in verschachteltem `.glass`
+          statt `.glass-inner` zeigt. `rounded-xl` IMMER auf der Zeile selbst
+          (nicht auf dem Wrapper, siehe oben), unverändert auch während des
+          Ziehens. Zusätzlich `overflow-hidden` auf der Zeile selbst (NICHT
+          auf dem Wrapper — der hätte sonst wieder den Schatten
+          abgeschnitten, siehe Kommentar oben): ohne das ragte der Inhalt
+          (z.B. die Sammlung-Pille) über die gerundete rechte Ecke hinaus in
+          die Löschen-Fläche hinein (sichtbar als eckig wirkende Ecke +
+          durchscheinende Pille über Rot) — `overflow-hidden` auf einem
+          Element clippt nur seine eigenen Kinder, nie seinen eigenen
+          `box-shadow`, daher bleibt der Schatten-Fix unberührt. Während des
+          Ziehens zusätzlich `.glass-swipe-solid`: die Blur von `.glass`
+          tastet auch leicht über den Elementrand hinaus ab und würde sonst
+          die danebenliegende rote Löschen-Fläche durch die Zeile
+          durchschimmern lassen — die blickdichte Variante hat dieselbe
+          Helligkeit, nur ohne Transparenz/Blur. Zusätzlich `.glass-swipe-
+          shadow`: ein zusätzlicher Schatten nach rechts verkauft das
+          "Zeile liegt auf der roten Löschen-Fläche"-Layering deutlicher. */}
       <div
-        className="glass flex items-center gap-2 rounded-xl px-2.5 py-2 relative"
+        className={`glass rounded-xl overflow-hidden flex items-center gap-2 px-2.5 py-2 relative ${dragX !== 0 ? 'glass-swipe-solid glass-swipe-shadow' : ''}`}
         style={{
           minHeight: 48,
+          marginLeft: OVERSCAN_PX,
+          width: `calc(100% - ${OVERSCAN_PX}px)`,
           transform: `translateX(${dragX}px)`,
           transition: dragging ? 'none' : settleTransition,
           // Eigener Rahmen überschreibt `.glass`s Standardrahmen nur, wenn

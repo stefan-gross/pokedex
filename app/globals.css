@@ -100,6 +100,13 @@
   --action-add-hover: #276749;
   --action-delete: #c53030;
   --action-delete-hover: #9b2c2c;
+  /* Für die Löschen-Fläche in `OwnedCopyRow` (Swipe), solange die Lösch-
+     Schwelle noch nicht erreicht ist — bewusst eine eigene HELLERE, aber
+     weiterhin volldeckende Rotvariante statt `opacity` auf `--action-delete`:
+     `opacity` blendet mit dem, was dahinter liegt (bei Kartendetail/Panel-
+     Hintergrund je nach Kontext unterschiedlich), wodurch der Button je nach
+     Untergrund verwaschen/rosa statt erkennbar rot wirkte. */
+  --action-delete-muted: #e2a3a3;
   /* Primary-Akzent für alle "normalen" Aktions-Buttons (Speichern, Bestätigen,
      Weiter, …) — bewusst NICHT das App-Rot (das ist für Löschen reserviert).
      Scan-Lila stammt vom bestehenden Scan-FAB (BottomNav), hier zentralisiert. */
@@ -344,6 +351,41 @@
     .dark .glass {
       background: rgba(30,30,38,0.85);
     }
+  }
+
+  /* Blickdichte Variante von `.glass` — für `OwnedCopyRow` während des
+     Swipens (`CardDetailSheet.tsx`): `backdrop-filter`-Blur tastet auch
+     leicht über den Elementrand hinaus ab, wodurch die daneben aufklappende
+     rote Löschen-Fläche durch die sonst transluzente Zeile durchschimmerte.
+     Werte 1:1 aus dem obigen `@supports not`-Fallback übernommen — optisch
+     dieselbe Helligkeit wie `.glass`, nur ohne Transparenz/Blur. */
+  .glass-swipe-solid {
+    background: rgb(255,255,255);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .dark .glass-swipe-solid {
+    background: rgb(30,30,38);
+  }
+
+  /* Zusätzlich zu `.glass-swipe-solid` während des Ziehens in `OwnedCopyRow`
+     — die Zeile liegt sichtbar VOR der Löschen-Fläche, ein zusätzlicher
+     Schatten nach rechts verkauft dieses "Karte liegt auf rotem Button"-
+     Layering deutlicher als der normale, allseitige `.glass`-Schatten allein.
+     Wiederholt dessen zwei Schichten (da `box-shadow` nicht additiv über
+     Klassen hinweg ist) und ergänzt eine dritte, rein rechtsgerichtete
+     Schicht. */
+  .glass-swipe-shadow {
+    box-shadow:
+      inset 0 0 6px rgba(255,255,255,0.3),
+      0 8px 26px rgba(30,40,80,0.1),
+      6px 0 14px rgba(0,0,0,0.28);
+  }
+  .dark .glass-swipe-shadow {
+    box-shadow:
+      inset 0 0 6px rgba(255,255,255,0.12),
+      0 8px 26px rgba(0,0,0,0.32),
+      6px 0 14px rgba(0,0,0,0.45);
   }
 
   /* Gemeinsames Hover-/Press-/Schatten-Verhalten — adaptiert aus einem vom
