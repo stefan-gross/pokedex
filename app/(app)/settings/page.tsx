@@ -65,11 +65,23 @@ export default function SettingsPage() {
       }
       step('📥 (1/9) Catalog wird synchronisiert…');
       const poller = setInterval(loadSyncStatus, 2000);
+      // `auto` (seitenweiser Cursor) nur solange der einmalige Bootstrap
+      // noch nicht durchgelaufen ist — danach `update` (holt anhand der
+      // aktuellen Gesamtzahl gezielt genau die fehlenden neuen Karten, statt
+      // sich auf einen möglicherweise inzwischen verschobenen Seiten-Cursor
+      // zu verlassen). Ohne diese Unterscheidung erkannte der Katalog-Sync
+      // nach dem ersten Vollsync nie mehr neu erschienene Sets.
+      let bootstrapDoneStatus: { bootstrapped?: boolean } = {};
+      try {
+        const statusRes = await fetch('/api/admin/trigger-sync');
+        if (statusRes.ok) bootstrapDoneStatus = await statusRes.json();
+      } catch { /* ignore — fällt unten auf `auto` zurück, sicherer Default */ }
+      const catalogMode = bootstrapDoneStatus.bootstrapped ? 'update' : 'auto';
       let retries = 0;
       while (true) {
         let res: Response, text: string;
         try {
-          res  = await fetch('/api/admin/trigger-sync?mode=auto', { method: 'POST' });
+          res  = await fetch(`/api/admin/trigger-sync?mode=${catalogMode}`, { method: 'POST' });
           text = await res.text();
         } catch {
           if (++retries > 5) break;
@@ -79,8 +91,9 @@ export default function SettingsPage() {
         retries = 0;
         let d: { done?: boolean; status?: string } = {};
         try { d = JSON.parse(text); } catch { /* ignore */ }
-        if (d.done || d.status === 'complete' || d.status === 'up-to-date') break;
+        if (d.done || d.status === 'complete' || d.status === 'up-to-date' || d.status === 'updated') break;
         if (d.status === 'error') break;
+        if (catalogMode === 'update') break; // `update` erledigt alles in einem Aufruf
         await new Promise(r => setTimeout(r, 300));
       }
       clearInterval(poller);

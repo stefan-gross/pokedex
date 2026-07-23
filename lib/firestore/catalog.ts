@@ -46,6 +46,13 @@ export interface SyncMeta {
   syncedTotal: number;   // wie viele Karten wir in Firestore haben
   currentTotal: number;  // wie viele Karten pokemontcg.io hat
   lastSynced: string;
+  /** Ist der allererste (langsame, seitenweise) Vollsync jemals durchgelaufen?
+   *  Steuert, ob `runSync` bei künftigen Aufrufen `auto` (Seiten-Cursor,
+   *  für den einmaligen Bootstrap gedacht) oder `update` (holt gezielt genau
+   *  die fehlenden neuen Karten anhand der aktuellen Gesamtzahl, robust auch
+   *  wenn neue Karten die bestehende Seitenaufteilung verschieben) nutzen
+   *  soll — siehe `lib/sync-catalog.ts`. */
+  bootstrapped?: boolean;
 }
 
 export type FilterCounts = {

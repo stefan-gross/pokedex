@@ -95,11 +95,13 @@ export async function runSync(mode: 'auto' | 'update' | 'reset' = 'auto'): Promi
   const syncedTotal = meta?.syncedTotal ?? 0;
   const lastPage = meta?.lastPage ?? 0;
 
-  // currentTotal nur beim update-Modus frisch von der API holen (braucht extra Aufruf).
-  // Beim initialen Sync nehmen wir den gecachten Wert — spart ~1-2s pro Request.
-  const currentTotal = mode === 'update' || !meta?.currentTotal
-    ? await fetchCurrentTotal()
-    : meta.currentTotal;
+  // IMMER frisch von der API holen (nicht mehr nur bei `update`) — sonst
+  // merkt `auto` nie, dass pokemontcg.io inzwischen neue Karten/Sets hat,
+  // weil es sich auf den zuletzt gespeicherten `meta.currentTotal` verlässt.
+  // Das war der eigentliche Bug: nach einem einmal abgeschlossenen Bootstrap
+  // (`isFullySynced` gegen den EIGENEN veralteten Stand) hielt sich `auto`
+  // für immer für "aktuell", auch wenn längst ein neues Set erschienen war.
+  const currentTotal = await fetchCurrentTotal();
 
   const totalPages = Math.ceil(currentTotal / PAGE_SIZE);
   const isFullySynced = syncedTotal >= currentTotal;
@@ -116,9 +118,15 @@ export async function runSync(mode: 'auto' | 'update' | 'reset' = 'auto'): Promi
     };
   }
 
-  // ── UPDATE: Nur neue Karten ──────────────────────────────────────────────
+  // ── UPDATE: Nur neue Karten — gezielter Nachlade-Modus für den
+  // Normalfall (nach abgeschlossenem Bootstrap). Holt anhand der FRISCHEN
+  // Gesamtzahl exakt die fehlenden hinteren Seiten neu, unabhängig davon, was
+  // `meta.lastPage` zuletzt war — robust auch wenn neue Karten/Sets die
+  // Seitenaufteilung gegenüber dem letzten Sync verschoben haben (anders als
+  // `auto`s reiner Seiten-Cursor, siehe unten). ─────────────────────────────
   if (mode === 'update') {
     if (isFullySynced) {
+      await setMeta({ bootstrapped: true });
       return { status: 'up-to-date', message: `Alle ${syncedTotal.toLocaleString()} Karten sind aktuell`, syncedTotal, currentTotal };
     }
     const newCards = currentTotal - syncedTotal;
@@ -131,12 +139,18 @@ export async function runSync(mode: 'auto' | 'update' | 'reset' = 'auto'): Promi
       await upsertBatch(cards);
       written += cards.length;
     }
-    await setMeta({ lastPage: totalPages, totalPages, syncedTotal: currentTotal, currentTotal, lastSynced: new Date().toISOString() });
+    await setMeta({ lastPage: totalPages, totalPages, syncedTotal: currentTotal, currentTotal, bootstrapped: true, lastSynced: new Date().toISOString() });
     return { status: 'updated', message: `✅ ${written} neue Karten hinzugefügt`, written, syncedTotal: currentTotal, currentTotal };
   }
 
-  // ── AUTO: Initialer Sync ─────────────────────────────────────────────────
+  // ── AUTO: Initialer Bootstrap-Sync — holt seitenweise (per `lastPage`-
+  // Cursor) den KOMPLETTEN Katalog beim allerersten Mal, in kleinen Häppchen
+  // über mehrere Aufrufe verteilt (Vercel-Timeout). Nur für diesen einmaligen
+  // Anfangszustand gedacht — für laufenden Nachschub neuer Karten danach ist
+  // `update` (siehe oben) der richtige Modus, siehe Aufrufer in
+  // `app/api/cron/sync-catalog/route.ts` und der Settings-Seite. ───────────
   if (isFullySynced) {
+    await setMeta({ bootstrapped: true });
     return { status: 'up-to-date', message: `Alle ${syncedTotal.toLocaleString()} Karten sind aktuell`, syncedTotal, currentTotal };
   }
 
@@ -154,6 +168,7 @@ export async function runSync(mode: 'auto' | 'update' | 'reset' = 'auto'): Promi
 
   const newSyncedTotal = syncedTotal + written;
   const done = newSyncedTotal >= currentTotal;
+  if (done) await setMeta({ bootstrapped: true });
   return {
     status: done ? 'complete' : 'in-progress',
     message: done
@@ -1053,7 +1068,7 @@ export async function getSyncStatus() {
   const currentTotal = await fetchCurrentTotal();
   const syncedTotal = meta?.syncedTotal ?? 0;
   return {
-    ...(meta ?? { lastPage: 0, totalPages: 0, lastSynced: null }),
+    ...(meta ?? { lastPage: 0, totalPages: 0, lastSynced: null, bootstrapped: false }),
     syncedTotal,
     currentTotal,
     newCards: Math.max(0, currentTotal - syncedTotal),
