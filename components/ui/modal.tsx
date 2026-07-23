@@ -5,13 +5,29 @@ import { X } from 'lucide-react';
 
 /** Sperrt das Scrollen von `<body>` während ein Modal offen ist — sonst
  *  scrollt der Hintergrund unter dem Overlay mit (iOS-Safari-typisches
- *  Problem bei `position: fixed`-Overlays). */
+ *  Problem bei `position: fixed`-Overlays). Reines `overflow: hidden`
+ *  reicht dafür NICHT — iOS Safari lässt den Hintergrund trotzdem per Touch
+ *  scrollen (`overflow: hidden` blockiert dort nur Maus-/Trackpad-Scroll).
+ *  Der zuverlässige Trick: `<body>` selbst auf `position: fixed` setzen
+ *  (per gemerktem `scrollY` als negativer `top`-Offset), das macht den
+ *  Hintergrund für Touch-Gesten komplett unbeweglich; beim Schließen wird
+ *  die Scroll-Position exakt wiederhergestellt. */
 function useBodyScrollLock(active: boolean) {
   useEffect(() => {
     if (!active) return;
-    const prev = document.body.style.overflow;
+    const scrollY = window.scrollY;
+    const { position, top, width, overflow } = document.body.style;
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = '100%';
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
+    return () => {
+      document.body.style.position = position;
+      document.body.style.top = top;
+      document.body.style.width = width;
+      document.body.style.overflow = overflow;
+      window.scrollTo(0, scrollY);
+    };
   }, [active]);
 }
 
