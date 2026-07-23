@@ -296,7 +296,15 @@ export async function enrichEvolutionFamilies(batchSize = 500): Promise<EnrichRe
 // Holt deutsche Kartennamen set-weise von TCGdex und schreibt nameDe + nameDeLower.
 
 interface TcgdexCardVariants { normal?: boolean; reverse?: boolean; holo?: boolean; firstEdition?: boolean; }
-interface TcgdexCard { id: string; localId: string; name: string; variants?: TcgdexCardVariants; }
+// `image` ist die TCGdex-eigene Basis-URL für das Kartenbild (z.B.
+// "https://assets.tcgdex.net/de/sm/sm1/1", OHNE Endung/Auflösung — `/low.webp`
+// bzw. `/high.webp` wird angehängt). Bewusst NICHT selbst aus setId+Nummer
+// zusammengebaut (siehe enrichDeImages) — TCGdex paddet die lokale Kartennummer
+// je nach Set-Ära unterschiedlich (z.B. "042" bei neueren, "1" ungepaddet bei
+// älteren Sets wie Sun & Moon/Base) — die von TCGdex selbst gelieferte URL ist
+// dafür immer korrekt, ein eigenes Rateschema (z.B. `.padStart(3,'0')`) trifft
+// nur zufällig für manche Sets zu und lieferte für die meisten 404s.
+interface TcgdexCard { id: string; localId: string; name: string; image?: string; variants?: TcgdexCardVariants; }
 interface TcgdexSet  { cards?: TcgdexCard[]; }
 
 const tcgdexSetCache = new Map<string, Map<string, TcgdexCard>>(); // tcgdexSetId → localId → card
@@ -389,7 +397,16 @@ export async function enrichGermanNames(batchSize = 500): Promise<EnrichDeNamesR
   }
 
   const hasMore = snap.docs.length > batchSize;
-  const toEnrich = snap.docs.slice(0, batchSize).filter(d => !d.data().nameDe);
+  // Defensiv: einzelne (fehlerhafte/unvollständige) Dokumente ohne setId/number
+  // überspringen, statt toTcgdexId()/split() an undefined abstürzen zu lassen
+  // und damit die ganze Batch zu verlieren (gleiches Muster wie
+  // enrichArtistFromTcgdex/enrichVariants) — genau das ist einmal mit einem
+  // leeren Karteileichen-Dokument (ID "x", `{}`) passiert und hat dadurch
+  // neu synchronisierte echte Karten in derselben Batch mitgerissen.
+  const toEnrich = snap.docs.slice(0, batchSize).filter(d => {
+    const data = d.data();
+    return !data.nameDe && data.setId && data.number;
+  });
 
   // Distinct setIds dieser Batch
   const setIds = [...new Set(toEnrich.map(d => (d.data() as CatalogCard).setId))];
@@ -818,8 +835,16 @@ export async function backfillArtistTokens(): Promise<BackfillArtistTokensResult
 }
 
 // ── DE-Bilder-Anreicherung ─────────────────────────────────────────────────
-// Berechnet DE-Karten-Bild-URLs aus tcg_sets.logoUrl (kein externer API-Call)
-// und schreibt imgSmallDe + imgLargeDe in tcg_catalog.
+// Nutzt denselben TCGdex-Set-Cache (`fetchDeCardsForSet`) wie
+// enrichGermanNames/enrichVariants und übernimmt die von TCGdex selbst
+// gelieferte `image`-Basis-URL pro Karte — NICHT mehr aus `tcg_sets.logoUrl`
+// + geratener Nummern-Polsterung zusammengebaut (siehe Kommentar bei
+// `TcgdexCard.image` oben): TCGdex paddet die lokale Kartennummer je nach
+// Set-Ära unterschiedlich (z.B. "042" bei neueren, "1" ungepaddet bei
+// älteren Sets wie Sun & Moon/Base) — ein pauschales `.padStart(3,'0')` traf
+// nur zufällig für manche Sets zu und markierte den großen Rest (u.a. fast
+// die gesamte Sun&Moon/XY/Black&White-Ära) fälschlich als "kein DE-Bild
+// vorhanden", obwohl TCGdex sie durchaus hat.
 
 export interface EnrichDeImagesResult {
   status: 'complete' | 'in-progress' | 'up-to-date';
@@ -830,29 +855,6 @@ export interface EnrichDeImagesResult {
 
 export async function enrichDeImages(batchSize = 500, reset = false): Promise<EnrichDeImagesResult> {
   const db = getAdminDb();
-
-  // Alle Set-Daten aus tcg_sets lesen — Basis-URL für DE-Karten-Bilder bestimmen
-  const setsSnap = await db.collection('tcg_sets').get();
-  const setLogoMap = new Map<string, string>(); // setId → TCGdex-Basis-URL (ohne /logo.png)
-  setsSnap.docs.forEach(d => {
-    const data = d.data();
-    if (data.logoUrl && String(data.logoUrl).includes('assets.tcgdex.net')) {
-      // Direkt aus gespeicherter TCGdex-Logo-URL ableiten (bewährt)
-      setLogoMap.set(d.id, data.logoUrl as string);
-    } else if (data.tcgdexId) {
-      // Fallback: Basis-URL aus tcgdexId konstruieren
-      // tcgdexId z.B. "sv1", "xy1", "bw1", "sv4pt5" → series = "sv", "xy", "bw", "sv"
-      const tcgdexId = data.tcgdexId as string;
-      const series = tcgdexId.match(/^[a-z]+/)?.[0];
-      if (series) {
-        setLogoMap.set(d.id, `https://assets.tcgdex.net/de/${series}/${tcgdexId}/logo.png`);
-      }
-    }
-  });
-
-  if (setLogoMap.size === 0) {
-    return { status: 'up-to-date', message: 'Keine TCGdex-Set-Daten gefunden — erst "Sets sync" ausführen', enriched: 0, remaining: 0 };
-  }
 
   // Cursor-basierte Pagination (reset = neu von vorne anfangen)
   const cursorRef = db.doc('tcg_catalog_meta/de_images_cursor');
@@ -880,42 +882,37 @@ export async function enrichDeImages(batchSize = 500, reset = false): Promise<En
   // imgSmallDe === undefined → noch nicht geprüft
   // imgSmallDe === ''       → geprüft, kein DE-Bild vorhanden (überspringen)
   // imgSmallDe === URL      → DE-Bild vorhanden
-  const toEnrich = snap.docs.slice(0, batchSize).filter(d => d.data().imgSmallDe === undefined);
+  // Defensiv: Dokumente ohne setId/number überspringen (siehe enrichGermanNames).
+  const toEnrich = snap.docs.slice(0, batchSize).filter(d => {
+    const data = d.data();
+    return data.imgSmallDe === undefined && data.setId && data.number;
+  });
 
-  // Pro Set einen HEAD-Request — DE-Bilder existieren entweder für alle oder keine Karten im Set
+  // Distinct setIds dieser Batch — TCGdex-Kartenliste set-weise holen (max 8 parallel,
+  // teilt sich den Cache mit enrichGermanNames/enrichVariants)
   const setIds = [...new Set(toEnrich.map(d => (d.data() as CatalogCard).setId))];
-  const setHasDeImages = new Map<string, boolean>();
-  await Promise.all(setIds.map(async setId => {
-    const logoUrl = setLogoMap.get(setId);
-    if (!logoUrl) { setHasDeImages.set(setId, false); return; }
-    const base = logoUrl.replace(/\/logo\.png$/, '').replace(/\/logo$/, '');
-    const sampleDoc = toEnrich.find(d => (d.data() as CatalogCard).setId === setId);
-    if (!sampleDoc) { setHasDeImages.set(setId, false); return; }
-    const sampleNum = (sampleDoc.data() as CatalogCard).number.split('/')[0].padStart(3, '0');
-    try {
-      const res = await fetch(`${base}/${sampleNum}/high.webp`, { method: 'HEAD' });
-      setHasDeImages.set(setId, res.ok);
-    } catch {
-      setHasDeImages.set(setId, false);
-    }
-  }));
+  const CONCURRENCY = 8;
+  for (let i = 0; i < setIds.length; i += CONCURRENCY) {
+    await Promise.all(setIds.slice(i, i + CONCURRENCY).map(id => fetchDeCardsForSet(toTcgdexId(id))));
+  }
 
   let enriched = 0;
   for (let i = 0; i < toEnrich.length; i += 500) {
     const batch = db.batch();
     toEnrich.slice(i, i + 500).forEach(doc => {
       const card = doc.data() as CatalogCard;
-      const logoUrl = setLogoMap.get(card.setId);
-      if (!logoUrl || !setHasDeImages.get(card.setId)) {
-        // Kein DE-Bild für dieses Set → '' als Sentinel speichern (wird nicht neu geprüft)
+      const cardMap = tcgdexSetCache.get(toTcgdexId(card.setId));
+      const rawNum  = card.number.split('/')[0];
+      const normNum = String(parseInt(rawNum) || 0) || rawNum;
+      const tcgdexCard = cardMap?.get(rawNum) ?? cardMap?.get(normNum);
+      if (!tcgdexCard?.image) {
+        // Kein DE-Bild für diese Karte → '' als Sentinel speichern (wird nicht neu geprüft)
         batch.update(doc.ref, { imgSmallDe: '', imgLargeDe: '' });
         return;
       }
-      const base = logoUrl.replace(/\/logo\.png$/, '').replace(/\/logo$/, '');
-      const num = card.number.split('/')[0].padStart(3, '0');
       batch.update(doc.ref, {
-        imgSmallDe: `${base}/${num}/low.webp`,
-        imgLargeDe: `${base}/${num}/high.webp`,
+        imgSmallDe: `${tcgdexCard.image}/low.webp`,
+        imgLargeDe: `${tcgdexCard.image}/high.webp`,
       });
       enriched++;
     });
