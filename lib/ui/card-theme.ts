@@ -52,7 +52,7 @@ function badgeLayoutForOffset(o: number): CardTileBadgeLayout {
   };
 }
 
-export const DEFAULT_MISSING_CARD_STYLE: MissingCardStyle = { opacity: 0.35, blur: 0, saturate: 0, effect: 'outline' };
+export const DEFAULT_MISSING_CARD_STYLE: MissingCardStyle = { opacity: 0.75, blur: 0, saturate: 0, effect: 'outline' };
 
 // Entspricht dem zuletzt auf `/design-system-preview` bestätigten und
 // gespeicherten Stand (aus `localStorage` übernommen, siehe Commit-Historie)
