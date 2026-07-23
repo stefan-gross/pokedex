@@ -364,7 +364,16 @@ export function OwnedCopyRow({
           durchschimmern lassen — die blickdichte Variante hat dieselbe
           Helligkeit, nur ohne Transparenz/Blur. Zusätzlich `.glass-swipe-
           shadow`: ein zusätzlicher Schatten nach rechts verkauft das
-          "Zeile liegt auf der roten Löschen-Fläche"-Layering deutlicher. */}
+          "Zeile liegt auf der roten Löschen-Fläche"-Layering deutlicher.
+          `touchAction: 'pan-y'`: ohne das erkennt der Browser eine leichte
+          vertikale Abweichung während des (eigentlich horizontalen) Ziehens
+          selbst als Scroll-Versuch und übernimmt die Geste — bei dieser
+          niedrigen Zeile (nur ~48px hoch) reicht dafür schon ein winziges
+          Verrutschen, was die Geste per `pointercancel` sofort abbrach
+          ("Swipe ist vorbei, sobald man das Element verlässt"). `pan-y`
+          erlaubt dem Browser weiterhin natives vertikales Scrollen (falls
+          die Geste tatsächlich vertikal gemeint ist), beansprucht eine
+          überwiegend horizontale Geste aber nicht mehr für sich. */}
       <div
         className={`glass rounded-xl overflow-hidden flex items-center gap-2 px-2.5 py-2 relative ${dragX !== 0 ? 'glass-swipe-solid glass-swipe-shadow' : ''}`}
         style={{
@@ -373,6 +382,7 @@ export function OwnedCopyRow({
           width: `calc(100% - ${OVERSCAN_PX}px)`,
           transform: `translateX(${dragX}px)`,
           transition: dragging ? 'none' : settleTransition,
+          touchAction: 'pan-y',
           // Eigener Rahmen überschreibt `.glass`s Standardrahmen nur, wenn
           // "Prüfen" aktiv ist — sonst soll der normale Glas-Rahmen durchscheinen.
           ...(copy.needsReview ? { border: '2px solid var(--pokedex-yellow)' } : undefined),
