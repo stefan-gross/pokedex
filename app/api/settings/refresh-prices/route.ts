@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
-import { refreshAllOwnedAndStale } from '@/lib/prices/cache';
+import { refreshOwnedPrices } from '@/lib/prices/cache';
 
 export const maxDuration = 60;
 
-/** Manueller Trigger aus den Settings — Auth läuft via Session-Cookie (proxy.ts schützt /api/*). */
+/** Manueller Trigger aus den Settings — Auth läuft via Session-Cookie
+ *  (proxy.ts schützt /api/*). Nur die eigene Sammlung (gebündelt pro Set),
+ *  damit der Request nicht ins Timeout läuft; der katalogweite Sweep bleibt
+ *  dem nächtlichen Cron (`refreshAllOwnedAndStale`). */
 export async function POST() {
-  const result = await refreshAllOwnedAndStale();
+  const result = await refreshOwnedPrices();
   return NextResponse.json(result);
 }

@@ -94,6 +94,57 @@ export async function refreshAllOwnedAndStale(): Promise<{
   return { refreshed, upgraded, errored, total: tcgIds.size };
 }
 
+/** Manueller Settings-Button „Preise jetzt aktualisieren" — refresht NUR die
+ *  besessenen Karten (nicht den katalogweiten empty/tcgplayer-Nachzieh-Sweep,
+ *  der `refreshAllOwnedAndStale` groß/langsam macht und beim Cron bleibt).
+ *  Statt Karte-für-Karte werden die eigenen Karten nach Set gruppiert und je
+ *  Set in EINEM gebündelten Request geholt (`refreshAndCacheSet`) — begrenzt
+ *  auf die Anzahl der Sets in der Sammlung, bleibt so klar im 60-s-Limit
+ *  (vorher lief der Einzel-Refresh über Tausende Einträge ins Timeout →
+ *  „Load failed" im Browser). */
+export async function refreshOwnedPrices(): Promise<{
+  refreshed: number; upgraded: number; errored: number; total: number; capped: boolean;
+}> {
+  const db = getAdminDb();
+  const bySet = new Map<string, string[]>();
+  let total = 0;
+  try {
+    const cardsSnap = await db.collection('cards').get();
+    for (const doc of cardsSnap.docs) {
+      const data = doc.data();
+      const tcgId = data?.tcgId as string | undefined;
+      const setId = data?.setId as string | undefined;
+      if (!tcgId || !setId) continue;
+      total++;
+      const arr = bySet.get(setId);
+      if (arr) arr.push(tcgId); else bySet.set(setId, [tcgId]);
+    }
+  } catch (e) {
+    console.warn('[refresh-prices] cards query failed', e);
+  }
+
+  // Zeitbudget: der Endpunkt hat `maxDuration = 60` — nach 45 s abbrechen und
+  // ein Teilergebnis zurückgeben, statt bis zum Kill ins Timeout zu laufen
+  // (das hatte den abgebrochenen Fetch → „Load failed" im Browser verursacht).
+  // Der Rest wird beim nächsten Klick / nächtlichen Cron nachgeholt.
+  const start = Date.now();
+  const BUDGET_MS = 50_000;
+  let refreshed = 0, errored = 0, capped = false;
+  for (const [setId, ids] of bySet) {
+    if (Date.now() - start > BUDGET_MS) { capped = true; break; }
+    try {
+      await refreshAndCacheSet(setId, ids);
+      refreshed += ids.length;
+    } catch (e) {
+      console.warn('[refresh-prices] set refresh failed', setId, e);
+      errored += ids.length;
+    }
+  }
+  // `upgraded` (TCGplayer→Cardmarket-Wechsel) wird im Set-Bulk-Pfad nicht
+  // einzeln getrackt — für den Button unerheblich, bleibt 0.
+  return { refreshed, upgraded: 0, errored, total, capped };
+}
+
 /** Zentrale „fresh-or-refresh"-Logik: gecachten Preis verwenden, wenn er
  *  existiert und `isFresh()` ist — sonst live nachholen (`refreshAndCache`).
  *  Einzige Stelle, die diese Regel implementiert; wird von der Einzelkarten-

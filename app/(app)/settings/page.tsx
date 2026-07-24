@@ -241,11 +241,12 @@ export default function SettingsPage() {
     try {
       const res = await fetch('/api/settings/refresh-prices', { method: 'POST' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const j = await res.json() as { refreshed: number; upgraded: number; errored: number; total: number };
-      const msg = j.upgraded > 0
-        ? `${j.refreshed}/${j.total} aktualisiert, ${j.upgraded} auf Cardmarket umgestiegen.`
-        : `${j.refreshed}/${j.total} aktualisiert.`;
-      setRefreshPricesResult(j.errored > 0 ? `${msg} ${j.errored} Fehler.` : msg);
+      const j = await res.json() as { refreshed: number; upgraded: number; errored: number; total: number; capped?: boolean };
+      let msg = `${j.refreshed}/${j.total} aktualisiert.`;
+      if (j.upgraded > 0) msg = `${j.refreshed}/${j.total} aktualisiert, ${j.upgraded} auf Cardmarket umgestiegen.`;
+      if (j.errored > 0) msg += ` ${j.errored} vorübergehend nicht erreichbar.`;
+      if (j.capped) msg += ' Rest beim nächsten Mal.';
+      setRefreshPricesResult(msg);
     } catch (e) {
       setRefreshPricesResult(`Fehler: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
