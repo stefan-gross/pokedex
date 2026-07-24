@@ -6,12 +6,51 @@ import { ChevronLeft, Heart, Minus, Lock, Download } from 'lucide-react';
 import { getWishlist, removeItemFromWishlist } from '@/lib/firestore/wishlists';
 import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
 import { getCardsByTcgId } from '@/lib/firestore/cards';
+import { getAllSets } from '@/lib/firestore/sets';
+import { getBinder } from '@/lib/firestore/binders';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { Card } from '@/components/card/Card';
+import { Button } from '@/components/ui/button';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
 import { pickTrendPrice } from '@/lib/prices/value-tier';
 import type { WishlistDoc, WishlistItem, CardDoc } from '@/types';
+
+const EUR = (n: number) => n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+
+/** Set-Logo als kleine data:-URL laden (für den PDF-Header). Wird per Canvas
+ *  auf max. 240px herunterskaliert — das Logo wird im PDF ohnehin nur ~96px
+ *  angezeigt, die Originalauflösung würde das PDF unnötig aufblähen (mehrere
+ *  MB). Schlägt der Fetch fehl (z.B. CORS/offline), wird `undefined`
+ *  zurückgegeben — der Export läuft dann ohne Logo weiter statt zu scheitern. */
+async function fetchLogoDataUrl(url: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return undefined;
+    const blob = await res.blob();
+    const objUrl = URL.createObjectURL(blob);
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const im = new Image();
+        im.onload = () => resolve(im);
+        im.onerror = reject;
+        im.src = objUrl;
+      });
+      const MAX = 160;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return undefined;
+      ctx.drawImage(img, 0, 0, w, h);
+      return canvas.toDataURL('image/png');
+    } finally {
+      URL.revokeObjectURL(objUrl);
+    }
+  } catch { return undefined; }
+}
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -56,9 +95,80 @@ export default function WishlistDetailPage({ params }: Props) {
     if (!list || exporting) return;
     setExporting(true);
     try {
+      // Deutsche Namen + deutsche Set-Namen frisch auflösen (die gespeicherten
+      // Item-Felder tragen z.T. nur englische Werte; `CatalogCard.setName` ist
+      // grundsätzlich englisch → deutscher Set-Name kommt aus `TcgSet.nameDe`).
+      const ids = list.items.map(i => i.tcgId).filter((x): x is string => !!x);
+      const [catCards, allSets] = await Promise.all([getCatalogCardsByIds(ids), getAllSets()]);
+      const catById = new Map(catCards.map(c => [c.id, c]));
+      const setById = new Map(allSets.map(s => [s.id, s]));
+
+      const nameOf = (i: WishlistItem) => catById.get(i.tcgId ?? '')?.nameDe ?? i.name;
+      const setNameOf = (i: WishlistItem) => {
+        const sid = catById.get(i.tcgId ?? '')?.setId ?? i.setId;
+        const s = sid ? setById.get(sid) : undefined;
+        return s?.nameDe ?? s?.name ?? i.setName ?? '';
+      };
+      // Nummer wie auf den Karten formatieren: dreistellig + "/PrintedTotal"
+      // (z.B. "007/094") — gleiche Logik wie `numFmt` in CardDetailSheet.
+      const numberOf = (i: WishlistItem) => {
+        const c = catById.get(i.tcgId ?? '');
+        const raw = (c?.number ?? i.number ?? '').split('/')[0];
+        if (!raw) return '';
+        const isPlain = /^\d+$/.test(raw);
+        const base = isPlain ? raw.padStart(3, '0') : raw;
+        const sid = c?.setId ?? i.setId;
+        const total = sid ? setById.get(sid)?.printedTotal : undefined;
+        return isPlain && total ? `${base}/${String(total).padStart(3, '0')}` : base;
+      };
+      const priceOf = (i: WishlistItem) => {
+        if (!i.tcgId) return '';
+        const p = pickTrendPrice(prices.get(i.tcgId));
+        return p != null ? EUR(p) : '';
+      };
+
+      // Sortierung je Listentyp:
+      // - Vorlagen-Liste: die gespeicherte Reihenfolge IST bereits die
+      //   Sammlungs-Reihenfolge (sync schreibt `items` nach Slot-`order`).
+      // - Manuelle Liste: nach Set gruppieren, dann nach (deutschem) Namen.
+      const ordered = isTemplateList
+        ? list.items
+        : [...list.items].sort((a, b) => {
+            const sa = setNameOf(a), sb = setNameOf(b);
+            if (sa !== sb) return sa.localeCompare(sb, 'de');
+            return nameOf(a).localeCompare(nameOf(b), 'de');
+          });
+
+      const rows = ordered.map(i => ({
+        name: nameOf(i),
+        number: numberOf(i),
+        setName: setNameOf(i),
+        price: priceOf(i),
+      }));
+
+      // Set-Spalte weglassen, wenn alle Karten aus demselben Set stammen
+      // (z.B. Master-Set-Wunschliste) — dann ist die Spalte redundant (Set
+      // steht schon im Titel + Logo).
+      const distinctSets = new Set(rows.map(r => r.setName).filter(Boolean));
+      const showSet = distinctSets.size > 1;
+
+      // Logo/Symbol der zugehörigen Sammlung (nur Vorlagen-Liste mit Set-Icon).
+      let logoDataUrl: string | undefined;
+      if (list.templateBinderId) {
+        const binder = await getBinder(list.templateBinderId);
+        const icon = binder?.icon;
+        if (icon?.startsWith('set:')) {
+          const sid = icon.slice(4);
+          const url = setById.get(sid)?.logoUrl ?? `https://images.pokemontcg.io/${sid}/logo.png`;
+          logoDataUrl = await fetchLogoDataUrl(url);
+        }
+      }
+
+      const dateStr = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' });
+
       // Lazy: zieht @react-pdf/renderer erst beim Klick nach.
       const { downloadWishlistPdf } = await import('@/components/wishlist/wishlist-pdf');
-      await downloadWishlistPdf(list);
+      await downloadWishlistPdf({ title: list.name, dateStr, logoDataUrl, showSet, rows });
     } catch (e) {
       console.error('[wishlist] PDF-Export fehlgeschlagen', e);
     } finally {
@@ -97,15 +207,15 @@ export default function WishlistDetailPage({ params }: Props) {
             </h1>
             <p className="text-role-label text-glass-muted">{items.length} {items.length === 1 ? 'Karte' : 'Karten'}</p>
           </div>
-          <button
+          <Button
+            variant="secondary"
+            icon={<Download />}
             onClick={handleExportPdf}
             disabled={exporting || items.length === 0}
-            className="w-11 h-11 rounded-md glass-inner flex items-center justify-center text-glass shrink-0 disabled:opacity-40"
             aria-label="Als PDF exportieren"
             title="Als PDF exportieren"
-          >
-            <Download size={18} />
-          </button>
+            className="shrink-0"
+          />
         </div>
         {isTemplateList && (
           <p className="text-role-label text-glass-muted mt-2">

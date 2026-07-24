@@ -410,20 +410,45 @@ export function OwnedCopyRow({
               Navigation: direktes Umsortieren spart den Umweg über den
               separaten Sammlungsbereich. Größer für mobile Touch-Targets. */}
           <div className="shrink-0 ml-auto" data-swipe-passthrough style={{ maxWidth: 180 }}>
-            <CustomSelect
-              variant={sammlungSelectVariant ?? 'secondary'}
-              height="sm"
-              value={isDefaultBinder ? UNSORTED_SENTINEL : (binder?.id ?? UNSORTED_SENTINEL)}
-              onChange={v => onMoveToBinder(v === UNSORTED_SENTINEL ? null : v)}
-              options={[
-                { value: UNSORTED_SENTINEL, label: 'Unsortiert' },
-                ...assignableBinders.map(b => ({
-                  value: b.id,
-                  label: b.name,
-                  icon: b.icon ? <BinderIcon name={b.icon} size={13} className="shrink-0" /> : undefined,
-                })),
-              ]}
-            />
+            {binder?.template ? (
+              // Automatische (Vorlagen-)Sammlung: kein wählbares Ziel, da der
+              // Sync die Platzierung bestimmt (manuelles Umsortieren würde beim
+              // nächsten Lauf überschrieben). Trotzdem read-only anzeigen, WO
+              // die Karte liegt — sonst zeigte die CustomSelect nur "—", weil
+              // der Vorlagen-Binder aus `assignableBinders` gefiltert ist.
+              <div
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full glass-inner text-[12px] text-glass max-w-full"
+                title="Automatische Sammlung — vom Sync verwaltet"
+              >
+                {binder.icon && <BinderIcon name={binder.icon} size={13} className="shrink-0" />}
+                <span className="truncate">{binder.name}</span>
+              </div>
+            ) : (
+              <CustomSelect
+                variant={sammlungSelectVariant ?? 'secondary'}
+                height="sm"
+                value={isDefaultBinder ? UNSORTED_SENTINEL : (binder?.id ?? UNSORTED_SENTINEL)}
+                onChange={v => onMoveToBinder(v === UNSORTED_SENTINEL ? null : v)}
+                options={[
+                  { value: UNSORTED_SENTINEL, label: 'Unsortiert' },
+                  ...assignableBinders.map(b => ({
+                    value: b.id,
+                    label: b.name,
+                    icon: b.icon ? <BinderIcon name={b.icon} size={13} className="shrink-0" /> : undefined,
+                  })),
+                  // Aktuelle Sammlung, falls sie kein wählbares Standard-Ziel
+                  // ist (z.B. "Eingang"/Inbox), als Option ergänzen — sonst
+                  // zeigte die CustomSelect "—" statt des tatsächlichen Orts.
+                  ...(binder && !isDefaultBinder && !assignableBinders.some(b => b.id === binder.id)
+                    ? [{
+                        value: binder.id,
+                        label: binder.name,
+                        icon: binder.icon ? <BinderIcon name={binder.icon} size={13} className="shrink-0" /> : undefined,
+                      }]
+                    : []),
+                ]}
+              />
+            )}
           </div>
         </div>
       </div>
