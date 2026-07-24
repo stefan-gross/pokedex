@@ -116,6 +116,57 @@ export interface CustomSelectOption<T extends string> {
  * Aussehen. Portal ist nötig, falls der Trigger in einem Container mit
  * `overflow-hidden` sitzt (das Panel würde sonst unsichtbar abgeschnitten).
  */
+/** Viewport-Ränder, innerhalb derer das Options-Panel bleiben muss. */
+const PANEL_MARGIN = 8;
+/** Größtmögliche Panel-Breite — länge Labels (z.B. Sammlungsnamen) sollen
+ *  nicht beliebig breiter als der Trigger werden dürfen, sonst reißt das
+ *  Panel bei rechtsbündig sitzenden Triggern (z.B. `OwnedCopyRow`s
+ *  Sammlung-Pille, `ml-auto`) über den rechten Bildschirmrand hinaus. */
+const PANEL_MAX_WIDTH = 260;
+/** Bevorzugte/maximale Panel-Höhe, wenn genug Platz ist. */
+const PANEL_PREFERRED_MAX_HEIGHT = 240;
+
+interface PanelPos {
+  top?: number; bottom?: number; left?: number; right?: number;
+  width: number; maxHeight: number;
+}
+
+/** Berechnet Position/Größe des Options-Panels aus der Trigger-`rect` —
+ *  klappt nach OBEN statt unten, wenn unterhalb zu wenig Platz ist (z.B.
+ *  eine Zeile nah am unteren Sheet-/Bildschirmrand), und bündig zum RECHTEN
+ *  statt linken Trigger-Rand, wenn das Panel sonst über den rechten
+ *  Bildschirmrand hinausragen würde (z.B. bei rechtsbündigen Triggern mit
+ *  langen Options-Labels). Ohne das war je nach Zeilenposition/Label-Länge
+ *  ein Teil des aufgeklappten Panels unsichtbar (außerhalb des Viewports),
+ *  da bisher immer starr unterhalb + linksbündig geöffnet wurde. */
+function computePanelPos(rect: DOMRect): PanelPos {
+  const viewportW = window.innerWidth;
+  const viewportH = window.innerHeight;
+  const maxWidth = Math.min(PANEL_MAX_WIDTH, viewportW - PANEL_MARGIN * 2);
+
+  let left: number | undefined = rect.left;
+  let right: number | undefined;
+  if (rect.left + maxWidth > viewportW - PANEL_MARGIN) {
+    left = undefined;
+    right = Math.max(PANEL_MARGIN, viewportW - rect.right);
+  }
+
+  const spaceBelow = viewportH - rect.bottom - PANEL_MARGIN;
+  const spaceAbove = rect.top - PANEL_MARGIN;
+  let top: number | undefined;
+  let bottom: number | undefined;
+  let maxHeight: number;
+  if (spaceBelow >= 150 || spaceBelow >= spaceAbove) {
+    top = rect.bottom + 4;
+    maxHeight = Math.max(100, Math.min(PANEL_PREFERRED_MAX_HEIGHT, spaceBelow));
+  } else {
+    bottom = viewportH - rect.top + 4;
+    maxHeight = Math.max(100, Math.min(PANEL_PREFERRED_MAX_HEIGHT, spaceAbove));
+  }
+
+  return { top, bottom, left, right, width: rect.width, maxHeight };
+}
+
 export function CustomSelect<T extends string>({
   value,
   onChange,
@@ -142,15 +193,14 @@ export function CustomSelect<T extends string>({
 }) {
   useGlassTheme();
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [pos, setPos] = useState<PanelPos | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const selected = options.find(o => o.value === value);
   const { className: variantClassName, style: variantStyle } = selectVariantStyle(variant, accentColor);
 
   function openPanel() {
     if (btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect();
-      setPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+      setPos(computePanelPos(btnRef.current.getBoundingClientRect()));
     }
     setOpen(true);
   }
@@ -181,7 +231,11 @@ export function CustomSelect<T extends string>({
           <div className="fixed inset-0 z-[200]" onClick={() => setOpen(false)} />
           <div
             className="glass fixed rounded-xl overflow-y-auto py-1 z-[201]"
-            style={{ top: pos.top, left: pos.left, minWidth: pos.width, maxHeight: 240, boxShadow: '0 8px 24px rgba(0,0,0,.25)' }}
+            style={{
+              top: pos.top, bottom: pos.bottom, left: pos.left, right: pos.right,
+              minWidth: pos.width, maxWidth: PANEL_MAX_WIDTH, maxHeight: pos.maxHeight,
+              boxShadow: '0 8px 24px rgba(0,0,0,.25)',
+            }}
           >
             {options.map(o => (
               <button
