@@ -33,6 +33,7 @@ import {
 } from '@/lib/binder-sheets';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { CardImage } from '@/components/card/CardImage';
+import { CardBadge } from '@/components/card/CardBadge';
 import { Card } from '@/components/card/Card';
 import { Switch } from '@/components/ui/switch';
 import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal';
@@ -1456,6 +1457,25 @@ function DroppableEmptySlot({
               number={missingCard.number}
               price={pickTrendPrice(priceResult)}
             />
+          )}
+          {/* Fehlender Slot eines Vorlagen-Binders = per Konstruktion auto-
+              benötigt → festes rotes Herz (read-only, wie ein
+              Auto-Wunschlisten-Item). `pointer-events-none`, damit ein Tap
+              weiterhin den Slot-`onClick` (Kartendetail) auslöst. Im
+              Bearbeiten-Modus ausgeblendet, dort belegt der +-Button die
+              Fläche. */}
+          {!editMode && (
+            <CardBadge
+              size={20}
+              background={false}
+              className="pointer-events-none"
+              style={{ bottom: 4, right: 4 }}
+              ariaLabel="Auf Wunschliste"
+            >
+              <svg width={16} height={15} viewBox="0 0 24 22" fill="#ef4444" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+              </svg>
+            </CardBadge>
           )}
         </>
       )}

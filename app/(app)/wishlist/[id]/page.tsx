@@ -2,7 +2,7 @@
 
 import { use, useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Heart, Minus, Lock } from 'lucide-react';
+import { ChevronLeft, Heart, Minus, Lock, Download } from 'lucide-react';
 import { getWishlist, removeItemFromWishlist } from '@/lib/firestore/wishlists';
 import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
 import { getCardsByTcgId } from '@/lib/firestore/cards';
@@ -51,6 +51,21 @@ export default function WishlistDetailPage({ params }: Props) {
     setList(l => l ? { ...l, items: l.items.filter(i => i.id !== item.id) } : l);
   }
 
+  const [exporting, setExporting] = useState(false);
+  async function handleExportPdf() {
+    if (!list || exporting) return;
+    setExporting(true);
+    try {
+      // Lazy: zieht @react-pdf/renderer erst beim Klick nach.
+      const { downloadWishlistPdf } = await import('@/components/wishlist/wishlist-pdf');
+      await downloadWishlistPdf(list);
+    } catch (e) {
+      console.error('[wishlist] PDF-Export fehlgeschlagen', e);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function openDetail(item: WishlistItem) {
     if (!item.tcgId) return;
     const [cc] = await getCatalogCardsByIds([item.tcgId]);
@@ -82,6 +97,15 @@ export default function WishlistDetailPage({ params }: Props) {
             </h1>
             <p className="text-role-label text-glass-muted">{items.length} {items.length === 1 ? 'Karte' : 'Karten'}</p>
           </div>
+          <button
+            onClick={handleExportPdf}
+            disabled={exporting || items.length === 0}
+            className="w-11 h-11 rounded-md glass-inner flex items-center justify-center text-glass shrink-0 disabled:opacity-40"
+            aria-label="Als PDF exportieren"
+            title="Als PDF exportieren"
+          >
+            <Download size={18} />
+          </button>
         </div>
         {isTemplateList && (
           <p className="text-role-label text-glass-muted mt-2">

@@ -581,7 +581,12 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   const [deletingId,   setDeletingId]   = useState<string | null>(null);
   const resolvedMeta = useSetMeta(card?.setId, setMeta, card?.setName);
   const [resolvedBinders, setResolvedBinders] = useState<BinderDoc[]>(binders ?? []);
-  const [wishlistItem, setWishlistItem] = useState<{ listId: string; itemId: string } | null>(null);
+  // Zwei getrennte "Bedarf"-Register (siehe Wunschlisten-Plan): der manuelle
+  // Wunsch (freie Liste, vom Button gesteuert) und der automatische Bedarf
+  // (Vorlagen-Sammlungen, die diese Karte noch brauchen — read-only, vom Sync
+  // verwaltet). Beide unabhängig; der Button fasst NIE eine Auto-Liste an.
+  const [freeWishlistItem, setFreeWishlistItem] = useState<{ listId: string; itemId: string } | null>(null);
+  const [neededByCollections, setNeededByCollections] = useState<string[]>([]);
 
   /* Reset + load on card change */
   useEffect(() => {
@@ -593,13 +598,21 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     // DE-Bild direkt aus Firestore, falls vorhanden (|| fängt auch leere Strings ab)
     setImgSrcDe(card.imgLargeDe || undefined);
     getBinders().then(setResolvedBinders).catch(() => {});
-    setWishlistItem(null);
+    setFreeWishlistItem(null);
+    setNeededByCollections([]);
     getWishlists().then(lists => {
       if (cancelled) return;
+      // Alle Listen durchgehen (kein früher Abbruch): freie Liste → Button-
+      // Zustand, Vorlagen-Listen → Namen für den read-only "Benötigt für"-
+      // Hinweis. Der Listen-`name` ist bereits der Sammlungsname.
+      const needed: string[] = [];
       for (const list of lists) {
         const item = list.items.find(i => i.tcgId === card.id);
-        if (item) { setWishlistItem({ listId: list.id, itemId: item.id }); return; }
+        if (!item) continue;
+        if (list.templateBinderId) needed.push(list.name);
+        else setFreeWishlistItem({ listId: list.id, itemId: item.id });
       }
+      setNeededByCollections(needed);
     }).catch(() => {});
 
     const isPokemon = !card.supertype ||
@@ -744,9 +757,12 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
 
   async function toggleWishlist() {
     if (!card) return;
-    if (wishlistItem) {
-      await removeItemFromWishlist(wishlistItem.listId, wishlistItem.itemId);
-      setWishlistItem(null);
+    // Bezieht sich ausschließlich auf die freie Liste — Auto-Listen werden
+    // nie angefasst (Entfernen nutzt gezielt `freeWishlistItem`, Hinzufügen
+    // schreibt über `ensureDefaultWishlist()` nur in die freie Liste).
+    if (freeWishlistItem) {
+      await removeItemFromWishlist(freeWishlistItem.listId, freeWishlistItem.itemId);
+      setFreeWishlistItem(null);
       return;
     }
     const list = await ensureDefaultWishlist();
@@ -760,7 +776,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
       priority: 2,
       acquired: false,
     });
-    if (newItem) setWishlistItem({ listId: list.id, itemId: newItem.id });
+    if (newItem) setFreeWishlistItem({ listId: list.id, itemId: newItem.id });
   }
 
   // `targetBinderId` = null → "Unsortiert" (Default-Sammlung). Verallgemeinert
@@ -1188,15 +1204,26 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
             )}
           </div>
 
-          {/* ── Wunschliste — eigenständiger Glas-Button ────── */}
-          <div className="mx-4 mb-4">
+          {/* ── Wunschliste ─────────────────────────────────── */}
+          <div className="mx-4 mb-4 space-y-2">
+            {/* Read-only Hinweis: welche Vorlagen-Sammlungen die Karte
+                automatisch noch brauchen (unabhängig vom manuellen Button und
+                vom Besitz — der Sync entfernt Einträge erst bei zugewiesenem
+                qualifizierendem Exemplar). */}
+            {neededByCollections.length > 0 && (
+              <div className="glass-inner w-full rounded-[14px] px-3 py-2.5 flex items-center gap-2 text-role-label text-glass-muted">
+                <Heart size={15} fill="#ef4444" stroke="#ef4444" className="shrink-0" />
+                <span>Benötigt für: {neededByCollections.join(', ')}</span>
+              </div>
+            )}
+            {/* Manueller Wunsch — steuert ausschließlich die freie Liste. */}
             <button
               onClick={toggleWishlist}
               className="drawer-panel w-full h-[54px] rounded-[18px] flex items-center justify-center gap-2 text-role-title"
-              style={wishlistItem ? { color: '#ef4444' } : undefined}
+              style={freeWishlistItem ? { color: '#ef4444' } : undefined}
             >
-              <Heart size={19} fill={wishlistItem ? '#ef4444' : 'none'} />
-              {wishlistItem ? 'Von Wunschliste entfernen' : 'Auf Wunschliste setzen'}
+              <Heart size={19} fill={freeWishlistItem ? '#ef4444' : 'none'} />
+              {freeWishlistItem ? 'Von Wunschliste entfernen' : 'Auf Wunschliste setzen'}
             </button>
           </div>
       </Sheet>

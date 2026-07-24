@@ -231,9 +231,13 @@ export function Card({
           </CardBadge>
         )}
 
-        {/* Wishlist — nur Herzform, kein Button-Hintergrund; nur bei nicht
-            vorhandenen Karten (bei vorhandenen ist die Wunschliste irrelevant) */}
-        {!isOwned && (
+        {/* Wishlist — nur Herzform, kein Button-Hintergrund. Sichtbar als
+            Hinzufügen-Affordanz bei nicht besessenen Karten UND (gefüllt) bei
+            allem, was auf irgendeiner Wunschliste steht — auch bei Besitz:
+            eine besessene Karte kann von einer Vorlagen-Sammlung weiterhin in
+            anderer Variante/Sprache gebraucht werden (z.B. EN besessen,
+            Pokédex will DE). Besessen + nicht gewünscht → kein Herz. */}
+        {(!isOwned || isWishlisted) && (
           <CardBadge
             size={preset.badgeSize} background={false}
             style={{ bottom: layout.wishlistBadge.bottom, right: layout.wishlistBadge.right }}
