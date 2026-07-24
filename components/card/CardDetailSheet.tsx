@@ -6,6 +6,7 @@ import { X, Plus, Minus, Heart, ChevronDown, ChevronLeft, Info, Repeat2, LayoutG
 import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/modal';
+import { CustomSelect } from '@/components/ui/select';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
@@ -102,6 +103,12 @@ const CONDITION_COLOR: Record<string, string> = {
 // Kleiner Schwellwert — die Fläche zeigt nur ein einzelnes Icon (kein
 // großer Text-Button mehr), braucht also keine große Zugstrecke mehr, um
 // zu "aktivieren".
+// Sentinel-Wert für "Unsortiert" (Default-Sammlung) in der `CustomSelect`-
+// Variante der Sammlung-Auswahl (nur Design-System-Vorschau, siehe
+// `sammlungSelectVariant`-Prop) — `CustomSelect.value` ist generisch über
+// `string`, `onMoveToBinder` erwartet aber `null` für "Unsortiert".
+const UNSORTED_SENTINEL = '__unsorted__';
+
 const SWIPE_DELETE_PX = 80;
 // Ab hier (deutlich vor der Lösch-Schwelle, nicht erst kurz davor) setzt der
 // Gummiband-Widerstand ein — bis dahin folgt die Zeile 1:1 dem Finger, danach
@@ -160,14 +167,13 @@ function rubberBand(raw: number): number {
  *  löscht bei genug Schwung sofort — ersetzt den vorherigen, immer sichtbaren
  *  Lösch-Button. */
 export function OwnedCopyRow({
-  copy, condColor, binder, isDefaultBinder, binderName, assignableBinders,
-  onMarkReviewed, onMoveToBinder, onDelete, isDeleting,
+  copy, condColor, binder, isDefaultBinder, assignableBinders,
+  onMarkReviewed, onMoveToBinder, onDelete, isDeleting, sammlungSelectVariant,
 }: {
   copy: CardDoc;
   condColor: string;
   binder: BinderDoc | undefined;
   isDefaultBinder: boolean;
-  binderName: string;
   /** Sammlungen, die sich direkt aus der Zeile auswählen lassen — normale
    *  Sammlungen ohne Vorlagen-Binder (die sortieren sich selbst automatisch,
    *  siehe `template-binders/sync.ts`) und ohne die Fest-Sammlungen (die sind
@@ -178,16 +184,14 @@ export function OwnedCopyRow({
   onMoveToBinder: (targetBinderId: string | null) => void;
   onDelete: () => void;
   isDeleting: boolean;
+  /** Optik der Sammlung-Auswahl — `secondary` (Default, neutral) oder
+   *  `primary` (Akzentfarbe). Nur die Design-System-Vorschau nutzt `primary`
+   *  zum direkten Vergleich; die echte App bleibt beim neutralen Default. */
+  sammlungSelectVariant?: 'primary' | 'secondary';
 }) {
   const [dragX, setDragX]         = useState(0);
   const [dragging, setDragging]   = useState(false);
   const [committed, setCommitted] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  // Position des Dropdown-Panels — wird per Portal in `document.body` gerendert
-  // (siehe unten), da die Zeile selbst `overflow-hidden` trägt (nötig für den
-  // Swipe-Clip) und ein Panel darin sonst unsichtbar abgeschnitten würde.
-  const [pickerPos, setPickerPos] = useState<{ top: number; right: number } | null>(null);
-  const pillBtnRef = useRef<HTMLButtonElement>(null);
   const startXRef  = useRef<number | null>(null);
   const movedRef   = useRef(false);
   // War der Gestenstart auf einem eigenständig klickbaren Kind (Sammlung-Pill/
@@ -406,67 +410,20 @@ export function OwnedCopyRow({
               Navigation: direktes Umsortieren spart den Umweg über den
               separaten Sammlungsbereich. Größer für mobile Touch-Targets. */}
           <div className="shrink-0 ml-auto" data-swipe-passthrough style={{ maxWidth: 180 }}>
-            <button
-              ref={pillBtnRef}
-              type="button"
-              onClick={() => {
-                if (movedRef.current) return;
-                if (!pickerOpen && pillBtnRef.current) {
-                  const rect = pillBtnRef.current.getBoundingClientRect();
-                  setPickerPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
-                }
-                setPickerOpen(o => !o);
-              }}
-              className="text-role-title pl-3 pr-2 py-1.5 rounded-full flex items-center gap-1.5 cursor-pointer w-full truncate"
-              style={{
-                background: isDefaultBinder ? 'var(--secondary)' : 'color-mix(in srgb, var(--pokedex-blue) 12%, transparent)',
-                border: isDefaultBinder
-                  ? '1px dashed var(--border)'
-                  : '1px solid color-mix(in srgb, var(--pokedex-blue) 35%, transparent)',
-                color: isDefaultBinder ? 'var(--muted-foreground)' : 'var(--pokedex-blue)',
-                minHeight: 32,
-              }}
-            >
-              {binder?.icon && <BinderIcon name={binder.icon} size={13} className="shrink-0" />}
-              <span className="truncate">{binderName}</span>
-              <ChevronDown size={13} style={{ opacity: 0.7 }} className="shrink-0 ml-auto" />
-            </button>
-
-            {/* Per Portal in `document.body` — die Zeile trägt `overflow-hidden`
-                (nötig für den Swipe-Clip), ein Panel darin wäre unsichtbar
-                abgeschnitten statt frei über dem restlichen Sheet zu schweben. */}
-            {pickerOpen && pickerPos && createPortal(
-              <>
-                {/* Backdrop — schließt den Picker bei Tap außerhalb */}
-                <div className="fixed inset-0 z-[200]" onClick={() => setPickerOpen(false)} />
-                <div
-                  className="glass fixed rounded-xl overflow-y-auto py-1 z-[201]"
-                  style={{ top: pickerPos.top, right: pickerPos.right, minWidth: 180, maxHeight: 220, boxShadow: '0 8px 24px rgba(0,0,0,.25)' }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => { setPickerOpen(false); onMoveToBinder(null); }}
-                    className="w-full text-left px-3 py-2 text-role-body text-glass truncate"
-                    style={isDefaultBinder ? { fontWeight: 700 } : undefined}
-                  >
-                    Unsortiert
-                  </button>
-                  {assignableBinders.map(b => (
-                    <button
-                      key={b.id}
-                      type="button"
-                      onClick={() => { setPickerOpen(false); onMoveToBinder(b.id); }}
-                      className="w-full text-left px-3 py-2 text-role-body text-glass truncate flex items-center gap-1.5"
-                      style={!isDefaultBinder && binder?.id === b.id ? { fontWeight: 700 } : undefined}
-                    >
-                      {b.icon && <BinderIcon name={b.icon} size={13} className="shrink-0" />}
-                      <span className="truncate">{b.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </>,
-              document.body,
-            )}
+            <CustomSelect
+              variant={sammlungSelectVariant ?? 'secondary'}
+              height="sm"
+              value={isDefaultBinder ? UNSORTED_SENTINEL : (binder?.id ?? UNSORTED_SENTINEL)}
+              onChange={v => onMoveToBinder(v === UNSORTED_SENTINEL ? null : v)}
+              options={[
+                { value: UNSORTED_SENTINEL, label: 'Unsortiert' },
+                ...assignableBinders.map(b => ({
+                  value: b.id,
+                  label: b.name,
+                  icon: b.icon ? <BinderIcon name={b.icon} size={13} className="shrink-0" /> : undefined,
+                })),
+              ]}
+            />
           </div>
         </div>
       </div>
@@ -1201,7 +1158,6 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                             const isDeleting = deletingId === copy.id;
                             const binder = copyBinders[0];
                             const isDefaultBinder = !binder || !!binder.isDefault;
-                            const binderName = binder?.name ?? 'Unsortiert';
                             const condColor  = CONDITION_COLOR[copy.condition] ?? 'var(--muted-foreground)';
                             return (
                               <OwnedCopyRow
@@ -1210,7 +1166,6 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                 condColor={condColor}
                                 binder={binder}
                                 isDefaultBinder={isDefaultBinder}
-                                binderName={binderName}
                                 assignableBinders={assignableBinders}
                                 isDeleting={isDeleting}
                                 onMarkReviewed={async () => {

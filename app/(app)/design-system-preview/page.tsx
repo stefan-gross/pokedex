@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { Select } from '@/components/ui/select';
+import { Select, CustomSelect } from '@/components/ui/select';
+import { BinderIcon } from '@/lib/binder-icons';
 import { Chip } from '@/components/ui/chip';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
@@ -14,7 +15,8 @@ import { Sheet, Dialog } from '@/components/ui/modal';
 import { hexToRgb, progressTrackStyle, inputGlassStyle, backdropFilterValue, tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import { readableTextColor, readableTextColorBlended, lightenColor, darkenColor, hexToRgba } from '@/lib/color-utils';
 import {
-  getGlassTheme, setGlassTheme, DEFAULT_GLASS_THEME, type GlassTheme, type GlassOverride, type SecondaryOverride,
+  getGlassTheme, setGlassTheme, DEFAULT_GLASS_THEME, resolveSwipeSolidColor,
+  type GlassTheme, type GlassOverride, type SecondaryOverride,
 } from '@/lib/ui/glass-theme';
 import {
   Card, CARD_SIZE_PRESETS, DEFAULT_MISSING_CARD_STYLE, MISSING_CARD_EFFECTS, defaultBadgeLayoutFor,
@@ -364,6 +366,18 @@ export default function DesignSystemPreviewPage() {
     setDraftCardTheme(getCardVisualTheme());
   }, []);
 
+  // `.glass-swipe-solid` ist eine reine CSS-Klasse (kein inline berechneter
+  // Style wie bei Switch/ButtonGroup-Demos oben) — sie liest die CSS-Variable
+  // direkt von `:root`. Ohne diesen Effect würde der Entwurf hier NIE sichtbar
+  // (nur nach "Speichern"): dieser Effect spiegelt den Entwurf sofort live auf
+  // `:root`, unabhängig vom persistierten Stand — "Speichern" übernimmt ihn
+  // danach unverändert dauerhaft (über `setGlassTheme`, das dieselbe Funktion
+  // mit dem dann gespeicherten Wert erneut aufruft).
+  useEffect(() => {
+    document.documentElement.style.setProperty('--swipe-solid-bg-light', resolveSwipeSolidColor(draftGlassTheme.swipeSolid.light));
+    document.documentElement.style.setProperty('--swipe-solid-bg-dark', resolveSwipeSolidColor(draftGlassTheme.swipeSolid.dark));
+  }, [draftGlassTheme.swipeSolid]);
+
   const handleSaveAll = () => {
     setGlassTheme(draftGlassTheme);
     setCardVisualTheme(draftCardTheme);
@@ -506,12 +520,23 @@ export default function DesignSystemPreviewPage() {
     makeDemoCopy('demo-3', { condition: 'HP', language: 'jp', quantity: 3 }),
   ]);
   const [demoLog, setDemoLog] = useState<string>('—');
+  // Eigener State für die zwei CustomSelect-Vergleichszeilen weiter unten —
+  // ohne das würde "Löschen" (Swipe) nichts sichtbar bewirken, da `onDelete`
+  // sonst ein reines No-op ohne zugehörige Liste wäre.
+  const [showPrimaryDemo, setShowPrimaryDemo] = useState(true);
+  const [showSecondaryDemo, setShowSecondaryDemo] = useState(true);
+  // Ausgewählte Sammlung je Vergleichszeile — ohne das würde `onMoveToBinder`
+  // ein reines No-op sein und die Auswahl im Dropdown liefe optisch ins Leere
+  // (gleicher Fehler wie zuvor bei `onDelete`).
+  const [primaryDemoBinderId, setPrimaryDemoBinderId] = useState<string | null>(DEMO_BINDER.id);
+  const [secondaryDemoBinderId, setSecondaryDemoBinderId] = useState<string | null>(DEMO_BINDER.id);
 
   const [chipA, setChipA] = useState(true);
   const [chipB, setChipB] = useState(false);
   const [switchOn, setSwitchOn] = useState(true);
   const [checked, setChecked] = useState(true);
   const [selectVal, setSelectVal] = useState('b');
+  const [customSelectVal, setCustomSelectVal] = useState<'a' | 'b' | 'c'>('b');
   const [inputVal, setInputVal] = useState('');
   const [searchVal, setSearchVal] = useState('Knapfel');
   const [groupVal, setGroupVal] = useState('all');
@@ -1054,6 +1079,37 @@ export default function DesignSystemPreviewPage() {
             lokale Demo-Daten. Tap auf eine Zeile mit gelbem Rahmen markiert sie
             als geprüft. Letztes Ereignis: <strong>{demoLog}</strong>
           </p>
+          <p className="text-role-label text-glass-muted">
+            Hintergrund der Zeile WÄHREND des Swipens (<code>.glass-swipe-solid</code>,
+            blickdicht) — Light/Dark unabhängig einstellbar, da der Ruhezustand
+            in beiden Modi unterschiedlich aussieht. Erst nach „Speichern" (oben
+            rechts) wirkt sich das auf die echten Zeilen hier UND in der App aus.
+          </p>
+          <div className="flex flex-wrap gap-6">
+            {(['light', 'dark'] as const).map(m => (
+              <div key={m} className="flex items-center gap-3">
+                <span className="text-role-label text-glass-muted w-10">{m === 'light' ? 'Light' : 'Dark'}</span>
+                <label className="flex items-center gap-2">
+                  <span className="text-role-label text-glass-muted">Farbe</span>
+                  <input
+                    type="color"
+                    value={draftGlassTheme.swipeSolid[m].color}
+                    onChange={e => setDraftGlassTheme(prev => ({ ...prev, swipeSolid: { ...prev.swipeSolid, [m]: { ...prev.swipeSolid[m], color: e.target.value } } }))}
+                    className="w-8 h-8 rounded border border-white/40 bg-transparent"
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-role-label text-glass-muted">
+                  <span>Helligkeit: {draftGlassTheme.swipeSolid[m].brightness.toFixed(2)}</span>
+                  <input
+                    type="range" min={-1} max={1} step={0.01} value={draftGlassTheme.swipeSolid[m].brightness}
+                    onChange={e => setDraftGlassTheme(prev => ({ ...prev, swipeSolid: { ...prev.swipeSolid, [m]: { ...prev.swipeSolid[m], brightness: Number(e.target.value) } } }))}
+                    onDoubleClick={() => setDraftGlassTheme(prev => ({ ...prev, swipeSolid: { ...prev.swipeSolid, [m]: { ...prev.swipeSolid[m], brightness: DEFAULT_GLASS_THEME.swipeSolid[m].brightness } } }))}
+                    className="w-32"
+                  />
+                </label>
+              </div>
+            ))}
+          </div>
           <div className="flex flex-col gap-1.5 max-w-md">
             {demoCopies.map(copy => (
               <OwnedCopyRow
@@ -1062,7 +1118,6 @@ export default function DesignSystemPreviewPage() {
                 condColor={{ NM: '#48bb78', LP: '#facc15', MP: '#fb923c', HP: '#f87171', Poor: '#9ca3af' }[copy.condition] ?? '#9ca3af'}
                 binder={DEMO_BINDER}
                 isDefaultBinder={false}
-                binderName={DEMO_BINDER.name}
                 assignableBinders={[DEMO_BINDER, DEMO_OTHER_BINDER]}
                 isDeleting={false}
                 onMarkReviewed={() => {
@@ -1083,6 +1138,57 @@ export default function DesignSystemPreviewPage() {
                   makeDemoCopy('demo-2', { condition: 'LP', language: 'en', needsReview: false }),
                   makeDemoCopy('demo-3', { condition: 'HP', language: 'jp', quantity: 3 }),
                 ])}
+                className="text-role-label text-glass-muted underline self-start"
+              >
+                Demo-Zeilen zurücksetzen
+              </button>
+            )}
+          </div>
+
+          <p className="text-role-label text-glass-muted pt-2">
+            Sammlung-Pille mit der neuen <code>CustomSelect</code> (klein) statt der
+            bisherigen Ad-hoc-Implementierung — zum Vergleich, einmal <code>primary</code>,
+            einmal <code>secondary</code>. Nur hier per <code>sammlungSelectVariant</code>-Prop
+            aktiviert, der echte Kartendetail-Aufruf ist unverändert.
+          </p>
+          <div className="flex flex-col gap-1.5 max-w-md">
+            {showPrimaryDemo && (() => {
+              const selected = [DEMO_BINDER, DEMO_OTHER_BINDER].find(b => b.id === primaryDemoBinderId);
+              return (
+                <OwnedCopyRow
+                  copy={makeDemoCopy('demo-primary', {})}
+                  condColor="#48bb78"
+                  binder={selected}
+                  isDefaultBinder={!selected}
+                  assignableBinders={[DEMO_BINDER, DEMO_OTHER_BINDER]}
+                  isDeleting={false}
+                  onMarkReviewed={() => {}}
+                  onMoveToBinder={setPrimaryDemoBinderId}
+                  onDelete={() => setShowPrimaryDemo(false)}
+                  sammlungSelectVariant="primary"
+                />
+              );
+            })()}
+            {showSecondaryDemo && (() => {
+              const selected = [DEMO_BINDER, DEMO_OTHER_BINDER].find(b => b.id === secondaryDemoBinderId);
+              return (
+                <OwnedCopyRow
+                  copy={makeDemoCopy('demo-secondary', {})}
+                  condColor="#48bb78"
+                  binder={selected}
+                  isDefaultBinder={!selected}
+                  assignableBinders={[DEMO_BINDER, DEMO_OTHER_BINDER]}
+                  isDeleting={false}
+                  onMarkReviewed={() => {}}
+                  onMoveToBinder={setSecondaryDemoBinderId}
+                  onDelete={() => setShowSecondaryDemo(false)}
+                  sammlungSelectVariant="secondary"
+                />
+              );
+            })()}
+            {(!showPrimaryDemo || !showSecondaryDemo) && (
+              <button
+                onClick={() => { setShowPrimaryDemo(true); setShowSecondaryDemo(true); }}
                 className="text-role-label text-glass-muted underline self-start"
               >
                 Demo-Zeilen zurücksetzen
@@ -1352,6 +1458,9 @@ export default function DesignSystemPreviewPage() {
       </Section>
 
       <Section title="Select">
+        <p className="text-role-label text-glass-muted -mt-1">
+          Natives {'<select>'} — Optik 1:1 vom secondary-Button (`secondaryGlassStyle()` + Hover-Lift/Press-Squish).
+        </p>
         <div className="flex items-center gap-3 flex-wrap">
           <Select
             value={selectVal}
@@ -1363,6 +1472,62 @@ export default function DesignSystemPreviewPage() {
             value={selectVal}
             onChange={setSelectVal}
             options={[{ value: 'a', label: 'Blatt 1' }, { value: 'b', label: 'Blatt 2' }]}
+          />
+          <Select
+            variant="primary"
+            value={selectVal}
+            onChange={setSelectVal}
+            options={[{ value: 'a', label: 'Option A' }, { value: 'b', label: 'Option B' }, { value: 'c', label: 'Option C' }]}
+          />
+          {/* Echter Hex-Wert statt `var(--action-delete)` — siehe Kommentar
+              bei den Button-Farbvarianten unten (`primaryGlassStyle` kann
+              CSS-Variablen nicht auflösen, nur echte Hex-Strings). */}
+          <Select
+            variant="primary"
+            accentColor="#c53030"
+            height="sm"
+            value={selectVal}
+            onChange={setSelectVal}
+            options={[{ value: 'a', label: 'Blatt 1' }, { value: 'b', label: 'Blatt 2' }]}
+          />
+        </div>
+
+        <p className="text-role-label text-glass-muted pt-2">
+          Custom Dropdown (Trigger-Button + Portal-Panel, z.B. für Icons pro Option) —
+          verallgemeinert aus der Sammlung-Auswahl in <code>OwnedCopyRow</code>, dieselbe
+          secondary-/primary-Button-Optik wie oben. Icon pro Option ist wie im echten
+          Einsatz entweder ein normales Binder-Icon ODER (bei Vorlagen-/Master-Set-
+          Bindern) das echte Set-Logo (`BinderIcon name="set:xxx"`) — hier "Fatale Flammen".
+        </p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <CustomSelect
+            value={customSelectVal}
+            onChange={setCustomSelectVal}
+            options={[
+              { value: 'a', label: 'Fatale Flammen', icon: <BinderIcon name="set:me2" size={16} className="shrink-0" /> },
+              { value: 'b', label: 'Wunschzettel-Doppelte', icon: <Star size={13} className="shrink-0" /> },
+              { value: 'c', label: 'Ein sehr langer Sammlungsname zum Testen', icon: <Star size={13} className="shrink-0" /> },
+            ]}
+          />
+          <CustomSelect
+            height="sm"
+            value={null}
+            onChange={setCustomSelectVal}
+            placeholder="Unsortiert"
+            options={[
+              { value: 'a', label: 'Fatale Flammen', icon: <BinderIcon name="set:me2" size={14} className="shrink-0" /> },
+              { value: 'b', label: 'Wunschzettel-Doppelte', icon: <Star size={13} className="shrink-0" /> },
+            ]}
+          />
+          <CustomSelect
+            variant="primary"
+            value={customSelectVal}
+            onChange={setCustomSelectVal}
+            options={[
+              { value: 'a', label: 'Fatale Flammen', icon: <BinderIcon name="set:me2" size={16} className="shrink-0" /> },
+              { value: 'b', label: 'Wunschzettel-Doppelte', icon: <Star size={13} className="shrink-0" /> },
+              { value: 'c', label: 'Ein sehr langer Sammlungsname zum Testen', icon: <Star size={13} className="shrink-0" /> },
+            ]}
           />
         </div>
       </Section>

@@ -357,15 +357,32 @@
      Swipens (`CardDetailSheet.tsx`): `backdrop-filter`-Blur tastet auch
      leicht über den Elementrand hinaus ab, wodurch die daneben aufklappende
      rote Löschen-Fläche durch die sonst transluzente Zeile durchschimmerte.
-     Werte 1:1 aus dem obigen `@supports not`-Fallback übernommen — optisch
-     dieselbe Helligkeit wie `.glass`, nur ohne Transparenz/Blur. */
+     `var(--card)` statt hartcodiertem Weiß: `.glass` selbst ist zwar in
+     beiden Modi derselbe helle Ton, aber durch das niedrige Alpha (~0.15)
+     UND den Blur scheint im Ruhezustand größtenteils das dahinterliegende
+     Umfeld durch — im Dark Mode wirkt die Zeile dadurch normalerweise
+     deutlich dunkler als reines Weiß. `var(--card)` ist die themeeigene
+     Oberflächenfarbe (hell in Light Mode, dunkel in Dark Mode) und kommt
+     dem tatsächlichen Ruhezustand-Look in beiden Modi näher als ein
+     fixer Wert. `.dark .glass-swipe-solid` hier NICHT weglassen: `.dark
+     .glass` hat als Zwei-Klassen-Selektor höhere Spezifität als das
+     einfache `.glass-swipe-solid` und gewinnt im Dark Mode sonst
+     unabhängig von der Reihenfolge im Stylesheet.
+     `--swipe-solid-bg-light`/`-dark` kommen aus `lib/ui/glass-theme.ts`
+     (per Slider auf `/design-system-preview` einstellbar); die Fallback-
+     Hex-Werte hier sind der zuletzt live abgestimmte und bestätigte Stand
+     (`DEFAULT_GLASS_THEME.swipeSolid`, dort aufgelöst aus Basisfarbe +
+     Helligkeit) — greifen nur, falls die CSS-Variable ausnahmsweise fehlt
+     (z.B. vor der Hydration). */
   .glass-swipe-solid {
-    background: rgb(255,255,255);
+    background: var(--swipe-solid-bg-light, #a0c0d5);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
   .dark .glass-swipe-solid {
-    background: rgb(30,30,38);
+    background: var(--swipe-solid-bg-dark, #7e8e83);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   /* Zusätzlich zu `.glass-swipe-solid` während des Ziehens in `OwnedCopyRow`

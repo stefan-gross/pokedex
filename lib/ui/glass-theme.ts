@@ -1,6 +1,7 @@
 'use client';
 
 import { useSyncExternalStore } from 'react';
+import { lightenColor, darkenColor } from '@/lib/color-utils';
 
 /**
  * Eine-Quelle-der-Wahrheit für alle "Glas"-Stilwerte (Panels, primary/scan-
@@ -31,6 +32,15 @@ export interface GlassOverride {
 }
 
 export interface PanelTheme { alpha: number; blur: number; saturate: number }
+
+/** Blickdichter Ersatz-Hintergrund für `.glass-swipe-solid` (`OwnedCopyRow`
+ *  während des Swipens, siehe Kommentar in `app/globals.css`) — Light/Dark
+ *  brauchen unabhängige Werte (anders als `panel`), weil der Ruhezustand der
+ *  Zeile durch `.glass`s niedrige Deckkraft in jedem Modus komplett anders
+ *  aussieht. `color` ist die Basisfarbe (Hex), `brightness` hellt sie aus
+ *  (>0, Anteil Richtung Weiß) oder dunkelt sie ab (<0, Anteil Richtung
+ *  Schwarz) — siehe `lightenColor`/`darkenColor` in `lib/color-utils.ts`. */
+export interface SwipeSolidTheme { color: string; brightness: number }
 
 /** `secondary` hat keine Akzentfarbe — statt `hex`/`accentColor` wählt man
  *  hier direkt zwischen keiner Füllung (transparent), Weiß, Schwarz oder Grau
@@ -145,6 +155,9 @@ export interface GlassTheme {
    *  getrennt (anders als Panel/primary/scan, die EINEN Wert für beide Modi
    *  teilen) — Text muss in jedem Modus einzeln lesbar bleiben. */
   textColor: { light: number; dark: number };
+  /** Nur `.glass-swipe-solid` (Swipe-Zustand von `OwnedCopyRow`) — getrennte
+   *  Werte je Modus, siehe `SwipeSolidTheme`-Kommentar oben. */
+  swipeSolid: { light: SwipeSolidTheme; dark: SwipeSolidTheme };
 }
 
 // Startwerte entsprechen dem zuletzt in der Design-System-Testseite
@@ -202,6 +215,14 @@ export const DEFAULT_GLASS_THEME: GlassTheme = {
   // (`#1E2024` ≈ Graustufe 32, `#fff` = 255) — neutrales Grau statt des
   // leichten Blaustichs von `#1E2024`, kaum wahrnehmbarer Unterschied.
   textColor: { light: 32, dark: 255 },
+  // Zuletzt auf der Testseite live abgestimmter und bestätigter Stand
+  // (ersetzt den anfänglichen `var(--card)`-Platzhalter oben in der
+  // Kommentar-Historie) — per Slider auf `/design-system-preview` jederzeit
+  // weiter anpassbar, `brightness: 0` bedeutet "Basisfarbe unverändert".
+  swipeSolid: {
+    light: { color: '#bfe5fd', brightness: -0.16 },
+    dark: { color: '#ddf9e6', brightness: -0.43 },
+  },
 };
 
 const STORAGE_KEY = 'pokedex-glass-theme-override';
@@ -214,7 +235,17 @@ const listeners = new Set<() => void>();
  *  auf den jeweiligen Default. Beide Textfarbe-Werte werden IMMER beide
  *  gesetzt (nicht nur der gerade aktive Modus) — `.text-glass`/`.dark
  *  .text-glass` wählen per CSS-Selektor selbst den richtigen aus. */
-function applyCssVars(panel: PanelTheme, textColor: GlassTheme['textColor']) {
+/** `brightness > 0` hellt Richtung Weiß auf, `< 0` dunkelt Richtung Schwarz
+ *  ab — siehe `SwipeSolidTheme`-Kommentar. Exportiert, damit die Testseite
+ *  denselben berechneten Wert für eine sofortige Live-Vorschau nutzen kann
+ *  (ohne "Speichern"), statt nur den unveränderten Entwurfs-Hex anzuzeigen. */
+export function resolveSwipeSolidColor({ color, brightness }: SwipeSolidTheme): string {
+  if (brightness > 0) return lightenColor(color, brightness);
+  if (brightness < 0) return darkenColor(color, -brightness);
+  return color;
+}
+
+function applyCssVars(panel: PanelTheme, textColor: GlassTheme['textColor'], swipeSolid: GlassTheme['swipeSolid']) {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   root.style.setProperty('--glass-alpha', String(panel.alpha));
@@ -222,6 +253,8 @@ function applyCssVars(panel: PanelTheme, textColor: GlassTheme['textColor']) {
   root.style.setProperty('--glass-saturate', String(panel.saturate));
   root.style.setProperty('--text-glass-light', String(textColor.light));
   root.style.setProperty('--text-glass-dark', String(textColor.dark));
+  root.style.setProperty('--swipe-solid-bg-light', resolveSwipeSolidColor(swipeSolid.light));
+  root.style.setProperty('--swipe-solid-bg-dark', resolveSwipeSolidColor(swipeSolid.dark));
 }
 
 function persist(next: GlassTheme) {
@@ -259,10 +292,14 @@ export function hydrateGlassTheme() {
         buttonGroupText: { ...DEFAULT_GLASS_THEME.buttonGroupText, ...parsed.buttonGroupText },
         buttonGroupIcon: { ...DEFAULT_GLASS_THEME.buttonGroupIcon, ...parsed.buttonGroupIcon },
         textColor: { ...DEFAULT_GLASS_THEME.textColor, ...parsed.textColor },
+        swipeSolid: {
+          light: { ...DEFAULT_GLASS_THEME.swipeSolid.light, ...parsed.swipeSolid?.light },
+          dark: { ...DEFAULT_GLASS_THEME.swipeSolid.dark, ...parsed.swipeSolid?.dark },
+        },
       };
     }
   } catch { /* kaputtes/altes Format ignorieren, bei Default bleiben */ }
-  applyCssVars(state.panel, state.textColor);
+  applyCssVars(state.panel, state.textColor, state.swipeSolid);
   listeners.forEach(l => l());
 }
 
@@ -274,7 +311,7 @@ export function getGlassTheme(): GlassTheme {
 
 export function setGlassTheme(updater: GlassTheme | ((prev: GlassTheme) => GlassTheme)) {
   state = typeof updater === 'function' ? (updater as (p: GlassTheme) => GlassTheme)(state) : updater;
-  applyCssVars(state.panel, state.textColor);
+  applyCssVars(state.panel, state.textColor, state.swipeSolid);
   persist(state);
   listeners.forEach(l => l());
 }
