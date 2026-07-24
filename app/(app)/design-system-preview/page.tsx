@@ -520,16 +520,6 @@ export default function DesignSystemPreviewPage() {
     makeDemoCopy('demo-3', { condition: 'HP', language: 'jp', quantity: 3 }),
   ]);
   const [demoLog, setDemoLog] = useState<string>('—');
-  // Eigener State für die zwei CustomSelect-Vergleichszeilen weiter unten —
-  // ohne das würde "Löschen" (Swipe) nichts sichtbar bewirken, da `onDelete`
-  // sonst ein reines No-op ohne zugehörige Liste wäre.
-  const [showPrimaryDemo, setShowPrimaryDemo] = useState(true);
-  const [showSecondaryDemo, setShowSecondaryDemo] = useState(true);
-  // Ausgewählte Sammlung je Vergleichszeile — ohne das würde `onMoveToBinder`
-  // ein reines No-op sein und die Auswahl im Dropdown liefe optisch ins Leere
-  // (gleicher Fehler wie zuvor bei `onDelete`).
-  const [primaryDemoBinderId, setPrimaryDemoBinderId] = useState<string | null>(DEMO_BINDER.id);
-  const [secondaryDemoBinderId, setSecondaryDemoBinderId] = useState<string | null>(DEMO_BINDER.id);
 
   const [chipA, setChipA] = useState(true);
   const [chipB, setChipB] = useState(false);
@@ -1118,7 +1108,6 @@ export default function DesignSystemPreviewPage() {
                 condColor={{ NM: '#48bb78', LP: '#facc15', MP: '#fb923c', HP: '#f87171', Poor: '#9ca3af' }[copy.condition] ?? '#9ca3af'}
                 binder={DEMO_BINDER}
                 isDefaultBinder={false}
-                assignableBinders={[DEMO_BINDER, DEMO_OTHER_BINDER]}
                 isDeleting={false}
                 onMarkReviewed={() => {
                   setDemoCopies(cs => cs.map(c => c.id === copy.id ? { ...c, needsReview: false } : c));
@@ -1145,56 +1134,6 @@ export default function DesignSystemPreviewPage() {
             )}
           </div>
 
-          <p className="text-role-label text-glass-muted pt-2">
-            Sammlung-Pille mit der neuen <code>CustomSelect</code> (klein) statt der
-            bisherigen Ad-hoc-Implementierung — zum Vergleich, einmal <code>primary</code>,
-            einmal <code>secondary</code>. Nur hier per <code>sammlungSelectVariant</code>-Prop
-            aktiviert, der echte Kartendetail-Aufruf ist unverändert.
-          </p>
-          <div className="flex flex-col gap-1.5 max-w-md">
-            {showPrimaryDemo && (() => {
-              const selected = [DEMO_BINDER, DEMO_OTHER_BINDER].find(b => b.id === primaryDemoBinderId);
-              return (
-                <OwnedCopyRow
-                  copy={makeDemoCopy('demo-primary', {})}
-                  condColor="#48bb78"
-                  binder={selected}
-                  isDefaultBinder={!selected}
-                  assignableBinders={[DEMO_BINDER, DEMO_OTHER_BINDER]}
-                  isDeleting={false}
-                  onMarkReviewed={() => {}}
-                  onMoveToBinder={setPrimaryDemoBinderId}
-                  onDelete={() => setShowPrimaryDemo(false)}
-                  sammlungSelectVariant="primary"
-                />
-              );
-            })()}
-            {showSecondaryDemo && (() => {
-              const selected = [DEMO_BINDER, DEMO_OTHER_BINDER].find(b => b.id === secondaryDemoBinderId);
-              return (
-                <OwnedCopyRow
-                  copy={makeDemoCopy('demo-secondary', {})}
-                  condColor="#48bb78"
-                  binder={selected}
-                  isDefaultBinder={!selected}
-                  assignableBinders={[DEMO_BINDER, DEMO_OTHER_BINDER]}
-                  isDeleting={false}
-                  onMarkReviewed={() => {}}
-                  onMoveToBinder={setSecondaryDemoBinderId}
-                  onDelete={() => setShowSecondaryDemo(false)}
-                  sammlungSelectVariant="secondary"
-                />
-              );
-            })()}
-            {(!showPrimaryDemo || !showSecondaryDemo) && (
-              <button
-                onClick={() => { setShowPrimaryDemo(true); setShowSecondaryDemo(true); }}
-                className="text-role-label text-glass-muted underline self-start"
-              >
-                Demo-Zeilen zurücksetzen
-              </button>
-            )}
-          </div>
         </div>
       </Section>
 

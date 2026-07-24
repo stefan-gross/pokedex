@@ -17,8 +17,9 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   getBinder, deleteBinderCascade, setBinderPages, cardIdsToPages,
-  ensureDefaultBinder, addCardToBinder,
+  ensureDefaultBinder, addCardToBinder, removeCardFromOtherBinders,
 } from '@/lib/firestore/binders';
+import { syncTemplateBinders } from '@/lib/template-binders/sync';
 import { getCard } from '@/lib/firestore/cards';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { resolveTemplateSlots } from '@/lib/template-binders/resolve';
@@ -238,11 +239,19 @@ export default function BinderDetailPage({ params }: Props) {
     persistPages(next);
   };
 
-  const assignSlot = (pageIdx: number, slotIdx: number, cardDocId: string) => {
+  // Eine Kopie in einen Slot legen. Exklusiv: die Kopie wird aus ALLEN anderen
+  // Sammlungen entfernt (Eingang/Unsortiert/andere manuelle/automatische) —
+  // eine physische Karte liegt in genau einer Hülle. Kam sie aus einer
+  // automatischen Sammlung, wird diese anschließend neu synchronisiert (ihr
+  // Slot ist jetzt frei → landet ggf. auf der Auto-Wunschliste).
+  const assignSlot = async (pageIdx: number, slotIdx: number, cardDocId: string) => {
     const next = pages.map(p => ({ slots: [...p.slots] }));
     if (!next[pageIdx]) return;
     next[pageIdx].slots[slotIdx] = cardDocId;
-    persistPages(next);
+    await persistPages(next);
+    await removeCardFromOtherBinders(cardDocId, id);
+    await syncTemplateBinders();
+    load();
   };
 
   // ── Sheet-Verwaltung ────────────────────────────────────────────────────

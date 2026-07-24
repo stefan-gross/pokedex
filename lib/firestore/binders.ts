@@ -111,6 +111,35 @@ export async function ensureInboxBinder(): Promise<string> {
   return addBinder({ name: 'Eingang', isInbox: true, sortOrder: -2, collectionType: 'box', color: '#ffffff', icon: 'alert' });
 }
 
+/** Entfernt eine Kopie aus ALLEN Bindern außer `keepBinderId` — setzt das
+ *  Exklusivitäts-Prinzip durch (eine physische Kopie gehört zu genau EINER
+ *  Sammlung). Bei Bindern mit positionalem Layout (`pages`, manuelle
+ *  Sammlungen) wird die Karte aus den Slots entfernt (und `cardIds` daraus neu
+ *  abgeleitet), sonst nur aus `cardIds`. */
+export async function removeCardFromOtherBinders(cardId: string, keepBinderId: string | null): Promise<void> {
+  const binders = await getBinders();
+  for (const b of binders) {
+    if (b.id === keepBinderId) continue;
+    if (!b.cardIds.includes(cardId)) continue;
+    if (b.pages?.some(p => p.slots.includes(cardId))) {
+      const newPages = b.pages.map(p => ({ slots: p.slots.map(s => (s === cardId ? null : s)) }));
+      await setBinderPages(b.id, newPages);
+    } else {
+      await removeCardFromBinder(b.id, cardId);
+    }
+  }
+}
+
+/** Exklusive Zuordnung einer Kopie zu genau einem (nicht-positionalen) Ziel-
+ *  Binder — entfernt sie aus allen anderen Sammlungen und legt sie in den
+ *  Ziel-Binder (z.B. „nach Unsortiert"). Für positionale manuelle Sammlungen
+ *  wird stattdessen der Slot direkt geschrieben (`setBinderPages`) + separat
+ *  `removeCardFromOtherBinders`. */
+export async function setCardExclusiveBinder(cardId: string, targetBinderId: string): Promise<void> {
+  await removeCardFromOtherBinders(cardId, targetBinderId);
+  await addCardToBinder(targetBinderId, cardId);
+}
+
 /** Entfernt eine Karte aus einem Binder und löscht den Default-Binder automatisch wenn er danach leer ist. */
 export async function removeCardFromBinderAndCleanup(binderId: string, cardId: string): Promise<void> {
   await removeCardFromBinder(binderId, cardId);

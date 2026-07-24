@@ -1,4 +1,4 @@
-import type { CardVariant } from '@/types';
+import type { CardVariant, CardCondition } from '@/types';
 
 /** National-Dex-Größe für die Pokédex-Vorlage (keine Regionsauswahl —
  *  siehe Plan „Vorlagen-Binder"). */
@@ -12,6 +12,11 @@ export const NATIONAL_DEX_TOTAL = 1025;
 export const VARIANT_PRIORITY: CardVariant[] = [
   'alt-art', '1st-ed', 'promo', 'holo', 'reverse', 'standard',
 ];
+
+/** Welcher Zustand gewinnt einen Slot, wenn mehrere besessene Karten gleicher
+ *  Variante darauf passen — bester Zustand zuerst. Zweites Kriterium nach der
+ *  Variante bei der Slot-Gewinner-Wahl (siehe `slot-winner.ts`). */
+export const CONDITION_PRIORITY: CardCondition[] = ['NM', 'LP', 'MP', 'HP', 'Poor'];
 
 /** Pokédex-Vorlage: zählt ein rein englisch besessener Print als „besessen"
  *  für den Dex-Slot, solange keine deutsche Karte vorhanden ist? Noch nicht

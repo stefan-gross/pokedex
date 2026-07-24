@@ -47,8 +47,14 @@ export async function syncTemplateBindersAdmin(opts?: { binderIds?: string[] }):
     }
   }
 
+  // Automatische Sammlungen ziehen NUR aus „Unsortiert" + ihren eigenen,
+  // bereits gehaltenen Karten (siehe Kommentar in sync.ts).
+  const defaultCardIds = allBinders.find(b => b.id === defaultBinderId)?.cardIds ?? [];
+
   for (const binder of templateBinders) {
     try {
+      const poolIds = new Set<string>([...defaultCardIds, ...binder.cardIds]);
+      const candidateCards = ownedCards.filter(c => poolIds.has(c.id));
       let wl = allWishlists.find(w => w.templateBinderId === binder.id);
       if (!wl) {
         const ref = await db.collection('wishlists').add({
@@ -59,7 +65,7 @@ export async function syncTemplateBindersAdmin(opts?: { binderIds?: string[] }):
       }
       const wishlist = wl;
 
-      const plan = await computeBinderSyncPlan(binder, ownedCards, wishlist.items);
+      const plan = await computeBinderSyncPlan(binder, candidateCards, wishlist.items);
 
       if (plan.pagesChanged) {
         await db.collection('binders').doc(binder.id).update({

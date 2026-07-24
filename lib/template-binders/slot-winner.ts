@@ -1,7 +1,7 @@
 import type { CardDoc } from '@/types';
 import type { CatalogCard } from '@/lib/firestore/catalog';
 import type { TemplateSlot } from './resolve';
-import { VARIANT_PRIORITY, POKEDEX_SLOT_LANGUAGE_FALLBACK } from './constants';
+import { VARIANT_PRIORITY, CONDITION_PRIORITY, POKEDEX_SLOT_LANGUAGE_FALLBACK } from './constants';
 
 export interface SlotResolution {
   key: string;
@@ -55,10 +55,20 @@ export function resolveSlotWinners(
       return { key: slot.key, order: slot.order, winnerCardId: null, loserCardIds: [], missingCatalog };
     }
 
+    // Rang-Reihenfolge: Variante → Zustand → Sprache (de) → ältestes zuerst
+    // (stabil gegen unnötiges Tauschen bei wiederholtem Sync). Unbekannte
+    // Werte (indexOf === -1) landen hinten statt vorne.
+    const rank = (list: readonly string[], v: string) => {
+      const i = list.indexOf(v);
+      return i === -1 ? list.length : i;
+    };
     const sorted = [...candidates].sort((a, b) => {
-      const va = VARIANT_PRIORITY.indexOf(a.variant);
-      const vb = VARIANT_PRIORITY.indexOf(b.variant);
+      const va = rank(VARIANT_PRIORITY, a.variant);
+      const vb = rank(VARIANT_PRIORITY, b.variant);
       if (va !== vb) return va - vb;
+      const ca = rank(CONDITION_PRIORITY, a.condition);
+      const cb = rank(CONDITION_PRIORITY, b.condition);
+      if (ca !== cb) return ca - cb;
       const la = a.language === 'de' ? 0 : 1;
       const lb = b.language === 'de' ? 0 : 1;
       if (la !== lb) return la - lb;

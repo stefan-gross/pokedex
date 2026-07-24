@@ -2,16 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Minus, Heart, ChevronDown, ChevronLeft, Info, Repeat2, LayoutGrid } from 'lucide-react';
+import { X, Plus, Minus, Heart, ChevronDown, ChevronLeft, Info, Repeat2, LayoutGrid, Undo2 } from 'lucide-react';
 import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/modal';
-import { CustomSelect } from '@/components/ui/select';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { markReviewed, deleteCard } from '@/lib/firestore/cards';
-import { getBinders, addCardToBinder, removeCardFromBinder, removeCardFromBinderAndCleanup, ensureDefaultBinder } from '@/lib/firestore/binders';
+import { getBinders, removeCardFromBinderAndCleanup, ensureDefaultBinder, setCardExclusiveBinder } from '@/lib/firestore/binders';
 import { matchTemplateBinders } from '@/lib/template-binders/match-hint';
 import { syncTemplateBinders } from '@/lib/template-binders/sync';
 import { getWishlists, ensureDefaultWishlist, addItemToWishlist, removeItemFromWishlist } from '@/lib/firestore/wishlists';
@@ -103,11 +102,6 @@ const CONDITION_COLOR: Record<string, string> = {
 // Kleiner Schwellwert — die Fläche zeigt nur ein einzelnes Icon (kein
 // großer Text-Button mehr), braucht also keine große Zugstrecke mehr, um
 // zu "aktivieren".
-// Sentinel-Wert für "Unsortiert" (Default-Sammlung) in der `CustomSelect`-
-// Variante der Sammlung-Auswahl (nur Design-System-Vorschau, siehe
-// `sammlungSelectVariant`-Prop) — `CustomSelect.value` ist generisch über
-// `string`, `onMoveToBinder` erwartet aber `null` für "Unsortiert".
-const UNSORTED_SENTINEL = '__unsorted__';
 
 const SWIPE_DELETE_PX = 80;
 // Ab hier (deutlich vor der Lösch-Schwelle, nicht erst kurz davor) setzt der
@@ -167,27 +161,19 @@ function rubberBand(raw: number): number {
  *  löscht bei genug Schwung sofort — ersetzt den vorherigen, immer sichtbaren
  *  Lösch-Button. */
 export function OwnedCopyRow({
-  copy, condColor, binder, isDefaultBinder, assignableBinders,
-  onMarkReviewed, onMoveToBinder, onDelete, isDeleting, sammlungSelectVariant,
+  copy, condColor, binder, isDefaultBinder,
+  onMarkReviewed, onMoveToBinder, onDelete, isDeleting,
 }: {
   copy: CardDoc;
   condColor: string;
   binder: BinderDoc | undefined;
   isDefaultBinder: boolean;
-  /** Sammlungen, die sich direkt aus der Zeile auswählen lassen — normale
-   *  Sammlungen ohne Vorlagen-Binder (die sortieren sich selbst automatisch,
-   *  siehe `template-binders/sync.ts`) und ohne die Fest-Sammlungen (die sind
-   *  ohnehin schon über "Unsortiert" bzw. den aktuellen Eintrag erreichbar). */
-  assignableBinders: BinderDoc[];
   onMarkReviewed: () => void;
-  /** `null` = "Unsortiert" (Default-Sammlung). */
+  /** Verschiebt die Kopie nach „Unsortiert" (`null`). Andere Ziele gibt es aus
+   *  dem Kartendetail bewusst nicht mehr — siehe Karten-Fluss-Modell. */
   onMoveToBinder: (targetBinderId: string | null) => void;
   onDelete: () => void;
   isDeleting: boolean;
-  /** Optik der Sammlung-Auswahl — `secondary` (Default, neutral) oder
-   *  `primary` (Akzentfarbe). Nur die Design-System-Vorschau nutzt `primary`
-   *  zum direkten Vergleich; die echte App bleibt beim neutralen Default. */
-  sammlungSelectVariant?: 'primary' | 'secondary';
 }) {
   const [dragX, setDragX]         = useState(0);
   const [dragging, setDragging]   = useState(false);
@@ -406,48 +392,31 @@ export function OwnedCopyRow({
           >
             {CONDITION_LABEL[copy.condition] ?? copy.condition}
           </span>
-          {/* Sammlung-Pill — jetzt eine Dropdown-Auswahl statt reiner
-              Navigation: direktes Umsortieren spart den Umweg über den
-              separaten Sammlungsbereich. Größer für mobile Touch-Targets. */}
-          <div className="shrink-0 ml-auto" data-swipe-passthrough style={{ maxWidth: 180 }}>
-            {binder?.template ? (
-              // Automatische (Vorlagen-)Sammlung: kein wählbares Ziel, da der
-              // Sync die Platzierung bestimmt (manuelles Umsortieren würde beim
-              // nächsten Lauf überschrieben). Trotzdem read-only anzeigen, WO
-              // die Karte liegt — sonst zeigte die CustomSelect nur "—", weil
-              // der Vorlagen-Binder aus `assignableBinders` gefiltert ist.
-              <div
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full glass-inner text-[12px] text-glass max-w-full"
-                title="Automatische Sammlung — vom Sync verwaltet"
+          {/* Sammlung — reine ANZEIGE (Karten-Fluss-Modell: manuelle
+              Sammlungen füllt man über die Seitenansicht, Automatik regelt
+              sich selbst). Einzige Aktion: „nach Unsortiert" — nur wenn die
+              Kopie aktuell in Eingang oder einer manuellen Sammlung liegt
+              (nicht schon in Unsortiert, nicht in einer Automatik-Sammlung, die
+              der Sync verwaltet). */}
+          <div className="shrink-0 ml-auto flex items-center gap-1.5" data-swipe-passthrough style={{ maxWidth: 190 }}>
+            <span
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full glass-inner text-[12px] text-glass min-w-0"
+              title={binder?.template ? 'Automatische Sammlung — vom Sync verwaltet' : undefined}
+            >
+              {binder?.icon && <BinderIcon name={binder.icon} size={13} className="shrink-0" />}
+              <span className="truncate">{isDefaultBinder ? 'Unsortiert' : (binder?.name ?? 'Unsortiert')}</span>
+            </span>
+            {!isDefaultBinder && !binder?.template && (
+              <button
+                type="button"
+                data-swipe-passthrough
+                onClick={() => onMoveToBinder(null)}
+                className="shrink-0 w-9 h-9 rounded-full glass-inner flex items-center justify-center text-glass"
+                aria-label="Nach Unsortiert verschieben"
+                title="Nach Unsortiert verschieben"
               >
-                {binder.icon && <BinderIcon name={binder.icon} size={13} className="shrink-0" />}
-                <span className="truncate">{binder.name}</span>
-              </div>
-            ) : (
-              <CustomSelect
-                variant={sammlungSelectVariant ?? 'secondary'}
-                height="sm"
-                value={isDefaultBinder ? UNSORTED_SENTINEL : (binder?.id ?? UNSORTED_SENTINEL)}
-                onChange={v => onMoveToBinder(v === UNSORTED_SENTINEL ? null : v)}
-                options={[
-                  { value: UNSORTED_SENTINEL, label: 'Unsortiert' },
-                  ...assignableBinders.map(b => ({
-                    value: b.id,
-                    label: b.name,
-                    icon: b.icon ? <BinderIcon name={b.icon} size={13} className="shrink-0" /> : undefined,
-                  })),
-                  // Aktuelle Sammlung, falls sie kein wählbares Standard-Ziel
-                  // ist (z.B. "Eingang"/Inbox), als Option ergänzen — sonst
-                  // zeigte die CustomSelect "—" statt des tatsächlichen Orts.
-                  ...(binder && !isDefaultBinder && !assignableBinders.some(b => b.id === binder.id)
-                    ? [{
-                        value: binder.id,
-                        label: binder.name,
-                        icon: binder.icon ? <BinderIcon name={binder.icon} size={13} className="shrink-0" /> : undefined,
-                      }]
-                    : []),
-                ]}
-              />
+                <Undo2 size={15} />
+              </button>
             )}
           </div>
         </div>
@@ -804,16 +773,20 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     if (newItem) setFreeWishlistItem({ listId: list.id, itemId: newItem.id });
   }
 
-  // `targetBinderId` = null → "Unsortiert" (Default-Sammlung). Verallgemeinert
-  // das frühere reine "Entfernen" (das immer nach Unsortiert verschob) auf ein
-  // direktes Umsortieren in eine beliebige Sammlung — spart den Umweg über
-  // den separaten Sammlungsbereich, den ein Tap auf die Pill vorher gebraucht hätte.
-  async function handleMoveToBinder(copy: CardDoc, targetBinderId: string | null) {
-    const targetId = targetBinderId ?? await ensureDefaultBinder();
-    const currentBinderIds = bindersOf(copy).map(b => b.id);
-    if (currentBinderIds.includes(targetId)) return;
-    await Promise.all(currentBinderIds.map(id => removeCardFromBinder(id, copy.id)));
-    await addCardToBinder(targetId, copy.id);
+  // Karten-Fluss-Modell: die einzige Sammlungs-Aktion im Kartendetail ist
+  // „nach Unsortiert" (`targetBinderId` immer null). Verschiebt die Kopie
+  // exklusiv in „Unsortiert" (raus aus Eingang/manueller Sammlung, inkl.
+  // Slot-Bereinigung via `setCardExclusiveBinder`) und stößt danach den
+  // Vorlagen-Sync an — liegt die Karte jetzt in Unsortiert und passt zu einer
+  // automatischen Sammlung, wird sie sofort eingesammelt.
+  async function handleMoveToBinder(copy: CardDoc, _targetBinderId: string | null) {
+    const defaultId = await ensureDefaultBinder();
+    if (bindersOf(copy).some(b => b.id === defaultId)) return;
+    await setCardExclusiveBinder(copy.id, defaultId);
+    if (card) {
+      const matched = matchTemplateBinders(card, (await getBinders()).filter(b => b.template));
+      if (matched.length > 0) await syncTemplateBinders({ binderIds: matched.map(b => b.id) });
+    }
     const fresh = await getBinders();
     setResolvedBinders(fresh);
     onSaved?.();
@@ -1190,10 +1163,6 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                       {copies.length > 0 && (
                         <div className="flex flex-col gap-1.5">
                           {(() => {
-                            // Vorlagen-Binder sortieren automatisch (siehe sync.ts) — kein
-                            // sinnvolles manuelles Ziel. Default/Inbox sind bereits als
-                            // "Unsortiert" fest im Picker vertreten.
-                            const assignableBinders = resolvedBinders.filter(b => !b.template && !b.isDefault && !b.isInbox);
                             return copies.map(copy => {
                             const copyBinders = bindersOf(copy);
                             const isDeleting = deletingId === copy.id;
@@ -1207,7 +1176,6 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                 condColor={condColor}
                                 binder={binder}
                                 isDefaultBinder={isDefaultBinder}
-                                assignableBinders={assignableBinders}
                                 isDeleting={isDeleting}
                                 onMarkReviewed={async () => {
                                   await markReviewed(copy.id);
