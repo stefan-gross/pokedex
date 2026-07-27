@@ -1,15 +1,16 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Minus, Heart, ChevronDown, ChevronLeft, Info, Repeat2, LayoutGrid, Undo2 } from 'lucide-react';
+import { X, Plus, Minus, Heart, ChevronDown, ChevronLeft, Info, Repeat2, LayoutGrid } from 'lucide-react';
 import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
+import { CustomSelect } from '@/components/ui/select';
 import { Sheet } from '@/components/ui/modal';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
-import { markReviewed, deleteCard } from '@/lib/firestore/cards';
+import { markReviewed, deleteCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { getBinders, removeCardFromBinderAndCleanup, ensureDefaultBinder, setCardExclusiveBinder } from '@/lib/firestore/binders';
 import { matchTemplateBinders } from '@/lib/template-binders/match-hint';
 import { syncTemplateBinders } from '@/lib/template-binders/sync';
@@ -102,6 +103,11 @@ const CONDITION_COLOR: Record<string, string> = {
 // Kleiner Schwellwert — die Fläche zeigt nur ein einzelnes Icon (kein
 // großer Text-Button mehr), braucht also keine große Zugstrecke mehr, um
 // zu "aktivieren".
+
+// Sentinel für "Unsortiert" (Default-Sammlung) in der Sammlungs-Auswahl der
+// OwnedCopyRow — `CustomSelect.value` ist generisch über `string`,
+// `onMoveToBinder` erwartet aber `null` für Unsortiert.
+const UNSORTED_SENTINEL = '__unsorted__';
 
 const SWIPE_DELETE_PX = 80;
 // Ab hier (deutlich vor der Lösch-Schwelle, nicht erst kurz davor) setzt der
@@ -392,31 +398,31 @@ export function OwnedCopyRow({
           >
             {CONDITION_LABEL[copy.condition] ?? copy.condition}
           </span>
-          {/* Sammlung — reine ANZEIGE (Karten-Fluss-Modell: manuelle
-              Sammlungen füllt man über die Seitenansicht, Automatik regelt
-              sich selbst). Einzige Aktion: „nach Unsortiert" — nur wenn die
-              Kopie aktuell in Eingang oder einer manuellen Sammlung liegt
-              (nicht schon in Unsortiert, nicht in einer Automatik-Sammlung, die
-              der Sync verwaltet). */}
-          <div className="shrink-0 ml-auto flex items-center gap-1.5" data-swipe-passthrough style={{ maxWidth: 190 }}>
-            <span
-              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full glass-inner text-[12px] text-glass min-w-0"
-              title={binder?.template ? 'Automatische Sammlung — vom Sync verwaltet' : undefined}
-            >
-              {binder?.icon && <BinderIcon name={binder.icon} size={13} className="shrink-0" />}
-              <span className="truncate">{isDefaultBinder ? 'Unsortiert' : (binder?.name ?? 'Unsortiert')}</span>
-            </span>
-            {!isDefaultBinder && !binder?.template && (
-              <button
-                type="button"
-                data-swipe-passthrough
-                onClick={() => onMoveToBinder(null)}
-                className="shrink-0 w-9 h-9 rounded-full glass-inner flex items-center justify-center text-glass"
-                aria-label="Nach Unsortiert verschieben"
-                title="Nach Unsortiert verschieben"
+          {/* Sammlung (Karten-Fluss-Modell): Dropdown NUR wenn es eine echte
+              Wahl gibt — Kopie liegt in Eingang oder einer manuellen Sammlung,
+              dann kann man sie nach „Unsortiert" schieben (manuelle Sammlungen
+              füllt man über die Seitenansicht, nicht hier). In Unsortiert
+              selbst oder einer Automatik-Sammlung (vom Sync verwaltet) reine
+              Anzeige ohne Chevron. */}
+          <div className="shrink-0 ml-auto" data-swipe-passthrough style={{ maxWidth: 190 }}>
+            {(!isDefaultBinder && !binder?.template && binder) ? (
+              <CustomSelect
+                height="sm"
+                value={binder.id}
+                onChange={v => { if (v === UNSORTED_SENTINEL) onMoveToBinder(null); }}
+                options={[
+                  { value: binder.id, label: binder.name, icon: binder.icon ? <BinderIcon name={binder.icon} size={13} className="shrink-0" /> : undefined },
+                  { value: UNSORTED_SENTINEL, label: 'Unsortiert' },
+                ]}
+              />
+            ) : (
+              <span
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full glass-inner text-[12px] text-glass min-w-0"
+                title={binder?.template ? 'Automatische Sammlung — vom Sync verwaltet' : undefined}
               >
-                <Undo2 size={15} />
-              </button>
+                {binder?.icon && <BinderIcon name={binder.icon} size={13} className="shrink-0" />}
+                <span className="truncate">{isDefaultBinder ? 'Unsortiert' : (binder?.name ?? 'Unsortiert')}</span>
+              </span>
             )}
           </div>
         </div>
@@ -573,6 +579,17 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   const [evoLoaded,    setEvoLoaded]    = useState(false);
   const [specialForms, setSpecialForms] = useState<CardInfo[]>([]);
   const [deletingId,   setDeletingId]   = useState<string | null>(null);
+  // Eigene, selbst aktualisierte Liste der besessenen Exemplare — der Prop
+  // `ownedCopies` ist nur der Startwert (für die Initial-Karte). Nach jeder
+  // Mutation (Hinzufügen/Löschen/Verschieben) UND bei Evo-Navigation laden wir
+  // frisch aus Firestore nach, damit das Detail nicht auf eine veraltete,
+  // vom Aufrufer einmalig übergebene Liste angewiesen ist (sonst zeigte es
+  // eine gerade hinzugefügte Karte nicht an).
+  const [copies, setCopies] = useState<CardDoc[]>(ownedCopies);
+  const reloadCopies = useCallback(async () => {
+    if (!card) return;
+    try { setCopies(await getCardsByTcgId(card.id)); } catch { /* Netzwerkfehler ignorieren, alter Stand bleibt */ }
+  }, [card]);
   const resolvedMeta = useSetMeta(card?.setId, setMeta, card?.setName);
   const [resolvedBinders, setResolvedBinders] = useState<BinderDoc[]>(binders ?? []);
   // Zwei getrennte "Bedarf"-Register (siehe Wunschlisten-Plan): der manuelle
@@ -581,6 +598,14 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   // verwaltet). Beide unabhängig; der Button fasst NIE eine Auto-Liste an.
   const [freeWishlistItem, setFreeWishlistItem] = useState<{ listId: string; itemId: string } | null>(null);
   const [neededByCollections, setNeededByCollections] = useState<string[]>([]);
+
+  // Besessene Exemplare synchron zur angezeigten Karte halten: Initial-Karte →
+  // Prop (frisch vom Aufrufer); eine per Evo-Navigation gestackte Karte → frisch
+  // aus Firestore. Nach Mutationen ruft der jeweilige Handler `reloadCopies()`.
+  useEffect(() => {
+    if (card && initialCard && card.id === initialCard.id) setCopies(ownedCopies);
+    else reloadCopies();
+  }, [card, initialCard, ownedCopies, reloadCopies]);
 
   /* Reset + load on card change */
   useEffect(() => {
@@ -662,7 +687,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
 
             // Eine Karte pro Pokédex-Nummer, je Stufe unabhängig gewählt
             // (gleiches Set → eigener Besitz → neuestes Datum, siehe pickEvolutionCards).
-            const ownedTcgIds = new Set(ownedCopies.map(o => o.tcgId).filter(Boolean) as string[]);
+            const ownedTcgIds = new Set(copies.map(o => o.tcgId).filter(Boolean) as string[]);
             const picked = await pickEvolutionCards(source, card, ownedTcgIds);
             if (cancelled) return;
             setEvoCards(picked);
@@ -789,6 +814,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     }
     const fresh = await getBinders();
     setResolvedBinders(fresh);
+    await reloadCopies();
     onSaved?.();
   }
 
@@ -804,6 +830,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
         const matched = matchTemplateBinders(card, resolvedBinders.filter(b => b.template));
         if (matched.length > 0) await syncTemplateBinders({ binderIds: matched.map(b => b.id) });
       }
+      await reloadCopies();
       onSaved?.();
     } finally { setDeletingId(null); }
   }
@@ -1125,8 +1152,8 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
             {openSec.has('cards') && (
               <div>
                 {variants.map((variant, vi) => {
-                  const copies = ownedCopies.filter(c => c.variant === variant);
-                  const isOwned = copies.length > 0;
+                  const variantCopies = copies.filter(c => c.variant === variant);
+                  const isOwned = variantCopies.length > 0;
                   return (
                     <div
                       key={variant}
@@ -1160,10 +1187,10 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                       </div>
 
                       {/* Eigene Kopien */}
-                      {copies.length > 0 && (
+                      {variantCopies.length > 0 && (
                         <div className="flex flex-col gap-1.5">
                           {(() => {
-                            return copies.map(copy => {
+                            return variantCopies.map(copy => {
                             const copyBinders = bindersOf(copy);
                             const isDeleting = deletingId === copy.id;
                             const binder = copyBinders[0];
@@ -1255,7 +1282,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           card={card}
           preVariant={addVariant}
           onClose={() => setAddVariant(null)}
-          onSaved={() => { setAddVariant(null); onSaved?.(); }}
+          onSaved={() => { setAddVariant(null); reloadCopies(); onSaved?.(); }}
         />
       )}
     </>

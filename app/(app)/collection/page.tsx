@@ -835,7 +835,7 @@ function CollectionContent() {
                   Keine Karten für diesen Filter.
                 </p>
               )}
-              <CardGrid cards={browseCards} ownedMap={ownedMap} sortKey={browseSort} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} />
+              <CardGrid cards={browseCards} ownedMap={ownedMap} sortKey={browseSort} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} onCardsChanged={() => getCards().then(setOwnedCards).catch(() => {})} />
               <div ref={sentinelRef} className="h-1" />
               {loadingMore && (
                 <div className="flex justify-center py-4">
@@ -874,6 +874,7 @@ function CollectionContent() {
                   sortKey={searchSort}
                   wishlistIds={wishlistIds}
                   onToggleWishlist={toggleWishlist}
+                  onCardsChanged={() => getCards().then(setOwnedCards).catch(() => {})}
                   setsMeta={setsMetaMap}
                   showSetBadge={resultsSpanMultipleSets}
                 />

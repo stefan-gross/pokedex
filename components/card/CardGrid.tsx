@@ -25,6 +25,11 @@ interface Props {
   /** Wird beim Schließen des Detail-Sheets aufgerufen (z.B. um einen dort frisch
    *  nachgeladenen Preis in die eigene priceMap zu übernehmen). */
   onDetailClose?: (card: CardInfo) => void;
+  /** Wird aufgerufen, wenn im Detail eine Karte hinzugefügt/geändert wurde —
+   *  damit der Aufrufer die Besitz-Daten (ownedMap) neu laden kann. Das Detail
+   *  bleibt dabei offen (es aktualisiert sich selbst); früher wurde es hier
+   *  fälschlich geschlossen. */
+  onCardsChanged?: () => void;
   /** tcgIds, die aktuell auf der Wunschliste stehen — für den Herz-Status. */
   wishlistIds?: Set<string>;
   /** Herz-Klick auf einer Kachel — togglet die Karte auf/von der Wunschliste. */
@@ -91,6 +96,7 @@ export function CardGrid({
   sortKey,
   priceMap,
   onDetailClose,
+  onCardsChanged,
   wishlistIds,
   onToggleWishlist,
   pricesLoading,
@@ -149,7 +155,7 @@ export function CardGrid({
         binders={binders}
         setMeta={setMeta}
         onClose={closeDetail}
-        onSaved={closeDetail}
+        onSaved={() => onCardsChanged?.()}
       />
     </>
   );
