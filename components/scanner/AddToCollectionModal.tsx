@@ -12,6 +12,8 @@ import { CardPrice } from '@/components/card/CardPrice';
 import { BinderIcon } from '@/lib/binder-icons';
 import { useSetMeta } from '@/lib/hooks/use-set-meta';
 import { CardNameLabel } from '@/components/card/CardNameLabel';
+import { Button } from '@/components/ui/button';
+import { useGlassTheme } from '@/lib/ui/glass-theme';
 
 const CLOSE_ANIM_MS = 250;
 
@@ -45,6 +47,10 @@ export function AddToCollectionModal({
   fromScanner = false,
   onClose, onSaved,
 }: Props) {
+  // Abonniert den geteilten Glas-Theme-Store, damit die Glas-Optik (und der
+  // primary-`Button`) live auf Theme-Änderungen der Design-System-Vorschau
+  // reagiert — gleiches Muster wie in `Button`/`Select`.
+  useGlassTheme();
   const [variant, setVariant] = useState<CardVariant>(preVariant ?? (card.variants?.[0] as CardVariant) ?? 'standard');
   const variantOptions: CardVariant[] = (card.variants && card.variants.length > 0 ? card.variants : ['standard']) as CardVariant[];
   const [condition, setCondition] = useState<CardCondition>(preCondition ?? 'NM');
@@ -217,8 +223,11 @@ export function AddToCollectionModal({
             </div>
           )}
 
-          {/* Bereits vorhanden — eine Zeile pro Exemplar, ohne Anzahl-Badge */}
-          {ownedCopies.length > 0 && (
+          {/* Bereits vorhanden — nur im Scanner-Kontext (`fromScanner`): dort
+              liegt kein Kartendetail dahinter, das die eigenen Exemplare schon
+              zeigt. Aus dem Kartendetail heraus wäre diese Liste redundant
+              (die „Karten & Preise"-Sektion listet sie bereits). */}
+          {fromScanner && ownedCopies.length > 0 && (
             <div className="flex flex-col gap-1.5 mb-4">
               {ownedCopies.map(copy => {
                 const binder = allBinders.find(b => b.cardIds.includes(copy.id));
@@ -251,15 +260,17 @@ export function AddToCollectionModal({
           )}
         </div>
 
-        <button
+        <Button
           onClick={save}
           disabled={saving}
-          className="w-full rounded-[15px] font-bold text-white disabled:opacity-50 transition-opacity shrink-0 flex items-center justify-center gap-1.5"
-          style={{ height: 54, fontSize: 17, background: '#22c55e', boxShadow: '0 6px 20px rgba(34,197,94,0.4)' }}
+          variant="primary"
+          accentColor="#2f855a"
+          size="lg"
+          icon={saving ? undefined : <Plus strokeWidth={2.5} />}
+          className="w-full shrink-0"
         >
-          {!saving && <Plus size={18} strokeWidth={2.5} />}
           {saving ? 'Wird gespeichert…' : 'In den Eingang'}
-        </button>
+        </Button>
       </div>
     </div>
   ), document.body);
