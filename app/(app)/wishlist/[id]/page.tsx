@@ -197,9 +197,13 @@ export default function WishlistDetailPage({ params }: Props) {
     <div className="min-h-screen pb-24">
       <div className="sticky top-safe z-20 mx-3 mt-2 glass rounded-[20px] px-4 pt-4 pb-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/wishlist')} className="text-glass" aria-label="Zurück">
-            <ChevronLeft size={22} />
-          </button>
+          <Button
+            variant="secondary"
+            icon={<ChevronLeft />}
+            onClick={() => router.push('/wishlist')}
+            aria-label="Zurück"
+            className="shrink-0"
+          />
           <div className="flex-1 min-w-0">
             <h1 className="text-role-h2 truncate text-glass flex items-center gap-1.5">
               {list.name}
@@ -270,9 +274,14 @@ export default function WishlistDetailPage({ params }: Props) {
                 {item.notes && <p className="text-role-label text-glass-muted truncate">{item.notes}</p>}
               </div>
               {!isTemplateList && (
-                <button onClick={() => handleRemove(item)} className="text-glass-muted shrink-0" aria-label="Entfernen">
-                  <Minus size={16} strokeWidth={2.5} />
-                </button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Minus strokeWidth={2.5} />}
+                  onClick={() => handleRemove(item)}
+                  aria-label="Entfernen"
+                  className="shrink-0"
+                />
               )}
             </div>
           ))}
