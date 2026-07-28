@@ -895,7 +895,10 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
             >
               <CardImage
                 srcDe={imgSrcDe}
-                src={card.imgLarge ?? card.imgSmall}
+                // `||` statt `??`: ein LEERER String (imgLarge = '' bei Karten
+                // ohne großes Bild, z.B. sehr neue Sets) fällt so aufs kleine
+                // Bild zurück statt eine leere Box zu zeigen (`??` würde '' behalten).
+                src={card.imgLarge || card.imgSmall}
                 alt={card.name}
                 width={140}
                 height={196}
