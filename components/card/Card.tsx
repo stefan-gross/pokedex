@@ -139,6 +139,20 @@ export function Card({
   const isOwned       = totalOwned > 0;
   const needsReview   = ownedCards.some(c => c.needsReview);
 
+  // Pro Ecke: sitzt dort ein Badge, übernimmt die Kartenecke dessen Rundung
+  // (Badges sind `rounded-full`, also Radius = halbe Badge-Größe) statt des
+  // normalen Karten-Radius — so schmiegt sich die Ecke ans runde Badge an.
+  // Nur die drei vom Nutzer benannten Ecken: Prüfen (oben links), Owned (oben
+  // rechts), Preis (unten links). Unten rechts (Wunschlisten-Herz) bleibt beim
+  // Karten-Radius. Ohne Badge bleibt die jeweilige Ecke ebenfalls beim Radius.
+  const badgeRadius = preset.badgeSize / 2;
+  const cornerStyle: React.CSSProperties = {
+    borderTopLeftRadius: needsReview ? badgeRadius : radius,
+    borderTopRightRadius: isOwned ? badgeRadius : radius,
+    borderBottomLeftRadius: price ? badgeRadius : radius,
+    borderBottomRightRadius: radius,
+  };
+
   return (
     <div className="relative flex flex-col">
       {/* Card image — tap → Detail (öffnet dort auch den "Prüfen"-Button je Exemplar).
@@ -149,13 +163,13 @@ export function Card({
           und dafür kein Clipping braucht. */}
       <div
         className="relative shadow-card cursor-pointer"
-        style={{ borderRadius: radius }}
+        style={cornerStyle}
         onClick={onCardClick}
       >
         <div
           className="relative overflow-hidden"
           style={{
-            borderRadius: radius,
+            ...cornerStyle,
             ...(!isOwned ? {
               filter: missingCardFilter(missingStyle),
               opacity: missingStyle.opacity,
@@ -186,7 +200,7 @@ export function Card({
         {!isOwned && missingStyle.effect === 'outline' && (
           <div
             className="absolute inset-0 pointer-events-none"
-            style={{ borderRadius: radius, border: '1.5px dashed rgba(255,255,255,0.5)' }}
+            style={{ ...cornerStyle, border: '1.5px dashed rgba(255,255,255,0.5)' }}
             aria-hidden="true"
           />
         )}
@@ -197,7 +211,7 @@ export function Card({
         {border && (
           <div
             className="absolute inset-0 pointer-events-none"
-            style={{ borderRadius: radius, border: `2.5px solid ${BORDER_COLORS[border]}` }}
+            style={{ ...cornerStyle, border: `2.5px solid ${BORDER_COLORS[border]}` }}
             aria-hidden="true"
           />
         )}

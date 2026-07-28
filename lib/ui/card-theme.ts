@@ -65,10 +65,12 @@ export const DEFAULT_MISSING_CARD_STYLE: MissingCardStyle = { opacity: 0.75, blu
 export const DEFAULT_CARD_VISUAL_THEME: CardVisualTheme = {
   missingStyle: DEFAULT_MISSING_CARD_STYLE,
   cornerRadius: { sm: 6, md: 6, lg: 6 },
+  // Alle Badges sitzen bündig in der Ecke (Offset 0) — zuletzt auf
+  // `/design-system-preview` bestätigter Stand.
   badgeLayout: {
-    sm: badgeLayoutForOffset(-8),
-    md: badgeLayoutForOffset(-13),
-    lg: badgeLayoutForOffset(-20),
+    sm: badgeLayoutForOffset(0),
+    md: badgeLayoutForOffset(0),
+    lg: badgeLayoutForOffset(0),
   },
 };
 

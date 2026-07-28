@@ -478,6 +478,9 @@ export default function DesignSystemPreviewPage() {
   const cornerRadius = draftCardTheme.cornerRadius[cardSize];
   const setCornerRadius = (v: number) => setDraftCardTheme(prev => ({ ...prev, cornerRadius: { ...prev.cornerRadius, [cardSize]: v } }));
   const [showReviewBadge, setShowReviewBadge] = useState(false);
+  // Preis-Badge (unten links, Pillenform) — Demo-Preis einspeisen, damit die
+  // Preis-Badge-Positions-Slider unten sichtbar etwas bewegen.
+  const [showPriceBadge, setShowPriceBadge] = useState(false);
   const updateBadge = <K extends keyof CardTileBadgeLayout>(badge: K, patch: Partial<CardTileBadgeLayout[K]>) => {
     setDraftCardTheme(prev => ({
       ...prev,
@@ -950,6 +953,7 @@ export default function DesignSystemPreviewPage() {
               badgeLayout={badgeLayout}
               cornerRadius={cornerRadius}
               sublabel={SAMPLE_CARD.number}
+              price={showPriceBadge ? '4,59 €' : undefined}
             />
           </div>
           <div style={{ width: CARD_SIZE_PRESETS[cardSize].badgeSize * 5 }} className="space-y-1.5">
@@ -962,11 +966,13 @@ export default function DesignSystemPreviewPage() {
               badgeLayout={badgeLayout}
               cornerRadius={cornerRadius}
               sublabel={SAMPLE_CARD.number}
+              price={showPriceBadge ? '4,59 €' : undefined}
             />
           </div>
 
           <div className="flex-1 min-w-[220px] space-y-3">
             <Checkbox checked={showReviewBadge} onChange={setShowReviewBadge} label="Prüfen-Badge zeigen (vorhanden)" />
+            <Checkbox checked={showPriceBadge} onChange={setShowPriceBadge} label="Preis-Badge zeigen (4,59 €)" />
 
             <label className="block text-role-label text-glass-muted space-y-1">
               <span>Eckenrundung: {cornerRadius}px</span>
