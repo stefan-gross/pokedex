@@ -407,6 +407,7 @@ export function OwnedCopyRow({
           <div className="shrink-0 ml-auto" data-swipe-passthrough style={{ maxWidth: 190 }}>
             {(!isDefaultBinder && !binder?.template && binder) ? (
               <CustomSelect
+                variant="primary"
                 height="sm"
                 value={binder.id}
                 onChange={v => { if (v === UNSORTED_SENTINEL) onMoveToBinder(null); }}
@@ -1237,14 +1238,16 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
               </div>
             )}
             {/* Manueller Wunsch — steuert ausschließlich die freie Liste. */}
-            <button
+            <Button
+              variant="secondary"
+              size="lg"
               onClick={toggleWishlist}
-              className="drawer-panel w-full h-[54px] rounded-[18px] flex items-center justify-center gap-2 text-role-title"
+              icon={<Heart size={19} fill={freeWishlistItem ? '#ef4444' : 'none'} />}
+              className="w-full"
               style={freeWishlistItem ? { color: '#ef4444' } : undefined}
             >
-              <Heart size={19} fill={freeWishlistItem ? '#ef4444' : 'none'} />
               {freeWishlistItem ? 'Von Wunschliste entfernen' : 'Auf Wunschliste setzen'}
-            </button>
+            </Button>
           </div>
       </Sheet>
 
