@@ -4,7 +4,7 @@ import { use, useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Heart, Minus, Lock, Download } from 'lucide-react';
 import { getWishlist, removeItemFromWishlist } from '@/lib/firestore/wishlists';
-import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
+import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { getCardsByTcgId } from '@/lib/firestore/cards';
 import { getAllSets } from '@/lib/firestore/sets';
 import { getBinder } from '@/lib/firestore/binders';
@@ -83,6 +83,20 @@ export default function WishlistDetailPage({ params }: Props) {
 
   const tcgIds = useMemo(() => withTcgId.map(i => i.tcgId!).filter(Boolean), [withTcgId]);
   const { prices } = usePricesBatch(tcgIds);
+
+  // Bilder frisch aus dem Katalog auflösen (DE + EN), damit `CardImage` bei
+  // einem 404 der deutschen TCGdex-URL auf das englische Bild zurückfallen kann.
+  // Der gespeicherte `item.tcgImageUrl` ist nur EINE (deutsche) URL ohne
+  // Fallback — deshalb fehlten Bilder, für die TCGdex kein DE-Bild hat.
+  const [catById, setCatById] = useState<Map<string, CatalogCard>>(new Map());
+  useEffect(() => {
+    if (tcgIds.length === 0) { setCatById(new Map()); return; }
+    let cancelled = false;
+    getCatalogCardsByIds(tcgIds)
+      .then(cards => { if (!cancelled) setCatById(new Map(cards.map(c => [c.id, c]))); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [tcgIds]);
 
   async function handleRemove(item: WishlistItem) {
     if (!list || isTemplateList) return;
@@ -246,13 +260,19 @@ export default function WishlistDetailPage({ params }: Props) {
         <div className="px-3 pt-4 grid grid-cols-2 gap-2">
           {withTcgId.map(item => {
             const price = pickTrendPrice(prices.get(item.tcgId!));
+            const cc = catById.get(item.tcgId!);
             return (
               <Card
                 key={item.id}
                 card={{
                   id: item.tcgId!, name: item.name, number: item.number ?? '',
                   setId: item.setId ?? '', setName: item.setName ?? '',
-                  imgSmall: item.tcgImageUrl ?? '', imgLarge: item.tcgImageUrl ?? '',
+                  // EN als Basis-Bild (Fallback), DE bevorzugt via CardImage —
+                  // fällt bei DE-404 automatisch auf EN zurück.
+                  imgSmall: cc?.imgSmall ?? item.tcgImageUrl ?? '',
+                  imgLarge: cc?.imgLarge ?? item.tcgImageUrl ?? '',
+                  imgSmallDe: cc?.imgSmallDe,
+                  imgLargeDe: cc?.imgLargeDe,
                 }}
                 onCardClick={() => openDetail(item)}
                 sublabel={item.setName ? `${item.setName}${item.number ? ` · ${item.number}` : ''}` : item.name}
