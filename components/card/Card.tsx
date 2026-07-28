@@ -134,24 +134,13 @@ export function Card({
   useCardVisualTheme();
   const preset = CARD_SIZE_PRESETS[size];
   const radius = cornerRadius;
+  // Rundung der abgerundeten Badge-Diagonal-Ecken — etwas runder als der
+  // Karten-Radius (Faktor 1,5), skaliert aber mit ihm mit.
+  const badgeCornerRadius = Math.round(radius * 1.5);
   const layout = badgeLayout;
   const totalOwned    = ownedCards.reduce((s, c) => s + c.quantity, 0);
   const isOwned       = totalOwned > 0;
   const needsReview   = ownedCards.some(c => c.needsReview);
-
-  // Pro Ecke: sitzt dort ein Badge, übernimmt die Kartenecke dessen Rundung
-  // (Badges sind `rounded-full`, also Radius = halbe Badge-Größe) statt des
-  // normalen Karten-Radius — so schmiegt sich die Ecke ans runde Badge an.
-  // Nur die drei vom Nutzer benannten Ecken: Prüfen (oben links), Owned (oben
-  // rechts), Preis (unten links). Unten rechts (Wunschlisten-Herz) bleibt beim
-  // Karten-Radius. Ohne Badge bleibt die jeweilige Ecke ebenfalls beim Radius.
-  const badgeRadius = preset.badgeSize / 2;
-  const cornerStyle: React.CSSProperties = {
-    borderTopLeftRadius: needsReview ? badgeRadius : radius,
-    borderTopRightRadius: isOwned ? badgeRadius : radius,
-    borderBottomLeftRadius: price ? badgeRadius : radius,
-    borderBottomRightRadius: radius,
-  };
 
   return (
     <div className="relative flex flex-col">
@@ -163,13 +152,13 @@ export function Card({
           und dafür kein Clipping braucht. */}
       <div
         className="relative shadow-card cursor-pointer"
-        style={cornerStyle}
+        style={{ borderRadius: radius }}
         onClick={onCardClick}
       >
         <div
           className="relative overflow-hidden"
           style={{
-            ...cornerStyle,
+            borderRadius: radius,
             ...(!isOwned ? {
               filter: missingCardFilter(missingStyle),
               opacity: missingStyle.opacity,
@@ -200,7 +189,7 @@ export function Card({
         {!isOwned && missingStyle.effect === 'outline' && (
           <div
             className="absolute inset-0 pointer-events-none"
-            style={{ ...cornerStyle, border: '1.5px dashed rgba(255,255,255,0.5)' }}
+            style={{ borderRadius: radius, border: '1.5px dashed rgba(255,255,255,0.5)' }}
             aria-hidden="true"
           />
         )}
@@ -211,7 +200,7 @@ export function Card({
         {border && (
           <div
             className="absolute inset-0 pointer-events-none"
-            style={{ ...cornerStyle, border: `2.5px solid ${BORDER_COLORS[border]}` }}
+            style={{ borderRadius: radius, border: `2.5px solid ${BORDER_COLORS[border]}` }}
             aria-hidden="true"
           />
         )}
@@ -219,7 +208,7 @@ export function Card({
         {/* Prüfen-Badge — gelb, oben links, nur bei ungeprüften eigenen Exemplaren. */}
         {needsReview && (
           <CardBadge
-            size={preset.badgeSize} color="var(--pokedex-yellow)"
+            size={preset.badgeSize} color="var(--pokedex-yellow)" corner="tl" cornerRadius={badgeCornerRadius}
             style={{ top: layout.reviewBadge.top, left: layout.reviewBadge.left }}
             ariaLabel="Ungeprüft" title="Ungeprüft"
           >
@@ -229,7 +218,7 @@ export function Card({
 
         {/* Owned badge — grün, oben rechts */}
         {isOwned && (
-          <CardBadge size={preset.badgeSize} color="rgba(53,209,90,.9)" style={{ top: layout.ownedBadge.top, right: layout.ownedBadge.right }}>
+          <CardBadge size={preset.badgeSize} color="rgba(53,209,90,.9)" corner="tr" cornerRadius={badgeCornerRadius} style={{ top: layout.ownedBadge.top, right: layout.ownedBadge.right }}>
             ×{totalOwned}
           </CardBadge>
         )}
@@ -237,7 +226,7 @@ export function Card({
         {/* Preis — unten links, Pillenform statt Kreis (siehe CardBadge shape="pill"). */}
         {price && (
           <CardBadge
-            size={preset.badgeSize} shape="pill" color="rgba(0,0,0,.72)"
+            size={preset.badgeSize} shape="pill" color="rgba(0,0,0,.72)" corner="bl" cornerRadius={badgeCornerRadius}
             style={{ bottom: layout.priceBadge.bottom, left: layout.priceBadge.left }}
             ariaLabel="Preis"
           >

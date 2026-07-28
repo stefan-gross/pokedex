@@ -31,11 +31,36 @@ export interface CardBadgeProps {
    *  horizontalem Innenabstand) — für längere Textinhalte wie einen Preis
    *  ("4,59 €"), die in einem echten Kreis nicht lesbar wären. */
   shape?: 'circle' | 'pill';
+  /** Kartenecke, in der das Badge sitzt. Gesetzt → eckiges Badge mit zwei
+   *  diagonal abgerundeten Ecken (die genannte Ecke + ihre Gegenecke), die
+   *  beiden anderen fast eckig. `tl`/`br` runden die TL–BR-Diagonale,
+   *  `tr`/`bl` die TR–BL-Diagonale. Ohne `corner` bleibt das Badge rund
+   *  (`rounded-full`, Rückwärtskompatibilität). */
+  corner?: 'tl' | 'tr' | 'bl' | 'br';
+  /** Radius (px) der beiden abgerundeten Diagonal-Ecken — an den Karten-Ecken-
+   *  Radius angeglichen (siehe `Card`), damit Badge und Karte gleich stark
+   *  gerundet wirken. Nur relevant zusammen mit `corner`. */
+  cornerRadius?: number;
+}
+
+/** Border-Radius für ein eckiges Badge mit diagonal abgerundeten Ecken.
+ *  Die Ecke, in der das Badge sitzt, UND ihre Gegenecke werden mit `round`
+ *  gerundet (= Karten-Radius); die beiden anderen bleiben nahezu eckig. */
+function cornerRadiusStyle(corner: NonNullable<CardBadgeProps['corner']>, round: number): React.CSSProperties {
+  const R = round;             // abgerundete Diagonal-Ecken = Karten-Radius
+  const S = 2;                 // „eckige" Ecken (minimal entschärft)
+  const roundTLBR = corner === 'tl' || corner === 'br';
+  return {
+    borderTopLeftRadius: roundTLBR ? R : S,
+    borderBottomRightRadius: roundTLBR ? R : S,
+    borderTopRightRadius: roundTLBR ? S : R,
+    borderBottomLeftRadius: roundTLBR ? S : R,
+  };
 }
 
 export function CardBadge({
   children, size = 22, color = 'rgba(0,0,0,.55)', background = true, textColor = '#fff',
-  className, style, onClick, ariaLabel, title, shape = 'circle',
+  className, style, onClick, ariaLabel, title, shape = 'circle', corner, cornerRadius = 6,
 }: CardBadgeProps) {
   const Tag = onClick ? 'button' : 'div';
   const isPill = shape === 'pill';
@@ -44,11 +69,12 @@ export function CardBadge({
       onClick={onClick}
       aria-label={ariaLabel}
       title={title}
-      className={cn('absolute rounded-full flex items-center justify-center font-bold leading-none', className)}
+      className={cn('absolute flex items-center justify-center font-bold leading-none', corner ? '' : 'rounded-full', className)}
       style={{
         width: isPill ? 'auto' : size,
         height: size,
         ...(isPill ? { paddingInline: size * 0.28, whiteSpace: 'nowrap' } : undefined),
+        ...(corner ? cornerRadiusStyle(corner, cornerRadius) : undefined),
         background: background ? color : 'transparent',
         color: textColor,
         fontSize: size * (isPill ? 0.38 : 0.45),
