@@ -212,7 +212,7 @@ export default function WishlistDetailPage({ params }: Props) {
       <div className="sticky top-safe z-20 mx-3 mt-2 glass rounded-[20px] px-4 pt-4 pb-3">
         <div className="flex items-center gap-3">
           <Button
-            variant="secondary"
+            variant="ghost"
             icon={<ChevronLeft />}
             onClick={() => router.push('/wishlist')}
             aria-label="Zurück"

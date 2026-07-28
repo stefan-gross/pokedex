@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 
 import { getCards } from '@/lib/firestore/cards';
@@ -11,6 +10,7 @@ import { getBinders } from '@/lib/firestore/binders';
 import { fetchPricesBatch } from '@/lib/prices/fetch-batch';
 import { pickTrendPrice } from '@/lib/prices/value-tier';
 import { ButtonGroup } from '@/components/ui/button-group';
+import { Button } from '@/components/ui/button';
 import { CardGrid } from '@/components/card/CardGrid';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
@@ -250,10 +250,9 @@ function SetDetailContent() {
 
       {/* ── Sticky top bar ── */}
       <div className="sticky top-safe z-20 px-4 pt-4 pb-3">
-        <Link href={backHref} className="inline-flex items-center gap-1 text-role-body text-glass-muted">
-          <ChevronLeft size={18} strokeWidth={2} />
+        <Button variant="ghost" href={backHref} className="px-0" icon={<ChevronLeft size={18} strokeWidth={2} />}>
           {backLabel}
-        </Link>
+        </Button>
       </div>
 
       {loading ? (

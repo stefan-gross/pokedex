@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { getCards } from '@/lib/firestore/cards';
 import { SERIES_NAMES_DE } from '@/lib/set-names-de';
 import { SetListItem } from '@/components/set/SetListItem';
@@ -65,9 +65,7 @@ export default function SetsPage() {
     <div className="min-h-screen">
       {/* Header */}
       <div className="sticky top-safe z-20 px-4 pt-4 pb-3 flex items-center gap-3">
-        <Link href="/" className="text-glass shrink-0">
-          <ChevronLeft size={22} />
-        </Link>
+        <Button variant="ghost" href="/" icon={<ChevronLeft size={22} />} aria-label="Zurück" className="shrink-0" />
         <h1 className="text-role-h2 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">Alle Sets</h1>
       </div>
 

@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { getCard } from '@/lib/firestore/cards';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { CardPriceDetail } from '@/components/card/CardPriceDetail';
@@ -17,9 +17,7 @@ export default async function CardDetailPage({ params }: Props) {
   return (
     <div className="min-h-screen">
       <div className="sticky top-safe z-10 px-4 pt-4 pb-3 flex items-center gap-3">
-        <Link href="/collection" className="text-glass">
-          <ChevronLeft size={22} />
-        </Link>
+        <Button variant="ghost" href="/collection" icon={<ChevronLeft size={22} />} aria-label="Zurück" />
         <h1 className="font-semibold text-base truncate text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">{card.name}</h1>
       </div>
 

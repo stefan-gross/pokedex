@@ -843,10 +843,10 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
       {/* Links: Back-Pfeil (wenn auf Evo-Karte navigiert) ODER Evolutionsstufe */}
       {cardStack.length > 0 ? (
         <Button
-          variant="secondary" size="sm"
+          variant="ghost" size="sm"
           icon={<ChevronLeft size={16} />}
           onClick={() => setCardStack(s => s.slice(0, -1))}
-          className="shrink-0"
+          className="shrink-0 px-0"
         >
           Zurück
         </Button>

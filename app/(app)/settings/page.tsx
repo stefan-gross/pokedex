@@ -7,11 +7,11 @@ import {
   ChevronLeft, Sun, Moon, Smartphone, RefreshCw,
   Database, CheckCircle, Clock, AlertCircle, RotateCcw, Trash2,
 } from 'lucide-react';
-import Link from 'next/link';
 import type { SyncMeta } from '@/lib/firestore/catalog';
 import { getCards, deleteCard } from '@/lib/firestore/cards';
 import { getBinders, updateBinder } from '@/lib/firestore/binders';
 import { ButtonGroup } from '@/components/ui/button-group';
+import { Button } from '@/components/ui/button';
 import { SettingsRow } from '@/components/ui/settings-row';
 
 const THEMES = [
@@ -285,9 +285,7 @@ export default function SettingsPage() {
   return (
     <div className="relative min-h-screen pb-16">
       <div className="sticky top-safe z-20 px-4 pt-4 pb-3 flex items-center gap-3">
-        <Link href="/" className="text-glass">
-          <ChevronLeft size={22} />
-        </Link>
+        <Button variant="ghost" href="/" icon={<ChevronLeft size={22} />} aria-label="Zurück" />
         <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">Einstellungen</h1>
       </div>
 

@@ -37,6 +37,7 @@ import { CardImage } from '@/components/card/CardImage';
 import { CardBadge } from '@/components/card/CardBadge';
 import { Card } from '@/components/card/Card';
 import { Switch } from '@/components/ui/switch';
+import { Button } from '@/components/ui/button';
 import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
@@ -325,10 +326,9 @@ export default function BinderDetailPage({ params }: Props) {
     <div className="min-h-screen">
       {/* ── Sticky top bar (außerhalb des Panels, wie bei der Set-Detailseite) ── */}
       <div className="sticky top-safe z-20 px-4 pt-3 pb-2">
-        <button onClick={() => router.back()} className="inline-flex items-center gap-1 text-role-body text-glass-muted" aria-label="Zurück">
-          <ChevronLeft size={18} strokeWidth={2} />
+        <Button variant="ghost" onClick={() => router.back()} className="px-0" icon={<ChevronLeft size={18} strokeWidth={2} />} aria-label="Zurück">
           Sammlungen
-        </button>
+        </Button>
       </div>
 
       <div className="sticky z-20 mx-3 mb-2 glass rounded-[20px] px-4 pt-3 pb-2" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 41px)' }}>

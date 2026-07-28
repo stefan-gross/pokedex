@@ -1,6 +1,7 @@
 'use client';
 
 import { forwardRef, isValidElement, cloneElement } from 'react';
+import Link from 'next/link';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 import { primaryGlassStyle, scanFabStyle, secondaryGlassStyle } from '@/lib/ui/tinted-glass';
@@ -33,6 +34,12 @@ const buttonVariants = cva(
         // in `secondaryGlassStyle()`, tinted-glass.ts) statt vollem Schwarz/
         // Weiß-Kontrast.
         secondary: 'text-foreground border-none font-medium',
+        // Nackt: nur Icon + gedämpfter Text, KEINE Füllung/Rahmen/Schatten/
+        // Blur — für Zurück-Buttons, die im Inhalt oder auf dem ruhigen
+        // App-Hintergrund sitzen. `hover:text-glass` hebt beim Zeigen leicht
+        // an (nur Desktop). Ersetzt die früheren rohen `<button
+        // text-glass-muted>`-Zurück-Links.
+        ghost: 'text-glass-muted hover:text-glass border-none font-medium',
         scan: 'text-white border-none hover:-translate-y-px font-semibold',
       },
       // Apple HIG: Mindest-Trefferfläche 44×44pt. `md`/`lg` erfüllen das
@@ -66,6 +73,10 @@ export interface ButtonProps
    *  automatisch rund + textlos (Icon-only) statt einer eigenen Prop/Variante
    *  dafür. */
   icon?: React.ReactNode;
+  /** Rendert einen Next-`<Link href>` mit identischer Optik statt eines
+   *  `<button>` — für Navigations-/Zurück-Buttons (Prefetch, in
+   *  Server-Components ohne `onClick` nutzbar). */
+  href?: string;
 }
 
 /**
@@ -76,7 +87,7 @@ export interface ButtonProps
  * "var(--action-delete)" icon={<Trash2/>}`, kein eigenes `destructive`.
  */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { className, variant = 'primary', size = 'md', accentColor, icon, style, children, ...props },
+  { className, variant = 'primary', size = 'md', accentColor, icon, href, style, children, ...props },
   ref,
 ) {
   // Abonniert den geteilten Glas-Theme-Store nur, damit dieser Button neu
@@ -87,6 +98,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   const isPrimary = variant === 'primary';
   const isScan = variant === 'scan';
   const isSecondary = variant === 'secondary';
+  // `ghost` bekommt keinerlei Inline-Glas-Style — Textfarbe kommt aus der
+  // cva-Klasse (`text-glass-muted`), Hintergrund/Rahmen/Schatten bleiben leer.
   const defaultColor = isScan ? DEFAULT_SCAN : DEFAULT_PRIMARY;
   const color = accentColor ?? defaultColor;
   // Kein Text-Label → rund + textlos statt eines gepolsterten Pills; das
@@ -98,36 +111,47 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     ? cloneElement(icon, { size: icon.props.size ?? iconSize })
     : icon;
 
+  const classes = cn(
+    buttonVariants({ variant, size, className }),
+    iconOnly && `p-0 ${ICON_ONLY_WIDTH[resolvedSize]}`,
+  );
+  const styleObj: React.CSSProperties = {
+    // Kein Rahmen (Session-Vorgabe: alle Elemente außer Panels/Dialoge/
+    // Sheets sind randlos) — als Inline-Style gesetzt (Default, wird
+    // von secondaryGlassStyle()/primaryGlassStyle() ggf. überschrieben,
+    // falls dort ein Rahmen konfiguriert ist).
+    border: 'none',
+    // Textfarbe je nach Helligkeit der Akzentfarbe statt hart codiertem
+    // Weiß — wichtig, da `accentColor` frei überschreibbar ist.
+    ...((isPrimary || isScan) ? { color: readableTextColor(color) } : undefined),
+    ...(isPrimary ? primaryGlassStyle(color) : undefined),
+    // `secondary` hat keine Akzentfarbe — Hintergrund/Rahmen/Schatten/
+    // Textfarbe kommen komplett aus dem Theme (Keine/Weiß/Grau-Wahl).
+    ...(isSecondary ? secondaryGlassStyle() : undefined),
+    // `scan` bekommt 1:1 das Original-Rezept des Footer-FABs
+    // (`components/BottomNav.tsx`) — inkl. Rahmen (bewusste Ausnahme von
+    // der "randlos"-Regel, da hier ein bestehender Look nachgebildet wird).
+    ...(isScan ? scanFabStyle(color) : undefined),
+    ...style,
+  };
+  const content = <>{resolvedIcon}{children}</>;
+
+  // Mit `href` wird ein Next-`<Link>` mit identischer Optik gerendert statt
+  // eines `<button>` — nötig für Navigations-/Zurück-Buttons (Prefetch, in
+  // Server-Components nutzbar, kein `onClick`-Handler-Zwang). Sonst ein echter
+  // Button.
+  if (href) {
+    return (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <Link href={href} className={classes} style={styleObj} {...(props as any)}>
+        {content}
+      </Link>
+    );
+  }
+
   return (
-    <button
-      ref={ref}
-      className={cn(
-        buttonVariants({ variant, size, className }),
-        iconOnly && `p-0 ${ICON_ONLY_WIDTH[resolvedSize]}`,
-      )}
-      style={{
-        // Kein Rahmen (Session-Vorgabe: alle Elemente außer Panels/Dialoge/
-        // Sheets sind randlos) — als Inline-Style gesetzt (Default, wird
-        // von secondaryGlassStyle()/primaryGlassStyle() ggf. überschrieben,
-        // falls dort ein Rahmen konfiguriert ist).
-        border: 'none',
-        // Textfarbe je nach Helligkeit der Akzentfarbe statt hart codiertem
-        // Weiß — wichtig, da `accentColor` frei überschreibbar ist.
-        ...((isPrimary || isScan) ? { color: readableTextColor(color) } : undefined),
-        ...(isPrimary ? primaryGlassStyle(color) : undefined),
-        // `secondary` hat keine Akzentfarbe — Hintergrund/Rahmen/Schatten/
-        // Textfarbe kommen komplett aus dem Theme (Keine/Weiß/Grau-Wahl).
-        ...(isSecondary ? secondaryGlassStyle() : undefined),
-        // `scan` bekommt 1:1 das Original-Rezept des Footer-FABs
-        // (`components/BottomNav.tsx`) — inkl. Rahmen (bewusste Ausnahme von
-        // der "randlos"-Regel, da hier ein bestehender Look nachgebildet wird).
-        ...(isScan ? scanFabStyle(color) : undefined),
-        ...style,
-      }}
-      {...props}
-    >
-      {resolvedIcon}
-      {children}
+    <button ref={ref} className={classes} style={styleObj} {...props}>
+      {content}
     </button>
   );
 });
