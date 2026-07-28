@@ -220,8 +220,8 @@ export const DEFAULT_GLASS_THEME: GlassTheme = {
   // Kommentar-Historie) — per Slider auf `/design-system-preview` jederzeit
   // weiter anpassbar, `brightness: 0` bedeutet "Basisfarbe unverändert".
   swipeSolid: {
-    light: { color: '#bfe5fd', brightness: -0.16 },
-    dark: { color: '#ddf9e6', brightness: -0.43 },
+    light: { color: '#d8daf8', brightness: 0.12 },
+    dark: { color: '#72738d', brightness: 0.12 },
   },
 };
 
