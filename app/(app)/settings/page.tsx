@@ -5,14 +5,14 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, Sun, Moon, Smartphone, RefreshCw,
-  Database, CheckCircle, Clock, AlertCircle, RotateCcw, Trash2,
+  Database, CheckCircle, Clock, AlertCircle, RotateCcw, Trash2, LogOut, Coins,
 } from 'lucide-react';
 import type { SyncMeta } from '@/lib/firestore/catalog';
 import { getCards, deleteCard } from '@/lib/firestore/cards';
 import { getBinders, updateBinder } from '@/lib/firestore/binders';
+import { getOwnedPriceStatus, type OwnedPriceStatus } from '@/lib/prices/owned-status';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Button } from '@/components/ui/button';
-import { SettingsRow } from '@/components/ui/settings-row';
 
 const THEMES = [
   { value: 'system', label: 'System', icon: Smartphone },
@@ -34,7 +34,24 @@ export default function SettingsPage() {
   const [runningAll,  setRunningAll]  = useState(false);
   const [allProgress, setAllProgress] = useState<string | null>(null);
 
-  useEffect(() => { setMounted(true); loadSyncStatus(); }, []);
+  // Passiver Preis-Status der Sammlung (Abdeckung + letzte Aktualisierung),
+  // rein aus gecachten Katalog-Preisen berechnet (kein Live-Refresh).
+  const [priceStatus, setPriceStatus] = useState<OwnedPriceStatus | null>(null);
+  // Zusammenfassung + Zeitpunkt des letzten „Daten aktualisieren"-Laufs,
+  // in `localStorage` gehalten (der Lauf wird komplett clientseitig orchestriert).
+  const [lastDataRun, setLastDataRun] = useState<{ at: string; summary: string } | null>(null);
+
+  const LAST_RUN_KEY = 'pokedex-last-data-run';
+
+  useEffect(() => {
+    setMounted(true);
+    loadSyncStatus();
+    getOwnedPriceStatus().then(setPriceStatus).catch(() => {});
+    try {
+      const raw = localStorage.getItem(LAST_RUN_KEY);
+      if (raw) setLastDataRun(JSON.parse(raw));
+    } catch { /* ignore */ }
+  }, []);
 
   async function loadSyncStatus() {
     try {
@@ -186,7 +203,13 @@ export default function SettingsPage() {
         if (data.status !== 'in-progress') break;
       }
 
-      step(`✅ Fertig — ${deTotal} DE-Namen · ${evoTotal} Evo-Daten · ${bfData.updated ?? 0} Set-Kürzel · ${atData.updated ?? 0} Illustrator-Tokens · ${imgTotal} DE-Bilder · ${speciesTotal} Artdaten · ${variantsTotal} Varianten · ${artistTotal} Illustrator-Credits`);
+      const summary = `${deTotal} DE-Namen · ${evoTotal} Evo-Daten · ${bfData.updated ?? 0} Set-Kürzel · ${atData.updated ?? 0} Illustrator-Tokens · ${imgTotal} DE-Bilder · ${speciesTotal} Artdaten · ${variantsTotal} Varianten · ${artistTotal} Illustrator-Credits`;
+      step(`✅ Fertig — ${summary}`);
+      // Zusammenfassung dauerhaft merken (überlebt Reload), damit „Letzter
+      // Daten-Lauf" auch später noch sichtbar ist.
+      const run = { at: new Date().toISOString(), summary };
+      setLastDataRun(run);
+      try { localStorage.setItem(LAST_RUN_KEY, JSON.stringify(run)); } catch { /* ignore */ }
     } catch (e) {
       step(`Fehler: ${e}`);
     } finally {
@@ -248,6 +271,8 @@ export default function SettingsPage() {
       if (j.errored > 0) msg += ` ${j.errored} vorübergehend nicht erreichbar.`;
       if (j.capped) msg += ' Rest beim nächsten Mal.';
       setRefreshPricesResult(msg);
+      // Preis-Abdeckung/-Datum neu berechnen (Cache wurde gerade aktualisiert).
+      getOwnedPriceStatus().then(setPriceStatus).catch(() => {});
     } catch (e) {
       setRefreshPricesResult(`Fehler: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -286,53 +311,59 @@ export default function SettingsPage() {
     <div className="relative min-h-screen pb-16">
       <div className="sticky top-safe z-20 px-4 pt-4 pb-3 flex items-center gap-3">
         <Button variant="ghost" href="/" icon={<ChevronLeft size={22} />} aria-label="Zurück" />
-        <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">Einstellungen</h1>
+        <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)] flex-1">Einstellungen</h1>
+        {/* Farbschema — kompakt oben rechts */}
+        {mounted && (
+          <ButtonGroup
+            iconOnly
+            value={(theme ?? 'system') as 'system' | 'light' | 'dark'}
+            onChange={setTheme}
+            options={THEMES.map(({ value, label, icon: Icon }) => ({
+              value,
+              ariaLabel: label,
+              label: <Icon size={18} strokeWidth={theme === value ? 2.5 : 1.8} style={{ color: theme === value ? 'var(--pokedex-red)' : undefined }} />,
+            }))}
+          />
+        )}
       </div>
 
       <div className="px-4 py-5 space-y-6">
 
         {/* 1. App */}
-        <section>
-          <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-3">App</p>
-          <div className="glass rounded-[20px] overflow-hidden">
-            <SettingsRow
-              icon={<RefreshCw size={18} />}
-              title="App aktualisieren"
-              subtitle="Lädt die neueste Version — Cache wird geleert"
-              onClick={handleAppUpdate}
-            />
-          </div>
+        <section className="space-y-1.5">
+          <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-2">App</p>
+          <Button variant="secondary" size="lg" className="w-full justify-start" icon={<RefreshCw size={18} />} onClick={handleAppUpdate}>
+            App aktualisieren
+          </Button>
+          <p className="text-role-label text-glass-muted px-1">Lädt die neueste Version — Cache wird geleert</p>
         </section>
 
-        {/* 2. Karten-Catalog */}
+        {/* 2. Karten-Catalog — ein Panel: Status + Preis-Status + letzter Lauf + Aktionen */}
         <section>
           <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-3">Karten-Catalog</p>
           <div className="glass rounded-[20px] overflow-hidden">
 
-            {syncLoading ? (
-              <div className="flex justify-center py-6">
-                <div className="w-6 h-6 border-2 border-[rgba(30,40,80,0.3)] dark:border-white/70 border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : (
-              <>
-                {/* Status */}
-                <div className="px-4 py-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Database size={16} className="text-glass-muted shrink-0" />
-                    <p className="text-role-title text-glass">Sync-Status</p>
-                  </div>
-                  {isComplete
+            {/* Katalog-Sync-Status (dauerhaft, nicht nur während des Syncs) */}
+            <div className="px-4 py-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Database size={16} className="text-glass-muted shrink-0" />
+                  <p className="text-role-title text-glass">Katalog</p>
+                </div>
+                {syncLoading
+                  ? <span className="w-4 h-4 border-2 border-[rgba(30,40,80,0.3)] dark:border-white/70 border-t-transparent rounded-full animate-spin" />
+                  : isComplete
                     ? <span className="flex items-center gap-1 text-xs text-green-700 dark:text-green-300"><CheckCircle size={12} /> Aktuell</span>
                     : hasNew
                       ? <span className="flex items-center gap-1 text-xs text-yellow-700 dark:text-yellow-300"><Clock size={12} /> Update verfügbar</span>
                       : (syncStatus?.syncedTotal ?? 0) === 0
                         ? <span className="text-role-label text-glass-muted">Noch nicht gestartet</span>
                         : <span className="flex items-center gap-1 text-xs text-orange-700 dark:text-orange-200"><Clock size={12} /> Unvollständig</span>
-                  }
-                </div>
+                }
+              </div>
 
-                {/* Fortschrittsbalken */}
-                <div className="px-4 pb-3 space-y-2">
+              {!syncLoading && (
+                <div className="space-y-2">
                   <div className="h-1.5 rounded-full bg-[rgba(30,40,80,0.10)] dark:bg-white/25 overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all ${isComplete ? '' : 'bg-[#e53e3e] dark:bg-white'}`}
@@ -355,114 +386,120 @@ export default function SettingsPage() {
                     </div>
                   )}
                 </div>
-
-                {/* Fortschritt kombinierter Lauf */}
-                {allProgress && (
-                  <div
-                    className="px-4 py-2.5 text-xs font-medium text-glass bg-[rgba(30,40,80,0.06)] dark:bg-white/10"
-                  >
-                    {allProgress}
-                  </div>
-                )}
-
-                {/* Ergebnis letzter Sync */}
-                {syncResult && !runningAll && (
-                  <div className="px-4 py-2.5 text-role-label text-glass-muted">
-                    {syncResult}
-                  </div>
-                )}
-
-                {/* Daten aktualisieren */}
-                <SettingsRow
-                  icon={<RefreshCw size={18} className={runningAll ? 'animate-spin' : ''} />}
-                  title={runningAll ? 'Läuft…' : 'Daten aktualisieren'}
-                  subtitle="Neue Karten holen und alle Felder anreichern"
-                  onClick={() => runAllSteps(false)}
-                  disabled={busy}
-                  active={runningAll}
-                  divider
-                />
-
-                {/* Daten neu aufbauen */}
-                <SettingsRow
-                  tone="warning"
-                  icon={<RotateCcw size={18} />}
-                  title="Daten neu aufbauen"
-                  subtitle="Reset + alle Schritte komplett neu — z. B. nach Schema-Änderung"
-                  onClick={() => runAllSteps(true)}
-                  disabled={busy}
-                  divider
-                />
-
-                {/* Preise jetzt aktualisieren */}
-                <SettingsRow
-                  tone="info"
-                  icon={<RefreshCw size={18} className={refreshingPrices ? 'animate-spin' : ''} />}
-                  title={refreshingPrices ? 'Preise werden aktualisiert…' : 'Preise jetzt aktualisieren'}
-                  subtitle="Holt aktuelle Cardmarket/TCGplayer-Preise für deine Sammlung"
-                  extra={refreshPricesResult && (
-                    <p className="text-role-label text-glass-muted mt-1 font-mono">{refreshPricesResult}</p>
-                  )}
-                  onClick={handleRefreshPrices}
-                  disabled={refreshingPrices}
-                  divider
-                />
-              </>
-            )}
-          </div>
-        </section>
-
-        {/* 3. Erscheinungsbild */}
-        <section>
-          <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-3">Erscheinungsbild</p>
-          <div className="glass rounded-[20px] px-4 py-3 flex items-center justify-between gap-3">
-            <p className="text-role-title text-glass">Farbschema</p>
-            {mounted && (
-              <ButtonGroup
-                iconOnly
-                value={(theme ?? 'system') as 'system' | 'light' | 'dark'}
-                onChange={setTheme}
-                options={THEMES.map(({ value, label, icon: Icon }) => ({
-                  value,
-                  ariaLabel: label,
-                  label: <Icon size={18} strokeWidth={theme === value ? 2.5 : 1.8} style={{ color: theme === value ? 'var(--pokedex-red)' : undefined }} />,
-                }))}
-              />
-            )}
-          </div>
-        </section>
-
-        {/* 4. Gefahren-Zone */}
-        <section>
-          <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-3">Gefahren-Zone</p>
-          <div className="glass rounded-[20px] overflow-hidden">
-            <SettingsRow
-              tone="danger"
-              icon={<Trash2 size={18} />}
-              title={confirmStage === 0
-                ? 'Sammlung zurücksetzen'
-                : resetting
-                  ? 'Wird gelöscht…'
-                  : 'Wirklich? Tippe nochmal zum Bestätigen'}
-              subtitle="Löscht alle Karten aus deiner Sammlung. Sammlungs-/Binder-Struktur bleibt erhalten."
-              extra={resetProgress && (
-                <p className="text-role-label text-glass-muted mt-1 font-mono">{resetProgress}</p>
               )}
-              onClick={handleResetCollection}
-              disabled={resetting}
-            />
-            {confirmStage === 1 && !resetting && (
-              <SettingsRow compact divider title="Abbrechen" onClick={() => setConfirmStage(0)} />
+            </div>
+
+            {/* Preis-Status der eigenen Sammlung */}
+            <div className="px-4 py-3 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]">
+              <div className="flex items-center gap-2 mb-1">
+                <Coins size={16} className="text-glass-muted shrink-0" />
+                <p className="text-role-title text-glass">Preise</p>
+              </div>
+              {priceStatus ? (
+                <>
+                  <p className="text-role-label text-glass-muted">
+                    Preise für {priceStatus.withPrice.toLocaleString('de-DE')} von {priceStatus.total.toLocaleString('de-DE')} Karten deiner Sammlung
+                  </p>
+                  {priceStatus.lastRefresh && (
+                    <p className="text-role-label text-glass-muted">
+                      Zuletzt aktualisiert: {priceStatus.lastRefresh.toLocaleString('de-DE')}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-role-label text-glass-muted">Wird berechnet…</p>
+              )}
+            </div>
+
+            {/* Letzter Daten-Lauf (überlebt Reload via localStorage) */}
+            {lastDataRun && (
+              <div className="px-4 py-3 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]">
+                <p className="text-role-title text-glass mb-1">Letzter Daten-Lauf</p>
+                <p className="text-role-label text-glass-muted">{new Date(lastDataRun.at).toLocaleString('de-DE')}</p>
+                <p className="text-role-label text-glass-muted font-mono mt-1">{lastDataRun.summary}</p>
+              </div>
             )}
+
+            {/* Laufender Fortschritt / letztes Ergebnis */}
+            {allProgress && (
+              <div className="px-4 py-2.5 text-xs font-medium text-glass bg-[rgba(30,40,80,0.06)] dark:bg-white/10 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]">
+                {allProgress}
+              </div>
+            )}
+            {syncResult && !runningAll && (
+              <div className="px-4 py-2.5 text-role-label text-glass-muted border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]">
+                {syncResult}
+              </div>
+            )}
+
+            {/* Aktionen */}
+            <div className="p-3 space-y-2 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]">
+              <Button
+                variant="secondary" size="lg" className="w-full justify-start"
+                icon={<RefreshCw size={18} className={runningAll ? 'animate-spin' : ''} />}
+                onClick={() => runAllSteps(false)} disabled={busy}
+              >
+                {runningAll ? 'Läuft…' : 'Daten aktualisieren'}
+              </Button>
+              <p className="text-role-label text-glass-muted px-1">Neue Karten holen und alle Felder anreichern</p>
+
+              <Button
+                variant="secondary" size="lg" className="w-full justify-start"
+                icon={<RotateCcw size={18} className="text-orange-600 dark:text-orange-300" />}
+                onClick={() => runAllSteps(true)} disabled={busy}
+              >
+                Daten neu aufbauen
+              </Button>
+              <p className="text-role-label text-glass-muted px-1">Reset + alle Schritte komplett neu — z. B. nach Schema-Änderung</p>
+
+              <Button
+                variant="secondary" size="lg" className="w-full justify-start"
+                icon={<RefreshCw size={18} className={refreshingPrices ? 'animate-spin text-blue-600 dark:text-blue-300' : 'text-blue-600 dark:text-blue-300'} />}
+                onClick={handleRefreshPrices} disabled={refreshingPrices}
+              >
+                {refreshingPrices ? 'Preise werden aktualisiert…' : 'Preise jetzt aktualisieren'}
+              </Button>
+              <p className="text-role-label text-glass-muted px-1">Holt aktuelle Cardmarket/TCGplayer-Preise für deine Sammlung</p>
+              {refreshPricesResult && (
+                <p className="text-role-label text-glass-muted px-1 font-mono">{refreshPricesResult}</p>
+              )}
+            </div>
           </div>
         </section>
 
-        {/* 5. Account */}
-        <section>
-          <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-3">Account</p>
-          <div className="glass rounded-[20px] overflow-hidden">
-            <SettingsRow tone="danger" title="Abmelden" onClick={handleLogout} />
-          </div>
+        {/* 3. Gefahren-Zone */}
+        <section className="space-y-1.5">
+          <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-2">Gefahren-Zone</p>
+          <Button
+            variant="secondary" size="lg" className="w-full justify-start"
+            icon={<Trash2 size={18} className="text-red-600 dark:text-red-300" />}
+            onClick={handleResetCollection} disabled={resetting}
+          >
+            {confirmStage === 0
+              ? 'Sammlung zurücksetzen'
+              : resetting
+                ? 'Wird gelöscht…'
+                : 'Wirklich? Tippe nochmal zum Bestätigen'}
+          </Button>
+          <p className="text-role-label text-glass-muted px-1">Löscht alle Karten aus deiner Sammlung. Sammlungs-/Binder-Struktur bleibt erhalten.</p>
+          {resetProgress && (
+            <p className="text-role-label text-glass-muted px-1 font-mono">{resetProgress}</p>
+          )}
+          {confirmStage === 1 && !resetting && (
+            <Button variant="ghost" size="sm" className="px-0" onClick={() => setConfirmStage(0)}>Abbrechen</Button>
+          )}
+        </section>
+
+        {/* 4. Account */}
+        <section className="space-y-1.5">
+          <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-2">Account</p>
+          <Button
+            variant="secondary" size="lg" className="w-full justify-start"
+            icon={<LogOut size={18} className="text-red-600 dark:text-red-300" />}
+            onClick={handleLogout}
+          >
+            Abmelden
+          </Button>
         </section>
 
       </div>
