@@ -12,6 +12,7 @@ import type { SyncMeta } from '@/lib/firestore/catalog';
 import { getCards, deleteCard } from '@/lib/firestore/cards';
 import { getBinders, updateBinder } from '@/lib/firestore/binders';
 import { ButtonGroup } from '@/components/ui/button-group';
+import { SettingsRow } from '@/components/ui/settings-row';
 
 const THEMES = [
   { value: 'system', label: 'System', icon: Smartphone },
@@ -296,16 +297,12 @@ export default function SettingsPage() {
         <section>
           <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-3">App</p>
           <div className="glass rounded-[20px] overflow-hidden">
-            <button
+            <SettingsRow
+              icon={<RefreshCw size={18} />}
+              title="App aktualisieren"
+              subtitle="Lädt die neueste Version — Cache wird geleert"
               onClick={handleAppUpdate}
-              className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors"
-            >
-              <RefreshCw size={18} className="text-glass-muted shrink-0" />
-              <div>
-                <p className="text-role-title text-glass">App aktualisieren</p>
-                <p className="text-role-label text-glass-muted">Lädt die neueste Version — Cache wird geleert</p>
-              </div>
-            </button>
+            />
           </div>
         </section>
 
@@ -378,57 +375,40 @@ export default function SettingsPage() {
                 )}
 
                 {/* Daten aktualisieren */}
-                <button
+                <SettingsRow
+                  icon={<RefreshCw size={18} className={runningAll ? 'animate-spin' : ''} />}
+                  title={runningAll ? 'Läuft…' : 'Daten aktualisieren'}
+                  subtitle="Neue Karten holen und alle Felder anreichern"
                   onClick={() => runAllSteps(false)}
                   disabled={busy}
-                  className={`w-full flex items-center gap-3 px-4 py-4 text-left transition-colors disabled:opacity-40 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14] ${runningAll ? 'bg-[rgba(30,40,80,0.06)] dark:bg-white/10' : ''}`}
-                >
-                  <RefreshCw
-                    size={18}
-                    className={`shrink-0 text-glass ${runningAll ? 'animate-spin' : ''}`}
-                  />
-                  <div>
-                    <p className="text-role-title text-glass">
-                      {runningAll ? 'Läuft…' : 'Daten aktualisieren'}
-                    </p>
-                    <p className="text-role-label text-glass-muted">
-                      Neue Karten holen und alle Felder anreichern
-                    </p>
-                  </div>
-                </button>
+                  active={runningAll}
+                  divider
+                />
 
                 {/* Daten neu aufbauen */}
-                <button
+                <SettingsRow
+                  tone="warning"
+                  icon={<RotateCcw size={18} />}
+                  title="Daten neu aufbauen"
+                  subtitle="Reset + alle Schritte komplett neu — z. B. nach Schema-Änderung"
                   onClick={() => runAllSteps(true)}
                   disabled={busy}
-                  className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors disabled:opacity-40 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]"
-                >
-                  <RotateCcw size={18} className="text-orange-700 dark:text-orange-200 shrink-0" />
-                  <div>
-                    <p className="text-role-title text-orange-700 dark:text-orange-200">Daten neu aufbauen</p>
-                    <p className="text-role-label text-glass-muted">Reset + alle Schritte komplett neu — z. B. nach Schema-Änderung</p>
-                  </div>
-                </button>
+                  divider
+                />
 
                 {/* Preise jetzt aktualisieren */}
-                <button
+                <SettingsRow
+                  tone="info"
+                  icon={<RefreshCw size={18} className={refreshingPrices ? 'animate-spin' : ''} />}
+                  title={refreshingPrices ? 'Preise werden aktualisiert…' : 'Preise jetzt aktualisieren'}
+                  subtitle="Holt aktuelle Cardmarket/TCGplayer-Preise für deine Sammlung"
+                  extra={refreshPricesResult && (
+                    <p className="text-role-label text-glass-muted mt-1 font-mono">{refreshPricesResult}</p>
+                  )}
                   onClick={handleRefreshPrices}
                   disabled={refreshingPrices}
-                  className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors disabled:opacity-40 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]"
-                >
-                  <RefreshCw size={18} className={`shrink-0 text-blue-700 dark:text-blue-200 ${refreshingPrices ? 'animate-spin' : ''}`} />
-                  <div className="flex-1">
-                    <p className="text-role-title text-blue-700 dark:text-blue-200">
-                      {refreshingPrices ? 'Preise werden aktualisiert…' : 'Preise jetzt aktualisieren'}
-                    </p>
-                    <p className="text-role-label text-glass-muted">
-                      Holt aktuelle Cardmarket/TCGplayer-Preise für deine Sammlung
-                    </p>
-                    {refreshPricesResult && (
-                      <p className="text-role-label text-glass-muted mt-1 font-mono">{refreshPricesResult}</p>
-                    )}
-                  </div>
-                </button>
+                  divider
+                />
               </>
             )}
           </div>
@@ -458,35 +438,23 @@ export default function SettingsPage() {
         <section>
           <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-3">Gefahren-Zone</p>
           <div className="glass rounded-[20px] overflow-hidden">
-            <button
+            <SettingsRow
+              tone="danger"
+              icon={<Trash2 size={18} />}
+              title={confirmStage === 0
+                ? 'Sammlung zurücksetzen'
+                : resetting
+                  ? 'Wird gelöscht…'
+                  : 'Wirklich? Tippe nochmal zum Bestätigen'}
+              subtitle="Löscht alle Karten aus deiner Sammlung. Sammlungs-/Binder-Struktur bleibt erhalten."
+              extra={resetProgress && (
+                <p className="text-role-label text-glass-muted mt-1 font-mono">{resetProgress}</p>
+              )}
               onClick={handleResetCollection}
               disabled={resetting}
-              className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors disabled:opacity-50"
-            >
-              <Trash2 size={18} className="text-red-600 dark:text-red-300 shrink-0" />
-              <div className="flex-1">
-                <p className="text-role-title text-red-600 dark:text-red-300">
-                  {confirmStage === 0
-                    ? 'Sammlung zurücksetzen'
-                    : resetting
-                      ? 'Wird gelöscht…'
-                      : 'Wirklich? Tippe nochmal zum Bestätigen'}
-                </p>
-                <p className="text-role-label text-glass-muted">
-                  Löscht alle Karten aus deiner Sammlung. Sammlungs-/Binder-Struktur bleibt erhalten.
-                </p>
-                {resetProgress && (
-                  <p className="text-role-label text-glass-muted mt-1 font-mono">{resetProgress}</p>
-                )}
-              </div>
-            </button>
+            />
             {confirmStage === 1 && !resetting && (
-              <button
-                onClick={() => setConfirmStage(0)}
-                className="w-full px-4 py-3 text-sm text-glass-muted border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]"
-              >
-                Abbrechen
-              </button>
+              <SettingsRow compact divider title="Abbrechen" onClick={() => setConfirmStage(0)} />
             )}
           </div>
         </section>
@@ -495,12 +463,7 @@ export default function SettingsPage() {
         <section>
           <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-3">Account</p>
           <div className="glass rounded-[20px] overflow-hidden">
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors"
-            >
-              <div className="text-role-title text-red-600 dark:text-red-300">Abmelden</div>
-            </button>
+            <SettingsRow tone="danger" title="Abmelden" onClick={handleLogout} />
           </div>
         </section>
 
