@@ -1,4 +1,4 @@
-import { doc, getDoc, getDocs, collection, query, orderBy } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase/client';
 
 export interface TcgSet {
@@ -26,6 +26,15 @@ export async function getSetById(setId: string): Promise<TcgSet | null> {
 export async function getAllSets(): Promise<TcgSet[]> {
   const snap = await getDocs(query(collection(db, COL), orderBy('releaseDate', 'desc')));
   return snap.docs.map(d => d.data() as TcgSet);
+}
+
+/** Set-IDs mit exakt diesem gedruckten Gesamtumfang — für den Scanner-Pfad
+ *  „printedTotal + Nummer → Set → Karte" (wenn kein Set-Kürzel gelesen wurde).
+ *  `printedTotal` ist der Basis-Umfang eines Sets (z.B. Perfect Order = 88),
+ *  also faktisch ein Set-Fingerabdruck — meist genau ein Set, selten mehrere. */
+export async function getSetIdsByPrintedTotal(printedTotal: number): Promise<string[]> {
+  const snap = await getDocs(query(collection(db, COL), where('printedTotal', '==', printedTotal)));
+  return snap.docs.map(d => d.id);
 }
 
 export function filterSets(sets: TcgSet[], q: string): TcgSet[] {

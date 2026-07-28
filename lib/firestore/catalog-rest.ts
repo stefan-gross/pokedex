@@ -32,6 +32,28 @@ export async function getCardBySetCodeAndNumberRest(
   return results[0] ?? null;
 }
 
+/** REST-Variante: exakte Karte über Set-ID + Nummer (für den printedTotal→Set→
+ *  Karte-Pfad im Scanner, wenn kein Set-Kürzel gelesen wurde). */
+export async function getCardBySetAndNumberRest(
+  setId: string,
+  number: string,
+): Promise<CatalogCard | null> {
+  const results = await runQuery({
+    from: [{ collectionId: 'tcg_catalog' }],
+    where: {
+      compositeFilter: {
+        op: 'AND',
+        filters: [
+          { fieldFilter: { field: { fieldPath: 'setId'  }, op: 'EQUAL', value: { stringValue: setId  } } },
+          { fieldFilter: { field: { fieldPath: 'number' }, op: 'EQUAL', value: { stringValue: number } } },
+        ],
+      },
+    },
+    limit: 1,
+  });
+  return results[0] ?? null;
+}
+
 /** REST-Variante von getCardsByDexNumber (catalog.ts). */
 export async function getCardsByDexNumberRest(
   dexNum: number,

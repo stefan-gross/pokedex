@@ -8,8 +8,11 @@ import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { DeleteFromCollectionModal } from '@/components/scanner/DeleteFromCollectionModal';
 import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
+         getCardBySetAndNumberRest    as getCardBySetAndNumber,
          getCardsByDexNumberRest      as getCardsByDexNumber,
          getCardsByNameAndNumberRest  as getCardsByNameAndNumber } from '@/lib/firestore/catalog-rest';
+import { resolveScannedCard } from '@/lib/scan/resolve-card';
+import type { CatalogCard } from '@/lib/firestore/catalog';
 import { addCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { addCardToBinder, ensureDefaultBinder, ensureInboxBinder } from '@/lib/firestore/binders';
 import { BulkAddToCollectionModal } from '@/components/scanner/BulkAddToCollectionModal';
@@ -21,7 +24,7 @@ import type { CardCondition as PersistedCondition, CardDoc, CardLanguage, CardVa
 import { CONDITIONS, VARIANT_LABELS, SERIES_NAMES_DE, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { useSetMeta } from '@/lib/hooks/use-set-meta';
 import { CardNameLabel } from '@/components/card/CardNameLabel';
-import { getSetById } from '@/lib/firestore/sets';
+import { getSetById, getSetIdsByPrintedTotal } from '@/lib/firestore/sets';
 
 // Gemini liefert Condition in Kurzform (lowercase). Für Persistence wird in
 // die offizielle CardCondition (uppercase) gemappt.
@@ -105,6 +108,9 @@ interface ScanState {
   condition?: CardCondition;
   fakeRisk?: 'low' | 'medium' | 'high';
   fakeReasons?: string[];
+  /** Bei mehrdeutiger Erkennung (mehrere Karten passen gleich gut): die
+   *  Kandidaten zur Auswahl. `card` zeigt vorläufig den ersten. */
+  candidates?: CardInfo[];
 }
 
 interface ScanDebug {
@@ -783,7 +789,8 @@ export default function ScannerPage() {
 
       // ── Catalog-Lookups (lookupMs misst diesen ganzen Block) ─────────────
       const tLookup = Date.now();
-      let catalogCard = null as Awaited<ReturnType<typeof getCardBySetCodeAndNumber>>;
+      let catalogCard = null as CatalogCard | null;
+      let ambiguousCandidates: CatalogCard[] | null = null;
       let dexCandidateCount = 0;
 
       // Set-printedTotal-Cache für diesen Scan — vermeidet doppelte getSetById-Calls,
@@ -797,6 +804,40 @@ export default function ScannerPage() {
         return setTotalCache.get(setId) ?? null;
       };
 
+      // ── Primär: zentrale Regel-Leiter (lib/scan/resolve-card.ts) ──────────
+      // R1 setCode+number · R2 printedTotal+number · R3 name+number · R4 dex+number,
+      // jeweils mit Eindeutigkeits-Gate. Symbolabgleich-Kandidaten
+      // (candidateSetCodes) bewusst NICHT hier — die sind unten die letzte Not-Option.
+      const resolved = await resolveScannedCard(
+        {
+          setCode: gemini.setCode,
+          number: rawNumber || null,
+          printedTotal: gemini.printedTotal ?? null,
+          name: gemini.name ?? null,
+          nationalDexNumber: gemini.nationalDexNumber ?? null,
+        },
+        {
+          bySetCodeAndNumber: getCardBySetCodeAndNumber,
+          bySetAndNumber: getCardBySetAndNumber,
+          byNameAndNumber: getCardsByNameAndNumber,
+          byDexNumber: (dex: number) => getCardsByDexNumber(dex, 100),
+          setIdsByPrintedTotal: getSetIdsByPrintedTotal,
+          setPrintedTotal: getSetPrintedTotal,
+        },
+      );
+      debug.lookupSteps!.push(...resolved.trace);
+      if (resolved.status === 'unique') {
+        catalogCard = resolved.card!;
+      } else if (resolved.status === 'ambiguous') {
+        ambiguousCandidates = resolved.candidates!;
+        // Vorläufig den ersten Kandidaten zeigen; die Kandidaten-Auswahl-UI
+        // (nächster Schritt) lässt den Nutzer gezielt wählen.
+        catalogCard = ambiguousCandidates[0];
+        debug.lookupSteps!.push(`mehrdeutig (${resolved.matchedBy}): ${ambiguousCandidates.length} Kandidaten`);
+      }
+
+      // ── Fallback (nur wenn die Regel-Leiter NICHTS fand): alte Lookups +
+      //    Symbolabgleich-Kandidaten als letzte Not-Option ────────────────────
       // 1) Direkter SetCode+Number-Lookup — probiert entweder Gemini's direkt
       //    gelesenes Klartext-Kürzel (S&V, ein einzelner Wert), oder — wenn das
       //    fehlt — der Reihe nach ALLE Symbolabgleich-Kandidaten (`candidateSetCodes`,
@@ -854,7 +895,7 @@ export default function ScannerPage() {
         return result;
       };
 
-      if (rawNumber) {
+      if (!catalogCard && !ambiguousCandidates && rawNumber) {
         const codesToTry = gemini.setCode ? [gemini.setCode] : (gemini.candidateSetCodes ?? []);
         for (const code of codesToTry) {
           catalogCard = await tryCatalogLookupBySetCode(code);
@@ -983,6 +1024,7 @@ export default function ScannerPage() {
           condition: gemini.condition,
           fakeRisk: gemini.fakeRisk,
           fakeReasons: gemini.fakeReasons,
+          candidates: ambiguousCandidates ? ambiguousCandidates.map(catalogCardToInfo) : undefined,
         },
       } : j));
 
