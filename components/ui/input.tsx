@@ -23,6 +23,9 @@ export function Input({
   onClear,
   className,
   type = 'text',
+  autoComplete,
+  required,
+  name,
   style,
 }: {
   value: string;
@@ -34,6 +37,12 @@ export function Input({
   onClear?: () => void;
   className?: string;
   type?: string;
+  /** Native Formular-Attribute — u.a. nötig, damit Passwort-Manager/Browser-
+   *  Autofill funktionieren (z.B. `autoComplete="current-password"`) und die
+   *  HTML5-Pflichtfeld-Validierung greift (`required`). */
+  autoComplete?: string;
+  required?: boolean;
+  name?: string;
   /** Nur für `/design-system-preview` gedacht — überschreibt Transparenz/
    *  Blur/Sättigung/Rahmen zum Live-Abstimmen. Echte Aufrufer lassen das weg
    *  und bekommen den aktuell GESPEICHERTEN Stand (`getGlassTheme().input`). */
@@ -54,6 +63,9 @@ export function Input({
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
+        autoComplete={autoComplete}
+        required={required}
+        name={name}
         // Fokus-Ring bleibt (Accessibility: sichtbarer Fokus ist Pflicht) —
         // das läuft über Tailwinds `ring`-Utility (ebenfalls `box-shadow`,
         // aber nur bei `:focus` aktiv) — deshalb setzt `inputGlassStyle()`

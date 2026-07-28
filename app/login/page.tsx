@@ -6,6 +6,7 @@ import { signInWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '@/lib/firebase/client'
 import { GlassBackground } from '@/components/GlassBackground'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 function LoginForm() {
   const router = useRouter()
@@ -98,26 +99,28 @@ function LoginForm() {
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
               <label className="block text-role-label text-glass-muted mb-2">E-Mail</label>
-              <input
+              <Input
                 type="email"
                 value={email}
-                onChange={e => setEmail(e.target.value)}
+                onChange={setEmail}
                 required
+                name="email"
                 autoComplete="email"
                 placeholder="name@beispiel.de"
-                className="w-full px-4 py-3 rounded-xl text-role-body glass-inner text-glass placeholder:text-glass-muted focus:outline-none focus:ring-1 focus:ring-ring transition"
+                size="lg"
               />
             </div>
             <div>
               <label className="block text-role-label text-glass-muted mb-2">Passwort</label>
-              <input
+              <Input
                 type="password"
                 value={password}
-                onChange={e => setPassword(e.target.value)}
+                onChange={setPassword}
                 required
+                name="password"
                 autoComplete="current-password"
                 placeholder="••••••••"
-                className="w-full px-4 py-3 rounded-xl text-role-body glass-inner text-glass placeholder:text-glass-muted focus:outline-none focus:ring-1 focus:ring-ring transition"
+                size="lg"
               />
             </div>
 
