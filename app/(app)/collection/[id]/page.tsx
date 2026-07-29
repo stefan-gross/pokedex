@@ -27,7 +27,7 @@ export default async function CardDetailPage({ params }: Props) {
           <div className="w-48 rounded-2xl overflow-hidden border border-[rgba(255,255,255,0.4)] shadow-lg">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={card.tcgImageUrl ?? `https://images.pokemontcg.io/${card.setId}/${card.number.split('/')[0]}_hires.png`}
+              src={card.tcgImageUrl ?? ""}
               alt={card.name}
               className="w-full"
             />

@@ -140,7 +140,7 @@ export function BinderSlotPickerModal({ onClose, onPick }: Props) {
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={c.tcgImageUrl ?? `https://images.pokemontcg.io/${c.setId}/${c.number.split('/')[0]}_hires.png`}
+                    src={c.tcgImageUrl ?? ""}
                     alt={c.name}
                     className="w-9 h-12 rounded object-cover shrink-0"
                   />

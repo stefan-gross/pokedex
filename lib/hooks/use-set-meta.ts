@@ -33,7 +33,7 @@ export function useSetMeta(
       if (cancelled) return;
       setMeta({
         nameDe: setDoc?.nameDe ?? setDoc?.name ?? fallbackName ?? setId,
-        logoUrl: setDoc?.logoUrl ?? `https://images.pokemontcg.io/${setId}/logo.png`,
+        logoUrl: setDoc?.logoUrl ?? "",
         symbolUrl: setDoc?.symbolUrl,
         printedTotal: setDoc?.printedTotal ?? 0,
         total: setDoc?.total ?? 0,
@@ -42,7 +42,7 @@ export function useSetMeta(
       if (!cancelled) {
         setMeta({
           nameDe: fallbackName ?? setId,
-          logoUrl: `https://images.pokemontcg.io/${setId}/logo.png`,
+          logoUrl: '',
           printedTotal: 0,
           total: 0,
         });

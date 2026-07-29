@@ -610,7 +610,7 @@ function MiniPageGrid({
             {card && (
               <CardImage
                 srcDe={undefined}
-                src={card.tcgImageUrl ?? `https://images.pokemontcg.io/${card.setId}/${card.number.split('/')[0]}_hires.png`}
+                src={card.tcgImageUrl ?? ""}
                 alt=""
                 width={245}
                 height={342}
@@ -658,8 +658,8 @@ function GridView({ cards, onCardTap, prices }: {
             card={{
               id: c.tcgId ?? c.id, name: c.name, number: c.number,
               setId: c.setId, setName: c.setName,
-              imgSmall: c.tcgImageUrl ?? `https://images.pokemontcg.io/${c.setId}/${c.number.split('/')[0]}_hires.png`,
-              imgLarge: c.tcgImageUrl ?? `https://images.pokemontcg.io/${c.setId}/${c.number.split('/')[0]}_hires.png`,
+              imgSmall: c.tcgImageUrl ?? "",
+              imgLarge: c.tcgImageUrl ?? "",
             }}
             ownedCards={[c]}
             onCardClick={() => onCardTap(c)}
@@ -1163,7 +1163,7 @@ function SinglePageView({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={activeCard.tcgImageUrl ?? `https://images.pokemontcg.io/${activeCard.setId}/${activeCard.number.split('/')[0]}_hires.png`}
+                  src={activeCard.tcgImageUrl ?? ""}
                   alt={activeCard.name}
                   className="w-full h-full object-cover"
                 />
@@ -1375,7 +1375,7 @@ function DraggableCardSlot({
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={card.tcgImageUrl ?? `https://images.pokemontcg.io/${card.setId}/${card.number.split('/')[0]}_hires.png`}
+        src={card.tcgImageUrl ?? ""}
         alt={card.name}
         className="w-full h-full object-cover pointer-events-none no-callout"
         draggable={false}

@@ -38,7 +38,7 @@ export function SetListItem({
   variant = 'default',
 }: SetListItemProps) {
   const displayName = nameDe ?? name;
-  const logoSrc     = logoDe ?? `https://images.pokemontcg.io/${setId}/logo.png`;
+  const logoSrc     = logoDe ?? "";
   const pct         = total ? Math.round((owned / total) * 100) : null;
   const isSymbolOnlySet = !!series && SYMBOL_ONLY_SERIES.includes(series);
   const isGlass = variant === 'glass';
@@ -59,15 +59,7 @@ export function SetListItem({
           src={logoSrc}
           alt={displayName}
           className="max-h-8 max-w-[56px] object-contain"
-          onError={e => {
-            const img = e.currentTarget as HTMLImageElement;
-            const enSrc = `https://images.pokemontcg.io/${setId}/logo.png`;
-            if (img.src !== enSrc) {
-              img.src = enSrc;
-            } else {
-              img.style.display = 'none';
-            }
-          }}
+          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
         />
       </div>
 

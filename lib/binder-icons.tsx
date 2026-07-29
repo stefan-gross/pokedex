@@ -64,7 +64,7 @@ export function BinderIcon({ name, size = 20, className, style, strokeWidth }: {
   if (setId) {
     // Deutsches TCGdex-Logo bevorzugt (setMeta.logoUrl), pokemontcg.io nur
     // als Fallback, solange die Set-Metadaten noch nicht geladen sind.
-    const src = setMeta?.logoUrl ?? `https://images.pokemontcg.io/${setId}/logo.png`;
+    const src = setMeta?.logoUrl ?? "";
     return (
       <img
         src={src}

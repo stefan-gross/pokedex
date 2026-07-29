@@ -171,7 +171,7 @@ function SetDetailContent() {
     }).catch(() => {});
   }, []);
 
-  const logoUrl = logoDe ?? `https://images.pokemontcg.io/${setId}/logo.png`;
+  const logoUrl = logoDe ?? "";
   // Sets vor Scarlet & Violet tragen keinen echten Kürzel-Aufdruck — nur ein
   // grafisches Symbol. ptcgoCode ist dort nur ein internes pokemontcg.io-Kürzel.
   const isSymbolOnlySet = !!rawCards[0]?.series && SYMBOL_ONLY_SERIES.includes(rawCards[0].series);
@@ -270,14 +270,7 @@ function SetDetailContent() {
                 src={logoUrl}
                 alt={nameDe}
                 className="h-12 max-w-[120px] object-contain shrink-0"
-                onError={e => {
-                  const img = e.currentTarget as HTMLImageElement;
-                  if (logoDe && img.src === logoDe) {
-                    img.src = `https://images.pokemontcg.io/${setId}/logo.png`;
-                  } else {
-                    img.style.display = 'none';
-                  }
-                }}
+                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
               />
               <div className="min-w-0">
                 <h1 className="text-role-h2 leading-tight truncate text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">

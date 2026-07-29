@@ -261,14 +261,10 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
                       <div className="w-14 shrink-0 flex items-center justify-center">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={s.logoUrl ?? `https://images.pokemontcg.io/${s.id}/logo.png`}
+                          src={s.logoUrl ?? ""}
                           alt={s.id}
                           className="max-h-7 max-w-[56px] object-contain"
-                          onError={e => {
-                            const img = e.currentTarget as HTMLImageElement;
-                            const en = `https://images.pokemontcg.io/${s.id}/logo.png`;
-                            if (img.src !== en) img.src = en;
-                          }}
+                          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                         />
                       </div>
                       {/* Name + Serie */}

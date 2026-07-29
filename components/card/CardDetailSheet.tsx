@@ -763,7 +763,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   const numBase     = isPlainNum ? numRaw.padStart(3, '0') : numRaw;
   const numTotal    = !isPromo && isPlainNum && resolvedMeta?.printedTotal ? String(resolvedMeta.printedTotal).padStart(3, '0') : null;
   const numFmt      = numTotal ? `${numBase}/${numTotal}` : numBase;
-  const logoUrl     = resolvedMeta?.logoUrl ?? `https://images.pokemontcg.io/${card.setId}/logo.png`;
+  const logoUrl     = resolvedMeta?.logoUrl ?? "";
   const setNameDe   = resolvedMeta?.nameDe ?? card.setName;
   // Sets vor Scarlet & Violet tragen keinen echten Kürzel-Aufdruck — nur ein
   // grafisches Symbol. setCode ist dort nur ein internes pokemontcg.io-Kürzel.

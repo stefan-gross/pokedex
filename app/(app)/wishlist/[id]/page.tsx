@@ -173,7 +173,7 @@ export default function WishlistDetailPage({ params }: Props) {
         const icon = binder?.icon;
         if (icon?.startsWith('set:')) {
           const sid = icon.slice(4);
-          const url = setById.get(sid)?.logoUrl ?? `https://images.pokemontcg.io/${sid}/logo.png`;
+          const url = setById.get(sid)?.logoUrl ?? "";
           logoDataUrl = await fetchLogoDataUrl(url);
         }
       }
