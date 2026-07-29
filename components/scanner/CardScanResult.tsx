@@ -4,15 +4,11 @@ import { RotateCcw, Search, Plus } from 'lucide-react';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardLanguage, CardVariant } from '@/types';
 import { AddToCollectionModal } from './AddToCollectionModal';
-import { toTcgdexId } from '@/lib/tcgdex';
 import { useState } from 'react';
 
 function cardImg(card: CardInfo, language: CardLanguage): string {
-  if (language === 'de') {
-    const tcgId = toTcgdexId(card.setId);
-    return `https://assets.tcgdex.net/de/${tcgId}/${card.number}/high.webp`;
-  }
-  return card.imgLarge ?? card.imgSmall;
+  if (language === 'de') return card.imgLargeDe ?? card.imgSmallDe ?? card.imgLarge ?? card.imgSmall ?? '';
+  return card.imgLarge ?? card.imgSmall ?? '';
 }
 
 interface Props {

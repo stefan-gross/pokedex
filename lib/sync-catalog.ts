@@ -243,7 +243,7 @@ export async function enrichEvolutionFamilies(batchSize = 500): Promise<EnrichRe
 }
 
 // ── Sets-Sync ──────────────────────────────────────────────────────────────
-// Holt alle Sets von pokemontcg.io + DE-Namen von TCGdex → schreibt in tcg_sets.
+// Holt alle Sets von TCGdex (EN+DE) → schreibt in tcg_sets.
 
 export interface SyncSetsResult {
   status: 'complete' | 'error';

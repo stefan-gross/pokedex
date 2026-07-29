@@ -259,18 +259,17 @@ function TestPanel({
 /** Kartenraster-Hintergrund — simuliert den echten Fall auf der Suche-Seite
  *  (`app/(app)/collection/page.tsx`), wo Panels über einem dichten Grid aus
  *  Karten-Thumbnails schweben statt über einem einzelnen Foto. Mehrere echte
- *  Kartennummern desselben Sets (swsh2, alle über pokemontcg.io verifiziert
- *  erreichbar), damit Motiv/Farbe pro Kachel variieren statt eines
- *  wiederholten Einzelbilds. */
+ *  Kartennummern desselben Sets (swsh2, TCGdex-Bilder), damit Motiv/Farbe pro
+ *  Kachel variieren statt eines wiederholten Einzelbilds. */
 const CARD_GRID_NUMBERS = [1, 5, 10, 15, 25, 30, 40, 50, 60, 70, 80, 90, 3, 12, 22, 35, 45, 55, 65, 75];
-const CARD_GRID_URLS = CARD_GRID_NUMBERS.map(n => `https://images.pokemontcg.io/swsh2/${n}_hires.png`);
+const CARD_GRID_URLS = CARD_GRID_NUMBERS.map(n => `https://assets.tcgdex.net/en/swsh/swsh2/${n}/high.webp`);
 
-/** Eine echte Beispielkarte (dasselbe Set wie oben, per pokemontcg.io
- *  verifiziert erreichbar) für die "Karte (vorhanden/fehlend)"-Sektion — nur
- *  die von `CardTile` tatsächlich gelesenen Felder sind befüllt, Rest per
- *  `as`-Cast, da diese Seite keine echten Firestore-/Katalog-Daten lädt. */
+/** Eine echte Beispielkarte (dasselbe Set wie oben, TCGdex) für die
+ *  "Karte (vorhanden/fehlend)"-Sektion — nur die von `CardTile` tatsächlich
+ *  gelesenen Felder sind befüllt, Rest per `as`-Cast, da diese Seite keine
+ *  echten Firestore-/Katalog-Daten lädt. */
 const SAMPLE_CARD = {
-  id: 'swsh2-1', name: 'Mimigma', number: '1', imgSmall: 'https://images.pokemontcg.io/swsh2/1.png',
+  id: 'swsh2-1', name: 'Mimigma', number: '1', imgSmall: 'https://assets.tcgdex.net/en/swsh/swsh2/1/low.webp',
 } as CardInfo;
 const SAMPLE_OWNED_CARD = { quantity: 2, needsReview: false } as CardDoc;
 const SAMPLE_OWNED_CARD_REVIEW = { quantity: 1, needsReview: true } as CardDoc;

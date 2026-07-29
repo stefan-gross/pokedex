@@ -14,39 +14,15 @@ import { Button } from '@/components/ui/button';
 import { CardGrid } from '@/components/card/CardGrid';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
-import { detectVariants, getRarityGroup, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
+import { getRarityGroup, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { useWishlist } from '@/lib/hooks/use-wishlist';
 import type { CatalogCard } from '@/lib/firestore/catalog';
 import type { CardDoc, BinderDoc } from '@/types';
 
-/* Wenn der Catalog dieses Set noch nicht hat → pokemontcg.io API als Fallback */
+/* Karten des Sets aus dem (vollständigen) TCGdex-Katalog. */
 async function loadSetCards(setId: string): Promise<CatalogCard[]> {
-  const catalogCards = await getCardsBySetId(setId);
-  if (catalogCards.length > 0) return catalogCards;
-
-  const res = await fetch(`/api/tcg?q=${encodeURIComponent(`set.id:${setId}`)}&pageSize=250`);
-  const data = await res.json();
-  return (data.data ?? []).map((c: {
-    id: string; name: string; number: string;
-    set: { id: string; name: string; series: string };
-    rarity?: string; supertype?: string; types?: string[];
-    images: { small: string; large: string };
-  }): CatalogCard => ({
-    id: c.id,
-    name: c.name,
-    nameLower: c.name.toLowerCase(),
-    number: c.number,
-    setId: c.set.id,
-    setName: c.set.name,
-    series: c.set.series,
-    rarity: c.rarity ?? '',
-    supertype: c.supertype ?? '',
-    types: c.types ?? [],
-    imgSmall: c.images.small,
-    imgLarge: c.images.large,
-    variants: detectVariants(c.rarity ?? ''),
-  }));
+  return getCardsBySetId(setId);
 }
 
 /* ── Types ───────────────────────────────────────────────────── */

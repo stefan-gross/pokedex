@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { computeImageHash, hammingDistance, classifyPHashDistance } from '@/lib/scan/image-hash';
 
-// Bild-Fetch (Katalog-CDN) + Hash-Vergleich — läuft server-seitig, weil
-// images.pokemontcg.io keine CORS-Header sendet und ein Browser-Canvas
-// die Pixel eines fremden Origins ohne CORS nicht auslesen darf.
+// Bild-Fetch (TCGdex-CDN) + Hash-Vergleich — läuft server-seitig, weil ein
+// Browser-Canvas die Pixel eines fremden Origins ohne CORS nicht auslesen darf.
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {

@@ -9,16 +9,14 @@ import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Switch } from '@/components/ui/switch';
 import { getCards } from '@/lib/firestore/cards';
-import { searchCatalog, searchCatalogByArtist, getCatalogCardsByIds, getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts, type CatalogCard } from '@/lib/firestore/catalog';
-import { searchTcgdexDe } from '@/lib/tcgdex';
+import { searchCatalog, searchCatalogByArtist, getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts, type CatalogCard } from '@/lib/firestore/catalog';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
-import { catalogCardToInfo, tcgApiCardToInfo, type CardInfo } from '@/lib/card-info';
+import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { getRarityGroup, getSubtypeDe, SPECIAL_MECHANIC_KEYS } from '@/lib/card-constants';
 import { useCardBrowser, TCG_TYPES, type TcgType, type CardBrowserFilter } from '@/lib/hooks/useCardBrowser';
 import { useWishlist } from '@/lib/hooks/use-wishlist';
 import { EnergyIcon, ENERGY_META } from '@/components/ui/EnergyIcon';
 import { getAllSets, type TcgSet } from '@/lib/firestore/sets';
-import type { TcgApiCard } from '@/lib/pokemon-tcg';
 import type { CardDoc } from '@/types';
 import type { BrowseSortKey } from '@/lib/firestore/catalog';
 
@@ -312,19 +310,11 @@ function CollectionContent() {
       if (catalogCountRef.current > 0) {
         const words = q.trim().split(/\s+/).filter(Boolean);
 
-        // Sucht einen Namensteil per Firestore-Präfix, mit TCGdex als Fallback.
-        // TCGdex macht serverseitig eine lockere Teilstring-Suche — bei mehrteiliger
-        // Eingabe würde das ein unpassendes zweites Wort stillschweigend ignorieren
-        // (z.B. "Knapfel Nonsense" trotzdem als "Knapfel" matchen), deshalb nur für
-        // echte Einzelwort-Namensteile, nie für die volle Mehrwort-Eingabe.
-        const findByName = async (namePart: string): Promise<CatalogCard[]> => {
-          const nameHits = await searchCatalog(namePart, filterSet, SEARCH_DISPLAY_LIMIT);
-          if (nameHits.length > 0) return nameHits;
-          if (namePart.trim().includes(' ')) return [];
-          const tcgdexIds = await searchTcgdexDe(namePart);
-          if (tcgdexIds.length === 0) return [];
-          return getCatalogCardsByIds(tcgdexIds.slice(0, SEARCH_DISPLAY_LIMIT));
-        };
+        // Namensteil per Firestore-Präfix — sucht DE (nameDeLower) UND EN
+        // (nameLower); der TCGdex-Katalog enthält deutsche Namen nativ, ein
+        // separater TCGdex-Fallback ist nicht mehr nötig.
+        const findByName = async (namePart: string): Promise<CatalogCard[]> =>
+          searchCatalog(namePart, filterSet, SEARCH_DISPLAY_LIMIT);
 
         // 1. Gesamte Eingabe als Name (deckt auch mehrteilige Namen ab)
         let hits = await findByName(q);
@@ -363,24 +353,14 @@ function CollectionContent() {
         }
 
         if (hits.length > 0) { setAndReturn(hits.map(catalogCardToInfo)); return; }
-
-        // Catalog vorhanden + nichts gefunden → API hilft auch nicht
-        // (pokemontcg.io kennt nur englische Namen; deutsche Suchen würden immer scheitern)
         setResults([]);
         setSets([]);
         return;
       }
 
-      // 3. pokemontcg.io API — nur wenn kein lokaler Catalog vorhanden (Erststart)
-      const qStr = `name:${q}*${filterSet ? ` set.id:${filterSet}` : ''}`;
-      const res  = await fetch(`/api/tcg?q=${encodeURIComponent(qStr)}&pageSize=80`);
-      const data = await res.json();
-      const cards: CardInfo[] = (data.data as TcgApiCard[] ?? []).map(tcgApiCardToInfo);
-      const setMap = new Map<string, string>();
-      cards.forEach(c => setMap.set(c.setId, c.setName));
-      setSets(Array.from(setMap.entries()).map(([id, name]) => ({ id, name })));
-      baseResultsRef.current = cards;
-      setResults(cards);
+      // Kein lokaler Katalog (vor dem ersten Sync) → keine Treffer.
+      setResults([]);
+      setSets([]);
     } catch {
       setResults([]);
     } finally {
