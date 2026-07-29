@@ -703,54 +703,78 @@ export interface SyncSetsResult {
   synced: number;
 }
 
+interface TcgdexFullSet {
+  id: string;
+  name: string;
+  releaseDate?: string;
+  serie?: { id: string; name: string } | null;
+  abbreviation?: { official?: string } | null;
+  tcgOnline?: string | null;
+  cardCount?: { official?: number; total?: number };
+  logo?: string;
+  symbol?: string;
+}
+
+const TCGDEX_REST = 'https://api.tcgdex.net/v2';
+
 export async function syncSets(): Promise<SyncSetsResult> {
   const db = getAdminDb();
 
-  // 1. Alle Sets von pokemontcg.io (ein einziger Call, ~150 Sets)
-  const res = await fetch(`${TCG_BASE}/sets?pageSize=250`, { headers: apiHeaders() });
-  if (!res.ok) return { status: 'error', message: `TCG API Fehler: ${res.status}`, synced: 0 };
-  const data = await res.json();
-  const sets: Array<{
-    id: string; name: string; series: string;
-    total: number; printedTotal: number;
-    ptcgoCode?: string; releaseDate?: string;
-    images: { symbol: string; logo: string };
-  }> = data.data ?? [];
-
-  // 2. Alle deutschen Set-Namen von TCGdex (ein einziger Call)
-  let tcgdexMap = new Map<string, { name: string; logo?: string }>();
+  // 1. Set-Listen (EN für IDs, DE für dt. Namen/Logos). Symbol/Logo sind
+  //    Basis-URLs OHNE Endung → `.png` anhängen.
+  let enList: Array<{ id: string }>;
   try {
-    const deRes = await fetch('https://api.tcgdex.net/v2/de/sets');
+    const enRes = await fetch(`${TCGDEX_REST}/en/sets`);
+    if (!enRes.ok) return { status: 'error', message: `TCGdex /en/sets HTTP ${enRes.status}`, synced: 0 };
+    enList = await enRes.json();
+  } catch (e) {
+    return { status: 'error', message: `TCGdex /en/sets: ${e instanceof Error ? e.message : String(e)}`, synced: 0 };
+  }
+  const deMap = new Map<string, { name: string; logo?: string }>();
+  try {
+    const deRes = await fetch(`${TCGDEX_REST}/de/sets`);
     if (deRes.ok) {
       const deSets: Array<{ id: string; name: string; logo?: string }> = await deRes.json();
-      tcgdexMap = new Map(deSets.map(s => [
-        s.id,
-        { name: s.name, logo: s.logo ? `${s.logo}.png` : undefined },
-      ]));
+      for (const s of deSets) deMap.set(s.id, { name: s.name, logo: s.logo });
     }
-  } catch { /* kein DE-Name → Fallback auf englisch */ }
+  } catch { /* kein DE → Fallback EN */ }
 
-  // 3. Dokumente zusammenbauen
-  const docs = sets.map(s => {
-    const tcgdexId = toTcgdexId(s.id);
-    const de = tcgdexMap.get(tcgdexId);
+  // 2. Voll-Objekt je Set (abbreviation/serie/releaseDate/cardCount/logo/symbol)
+  //    — nur dort steht das gedruckte Kürzel. Gechunkte Parallelität für ~218 Sets.
+  const ids = (enList ?? []).map(s => s.id);
+  const full: TcgdexFullSet[] = [];
+  const CHUNK = 15;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const part = await Promise.all(ids.slice(i, i + CHUNK).map(id =>
+      fetch(`${TCGDEX_REST}/en/sets/${id}`)
+        .then(r => (r.ok ? r.json() as Promise<TcgdexFullSet> : null))
+        .catch(() => null),
+    ));
+    for (const f of part) if (f) full.push(f);
+  }
+
+  // 3. Dokumente (TCGdex-native ID). `ptcgoCode` = gedrucktes Kürzel
+  //    (abbreviation.official), sonst der Online-Code (tcgOnline).
+  const withExt = (base?: string | null) => (base ? `${base}.png` : undefined);
+  const docs = full.map(s => {
+    const de = deMap.get(s.id);
+    const code = s.abbreviation?.official ?? s.tcgOnline ?? undefined;
     return {
       id: s.id,
       name: s.name,
       ...(de?.name ? { nameDe: de.name } : {}),
-      series: s.series,
-      total: s.total,
-      printedTotal: s.printedTotal,
-      ...(s.ptcgoCode ? { ptcgoCode: s.ptcgoCode } : {}),
-      logoUrl: de?.logo ?? s.images.logo,
-      logoUrlEn: s.images.logo,
-      symbolUrl: s.images.symbol,
+      series: s.serie?.name ?? '',
+      total: s.cardCount?.total ?? 0,
+      printedTotal: s.cardCount?.official ?? 0,
+      ...(code ? { ptcgoCode: code } : {}),
+      logoUrl: withExt(de?.logo ?? s.logo) ?? '',
+      ...(s.logo ? { logoUrlEn: withExt(s.logo) } : {}),
+      ...(s.symbol ? { symbolUrl: withExt(s.symbol) } : {}),
       ...(s.releaseDate ? { releaseDate: s.releaseDate } : {}),
-      tcgdexId,
     };
   });
 
-  // 4. In Firestore schreiben (merge: true um manuelle Felder nicht zu überschreiben)
+  // 4. In Firestore schreiben
   for (let i = 0; i < docs.length; i += 500) {
     const batch = db.batch();
     docs.slice(i, i + 500).forEach(s => {
