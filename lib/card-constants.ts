@@ -80,7 +80,7 @@ export const VARIANT_LABELS: Record<CardVariant, string> = {
  *   ★  Rare / Double Rare / Ace Spec / Illustration Rare (Farbe unterscheidet sie)
  *   ☆  Outline-Stern (Ultra Rare, Shiny)
  *
- * API-Keys = Rarity-Strings von pokemontcg.io (lowercase-verglichen).
+ * API-Keys = Rarity-Strings von TCGdex (lowercase-verglichen).
  */
 export type RarityGroup = {
   label: string;
@@ -91,52 +91,47 @@ export type RarityGroup = {
   gradient?: string;
   /** Sortierreihenfolge: 0 = Common, höher = seltener */
   order: number;
-  /** pokemontcg.io rarity strings (lowercase) die zu dieser Gruppe gehören */
+  /** TCGdex rarity strings (lowercase) die zu dieser Gruppe gehören */
   keys: string[];
 };
 
 export const RARITY_GROUPS: RarityGroup[] = [
+  // Pocket-Raritäten (◇/★) sind mit einsortiert: Diamanten = Common…Double Rare,
+  // Sterne/Shiny/Crown in die höheren Gruppen.
   {
     label: 'Common',
     symbol: '●',
     color: 'var(--foreground)',
     order: 0,
-    keys: ['common'],
+    keys: ['common', 'none', 'one diamond'],
   },
   {
     label: 'Uncommon',
     symbol: '♦',
     color: 'var(--foreground)',
     order: 1,
-    keys: ['uncommon'],
+    keys: ['uncommon', 'two diamond'],
   },
   {
     label: 'Rare',
     symbol: '★',
     color: 'var(--foreground)',
     order: 2,
-    keys: [
-      'rare', 'rare holo',
-      'rare holo gx', 'rare holo ex', 'rare holo lv.x',
-      'rare holo star', 'rare prime', 'rare break',
-      'rare prism star', 'legend',
-      'black white rare',
-    ],
+    keys: ['rare', 'rare holo', 'holo rare', 'rare holo lv.x', 'rare prime', 'legend', 'black white rare', 'three diamond'],
   },
   {
     label: 'Double Rare',
     symbol: '★★',
     color: 'var(--foreground)',
     order: 3,
-    keys: ['double rare', 'rare holo v', 'rare holo vmax', 'rare holo vstar'],
+    keys: ['double rare', 'holo rare v', 'holo rare vmax', 'holo rare vstar', 'four diamond'],
   },
   {
-    // Alte ACE SPEC (BW-Ära: "Rare ACE"), neue SV-Ära: "ACE SPEC Rare"
     label: 'Ace Spec Rare',
     symbol: '★',
     color: '#e879f9',
     order: 4,
-    keys: ['ace spec rare', 'rare ace'],
+    keys: ['ace spec rare'],
   },
   {
     // Radiant Pokémon (SW&S-Ära) — blauer Schimmer
@@ -160,22 +155,15 @@ export const RARITY_GROUPS: RarityGroup[] = [
     symbol: '★',
     color: '#eab308',
     order: 7,
-    keys: ['illustration rare', 'trainer gallery rare holo'],
+    keys: ['illustration rare'],
   },
   {
-    // Shiny Rare aus älteren Sets (Hidden Fates, Shining Fates)
-    label: 'Rare Shiny',
+    // Shiny (Hidden/Shining Fates + SV Shiny) — inkl. V/VMAX-Shiny + Pocket-Shiny
+    label: 'Shiny Rare',
     symbol: '✦',
     color: '#94a3b8',
     order: 8,
-    keys: ['rare shiny', 'rare shining'],
-  },
-  {
-    label: 'Rare Shiny GX',
-    symbol: '✦✦',
-    color: '#94a3b8',
-    order: 9,
-    keys: ['rare shiny gx'],
+    keys: ['shiny rare', 'shiny rare v', 'shiny rare vmax', 'one shiny', 'two shiny'],
   },
   {
     // ☆☆ silberne Outline-Sterne (SR)
@@ -183,21 +171,14 @@ export const RARITY_GROUPS: RarityGroup[] = [
     symbol: '☆☆',
     color: '#94a3b8',
     order: 10,
-    keys: ['ultra rare', 'rare ultra'],
+    keys: ['ultra rare', 'full art trainer', 'one star'],
   },
   {
     label: 'Special Illustration Rare',
     symbol: '★★',
     color: '#eab308',
     order: 11,
-    keys: ['special illustration rare'],
-  },
-  {
-    label: 'Shiny Rare',
-    symbol: '☆',
-    color: '#eab308',
-    order: 12,
-    keys: ['shiny rare'],
+    keys: ['special illustration rare', 'two star'],
   },
   {
     label: 'Shiny Ultra Rare',
@@ -211,7 +192,7 @@ export const RARITY_GROUPS: RarityGroup[] = [
     symbol: '★★★',
     color: '#eab308',
     order: 14,
-    keys: ['hyper rare', 'rare rainbow'],
+    keys: ['hyper rare', 'mega hyper rare', 'crown', 'three star'],
   },
   {
     // Kartennummer > Set-Gesamtzahl (z.B. 152/151)
@@ -219,10 +200,10 @@ export const RARITY_GROUPS: RarityGroup[] = [
     symbol: '✦',
     color: '#eab308',
     order: 15,
-    keys: ['rare secret'],
+    keys: ['secret rare'],
   },
   {
-    label: 'Black Star Promo',
+    label: 'Promo',
     symbol: 'PROMO',
     color: 'var(--foreground)',
     order: 99,
