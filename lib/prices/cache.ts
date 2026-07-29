@@ -1,6 +1,6 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import { activeProvider } from '@/lib/prices';
-import { fetchPricesForSet } from './pokemontcg';
+import { fetchPricesForSet } from './tcgdex';
 import { getAdminDb } from '@/lib/firebase/admin';
 import { TransientPriceError, type PriceResult, type PriceProvider, type PriceCurrency } from './types';
 
