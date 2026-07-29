@@ -45,6 +45,7 @@ Pokémon-Kartensammlung PWA für Stefan Gross.
 - ✅ Phase 4 (teilw.): Mappen Übersicht + Detail
 - ✅ Catalog-Sync: Firestore `tcg_catalog`, Admin SDK, wöch. Cron
 - ✅ Scanner-Polish (Stufe 1–8): Pause/Resume-FAB, Erkennen-Modus mit Owned-Banner, Quick-Add `+` auf Tiles, Bulk-Actions, REST-Catalog-Lookup, Detection-Speedups (WebGPU + Mask-Lazy), Auto-Pause nach Recognize, Slider-Reihenfolge-Polish
+- ✅ **TCGdex-Migration (komplett, live seit Go-Live 2026-07-29):** einzige Datenquelle jetzt TCGdex (native IDs `me04-100`/`me03`), DE-Namen/-Bilder nativ, Preise via `tcgdexProvider` (Cardmarket bevorzugt). pokemontcg.io vollständig raus (`lib/tcgdex.ts`/`lib/pokemon-tcg.ts`/`app/api/tcg` gelöscht). Reset-Route `app/api/admin/reset-catalog`. Katalog nach Voll-Sync: **218 Sets · 23.444 Karten** + PokéAPI-Evolution/Artdaten. PokéAPI bleibt.
 - 🔲 Phase 4 Rest: Drag & Drop
 - 🔲 Phase 5: Wunschlisten
 - 🔲 Phase 6: Marktpreise (Cardmarket)
