@@ -904,6 +904,15 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 height={196}
                 className="w-full block"
                 style={{ aspectRatio: '2.5/3.5', objectFit: 'cover' }}
+                placeholderInfo={{
+                  name: card.name,
+                  hp: card.hp,
+                  number: card.number,
+                  total: card.printedTotal ?? card.total,
+                  dexNumber: card.nationalDexNumber,
+                  setCode: card.setCode,
+                  types: card.types,
+                }}
               />
             </div>
 

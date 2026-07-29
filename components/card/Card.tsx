@@ -173,6 +173,15 @@ export function Card({
             height={342}
             className="w-full aspect-[2.5/3.5] object-cover"
             sizes={preset.imageSizes}
+            placeholderInfo={{
+              name: card.name,
+              hp: card.hp,
+              number: card.number,
+              total: card.printedTotal ?? card.total,
+              dexNumber: card.nationalDexNumber,
+              setCode: card.setCode,
+              types: card.types,
+            }}
           />
           {/* Hologramm-Schimmer — nur bei diesem einen Effekt, animiertes
               Regenbogen-Band per `mix-blend-mode`, reine Deko-Ebene über dem
