@@ -41,18 +41,17 @@ export interface CatalogCard {
 }
 
 export interface SyncMeta {
-  lastPage: number;
-  totalPages: number;
   syncedTotal: number;   // wie viele Karten wir in Firestore haben
-  currentTotal: number;  // wie viele Karten pokemontcg.io hat
+  currentTotal: number;  // Schätzung der Gesamtzahl (Summe tcg_sets.total)
   lastSynced: string;
-  /** Ist der allererste (langsame, seitenweise) Vollsync jemals durchgelaufen?
-   *  Steuert, ob `runSync` bei künftigen Aufrufen `auto` (Seiten-Cursor,
-   *  für den einmaligen Bootstrap gedacht) oder `update` (holt gezielt genau
-   *  die fehlenden neuen Karten anhand der aktuellen Gesamtzahl, robust auch
-   *  wenn neue Karten die bestehende Seitenaufteilung verschieben) nutzen
-   *  soll — siehe `lib/sync-catalog.ts`. */
+  /** Resumierbarer TCGdex-Import-Cursor: Kategorie-Index (0..2) + Seite darin. */
+  catIndex?: number;
+  page?: number;
+  /** Ist der Voll-Import jemals durchgelaufen? */
   bootstrapped?: boolean;
+  // Legacy (pokemontcg-Seitencursor) — nicht mehr geschrieben, optional für Altdaten.
+  lastPage?: number;
+  totalPages?: number;
 }
 
 export type FilterCounts = {

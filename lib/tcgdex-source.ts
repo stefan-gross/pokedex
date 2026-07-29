@@ -21,8 +21,12 @@ import type { CardVariant } from '@/types';
 
 const GRAPHQL = 'https://api.tcgdex.net/v2/graphql';
 const REST = 'https://api.tcgdex.net/v2';
-const PAGE_SIZE = 250;
-const CATEGORIES = ['Pokemon', 'Trainer', 'Energy'] as const;
+export const PAGE_SIZE = 250;
+/** Alle Karten sind genau einer dieser Kategorien zugeordnet → 3 Filter decken
+ *  den gesamten Katalog ab (der GraphQL-`cards`-Query braucht zwingend ein
+ *  Filter-Arg, siehe Modul-Kopf). */
+export const CATEGORIES = ['Pokemon', 'Trainer', 'Energy'] as const;
+export type TcgdexCategory = typeof CATEGORIES[number];
 
 // ── Rohe TCGdex-Shapes ──────────────────────────────────────────────────────
 export interface TcgdexCardFull {
@@ -68,6 +72,13 @@ const CARD_FIELDS = `
   set { id name }
 `;
 
+/** Eine Seite voller EN-Karten einer Kategorie (für resumierbaren Sync). */
+export async function fetchEnCardsPage(category: TcgdexCategory, page: number): Promise<TcgdexCardFull[]> {
+  const q = `{ cards(filters:{category:"${category}"}, pagination:{page:${page}, itemsPerPage:${PAGE_SIZE}}) { ${CARD_FIELDS} } }`;
+  const data = await graphql<{ cards: TcgdexCardFull[] }>(q);
+  return data.cards ?? [];
+}
+
 /** Holt ALLE Karten (volle EN-Daten) — je `category` seitenweise. */
 export async function fetchAllEnCards(
   onProgress?: (loaded: number) => void,
@@ -75,15 +86,25 @@ export async function fetchAllEnCards(
   const all: TcgdexCardFull[] = [];
   for (const category of CATEGORIES) {
     for (let page = 1; ; page++) {
-      const q = `{ cards(filters:{category:"${category}"}, pagination:{page:${page}, itemsPerPage:${PAGE_SIZE}}) { ${CARD_FIELDS} } }`;
-      const data = await graphql<{ cards: TcgdexCardFull[] }>(q);
-      const batch = data.cards ?? [];
+      const batch = await fetchEnCardsPage(category, page);
       all.push(...batch);
       onProgress?.(all.length);
       if (batch.length < PAGE_SIZE) break;
     }
   }
   return all;
+}
+
+/** DE-Namen der Karten EINES Sets (localId → dt. Name) via REST /de/sets/{id}. */
+export async function fetchDeNamesForSet(setId: string): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  try {
+    const res = await fetch(`${REST}/de/sets/${setId}`);
+    if (!res.ok) return map;
+    const data = await res.json() as { cards?: { localId: string; name: string }[] };
+    for (const c of data.cards ?? []) if (c.localId && c.name) map.set(c.localId, c.name);
+  } catch { /* kein DE-Set → leer */ }
+  return map;
 }
 
 /** DE-Name je Karten-ID (REST-Briefs, paginiert; Briefs haben KEIN Bild). */

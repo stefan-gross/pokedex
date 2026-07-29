@@ -4,58 +4,32 @@ import type { CatalogCard, SyncMeta } from './firestore/catalog';
 import type { CardVariant } from '@/types';
 import { detectVariants } from './card-constants';
 import { toTcgdexId } from './tcgdex';
+import { CATEGORIES, PAGE_SIZE, fetchEnCardsPage, fetchDeNamesForSet, toCatalogCard } from './tcgdex-source';
 
-const TCG_BASE = 'https://api.pokemontcg.io/v2';
-const PAGE_SIZE = 250;
-const MAX_PAGES_PER_REQUEST = 2;   // 500 Karten pro Aufruf (~4-6 Sek.) → sicher unter Vercel-Timeout
+const MAX_PAGES_PER_REQUEST = 4;   // ~1000 Karten pro Aufruf — resumierbar via Meta-Cursor
 const COL = 'tcg_catalog';
 const META_COL = 'tcg_catalog_meta';
 
-function apiHeaders(): Record<string, string> {
-  return process.env.POKEMON_TCG_API_KEY
-    ? { 'X-Api-Key': process.env.POKEMON_TCG_API_KEY }
-    : {};
+/** Gesamt-Kartenzahl (Schätzung fürs Fortschritts-%): Summe `total` aller Sets. */
+async function catalogTotalFromSets(): Promise<number> {
+  const db = getAdminDb();
+  const snap = await db.collection('tcg_sets').get();
+  let total = 0;
+  snap.forEach(d => { total += (d.data().total as number) ?? 0; });
+  return total;
 }
 
-export async function fetchCurrentTotal(): Promise<number> {
-  const res = await fetch(`${TCG_BASE}/cards?pageSize=1`, { headers: apiHeaders() });
-  const data = await res.json();
-  return data.totalCount ?? 0;
-}
-
-async function fetchPage(page: number): Promise<CatalogCard[]> {
-  const res = await fetch(
-    `${TCG_BASE}/cards?page=${page}&pageSize=${PAGE_SIZE}&orderBy=set.releaseDate`,
-    { headers: apiHeaders() }
-  );
-  const data = await res.json();
-  return (data.data ?? []).map((c: {
-    id: string; name: string; number: string;
-    set: { id: string; name: string; series: string; ptcgoCode?: string };
-    rarity?: string; supertype?: string; types?: string[]; subtypes?: string[];
-    hp?: string; artist?: string;
-    nationalPokedexNumbers?: number[];
-    images: { small: string; large: string };
-  }): CatalogCard => ({
-    id: c.id,
-    name: c.name,
-    nameLower: c.name.toLowerCase(),
-    number: c.number,
-    setId: c.set.id,
-    setName: c.set.name,
-    series: c.set.series,
-    ...(c.set.ptcgoCode ? { setCode: c.set.ptcgoCode } : {}),
-    rarity: c.rarity ?? '',
-    supertype: c.supertype ?? '',
-    types: c.types ?? [],
-    subtypes: c.subtypes ?? [],
-    ...(c.hp                          ? { hp: parseInt(c.hp) }                          : {}),
-    ...(c.artist                      ? { artist: c.artist, artistTokens: c.artist.toLowerCase().split(/\s+/) } : {}),
-    ...(c.nationalPokedexNumbers?.[0] ? { nationalDexNumber: c.nationalPokedexNumbers[0] } : {}),
-    imgSmall: c.images.small,
-    imgLarge: c.images.large,
-    variants: detectVariants(c.rarity ?? ''),
-  }));
+/** Set-ID → { series, setCode } aus tcg_sets — zum Anreichern jeder Karte
+ *  (das Karten-`set`-Objekt liefert weder Serie noch gedrucktes Kürzel). */
+async function loadSetsMeta(): Promise<Map<string, { series: string; setCode?: string }>> {
+  const db = getAdminDb();
+  const snap = await db.collection('tcg_sets').get();
+  const m = new Map<string, { series: string; setCode?: string }>();
+  snap.forEach(d => {
+    const s = d.data();
+    m.set(d.id, { series: (s.series as string) ?? '', setCode: s.ptcgoCode as string | undefined });
+  });
+  return m;
 }
 
 async function upsertBatch(cards: CatalogCard[]): Promise<void> {
@@ -90,92 +64,71 @@ export interface SyncResult {
   done?: boolean;
 }
 
+/**
+ * Voll-Import des Katalogs aus TCGdex — resumierbar über einen Meta-Cursor
+ * (`catIndex` = Kategorie-Index, `page` = Seite darin). Pro Aufruf werden
+ * `MAX_PAGES_PER_REQUEST` Seiten verarbeitet (Vercel-Timeout-schonend); der
+ * Cron/Settings-Aufruf ruft wiederholt, bis `done`.
+ *
+ * `mode`:
+ *  - `reset`  → Cursor auf Anfang (leert NICHT die Docs — das macht der P0-Reset).
+ *  - `auto`/`update` → vom Cursor aus weiterlaufen (idempotenter Upsert). Für einen
+ *    kompletten Neu-Import erst `reset`, dann wiederholt `auto` bis `done`.
+ */
 export async function runSync(mode: 'auto' | 'update' | 'reset' = 'auto'): Promise<SyncResult> {
-  const meta = await getMeta();
-  const syncedTotal = meta?.syncedTotal ?? 0;
-  const lastPage = meta?.lastPage ?? 0;
+  const nowIso = new Date().toISOString();
 
-  // IMMER frisch von der API holen (nicht mehr nur bei `update`) — sonst
-  // merkt `auto` nie, dass pokemontcg.io inzwischen neue Karten/Sets hat,
-  // weil es sich auf den zuletzt gespeicherten `meta.currentTotal` verlässt.
-  // Das war der eigentliche Bug: nach einem einmal abgeschlossenen Bootstrap
-  // (`isFullySynced` gegen den EIGENEN veralteten Stand) hielt sich `auto`
-  // für immer für "aktuell", auch wenn längst ein neues Set erschienen war.
-  const currentTotal = await fetchCurrentTotal();
-
-  const totalPages = Math.ceil(currentTotal / PAGE_SIZE);
-  const isFullySynced = syncedTotal >= currentTotal;
-
-  // ── RESET: Meta zurücksetzen → Auto-Sync startet von Seite 1 ───────────
   if (mode === 'reset') {
-    await setMeta({ lastPage: 0, syncedTotal: 0, currentTotal, totalPages, lastSynced: new Date().toISOString() });
-    return {
-      status: 'in-progress',
-      message: `↺ Catalog zurückgesetzt — ${currentTotal.toLocaleString()} Karten werden neu geladen`,
-      syncedTotal: 0,
-      currentTotal,
-      done: false,
-    };
+    await setMeta({ catIndex: 0, page: 1, syncedTotal: 0, bootstrapped: false, lastSynced: nowIso });
+    return { status: 'in-progress', message: '↺ Katalog-Cursor zurückgesetzt', syncedTotal: 0, done: false };
   }
 
-  // ── UPDATE: Nur neue Karten — gezielter Nachlade-Modus für den
-  // Normalfall (nach abgeschlossenem Bootstrap). Holt anhand der FRISCHEN
-  // Gesamtzahl exakt die fehlenden hinteren Seiten neu, unabhängig davon, was
-  // `meta.lastPage` zuletzt war — robust auch wenn neue Karten/Sets die
-  // Seitenaufteilung gegenüber dem letzten Sync verschoben haben (anders als
-  // `auto`s reiner Seiten-Cursor, siehe unten). ─────────────────────────────
-  if (mode === 'update') {
-    if (isFullySynced) {
-      await setMeta({ bootstrapped: true });
-      return { status: 'up-to-date', message: `Alle ${syncedTotal.toLocaleString()} Karten sind aktuell`, syncedTotal, currentTotal };
-    }
-    const newCards = currentTotal - syncedTotal;
-    const pagesToFetch = Math.ceil(newCards / PAGE_SIZE);
-    const startPage = Math.max(1, totalPages - pagesToFetch + 1);
-    let written = 0;
-    for (let p = startPage; p <= totalPages; p++) {
-      const cards = await fetchPage(p);
-      if (!cards.length) break;
-      await upsertBatch(cards);
-      written += cards.length;
-    }
-    await setMeta({ lastPage: totalPages, totalPages, syncedTotal: currentTotal, currentTotal, bootstrapped: true, lastSynced: new Date().toISOString() });
-    return { status: 'updated', message: `✅ ${written} neue Karten hinzugefügt`, written, syncedTotal: currentTotal, currentTotal };
+  const meta = await getMeta();
+  let catIndex = meta?.catIndex ?? 0;
+  let page = meta?.page ?? 1;
+  let syncedTotal = meta?.syncedTotal ?? 0;
+
+  const currentTotal = await catalogTotalFromSets();
+
+  if (catIndex >= CATEGORIES.length) {
+    await setMeta({ bootstrapped: true, lastSynced: nowIso });
+    return { status: 'up-to-date', message: `Alle ${syncedTotal.toLocaleString()} Karten aktuell`, syncedTotal, currentTotal, done: true };
   }
 
-  // ── AUTO: Initialer Bootstrap-Sync — holt seitenweise (per `lastPage`-
-  // Cursor) den KOMPLETTEN Katalog beim allerersten Mal, in kleinen Häppchen
-  // über mehrere Aufrufe verteilt (Vercel-Timeout). Nur für diesen einmaligen
-  // Anfangszustand gedacht — für laufenden Nachschub neuer Karten danach ist
-  // `update` (siehe oben) der richtige Modus, siehe Aufrufer in
-  // `app/api/cron/sync-catalog/route.ts` und der Settings-Seite. ───────────
-  if (isFullySynced) {
-    await setMeta({ bootstrapped: true });
-    return { status: 'up-to-date', message: `Alle ${syncedTotal.toLocaleString()} Karten sind aktuell`, syncedTotal, currentTotal };
-  }
-
-  const startPage = lastPage + 1;
-  const endPage = Math.min(startPage + MAX_PAGES_PER_REQUEST - 1, totalPages);
-
+  const setsMeta = await loadSetsMeta();
+  const deCache = new Map<string, Map<string, string>>(); // setId → localId→dt.Name (pro Aufruf)
   let written = 0;
-  for (let p = startPage; p <= endPage; p++) {
-    const cards = await fetchPage(p);
-    if (!cards.length) break;
+
+  for (let i = 0; i < MAX_PAGES_PER_REQUEST && catIndex < CATEGORIES.length; i++) {
+    const category = CATEGORIES[catIndex];
+    const enCards = await fetchEnCardsPage(category, page);
+    if (enCards.length === 0) { catIndex++; page = 1; continue; }
+
+    const cards: CatalogCard[] = [];
+    for (const en of enCards) {
+      const setId = en.set?.id ?? '';
+      if (setId && !deCache.has(setId)) deCache.set(setId, await fetchDeNamesForSet(setId));
+      const deName = setId ? deCache.get(setId)?.get(en.localId) : undefined;
+      const sm = setsMeta.get(setId);
+      cards.push(toCatalogCard(en, deName, { series: sm?.series, setCode: sm?.setCode }));
+    }
     await upsertBatch(cards);
     written += cards.length;
-    await setMeta({ lastPage: p, totalPages, syncedTotal: syncedTotal + written, currentTotal, lastSynced: new Date().toISOString() });
+    syncedTotal += cards.length;
+
+    if (enCards.length < PAGE_SIZE) { catIndex++; page = 1; } else { page++; }
+    await setMeta({ catIndex, page, syncedTotal, currentTotal, lastSynced: nowIso });
   }
 
-  const newSyncedTotal = syncedTotal + written;
-  const done = newSyncedTotal >= currentTotal;
+  const done = catIndex >= CATEGORIES.length;
   if (done) await setMeta({ bootstrapped: true });
   return {
     status: done ? 'complete' : 'in-progress',
     message: done
-      ? `✅ Alle ${newSyncedTotal.toLocaleString()} Karten synchronisiert`
-      : `📥 ${newSyncedTotal.toLocaleString()} / ${currentTotal.toLocaleString()} Karten — morgen weiter`,
+      ? `✅ Katalog vollständig (${syncedTotal.toLocaleString()} Karten)`
+      : `📥 ${syncedTotal.toLocaleString()} / ${currentTotal.toLocaleString()} Karten…`,
     written,
-    syncedTotal: newSyncedTotal,
+    syncedTotal,
     currentTotal,
     done,
   };
@@ -1086,7 +1039,7 @@ export async function enrichSpeciesData(batchSize = 500): Promise<EnrichSpeciesR
 
 export async function getSyncStatus() {
   const meta = await getMeta();
-  const currentTotal = await fetchCurrentTotal();
+  const currentTotal = await catalogTotalFromSets();
   const syncedTotal = meta?.syncedTotal ?? 0;
   return {
     ...(meta ?? { lastPage: 0, totalPages: 0, lastSynced: null, bootstrapped: false }),
