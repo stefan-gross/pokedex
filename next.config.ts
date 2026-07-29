@@ -28,6 +28,12 @@ const nextConfig: NextConfig = {
         hostname: 'assets.tcgdex.net',
         pathname: '/**',
       },
+      {
+        // Selbst gehostete Bilder (Backfill für Karten ohne TCGdex-Bild)
+        protocol: 'https',
+        hostname: 'storage.googleapis.com',
+        pathname: '/**',
+      },
     ],
     // Bilder werden 30 Tage gecacht (pokemontcg.io Bilder ändern sich nie)
     minimumCacheTTL: 60 * 60 * 24 * 30,

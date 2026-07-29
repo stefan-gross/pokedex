@@ -152,7 +152,18 @@ export async function upsertCatalogBatch(cards: CatalogCard[]): Promise<void> {
   for (let i = 0; i < cards.length; i += 500) chunks.push(cards.slice(i, i + 500));
   for (const chunk of chunks) {
     const batch = writeBatch(db);
-    chunk.forEach(card => batch.set(doc(db, COL, card.id), card, { merge: true }));
+    chunk.forEach(card => {
+      // Leere Bild-Felder NICHT mitschreiben: sonst würde ein Re-Sync bei
+      // Karten, für die TCGdex (noch) kein Bild hat, eine bereits per Backfill
+      // gesetzte, selbst gehostete URL mit "" überschreiben. Weglassen +
+      // merge:true bewahrt den vorhandenen Wert. TCGdex gewinnt automatisch,
+      // sobald es ein echtes Bild liefert (dann ist das Feld nicht leer).
+      const payload: Record<string, unknown> = { ...card };
+      for (const k of ['imgSmall', 'imgLarge', 'imgSmallDe', 'imgLargeDe'] as const) {
+        if (!payload[k]) delete payload[k];
+      }
+      batch.set(doc(db, COL, card.id), payload, { merge: true });
+    });
     await batch.commit();
   }
 }
