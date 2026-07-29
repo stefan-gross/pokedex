@@ -40,6 +40,16 @@ export interface CardInfo {
   artist?: string;
 }
 
+/** Leitet die deutsche TCGdex-Bild-URL aus der englischen ab (/en/ → /de/).
+ *  Nur für TCGdex-CDN-URLs; selbst gehostete/Backfill-URLs bleiben unangetastet.
+ *  So wird die DE-URL beim Lesen konstruiert (nicht im Sync gespeichert), damit
+ *  ein Re-Sync selbst gehostete deutsche Bilder nie überschreibt. */
+function deImageUrl(stored: string | undefined, en: string): string | undefined {
+  if (stored) return stored;                        // gespeichert (z.B. Backfill) hat Vorrang
+  if (en.includes('assets.tcgdex.net/en/')) return en.replace('/en/', '/de/');
+  return undefined;
+}
+
 export function catalogCardToInfo(c: CatalogCard): CardInfo {
   return {
     id: c.id,
@@ -56,8 +66,8 @@ export function catalogCardToInfo(c: CatalogCard): CardInfo {
     setCode: c.setCode,
     imgSmall: c.imgSmall,
     imgLarge: c.imgLarge,
-    imgSmallDe: c.imgSmallDe,
-    imgLargeDe: c.imgLargeDe,
+    imgSmallDe: deImageUrl(c.imgSmallDe, c.imgSmall),
+    imgLargeDe: deImageUrl(c.imgLargeDe, c.imgLarge),
     variants: c.variants,
     genusDe: c.genusDe,
     flavorTextDe: c.flavorTextDe,

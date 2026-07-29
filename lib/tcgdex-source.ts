@@ -174,7 +174,6 @@ export function toCatalogCard(
   deName: string | undefined,
   opts?: { series?: string; setCode?: string },
 ): CatalogCard {
-  const deBase = deImageBase(en.image);
   return {
     id: en.id,
     name: en.name,
@@ -193,7 +192,9 @@ export function toCatalogCard(
     ...(en.dexId?.length ? { nationalDexNumber: en.dexId[0] } : {}),
     imgSmall: tcgdexImage(en.image, 'low'),
     imgLarge: tcgdexImage(en.image, 'high'),
-    ...(deBase ? { imgSmallDe: tcgdexImage(deBase, 'low'), imgLargeDe: tcgdexImage(deBase, 'high') } : {}),
+    // DE-Bild NICHT mehr hier speichern: es wird beim Lesen konstruiert
+    // (catalogCardToInfo → deImageUrl, /en/→/de/). So überschreibt ein Re-Sync
+    // keine selbst gehosteten deutschen Backfill-Bilder (imgLargeDe im Storage).
     variants: mapVariants(en.variants),
     ...(en.illustrator ? { artist: en.illustrator, artistTokens: en.illustrator.toLowerCase().split(/\s+/) } : {}),
   };
