@@ -54,13 +54,16 @@ export function SetListItem({
     >
       {/* Logo */}
       <div className="w-14 shrink-0 flex items-center justify-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={logoSrc}
-          alt={displayName}
-          className="max-h-8 max-w-[56px] object-contain"
-          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-        />
+        {/* Leeres src="" vermeiden (React-Warnung + Reload) */}
+        {logoSrc && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={logoSrc}
+            alt={displayName}
+            className="max-h-8 max-w-[56px] object-contain"
+            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+          />
+        )}
       </div>
 
       {/* Info */}

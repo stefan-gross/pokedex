@@ -912,14 +912,18 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
 
               {/* Oben: Logo → Name+Kürzel → Serie (vertikal) */}
               <div className="flex flex-col gap-1">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={logoUrl}
-                  alt={setNameDe}
-                  className="object-contain object-left"
-                  style={{ height: 28, maxWidth: 90 }}
-                  onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                />
+                {/* Nur rendern, wenn eine Logo-URL vorliegt — ein leeres
+                    src="" löst eine React-Warnung + Seiten-Reload aus. */}
+                {logoUrl && (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={logoUrl}
+                    alt={setNameDe}
+                    className="object-contain object-left"
+                    style={{ height: 28, maxWidth: 90 }}
+                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                  />
+                )}
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[13px] font-bold leading-snug truncate">{setNameDe}</span>
                   {isSymbolOnlySet && resolvedMeta?.symbolUrl ? (
