@@ -40,15 +40,13 @@ export function CardPlaceholder({
 
   const t0 = types?.[0];
   const type = (t0 && t0 in ENERGY_META ? t0 : null) as EnergyType | null;
-  const frame = type ? ENERGY_META[type].bg : '#B8B29E';
-  const frameDark = `color-mix(in srgb, ${frame} 68%, #000)`;
 
   return (
     <div className={className} style={style} onClick={onClick} role="img" aria-label={`${name} — Bild fehlt`}>
-      {/* Farbiger Typ-Rahmen (dünn wie bei einer echten Karte) */}
+      {/* Gelber Karten-Rand (klassische Pokémon-Optik) */}
       <div
-        className="w-full h-full rounded-[5%] p-[4%] shadow-[inset_0_1px_2px_rgba(255,255,255,0.35),0_2px_6px_rgba(0,0,0,0.25)]"
-        style={{ background: `linear-gradient(155deg, ${frame}, ${frameDark})` }}
+        className="w-full h-full rounded-[5%] p-[4%] shadow-[inset_0_1px_2px_rgba(255,255,255,0.4),0_2px_6px_rgba(0,0,0,0.25)]"
+        style={{ background: 'linear-gradient(155deg, #F5CE3E 0%, #E0AC24 55%, #C68E17 100%)' }}
       >
         {/* Kartenkörper (creme) */}
         <div
@@ -68,22 +66,37 @@ export function CardPlaceholder({
             </span>
           </div>
 
-          {/* Artwork-Fenster — obere Kartenhälfte, wie bei einer echten Karte */}
+          {/* Artwork-Fenster — grüne Landschaft + „Wer ist das Pokémon?"-Silhouette */}
           <div
-            className="flex-[0_0_48%] min-h-0 rounded-[2px] flex flex-col items-center justify-center gap-1.5"
-            style={{
-              background: 'linear-gradient(160deg, #e6e0cf, #d8d1bd)',
-              border: `2px solid ${frameDark}`,
-              boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.25)',
-            }}
+            className="relative flex-[0_0_48%] min-h-0 overflow-hidden rounded-[2px]"
+            style={{ border: '2px solid #b8901a', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="#8a8471" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-[24%] h-[24%] max-w-8 max-h-8" aria-hidden="true">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <path d="m3 16 5-5c.9-.9 2.1-.9 3 0l4 4" />
-              <path d="m14 14 1-1c.9-.9 2.1-.9 3 0l3 3" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
+            <svg viewBox="0 0 120 84" preserveAspectRatio="xMidYMid slice" className="w-full h-full" aria-hidden="true">
+              <defs>
+                <linearGradient id="ph-sky" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stopColor="#a6e0b0" />
+                  <stop offset="0.55" stopColor="#63bd77" />
+                  <stop offset="1" stopColor="#2f8f4c" />
+                </linearGradient>
+              </defs>
+              <rect width="120" height="84" fill="url(#ph-sky)" />
+              {/* Sonne */}
+              <circle cx="98" cy="18" r="9" fill="#f7f3c8" opacity="0.75" />
+              {/* Hügel-Landschaft */}
+              <path d="M0 60 Q30 46 62 58 T120 54 V84 H0 Z" fill="#3f9d5a" opacity="0.9" />
+              <path d="M0 70 Q38 58 78 69 T120 66 V84 H0 Z" fill="#2a7a41" />
+              {/* Mystery-Pokémon-Silhouette mit Fragezeichen */}
+              <g fill="#17351f" opacity="0.9">
+                <ellipse cx="60" cy="46" rx="16" ry="15" />
+                <path d="M49 34 Q47 24 53 27 Q54 31 57 33 Z" />
+                <path d="M71 34 Q73 24 67 27 Q66 31 63 33 Z" />
+              </g>
+              <text x="60" y="52" textAnchor="middle" fontSize="20" fontWeight="bold" fill="#eaf6ec" fontFamily="sans-serif">?</text>
             </svg>
-            <span className="text-[10px] leading-none font-medium text-[#8a8471]">Bild fehlt</span>
+            {/* „Bild fehlt"-Hinweis */}
+            <span className="absolute bottom-0 inset-x-0 text-center text-[8px] leading-tight font-semibold text-white py-[1.5%]" style={{ background: 'rgba(0,0,0,0.4)' }}>
+              Bild fehlt
+            </span>
           </div>
 
           {/* Pokédex-Nr. direkt unter dem Bild */}
