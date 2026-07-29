@@ -2094,6 +2094,12 @@ export default function ScannerPage() {
             job={recognized}
             onCardTap={() => setActiveJobId(recognized.id)}
             onDebugTap={() => setDebugJobId(recognized.id)}
+            onPickCandidate={picked => {
+              setJobs(prev => prev.map(j => j.id === recognized.id && j.result
+                ? { ...j, result: { ...j.result, card: picked }, editedVariant: picked.variants?.[0] ?? 'standard' }
+                : j));
+              refreshOwnedCount(recognized.id, picked.id);
+            }}
           />
         );
       })()}
@@ -2872,10 +2878,12 @@ interface RecognizedCardLargeProps {
   job: ScanJob;
   onCardTap: () => void;
   onDebugTap: () => void;
+  /** Nutzer wählt bei mehrdeutiger Erkennung eine der Kandidaten-Karten. */
+  onPickCandidate: (card: CardInfo) => void;
 }
 
 function RecognizedCardLarge({
-  job, onCardTap, onDebugTap,
+  job, onCardTap, onDebugTap, onPickCandidate,
 }: RecognizedCardLargeProps) {
   const card      = job.result?.card;
   // Bild-Kandidaten in Prioritätsreihenfolge — bei 404/Ladefehler eines
@@ -3152,6 +3160,43 @@ function RecognizedCardLarge({
               fontSize={44}
               className="[text-shadow:0_2px_12px_rgba(0,0,0,.25)] ml-auto"
             />
+          </div>
+        </div>
+      )}
+
+      {/* Mehrdeutige Erkennung: mehrere Karten passen gleich gut (z.B. gleicher
+          Name+Nummer in zwei Sets). Statt still den ersten zu nehmen, die
+          Kandidaten zur Auswahl zeigen — Tippen setzt die aktive Karte. */}
+      {card && (job.result?.candidates?.length ?? 0) > 1 && (
+        <div className="w-full flex flex-col gap-2 px-4 py-3 rounded-[24px] glass-overlay">
+          <div className="flex items-center gap-2 text-white/90 text-sm font-semibold">
+            <AlertTriangle size={15} color="#fbbf24" />
+            Mehrdeutig — welche Karte?
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {job.result!.candidates!.map(cand => {
+              const selected = cand.id === card.id;
+              const thumb = cand.imgSmallDe || cand.imgSmall;
+              return (
+                <button
+                  key={cand.id}
+                  onClick={() => onPickCandidate(cand)}
+                  className="shrink-0 flex flex-col items-center gap-1 rounded-lg p-1"
+                  style={{ border: selected ? '2px solid #35d15a' : '2px solid rgba(255,255,255,0.15)' }}
+                  aria-label={`${cand.name} ${cand.setCode ?? cand.setId} ${cand.number}`}
+                >
+                  {thumb ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={thumb} alt={cand.name} className="w-16 rounded object-contain" />
+                  ) : (
+                    <div className="w-16 h-[89px] rounded bg-white/10" />
+                  )}
+                  <span className="text-white/80 text-[10px] font-mono tabular-nums">
+                    {(cand.setCode ?? cand.setId?.toUpperCase() ?? '?')} {cand.number}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
