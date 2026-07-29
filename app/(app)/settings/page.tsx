@@ -76,30 +76,29 @@ export default function SettingsPage() {
     step(withReset ? '↺ Catalog wird zurückgesetzt…' : '▶ Starte…');
 
     try {
-      // 1. Catalog-Sync
+      // Reihenfolge: Sets ZUERST (Karten-Sync liest series/setCode aus tcg_sets),
+      // dann Katalog, dann PokéAPI-Anreicherungen. DE-Namen/-Bilder/Varianten/
+      // Illustrator kommen jetzt NATIV aus dem TCGdex-Katalog-Sync — keine
+      // separaten Schritte mehr.
+
+      // 1. Sets
+      step('🗂️ (1/4) Sets werden synchronisiert…');
+      const setsRes  = await fetch('/api/admin/sync-sets', { method: 'POST' });
+      const setsData = await setsRes.json().catch(() => ({}));
+
+      // 2. Katalog (resumierbar) — bei "neu aufbauen" erst Cursor zurücksetzen,
+      //    dann wiederholt `auto`, bis der Import `done`/`complete` meldet.
       if (withReset) {
         await fetch('/api/admin/trigger-sync?mode=reset', { method: 'POST' });
         await loadSyncStatus();
       }
-      step('📥 (1/9) Catalog wird synchronisiert…');
+      step('📥 (2/4) Katalog wird synchronisiert…');
       const poller = setInterval(loadSyncStatus, 2000);
-      // `auto` (seitenweiser Cursor) nur solange der einmalige Bootstrap
-      // noch nicht durchgelaufen ist — danach `update` (holt anhand der
-      // aktuellen Gesamtzahl gezielt genau die fehlenden neuen Karten, statt
-      // sich auf einen möglicherweise inzwischen verschobenen Seiten-Cursor
-      // zu verlassen). Ohne diese Unterscheidung erkannte der Katalog-Sync
-      // nach dem ersten Vollsync nie mehr neu erschienene Sets.
-      let bootstrapDoneStatus: { bootstrapped?: boolean } = {};
-      try {
-        const statusRes = await fetch('/api/admin/trigger-sync');
-        if (statusRes.ok) bootstrapDoneStatus = await statusRes.json();
-      } catch { /* ignore — fällt unten auf `auto` zurück, sicherer Default */ }
-      const catalogMode = bootstrapDoneStatus.bootstrapped ? 'update' : 'auto';
       let retries = 0;
       while (true) {
         let res: Response, text: string;
         try {
-          res  = await fetch(`/api/admin/trigger-sync?mode=${catalogMode}`, { method: 'POST' });
+          res  = await fetch('/api/admin/trigger-sync?mode=auto', { method: 'POST' });
           text = await res.text();
         } catch {
           if (++retries > 5) break;
@@ -109,101 +108,36 @@ export default function SettingsPage() {
         retries = 0;
         let d: { done?: boolean; status?: string } = {};
         try { d = JSON.parse(text); } catch { /* ignore */ }
-        if (d.done || d.status === 'complete' || d.status === 'up-to-date' || d.status === 'updated') break;
+        if (d.done || d.status === 'complete' || d.status === 'up-to-date') break;
         if (d.status === 'error') break;
-        if (catalogMode === 'update') break; // `update` erledigt alles in einem Aufruf
         await new Promise(r => setTimeout(r, 300));
       }
       clearInterval(poller);
       await loadSyncStatus();
 
-      // 2. Evolutionsdaten
-      step('🧬 (2/9) Evolutionsdaten werden angereichert…');
+      // 3. Evolutionsdaten (PokéAPI)
+      step('🧬 (3/4) Evolutionsdaten werden angereichert…');
       let evoTotal = 0;
       while (true) {
         const res  = await fetch('/api/admin/enrich-evolution', { method: 'POST' });
         const data = await res.json();
         evoTotal += data.enriched ?? 0;
-        step(`🧬 (2/9) Evolutionsdaten: ${evoTotal} Karten…`);
+        step(`🧬 (3/4) Evolutionsdaten: ${evoTotal} Karten…`);
         if (data.status !== 'in-progress') break;
       }
 
-      // 3. Deutsche Namen
-      step('🇩🇪 (3/9) Deutsche Namen werden angereichert…');
-      let deTotal = 0;
-      while (true) {
-        const res  = await fetch('/api/admin/enrich-german-names', { method: 'POST' });
-        const data = await res.json();
-        deTotal += data.enriched ?? 0;
-        step(`🇩🇪 (3/9) Deutsche Namen: ${deTotal} Karten…`);
-        if (data.status !== 'in-progress') break;
-      }
-
-      // 4. Sets
-      step('🗂️ (4/9) Sets werden synchronisiert…');
-      await fetch('/api/admin/sync-sets', { method: 'POST' });
-
-      // 5. Set-Kürzel + Illustrator-Suchwörter (beides reine Firestore-Backfills, kein API-Call)
-      step('🏷️ (5/9) Set-Kürzel werden geschrieben…');
-      const bfRes  = await fetch('/api/admin/backfill-set-codes', { method: 'POST' });
-      const bfData = await bfRes.json();
-      const atRes  = await fetch('/api/admin/backfill-artist-tokens', { method: 'POST' });
-      const atData = await atRes.json();
-
-      // 6. Deutsche Karten-Bilder
-      step('🖼️ (6/9) Deutsche Karten-Bilder werden angereichert…');
-      let imgTotal = 0;
-      let imgFirst = true;
-      while (true) {
-        const res  = await fetch('/api/admin/enrich-de-images', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reset: imgFirst }) });
-        imgFirst = false;
-        const data = await res.json();
-        imgTotal += data.enriched ?? 0;
-        step(`🖼️ (6/9) DE-Bilder: ${imgTotal} Karten…`);
-        if (data.status !== 'in-progress') break;
-      }
-
-      // 7. Pokémon-Artdaten
-      step('🧬 (7/9) Pokémon-Artdaten werden angereichert…');
+      // 4. Pokémon-Artdaten (PokéAPI)
+      step('📖 (4/4) Pokémon-Artdaten werden angereichert…');
       let speciesTotal = 0;
       while (true) {
         const res  = await fetch('/api/admin/enrich-species', { method: 'POST' });
         const data = await res.json();
         speciesTotal += data.enriched ?? 0;
-        step(`🧬 (7/9) Artdaten: ${speciesTotal} Karten…`);
+        step(`📖 (4/4) Artdaten: ${speciesTotal} Karten…`);
         if (data.status !== 'in-progress') break;
       }
 
-      // 8. Varianten aus TCGdex (überschreibt Heuristik-Defaults für Common/Uncommon/Rare etc.)
-      step('🃏 (8/9) Varianten werden angereichert…');
-      let variantsTotal = 0;
-      let variantsFirst = true;
-      while (true) {
-        const res  = await fetch('/api/admin/enrich-variants', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reset: variantsFirst }),
-        });
-        variantsFirst = false;
-        const data = await res.json();
-        variantsTotal += data.enriched ?? 0;
-        step(`🃏 (8/9) Varianten: ${variantsTotal} Karten…`);
-        if (data.status !== 'in-progress') break;
-      }
-
-      // 9. Illustrator-Fallback über TCGdex (pokemontcg.io liefert bei manchen
-      // Karten artist: null, obwohl der Name auf dem Kartenbild steht)
-      step('🎨 (9/9) Illustrator-Credits werden ergänzt…');
-      let artistTotal = 0;
-      while (true) {
-        const res  = await fetch('/api/admin/enrich-artist', { method: 'POST' });
-        const data = await res.json();
-        artistTotal += data.enriched ?? 0;
-        step(`🎨 (9/9) Illustrator-Credits: ${artistTotal} Karten…`);
-        if (data.status !== 'in-progress') break;
-      }
-
-      const summary = `${deTotal} DE-Namen · ${evoTotal} Evo-Daten · ${bfData.updated ?? 0} Set-Kürzel · ${atData.updated ?? 0} Illustrator-Tokens · ${imgTotal} DE-Bilder · ${speciesTotal} Artdaten · ${variantsTotal} Varianten · ${artistTotal} Illustrator-Credits`;
+      const summary = `${setsData.synced ?? 0} Sets · ${evoTotal} Evo-Daten · ${speciesTotal} Artdaten`;
       step(`✅ Fertig — ${summary}`);
       // Zusammenfassung dauerhaft merken (überlebt Reload), damit „Letzter
       // Daten-Lauf" auch später noch sichtbar ist.
