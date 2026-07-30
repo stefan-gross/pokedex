@@ -225,8 +225,10 @@ export function Card({
           </CardBadge>
         )}
 
-        {/* Owned badge — grün, oben rechts */}
-        {isOwned && (
+        {/* Anzahl-Badge — grün, oben rechts. Nur ab 2 Exemplaren; bei genau
+            einer Karte reicht die Voll-Farbe (fehlende sind ausgegraut) als
+            Besitz-Anzeige, ein „×1" wäre redundant. */}
+        {totalOwned > 1 && (
           <CardBadge size={preset.badgeSize} color="rgba(53,209,90,.9)" corner="tr" cornerRadius={badgeCornerRadius} style={{ top: layout.ownedBadge.top, right: layout.ownedBadge.right }}>
             ×{totalOwned}
           </CardBadge>

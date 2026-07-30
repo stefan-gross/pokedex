@@ -1301,7 +1301,15 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           card={card}
           preVariant={addVariant}
           onClose={() => setAddVariant(null)}
-          onSaved={() => { setAddVariant(null); reloadCopies(); onSaved?.(); }}
+          onSaved={() => {
+            setAddVariant(null);
+            reloadCopies();
+            // Binder-Liste mitladen — sonst ist die frisch in den „Eingang"
+            // gelegte Kopie in der veralteten Liste in keinem Binder und die
+            // OwnedCopyRow zeigt fälschlich „Unsortiert".
+            getBinders().then(setResolvedBinders).catch(() => {});
+            onSaved?.();
+          }}
         />
       )}
     </>

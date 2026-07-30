@@ -303,6 +303,17 @@ function SetDetailContent() {
     }).catch(() => {});
   }, []);
 
+  // Besitz-Daten neu laden — nötig, wenn im Kartendetail eine Karte hinzugefügt/
+  // gelöscht wurde, damit die Set-Ansicht sofort Vorhanden/Fehlen aktualisiert
+  // (sonst bleibt eine gerade hinzugefügte Karte als „fehlend" stehen).
+  const reloadOwned = useCallback(() => {
+    getCards().then(setOwned).catch(() => {});
+  }, []);
+  const handleDetailClose = useCallback((card: CardInfo) => {
+    refreshCardPrice(card);
+    reloadOwned();
+  }, [refreshCardPrice, reloadOwned]);
+
   const logoUrl = logoDe ?? "";
   // Sets vor Scarlet & Violet tragen keinen echten Kürzel-Aufdruck — nur ein
   // grafisches Symbol. ptcgoCode ist dort nur ein internes pokemontcg.io-Kürzel.
@@ -593,7 +604,7 @@ function SetDetailContent() {
               setMeta={{ nameDe: (nameDe || cards[0]?.setName) ?? '', logoUrl, printedTotal: totalCount, total: totalCount }}
               sortKey={sortField}
               priceMap={priceMap}
-              onDetailClose={refreshCardPrice}
+              onDetailClose={handleDetailClose}
               wishlistIds={wishlistIds}
               onToggleWishlist={toggleWishlist}
               pricesLoading={pricesLoading}

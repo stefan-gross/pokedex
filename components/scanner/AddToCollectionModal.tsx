@@ -116,7 +116,10 @@ export function AddToCollectionModal({
         isFirstEd: variant === '1st-ed',
         quantity: 1,
         tcgImageUrl: card.imgLargeDe || card.imgLarge,
-        needsReview: true,
+        // „Prüfen" nur für Scanner-Ergebnisse (KI-Erkennung, kann falsch
+        // liegen). Manuelles Hinzufügen aus Suche/Kartendetail ist bewusst
+        // gewählt → kein Review-Status.
+        needsReview: fromScanner,
       });
       // Immer in den „Eingang" (Posteingang) — von dort sortiert der Nutzer
       // weiter. Kein direktes Zuweisen zu einer Sammlung mehr (siehe
