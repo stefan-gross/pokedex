@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react';
+import { useEffect, useLayoutEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { ChevronLeft, BookOpen, Plus } from 'lucide-react';
 
@@ -14,7 +14,6 @@ import { Button } from '@/components/ui/button';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { Input } from '@/components/ui/input';
 import { CreateTemplateBinderModal } from '@/components/binder/CreateTemplateBinderModal';
-import { ChevronDown } from 'lucide-react';
 import { CardGrid } from '@/components/card/CardGrid';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
@@ -81,9 +80,22 @@ function SetDetailContent() {
   const [priceMap, setPriceMap]       = useState<Map<string, number>>(new Map());
   const [pricesLoading, setPricesLoading] = useState(false);
   const priceLoadedRef = useRef(false);
-  const [filtersCollapsed, setFiltersCollapsed] = useState(false);
-  const lastScrollY   = useRef(0);
-  const scrollLockRef = useRef(false);
+  // Zusammenklappen in zwei Stufen (0 = alles offen · 1 = Filter zu · 2 = Filter
+  // + Status zu). Gesteuert per Scroll (Kartenposition) ODER kontinuierlichem
+  // Ziehen am Griff. `dragCollapse` = während des Ziehens die aktuelle
+  // Einklapp-Höhe in px (folgt dem Finger); sonst null → aus `stage` abgeleitet.
+  const [stage, setStage] = useState(0);
+  const [dragCollapse, setDragCollapse] = useState<number | null>(null);
+  const grabRef  = useRef<{ y: number; start: number; moved: boolean } | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const gridWrapRef = useRef<HTMLDivElement>(null);
+  const statusInnerRef = useRef<HTMLDivElement>(null);
+  const filterInnerRef = useRef<HTMLDivElement>(null);
+  const [fH, setFH] = useState(0); // natürliche Höhe des Filter-Bodys
+  const [sH, setSH] = useState(0); // natürliche Höhe des Status-Blocks
+  const panelTopRef = useRef(0);          // Panel-Oberkante (gepinnt, konstant)
+  const panelExpandedHRef = useRef(0);    // Panel-Höhe im voll ausgeklappten Zustand
+  const stageRef = useRef(0);             // aktuelle Stufe für den Scroll-Handler (ohne Re-Subscribe)
   const [search, setSearch]   = useState('');
   const { wishlistIds, toggle: toggleWishlist } = useWishlist();
   const [showCreateTemplate, setShowCreateTemplate] = useState(false);
@@ -127,27 +139,128 @@ function SetDetailContent() {
     load();
   }, [setId]);
 
-  // Filter-Panel beim Runterscrollen einklappen; automatisch NUR wieder
-  // ausklappen, wenn ganz oben (nicht bei jedem Hochscrollen). Manuelles
-  // Aufklappen (Tap auf den Hinweis) bleibt bis zum nächsten Runterscrollen.
-  useEffect(() => {
-    lastScrollY.current = window.scrollY;
-    const onScroll = () => {
-      const y = Math.max(0, window.scrollY);
-      if (y <= 8) { setFiltersCollapsed(false); lastScrollY.current = y; return; }
-      if (scrollLockRef.current) return;
-      if (y > lastScrollY.current + 60 && y > 120) {
-        setFiltersCollapsed(true);
-        lastScrollY.current = y;
-        scrollLockRef.current = true;
-        setTimeout(() => { lastScrollY.current = Math.max(0, window.scrollY); scrollLockRef.current = false; }, 200);
-      } else {
-        lastScrollY.current = y;
+  // Einklapp-Höhe: `dragCollapse` während des Ziehens, sonst aus `stage`
+  // abgeleitet (0 = 0px, 1 = Filter-Höhe, 2 = Filter + Status). Daraus die
+  // sichtbaren Höhen beider Bereiche — Filter klappt zuerst (collapse 0→fH),
+  // dann der Status (fH→fH+sH).
+  const stageCollapse = (s: number) => (s === 0 ? 0 : s === 1 ? fH : fH + sH);
+  const dragging = dragCollapse !== null;
+  const collapse = dragCollapse ?? stageCollapse(stage);
+  const filterMax  = Math.max(0, fH - Math.min(collapse, fH));
+  const statusMax  = Math.max(0, sH - Math.max(0, collapse - fH));
+
+  // Natürliche Höhen von Filter-Body und Status-Block messen (für den
+  // kontinuierlichen Drag) sowie Panel-Oberkante + ausgeklappte Panel-Höhe
+  // (als stabile Referenzlinie für den Scroll-Trigger). Neu messen, wenn Daten/
+  // Preis-Zeile stehen oder sich die Fenstergröße ändert.
+  useLayoutEffect(() => {
+    if (loading) return;
+    const measure = () => {
+      if (filterInnerRef.current) setFH(filterInnerRef.current.scrollHeight);
+      if (statusInnerRef.current) setSH(statusInnerRef.current.scrollHeight);
+      if (panelRef.current && stage === 0 && dragCollapse === null) {
+        panelExpandedHRef.current = panelRef.current.offsetHeight;
+        panelTopRef.current = panelRef.current.getBoundingClientRect().top;
       }
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+    // Nur bei Inhaltsänderungen neu messen — NICHT bei jedem Drag-Frame (stage/
+    // dragCollapse bewusst nicht in den Deps, sonst Layout-Thrash beim Ziehen).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, cards.length, pricesLoading]);
+
+  // Scroll-Trigger: Filter einklappen, sobald die erste Kartenreihe zur Hälfte
+  // hinter dem (ausgeklappten) Info-Panel verschwindet; Status folgt eine
+  // weitere Reihe später. Ganz oben (y<=8) wieder alles auf. Referenzlinie nutzt
+  // die AUSGEKLAPPTE Panel-Höhe → selbst-stabilisierend (Einklappen schiebt die
+  // Karten weiter hoch = Bedingung bleibt erfüllt, kein Flackern). Beim Ziehen
+  // am Griff wird der Scroll ignoriert.
+  useEffect(() => {
+    // Hysterese-Puffer: Einklappen an der Grenze, Wieder-Ausklappen erst, wenn
+    // die Karte deutlich (HYST px) unter die Linie zurückkommt. Verhindert das
+    // Flackern, wenn man genau auf der Schwelle stehen bleibt (Scroll-Anchoring
+    // beim Zusammenklappen verschiebt die Karten sonst minimal hin und her).
+    const HYST = 56;
+    const onScroll = () => {
+      if (grabRef.current) return;
+      if (window.scrollY <= 8) { setStage(0); return; }
+      const gw = gridWrapRef.current;
+      const line = panelTopRef.current + panelExpandedHRef.current;
+      if (!gw || line <= 0) return;
+      const cols = gw.clientWidth >= 640 ? 3 : 2;
+      const rowH = ((gw.clientWidth - 12 * (cols - 1)) / cols) * (88 / 63);
+      const cardMid = gw.getBoundingClientRect().top + rowH * 0.5;
+      const t1 = line;          // Filter-Grenze (erste Reihe halb verdeckt)
+      const t2 = line - rowH;   // Status-Grenze (eine weitere Reihe)
+      // Zielstufe abhängig von der AKTUELLEN Stufe (richtungsabhängige Schwelle).
+      const cur = stageRef.current;
+      let target = cur;
+      if (cur === 0) {
+        if (cardMid < t1) target = 1;
+      } else if (cur === 1) {
+        if (cardMid < t2) target = 2;
+        else if (cardMid > t1 + HYST) target = 0; // erst deutlich drunter wieder auf
+      } else {
+        if (cardMid > t2 + HYST) target = 1;
+      }
+      if (target !== cur) setStage(target);
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  // `stageRef` mit der aktuellen Stufe spiegeln, damit der (einmal registrierte)
+  // Scroll-Handler die aktuelle Stufe für die Hysterese kennt.
+  useEffect(() => { stageRef.current = stage; }, [stage]);
+
+  // Scroll-Anchoring am Root-Scroller abschalten, solange diese Seite offen ist.
+  // Sonst korrigiert der Browser beim Ein-/Ausklappen des (in der Höhe
+  // wechselnden) sticky Panels die Scroll-Position gegen — dieser Sprung
+  // (~Filterhöhe) überspringt die Hysterese und schaukelt sich zum Flackern auf.
+  useEffect(() => {
+    const el = document.documentElement;
+    const prev = el.style.overflowAnchor;
+    el.style.overflowAnchor = 'none';
+    return () => { el.style.overflowAnchor = prev; };
+  }, []);
+
+  // Griff (Grabber): kontinuierliches Ziehen — der Inhalt folgt dem Finger
+  // (dragCollapse in px, ohne Transition). Beim Loslassen Snap auf die nächste
+  // Stufe je nach Position (< halber Filter → auf, darüber hinaus → Filter/
+  // Status zu). Kurzes Tippen (kein Ziehen) schaltet ganz auf/zu.
+  const movedRef = useRef(false);
+  const onGrabPointerDown = (e: React.PointerEvent) => {
+    // Pointer-Capture darf den Start nicht verhindern (wirft z.B. bei
+    // synthetischen Events) — defensiv umschließen.
+    try { (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); } catch { /* egal */ }
+    grabRef.current = { y: e.clientY, start: stageCollapse(stage), moved: false };
+    movedRef.current = false;
+  };
+  const onGrabPointerMove = (e: React.PointerEvent) => {
+    const g = grabRef.current;
+    if (!g) return;
+    const dy = e.clientY - g.y;            // hoch = negativ → mehr Einklappen
+    if (Math.abs(dy) > 4) { g.moved = true; movedRef.current = true; }
+    setDragCollapse(Math.max(0, Math.min(fH + sH, g.start - dy)));
+  };
+  const onGrabPointerUp = () => {
+    const g = grabRef.current;
+    grabRef.current = null;
+    if (g && g.moved && dragCollapse !== null) {
+      const c = dragCollapse;
+      const snapped = c < fH * 0.5 ? 0 : c < fH + sH * 0.5 ? 1 : 2;
+      setStage(snapped);
+    }
+    setDragCollapse(null); // Transition wieder an → Snap-Animation zur Zielstufe
+  };
+  // Tippen (kein Ziehen) schaltet ganz auf/zu — via `onClick`, damit es auch für
+  // einfache Klicks/Tastatur greift; ein echtes Ziehen (`movedRef`) übersprungen.
+  const onGrabClick = () => {
+    if (movedRef.current) return;
+    setStage(s => (s === 0 ? 2 : 0));
+  };
 
   // Preise beim Öffnen des Sets laden — die Wert-Kennzahlen („Wert (besessen)"
   // + „bis komplett") und die Preis-Sortierung brauchen sie ohnehin. Aufwand
@@ -315,8 +428,8 @@ function SetDetailContent() {
       <div className="sticky top-safe z-20 px-3 pt-3 pb-1">
 
         {/* Ein Glas-Panel: Header (Zurück + Sammlung erstellen) + Logo/Meta +
-            kollabierender Fortschritt/Wert + Filter als Glas-auf-Glas. */}
-        <div className="glass rounded-[20px] px-4 pt-2 pb-4">
+            kollabierender Fortschritt/Wert + Filter, unten der Griff. */}
+        <div ref={panelRef} className="glass rounded-[20px] px-4 pt-2 pb-4">
           {/* Zurück (links) + Sammlung erstellen (rechts: Sammlungs-Icon + Plus) */}
           <div className="flex items-center justify-between gap-2">
             <Button variant="ghost" href={backHref} className="px-0 -ml-1" icon={<ChevronLeft size={18} strokeWidth={2} />}>
@@ -371,13 +484,13 @@ function SetDetailContent() {
                 </div>
               </div>
 
-              {/* Fortschritt + Wert — beim Runterscrollen ausgeblendet. */}
+              {/* Fortschritt + Wert (Status) — Höhe folgt beim Ziehen dem Finger,
+                  sonst per Stufe animiert. */}
               <div
-                className="grid transition-[grid-template-rows] duration-300 ease-in-out"
-                style={{ gridTemplateRows: filtersCollapsed ? '0fr' : '1fr' }}
+                className="overflow-hidden"
+                style={{ maxHeight: statusMax, transition: dragging ? 'none' : 'max-height 300ms ease' }}
               >
-                <div className="overflow-hidden">
-                  <div className="pt-4 space-y-1.5">
+                <div ref={statusInnerRef} className="pt-4 space-y-1.5">
                     <div className="flex justify-between items-baseline">
                       <span className="text-role-title text-glass">{ownedCount} / {totalCount} Karten</span>
                       <span className="text-role-label text-glass-muted">{pct}%</span>
@@ -400,17 +513,16 @@ function SetDetailContent() {
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Filter als Glas-auf-Glas. Suche/Vorhanden/Rarity klappen beim
-                  Scrollen bzw. per Akkordeon-Toggle ein; Sortierung + Anzahl +
-                  Toggle bleiben immer sichtbar. */}
-              <div className="glass-inner rounded-xl px-3 py-2.5 mt-4 space-y-2">
+              {/* Filter (Suche/Vorhanden/Rarity) — direkt auf dem Info-Panel,
+                  Höhe folgt beim Ziehen dem Finger, sonst per Stufe animiert. */}
+              <div className="mt-4">
+                {/* Klappbarer Body: Suche + Vorhanden/Fehlen + Rarity */}
                 <div
-                  className="grid transition-[grid-template-rows] duration-300 ease-in-out"
-                  style={{ gridTemplateRows: filtersCollapsed ? '0fr' : '1fr' }}
+                  className="overflow-hidden"
+                  style={{ maxHeight: filterMax, transition: dragging ? 'none' : 'max-height 300ms ease' }}
                 >
-                  <div className="overflow-hidden space-y-2">
+                  <div ref={filterInnerRef} className="space-y-2 pt-1">
                     <Input
                       variant="search"
                       value={search}
@@ -433,28 +545,33 @@ function SetDetailContent() {
                   </div>
                 </div>
 
-                {/* Immer sichtbar: Sortierung + Anzahl + Akkordeon-Toggle */}
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 min-w-0">
-                    <CardSortBar
-                      options={SORT_OPTIONS}
-                      sortField={sortField}
-                      onSortFieldChange={setSortField}
-                      sortDir={sortDir}
-                      onSortDirChange={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
-                      resultLabel={pluralKarten(displayed.length)}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setFiltersCollapsed(c => !c)}
-                    aria-label={filtersCollapsed ? 'Filter anzeigen' : 'Filter ausblenden'}
-                    aria-expanded={!filtersCollapsed}
-                    className="shrink-0 w-8 h-8 flex items-center justify-center text-glass-muted"
-                  >
-                    <ChevronDown size={16} className={`transition-transform duration-300 ${filtersCollapsed ? '' : 'rotate-180'}`} />
-                  </button>
+                {/* Immer sichtbar: Sortierung + Kartenanzahl */}
+                <div className="pt-2">
+                  <CardSortBar
+                    options={SORT_OPTIONS}
+                    sortField={sortField}
+                    onSortFieldChange={setSortField}
+                    sortDir={sortDir}
+                    onSortDirChange={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                    resultLabel={pluralKarten(displayed.length)}
+                  />
                 </div>
+              </div>
+
+              {/* Griff (Grabber): Ziehen klappt stufenweise auf/zu (erst Filter,
+                  dann Statusbalken); Tippen schaltet ganz auf/zu. Snap kommt aus
+                  der grid-rows-Transition der beiden Bereiche. */}
+              <div
+                onPointerDown={onGrabPointerDown}
+                onPointerMove={onGrabPointerMove}
+                onPointerUp={onGrabPointerUp}
+                onPointerCancel={onGrabPointerUp}
+                onClick={onGrabClick}
+                role="button"
+                aria-label={stage === 0 ? 'Panel einklappen' : 'Panel ausklappen'}
+                className="flex justify-center pt-3 -mb-1 cursor-grab active:cursor-grabbing touch-none select-none"
+              >
+                <div className="w-10 h-1.5 rounded-full bg-[rgba(46,46,50,0.2)] dark:bg-white/30" />
               </div>
             </div>
           )}
@@ -468,7 +585,7 @@ function SetDetailContent() {
       ) : (
         <>
           {/* ── Card grid + Detail Sheet ── */}
-          <div className="px-3 py-3">
+          <div ref={gridWrapRef} className="px-3 py-3">
             <CardGrid
               cards={displayed}
               ownedMap={ownedMap}
