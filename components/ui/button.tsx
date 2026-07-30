@@ -33,7 +33,7 @@ const buttonVariants = cva(
         // `font-semibold`, dazu gedämpfte Textfarbe (`secondary.textOpacity`
         // in `secondaryGlassStyle()`, tinted-glass.ts) statt vollem Schwarz/
         // Weiß-Kontrast.
-        secondary: 'text-foreground border-none font-medium',
+        secondary: 'text-glass border-none font-medium',
         // Nackt: nur Icon + gedämpfter Text, KEINE Füllung/Rahmen/Schatten/
         // Blur — für Zurück-Buttons, die im Inhalt oder auf dem ruhigen
         // App-Hintergrund sitzen. `hover:text-glass` hebt beim Zeigen leicht

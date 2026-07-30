@@ -13,7 +13,7 @@
  * Details zum Laufzeit-Override-Mechanismus.
  */
 
-import { lightenColor, darkenColor, hexToRgba, saturateColor, readableTextColor, readableTextColorBlended } from '@/lib/color-utils';
+import { lightenColor, darkenColor, hexToRgba, saturateColor, readableTextColor } from '@/lib/color-utils';
 import { getGlassTheme, type GlassOverride, type PanelTheme, type InputOverride, type SecondaryOverride } from '@/lib/ui/glass-theme';
 
 export function hexToRgb(hex: string): string {
@@ -209,15 +209,11 @@ export function secondaryGlassStyle(): React.CSSProperties {
   return {
     background,
     border,
-    // Volles Schwarz/Weiß (`readableTextColor` allein) wirkte auf dem eher
-    // zurückhaltenden `secondary`-Button zu fett/präsent — `textOpacity`
-    // dämpft die Textfarbe, ohne die Füllung selbst anzufassen.
-    // `readableTextColorBlended` statt `readableTextColor`: bei niedriger
-    // Deckkraft (`o.alpha`) ist die tatsächlich sichtbare Fläche viel heller
-    // als der rohe Hex-Wert (mit dem Seitenhintergrund gemischt) — sonst
-    // wählt die Kontrastformel z.B. bei Grau+Alpha 0.2 im Light Mode fälsch-
-    // lich Weiß, obwohl die real helle Fläche dunklen Text braucht.
-    color: hexToRgba(readableTextColorBlended(hex, o.alpha), o.textOpacity),
+    // Bewusst KEINE inline `color` mehr: eine feste (aus dem Hintergrund-Blend
+    // berechnete) Textfarbe würde per Inline-Kaskade die theme-abhängige
+    // Klasse überschreiben und im Dark Mode dunklen Text erzwingen. Textfarbe
+    // kommt jetzt aus der `text-glass`-Klasse (Button/Select), die mit dem
+    // Light/Dark-Theme mitschaltet.
     backdropFilter,
     WebkitBackdropFilter: backdropFilter,
     boxShadow,

@@ -23,7 +23,7 @@ function selectVariantStyle(variant: 'primary' | 'secondary', accentColor?: stri
       style: { color: readableTextColor(color), ...primaryGlassStyle(color) } as React.CSSProperties,
     };
   }
-  return { className: 'font-medium', style: secondaryGlassStyle() };
+  return { className: 'font-medium text-glass', style: secondaryGlassStyle() };
 }
 
 /**

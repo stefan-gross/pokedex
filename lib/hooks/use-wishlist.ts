@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import type { CardInfo } from '@/lib/card-info';
-import { getWishlists, ensureDefaultWishlist, addItemToWishlist, removeItemFromWishlist } from '@/lib/firestore/wishlists';
+import type { WishlistItem } from '@/types';
+import { getWishlists, ensureDefaultWishlist, addItemToWishlist, removeItemFromWishlist, updateWishlist } from '@/lib/firestore/wishlists';
 
 /** tcgId → {listId, itemId} für alle Wishlist-Einträge über alle Listen hinweg
  *  (aktuell effektiv nur die eine Standard-Liste, siehe `ensureDefaultWishlist`). */
@@ -52,9 +53,41 @@ export function useWishlist() {
     if (newItem) setIndex(prev => new Map(prev).set(card.id, { listId: list.id, itemId: newItem.id }));
   }, [index]);
 
+  /** Fügt mehrere Karten in EINEM Schreibvorgang zur freien Standard-Wunschliste
+   *  hinzu — für „alle fehlenden auf die Wunschliste" auf der Set-Detailseite.
+   *  Überspringt Karten, die bereits (auf irgendeiner Liste) gewünscht sind
+   *  bzw. schon in der Standard-Liste stehen, und schreibt nur EIN
+   *  `updateWishlist` (kein N× `addItemToWishlist`). Gibt die Anzahl tatsächlich
+   *  neu hinzugefügter Karten zurück. */
+  const addMany = useCallback(async (cards: CardInfo[]): Promise<number> => {
+    const list = await ensureDefaultWishlist();
+    const existing = new Set(list.items.map(i => i.tcgId).filter(Boolean) as string[]);
+    const toAdd = cards.filter(c => !index.has(c.id) && !existing.has(c.id));
+    if (toAdd.length === 0) return 0;
+    const newItems: WishlistItem[] = toAdd.map(c => ({
+      id: crypto.randomUUID(),
+      tcgId: c.id,
+      name: c.name,
+      setName: c.setName,
+      setId: c.setId,
+      number: c.number,
+      tcgImageUrl: c.imgLargeDe || c.imgLarge || c.imgSmall,
+      priority: 2,
+      acquired: false,
+    }));
+    await updateWishlist(list.id, { items: [...list.items, ...newItems] });
+    setIndex(prev => {
+      const n = new Map(prev);
+      newItems.forEach(it => n.set(it.tcgId!, { listId: list.id, itemId: it.id }));
+      return n;
+    });
+    return newItems.length;
+  }, [index]);
+
   return {
     loaded,
     wishlistIds: new Set(index.keys()),
     toggle,
+    addMany,
   };
 }

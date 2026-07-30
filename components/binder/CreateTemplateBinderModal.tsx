@@ -16,6 +16,10 @@ import type { BinderTemplate } from '@/types';
 interface Props {
   onClose: () => void;
   onSaved: () => void;
+  /** Öffnet das Modal direkt im Master-Set-Flow mit diesem Set vorausgewählt
+   *  (z.B. von der Set-Detailseite aus „Sammlung erstellen"). Der Zurück-Pfeil
+   *  führt weiterhin zur Vorlagen-Auswahl. */
+  initialMasterSetId?: string;
 }
 
 /** Vorbereitetes Ergebnis, mit dem `CreateBinderModal` aufgerufen wird —
@@ -36,8 +40,8 @@ type Kind = 'choose' | 'masterSet' | 'pokedex' | 'pokemon';
  *  Parameter-Auswahl übergibt dieser Screen an das bestehende
  *  `CreateBinderModal` (Name/Icon/Farbe/Größe bleiben dort wie gewohnt
  *  änderbar, bevor der Binder tatsächlich angelegt wird). */
-export function CreateTemplateBinderModal({ onClose, onSaved }: Props) {
-  const [kind, setKind] = useState<Kind>('choose');
+export function CreateTemplateBinderModal({ onClose, onSaved, initialMasterSetId }: Props) {
+  const [kind, setKind] = useState<Kind>(initialMasterSetId ? 'masterSet' : 'choose');
   const [ready, setReady] = useState<ReadyTemplate | null>(null);
 
   // ── Master-Set ───────────────────────────────────────────────────────
@@ -55,6 +59,18 @@ export function CreateTemplateBinderModal({ onClose, onSaved }: Props) {
   }, [kind]);
 
   const filteredSets = useMemo(() => filterSets(allSets, setQuery).slice(0, 15), [allSets, setQuery]);
+
+  // Vorausgewähltes Set (Aufruf von der Set-Detailseite): sobald die Set-Liste
+  // geladen ist, das passende Set einmalig automatisch auswählen und auflösen —
+  // der Nutzer landet direkt auf der „X Slots · Weiter"-Ansicht.
+  const autoPickRef = useRef(false);
+  useEffect(() => {
+    if (!initialMasterSetId || autoPickRef.current || allSets.length === 0) return;
+    const s = allSets.find(x => x.id === initialMasterSetId);
+    if (s) { autoPickRef.current = true; pickSet(s); }
+    // pickSet ist stabil genug; bewusst nicht in den Deps (sonst Re-Run bei jedem Render).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMasterSetId, allSets]);
 
   async function pickSet(s: TcgSet) {
     setSelectedSet(s);
@@ -294,12 +310,14 @@ export function CreateTemplateBinderModal({ onClose, onSaved }: Props) {
                         className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg glass-inner text-left"
                       >
                         <div className="w-14 shrink-0 flex items-center justify-center">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={s.logoUrl ?? ""}
-                            alt={s.id}
-                            className="max-h-7 max-w-[56px] object-contain"
-                          />
+                          {s.logoUrl && (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img
+                              src={s.logoUrl}
+                              alt={s.id}
+                              className="max-h-7 max-w-[56px] object-contain"
+                            />
+                          )}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-xs font-semibold truncate">{s.nameDe ?? s.name}</div>

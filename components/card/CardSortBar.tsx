@@ -1,6 +1,8 @@
 'use client';
 
-import { ChevronDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowUp, ArrowDown } from 'lucide-react';
+import { Select } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 
 export type SortDir = 'asc' | 'desc';
 
@@ -11,6 +13,10 @@ export type SortDir = 'asc' | 'desc';
  * Sortierfelder gültig sind (und damit welches Sublabel `getSublabel` in
  * CardGrid unter der Karte zeigt), bestimmt weiterhin die aufrufende Seite
  * über `options`.
+ *
+ * Sortierfeld nutzt die zentrale `Select`-Komponente (Variante `secondary`),
+ * der Richtungs-Umschalter den `Button` (`secondary`, icon-only) — statt
+ * bisher rohem `<select>`/`<button>` mit `.glass-inner`.
  */
 export function CardSortBar<K extends string>({
   options,
@@ -34,27 +40,21 @@ export function CardSortBar<K extends string>({
   return (
     <div className="flex items-center justify-between gap-2">
       <div className="flex items-center gap-1.5">
-        <div className="relative flex items-center">
-          <select
-            value={sortField}
-            onChange={e => onSortFieldChange(e.target.value as K)}
-            className="h-11 pl-2 pr-6 rounded-lg glass-inner text-glass text-xs appearance-none cursor-pointer"
-          >
-            {options.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-          <ChevronDown size={11} className="absolute right-1.5 pointer-events-none text-glass-muted" />
-        </div>
-        <button
+        <Select
+          value={sortField}
+          onChange={onSortFieldChange}
+          options={options}
+          aria-label="Sortierfeld"
+        />
+        <Button
+          variant="secondary"
+          size="lg"
           onClick={onSortDirChange}
-          className="h-11 w-11 flex items-center justify-center rounded-lg glass-inner transition-colors shrink-0"
-          title={sortDir === 'asc' ? 'Aufsteigend' : 'Absteigend'}
-        >
-          {sortDir === 'asc'
-            ? <ArrowUp size={12} />
-            : <ArrowDown size={12} style={{ color: 'var(--pokedex-red)' }} />}
-        </button>
+          aria-label={sortDir === 'asc' ? 'Aufsteigend' : 'Absteigend'}
+          icon={sortDir === 'asc'
+            ? <ArrowUp size={16} />
+            : <ArrowDown size={16} style={{ color: 'var(--pokedex-red)' }} />}
+        />
       </div>
       <div className="flex items-center gap-2 ml-auto">
         {extra}
