@@ -1,7 +1,9 @@
 /**
  * Preis-Provider auf TCGdex-Basis (ersetzt pokemontcg.ts). Preise stehen im
  * `pricing`-Feld jeder Karte (REST `/v2/en/cards/{id}`):
- *  - Cardmarket (EUR): ein Block mit `avg/low/trend` (+ `*-holo`/`*-reverse`-Suffixe).
+ *  - Cardmarket (EUR): ein Block mit `avg/low/trend` (Standard) + `*-holo`-Suffix.
+ *    Der `-holo`-Suffix ist bei Cardmarket der **Reverse-Holo**-Preis (Foil-
+ *    Parallele der Karte) — es gibt KEINEN `-reverse`-Suffix.
  *  - TCGplayer (USD): Untertypen `normal`/`holofoil`/`reverseHolofoil`/… mit
  *    `lowPrice/midPrice/highPrice/marketPrice`.
  * Cardmarket wird bevorzugt (EUR), sonst TCGplayer.
@@ -48,7 +50,7 @@ export function resolveTcgdexPrice(pricing: TcgdexPricing | undefined | null): P
   const cm = pricing.cardmarket;
   if (cm) {
     const variants: PriceVariant[] = [];
-    for (const [label, suffix] of [['Normal', ''], ['Holo', '-holo'], ['Reverse Holo', '-reverse']] as const) {
+    for (const [label, suffix] of [['Normal', ''], ['Reverse Holo', '-holo']] as const) {
       const v = cmVariant(cm, label, suffix);
       if (v) variants.push(v);
     }

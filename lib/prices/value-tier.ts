@@ -15,7 +15,9 @@ export function findVariantPrice(variants: PriceVariant[], appVariant: CardVaria
   const byLabel = (label: string) => variants.find(v => v.label === label);
   switch (appVariant) {
     case 'standard': return byLabel('Normal');
-    case 'reverse':  return byLabel('Reverse Holo');
+    // 'Holo'-Fallback: früher gecachte Cardmarket-Preise labelten den Reverse-
+    // Holo-Preis fälschlich als „Holo" — so greifen sie sofort, ohne Cache-Refresh.
+    case 'reverse':  return byLabel('Reverse Holo') ?? byLabel('Holo');
     case 'holo':     return byLabel('Holo') ?? byLabel('Normal');
     case '1st-ed':   return byLabel('1st Edition Holo') ?? byLabel('1st Edition') ?? byLabel('Normal');
     case 'alt-art':
