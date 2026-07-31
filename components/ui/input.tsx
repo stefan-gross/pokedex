@@ -26,6 +26,7 @@ export function Input({
   autoComplete,
   required,
   name,
+  autoFocus,
   style,
 }: {
   value: string;
@@ -37,6 +38,9 @@ export function Input({
   onClear?: () => void;
   className?: string;
   type?: string;
+  /** Fokussiert das Feld direkt beim Mounten (z.B. Suchfeld in einem gerade
+   *  geöffneten Dropdown/Panel). */
+  autoFocus?: boolean;
   /** Native Formular-Attribute — u.a. nötig, damit Passwort-Manager/Browser-
    *  Autofill funktionieren (z.B. `autoComplete="current-password"`) und die
    *  HTML5-Pflichtfeld-Validierung greift (`required`). */
@@ -66,6 +70,7 @@ export function Input({
         autoComplete={autoComplete}
         required={required}
         name={name}
+        autoFocus={autoFocus}
         // Fokus-Ring bleibt (Accessibility: sichtbarer Fokus ist Pflicht) —
         // das läuft über Tailwinds `ring`-Utility (ebenfalls `box-shadow`,
         // aber nur bei `:focus` aktiv) — deshalb setzt `inputGlassStyle()`

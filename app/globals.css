@@ -222,6 +222,15 @@
 }
 
 @layer utilities {
+  /* Natives WebKit-Clear-Kreuz bei <input type="search"> ausblenden — die
+     `Input`-Komponente (variant="search") liefert ihren eigenen Clear-Button
+     (`onClear`), sonst erscheinen zwei ×-Icons nebeneinander. */
+  input[type="search"]::-webkit-search-cancel-button,
+  input[type="search"]::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
   /* Typografie-Rollen — feste Skala statt der bisher gewachsenen, pro Screen
      abweichenden text-[Npx]-Werte (h1 z.B. bisher 16/18/24/36px je Seite).
      Kombinieren mit .text-glass/.text-glass-muted für die Farbe; hier nur

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { ChevronLeft, BookOpen, Plus } from 'lucide-react';
 
@@ -12,6 +12,8 @@ import { pickTrendPrice } from '@/lib/prices/value-tier';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Button } from '@/components/ui/button';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
+import { Grabber } from '@/components/ui/Grabber';
+import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { Input } from '@/components/ui/input';
 import { CreateTemplateBinderModal } from '@/components/binder/CreateTemplateBinderModal';
 import { CardGrid } from '@/components/card/CardGrid';
@@ -81,22 +83,17 @@ function SetDetailContent() {
   const [priceMap, setPriceMap]       = useState<Map<string, number>>(new Map());
   const [pricesLoading, setPricesLoading] = useState(false);
   const priceLoadedRef = useRef(false);
-  // Zusammenklappen in zwei Stufen (0 = alles offen · 1 = Filter zu · 2 = Filter
-  // + Status zu). Gesteuert per Scroll (Kartenposition) ODER kontinuierlichem
-  // Ziehen am Griff. `dragCollapse` = während des Ziehens die aktuelle
-  // Einklapp-Höhe in px (folgt dem Finger); sonst null → aus `stage` abgeleitet.
-  const [stage, setStage] = useState(0);
-  const [dragCollapse, setDragCollapse] = useState<number | null>(null);
-  const grabRef  = useRef<{ y: number; start: number; moved: boolean } | null>(null);
+  // Grabber-/Scroll-Kollaps über den geteilten Hook — 2 Regionen:
+  // Region 0 = Filter-Body (klappt zuerst), Region 1 = Status-Block (Fortschritt+Wert).
   const panelRef = useRef<HTMLDivElement>(null);
   const gridWrapRef = useRef<HTMLDivElement>(null);
-  const statusInnerRef = useRef<HTMLDivElement>(null);
-  const filterInnerRef = useRef<HTMLDivElement>(null);
-  const [fH, setFH] = useState(0); // natürliche Höhe des Filter-Bodys
-  const [sH, setSH] = useState(0); // natürliche Höhe des Status-Blocks
-  const panelTopRef = useRef(0);          // Panel-Oberkante (gepinnt, konstant)
-  const panelExpandedHRef = useRef(0);    // Panel-Höhe im voll ausgeklappten Zustand
-  const stageRef = useRef(0);             // aktuelle Stufe für den Scroll-Handler (ohne Re-Subscribe)
+  const { stage, registerRegion, regionStyle, grabberProps } = useGrabberCollapse({
+    regionCount: 2,
+    panelRef,
+    gridWrapRef,
+    ready: !loading,
+    measureDeps: [cards.length, pricesLoading],
+  });
   const [search, setSearch]   = useState('');
   const { wishlistIds, toggle: toggleWishlist } = useWishlist();
   const [showCreateTemplate, setShowCreateTemplate] = useState(false);
@@ -139,129 +136,6 @@ function SetDetailContent() {
     }
     load();
   }, [setId]);
-
-  // Einklapp-Höhe: `dragCollapse` während des Ziehens, sonst aus `stage`
-  // abgeleitet (0 = 0px, 1 = Filter-Höhe, 2 = Filter + Status). Daraus die
-  // sichtbaren Höhen beider Bereiche — Filter klappt zuerst (collapse 0→fH),
-  // dann der Status (fH→fH+sH).
-  const stageCollapse = (s: number) => (s === 0 ? 0 : s === 1 ? fH : fH + sH);
-  const dragging = dragCollapse !== null;
-  const collapse = dragCollapse ?? stageCollapse(stage);
-  const filterMax  = Math.max(0, fH - Math.min(collapse, fH));
-  const statusMax  = Math.max(0, sH - Math.max(0, collapse - fH));
-
-  // Natürliche Höhen von Filter-Body und Status-Block messen (für den
-  // kontinuierlichen Drag) sowie Panel-Oberkante + ausgeklappte Panel-Höhe
-  // (als stabile Referenzlinie für den Scroll-Trigger). Neu messen, wenn Daten/
-  // Preis-Zeile stehen oder sich die Fenstergröße ändert.
-  useLayoutEffect(() => {
-    if (loading) return;
-    const measure = () => {
-      if (filterInnerRef.current) setFH(filterInnerRef.current.scrollHeight);
-      if (statusInnerRef.current) setSH(statusInnerRef.current.scrollHeight);
-      if (panelRef.current && stage === 0 && dragCollapse === null) {
-        panelExpandedHRef.current = panelRef.current.offsetHeight;
-        panelTopRef.current = panelRef.current.getBoundingClientRect().top;
-      }
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-    // Nur bei Inhaltsänderungen neu messen — NICHT bei jedem Drag-Frame (stage/
-    // dragCollapse bewusst nicht in den Deps, sonst Layout-Thrash beim Ziehen).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, cards.length, pricesLoading]);
-
-  // Scroll-Trigger: Filter einklappen, sobald die erste Kartenreihe zur Hälfte
-  // hinter dem (ausgeklappten) Info-Panel verschwindet; Status folgt eine
-  // weitere Reihe später. Ganz oben (y<=8) wieder alles auf. Referenzlinie nutzt
-  // die AUSGEKLAPPTE Panel-Höhe → selbst-stabilisierend (Einklappen schiebt die
-  // Karten weiter hoch = Bedingung bleibt erfüllt, kein Flackern). Beim Ziehen
-  // am Griff wird der Scroll ignoriert.
-  useEffect(() => {
-    // Hysterese-Puffer: Einklappen an der Grenze, Wieder-Ausklappen erst, wenn
-    // die Karte deutlich (HYST px) unter die Linie zurückkommt. Verhindert das
-    // Flackern, wenn man genau auf der Schwelle stehen bleibt (Scroll-Anchoring
-    // beim Zusammenklappen verschiebt die Karten sonst minimal hin und her).
-    const HYST = 56;
-    const onScroll = () => {
-      if (grabRef.current) return;
-      if (window.scrollY <= 8) { setStage(0); return; }
-      const gw = gridWrapRef.current;
-      const line = panelTopRef.current + panelExpandedHRef.current;
-      if (!gw || line <= 0) return;
-      const cols = gw.clientWidth >= 640 ? 3 : 2;
-      const rowH = ((gw.clientWidth - 12 * (cols - 1)) / cols) * (88 / 63);
-      const cardMid = gw.getBoundingClientRect().top + rowH * 0.5;
-      const t1 = line;          // Filter-Grenze (erste Reihe halb verdeckt)
-      const t2 = line - rowH;   // Status-Grenze (eine weitere Reihe)
-      // Zielstufe abhängig von der AKTUELLEN Stufe (richtungsabhängige Schwelle).
-      const cur = stageRef.current;
-      let target = cur;
-      if (cur === 0) {
-        if (cardMid < t1) target = 1;
-      } else if (cur === 1) {
-        if (cardMid < t2) target = 2;
-        else if (cardMid > t1 + HYST) target = 0; // erst deutlich drunter wieder auf
-      } else {
-        if (cardMid > t2 + HYST) target = 1;
-      }
-      if (target !== cur) setStage(target);
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
-  // `stageRef` mit der aktuellen Stufe spiegeln, damit der (einmal registrierte)
-  // Scroll-Handler die aktuelle Stufe für die Hysterese kennt.
-  useEffect(() => { stageRef.current = stage; }, [stage]);
-
-  // Scroll-Anchoring am Root-Scroller abschalten, solange diese Seite offen ist.
-  // Sonst korrigiert der Browser beim Ein-/Ausklappen des (in der Höhe
-  // wechselnden) sticky Panels die Scroll-Position gegen — dieser Sprung
-  // (~Filterhöhe) überspringt die Hysterese und schaukelt sich zum Flackern auf.
-  useEffect(() => {
-    const el = document.documentElement;
-    const prev = el.style.overflowAnchor;
-    el.style.overflowAnchor = 'none';
-    return () => { el.style.overflowAnchor = prev; };
-  }, []);
-
-  // Griff (Grabber): kontinuierliches Ziehen — der Inhalt folgt dem Finger
-  // (dragCollapse in px, ohne Transition). Beim Loslassen Snap auf die nächste
-  // Stufe je nach Position (< halber Filter → auf, darüber hinaus → Filter/
-  // Status zu). Kurzes Tippen (kein Ziehen) schaltet ganz auf/zu.
-  const movedRef = useRef(false);
-  const onGrabPointerDown = (e: React.PointerEvent) => {
-    // Pointer-Capture darf den Start nicht verhindern (wirft z.B. bei
-    // synthetischen Events) — defensiv umschließen.
-    try { (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); } catch { /* egal */ }
-    grabRef.current = { y: e.clientY, start: stageCollapse(stage), moved: false };
-    movedRef.current = false;
-  };
-  const onGrabPointerMove = (e: React.PointerEvent) => {
-    const g = grabRef.current;
-    if (!g) return;
-    const dy = e.clientY - g.y;            // hoch = negativ → mehr Einklappen
-    if (Math.abs(dy) > 4) { g.moved = true; movedRef.current = true; }
-    setDragCollapse(Math.max(0, Math.min(fH + sH, g.start - dy)));
-  };
-  const onGrabPointerUp = () => {
-    const g = grabRef.current;
-    grabRef.current = null;
-    if (g && g.moved && dragCollapse !== null) {
-      const c = dragCollapse;
-      const snapped = c < fH * 0.5 ? 0 : c < fH + sH * 0.5 ? 1 : 2;
-      setStage(snapped);
-    }
-    setDragCollapse(null); // Transition wieder an → Snap-Animation zur Zielstufe
-  };
-  // Tippen (kein Ziehen) schaltet ganz auf/zu — via `onClick`, damit es auch für
-  // einfache Klicks/Tastatur greift; ein echtes Ziehen (`movedRef`) übersprungen.
-  const onGrabClick = () => {
-    if (movedRef.current) return;
-    setStage(s => (s === 0 ? 2 : 0));
-  };
 
   // Preise beim Öffnen des Sets laden — die Wert-Kennzahlen („Wert (besessen)"
   // + „bis komplett") und die Preis-Sortierung brauchen sie ohnehin. Aufwand
@@ -492,9 +366,9 @@ function SetDetailContent() {
                   sonst per Stufe animiert. */}
               <div
                 className="overflow-hidden"
-                style={{ maxHeight: statusMax, transition: dragging ? 'none' : 'max-height 300ms ease' }}
+                style={regionStyle(1)}
               >
-                <div ref={statusInnerRef} className="pt-4 space-y-1.5">
+                <div ref={registerRegion(1)} className="pt-4 space-y-1.5">
                     <div className="flex justify-between items-baseline">
                       <span className="text-role-title text-glass">{ownedCount} / {totalCount} Karten</span>
                       <span className="text-role-label text-glass-muted">{pct}%</span>
@@ -524,9 +398,9 @@ function SetDetailContent() {
                 {/* Klappbarer Body: Suche + Vorhanden/Fehlen + Rarity */}
                 <div
                   className="overflow-hidden"
-                  style={{ maxHeight: filterMax, transition: dragging ? 'none' : 'max-height 300ms ease' }}
+                  style={regionStyle(0)}
                 >
-                  <div ref={filterInnerRef} className="space-y-2 pt-1">
+                  <div ref={registerRegion(0)} className="space-y-2 pt-1">
                     <Input
                       variant="search"
                       value={search}
@@ -563,20 +437,8 @@ function SetDetailContent() {
               </div>
 
               {/* Griff (Grabber): Ziehen klappt stufenweise auf/zu (erst Filter,
-                  dann Statusbalken); Tippen schaltet ganz auf/zu. Snap kommt aus
-                  der grid-rows-Transition der beiden Bereiche. */}
-              <div
-                onPointerDown={onGrabPointerDown}
-                onPointerMove={onGrabPointerMove}
-                onPointerUp={onGrabPointerUp}
-                onPointerCancel={onGrabPointerUp}
-                onClick={onGrabClick}
-                role="button"
-                aria-label={stage === 0 ? 'Panel einklappen' : 'Panel ausklappen'}
-                className="flex justify-center pt-3 -mb-1 cursor-grab active:cursor-grabbing touch-none select-none"
-              >
-                <div className="w-10 h-1.5 rounded-full bg-[rgba(46,46,50,0.2)] dark:bg-white/30" />
-              </div>
+                  dann Statusbalken); Tippen schaltet ganz auf/zu. */}
+              <Grabber expanded={stage === 0} {...grabberProps} />
             </div>
           )}
         </div>

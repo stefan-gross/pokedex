@@ -1,12 +1,13 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, X, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { secondaryGlassStyle, primaryGlassStyle } from '@/lib/ui/tinted-glass';
 import { readableTextColor } from '@/lib/color-utils';
 import { useGlassTheme } from '@/lib/ui/glass-theme';
+import { Input } from '@/components/ui/input';
 
 // Gleicher Default wie `Button`s `primary`-Variante (dort nicht exportiert,
 // daher hier dupliziert) — `var(--pokedex-blue)`.
@@ -103,6 +104,10 @@ export interface CustomSelectOption<T extends string> {
   /** z.B. `BinderIcon`/Lucide-Icon vor dem Label — optional, für Fälle wie
    *  die Sammlung-Auswahl (Icon je Binder). */
   icon?: React.ReactNode;
+  /** Gedämpfte Zahl rechts (z.B. Treffer-Count). */
+  count?: number;
+  /** Ausgegraut + nicht wählbar (z.B. 0 Treffer). */
+  disabled?: boolean;
 }
 
 /**
@@ -176,6 +181,7 @@ export function CustomSelect<T extends string>({
   height = 'md',
   variant = 'secondary',
   accentColor,
+  fullWidth = false,
   'aria-label': ariaLabel,
 }: {
   value: T | null;
@@ -189,6 +195,9 @@ export function CustomSelect<T extends string>({
   variant?: 'primary' | 'secondary';
   /** Nur bei `variant="primary"` wirksam — Default `var(--pokedex-blue)`. */
   accentColor?: string;
+  /** Trigger füllt die volle Breite (Label links, Chevron rechts); Panel
+   *  übernimmt die Trigger-Breite statt der Standard-Max-Breite. */
+  fullWidth?: boolean;
   'aria-label'?: string;
 }) {
   useGlassTheme();
@@ -213,15 +222,18 @@ export function CustomSelect<T extends string>({
         onClick={() => (open ? setOpen(false) : openPanel())}
         aria-label={ariaLabel}
         className={cn(
-          'inline-flex items-center gap-1.5 shrink-0 rounded-full transition-transform duration-150 active:scale-[.97] btn-glass-interactive pl-3 pr-2.5',
+          'inline-flex items-center gap-1.5 rounded-full transition-transform duration-150 active:scale-[.97] btn-glass-interactive pl-3 pr-2.5',
+          fullWidth ? 'w-full justify-between' : 'shrink-0',
           variantClassName,
           height === 'sm' ? 'h-9 text-[12px]' : 'h-11 text-xs',
           className,
         )}
         style={{ border: 'none', ...variantStyle }}
       >
-        {selected?.icon}
-        <span className="truncate">{selected?.label ?? placeholder}</span>
+        <span className="inline-flex items-center gap-1.5 min-w-0">
+          {selected?.icon}
+          <span className="truncate">{selected?.label ?? placeholder}</span>
+        </span>
         <ChevronDown size={12} className="opacity-70 shrink-0" />
       </button>
 
@@ -233,7 +245,7 @@ export function CustomSelect<T extends string>({
             className="glass fixed rounded-xl overflow-y-auto py-1 z-[201]"
             style={{
               top: pos.top, bottom: pos.bottom, left: pos.left, right: pos.right,
-              minWidth: pos.width, maxWidth: PANEL_MAX_WIDTH, maxHeight: pos.maxHeight,
+              minWidth: pos.width, maxWidth: fullWidth ? pos.width : PANEL_MAX_WIDTH, maxHeight: pos.maxHeight,
               boxShadow: '0 8px 24px rgba(0,0,0,.25)',
             }}
           >
@@ -241,14 +253,297 @@ export function CustomSelect<T extends string>({
               <button
                 key={o.value}
                 type="button"
-                onClick={() => { setOpen(false); onChange(o.value); }}
-                className="w-full text-left px-3 py-2 text-role-body text-glass truncate flex items-center gap-1.5"
+                disabled={o.disabled}
+                onClick={() => { if (o.disabled) return; setOpen(false); onChange(o.value); }}
+                className="w-full text-left px-3 py-2 text-role-body text-glass flex items-center gap-1.5 disabled:opacity-30 disabled:cursor-not-allowed"
                 style={o.value === value ? { fontWeight: 700 } : undefined}
               >
                 {o.icon}
                 <span className="truncate">{o.label}</span>
+                {o.count != null && (
+                  <span className="ml-auto shrink-0 text-glass-muted text-role-label">{o.count.toLocaleString('de')}</span>
+                )}
               </button>
             ))}
+          </div>
+        </>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+export interface SearchableSelectOption<T extends string> {
+  value: T;
+  label: string;
+  /** Zusätzlicher, nicht angezeigter Suchtext (z.B. englischer Name, Set-Kürzel)
+   *  — wird beim Filtern mit durchsucht, damit man ein Set auch über den
+   *  EN-Namen oder das Kürzel findet, obwohl das Label deutsch ist. */
+  keywords?: string;
+  /** Optionales Icon links (z.B. Set-Symbol). */
+  icon?: React.ReactNode;
+  /** Gedämpfter Zusatz rechts (z.B. Set-Kürzel „MEW"). */
+  hint?: string;
+}
+
+/**
+ * Wie `CustomSelect` (Portal-Panel, gleiche Optik/Positionslogik), aber mit
+ * einem **Suchfeld** oben im Panel — für lange Optionslisten (z.B. ~218 Sets),
+ * bei denen ein reines Dropdown unbrauchbar lang wird. Die Reihenfolge der
+ * `options` bleibt erhalten (Aufrufer sortiert selbst, z.B. alphabetisch);
+ * gefiltert wird case-insensitiv über `label` + `keywords`.
+ */
+export function SearchableSelect<T extends string>({
+  value,
+  onChange,
+  options,
+  placeholder = '—',
+  searchPlaceholder = 'Suchen …',
+  className,
+  height = 'md',
+  variant = 'secondary',
+  accentColor,
+  fullWidth = false,
+  'aria-label': ariaLabel,
+}: {
+  value: T | null;
+  onChange: (value: T) => void;
+  options: SearchableSelectOption<T>[];
+  /** Angezeigt, wenn `value` zu keiner Option passt. */
+  placeholder?: string;
+  searchPlaceholder?: string;
+  className?: string;
+  height?: 'sm' | 'md';
+  variant?: 'primary' | 'secondary';
+  accentColor?: string;
+  /** Trigger füllt die volle Breite (Label links, Chevron rechts); Panel
+   *  übernimmt die Trigger-Breite statt der Standard-Max-Breite. */
+  fullWidth?: boolean;
+  'aria-label'?: string;
+}) {
+  useGlassTheme();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [pos, setPos] = useState<PanelPos | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const selected = options.find(o => o.value === value);
+  const { className: variantClassName, style: variantStyle } = selectVariantStyle(variant, accentColor);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter(o =>
+      o.label.toLowerCase().includes(q) || o.keywords?.toLowerCase().includes(q),
+    );
+  }, [options, query]);
+
+  // Bei jedem Öffnen die Suche zurücksetzen (frische Liste).
+  useEffect(() => { if (open) setQuery(''); }, [open]);
+
+  function openPanel() {
+    if (btnRef.current) setPos(computePanelPos(btnRef.current.getBoundingClientRect()));
+    setOpen(true);
+  }
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => (open ? setOpen(false) : openPanel())}
+        aria-label={ariaLabel}
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-full transition-transform duration-150 active:scale-[.97] btn-glass-interactive pl-3 pr-2.5',
+          fullWidth ? 'w-full justify-between' : 'shrink-0',
+          variantClassName,
+          height === 'sm' ? 'h-9 text-[12px]' : 'h-11 text-xs',
+          className,
+        )}
+        style={{ border: 'none', ...variantStyle }}
+      >
+        <span className="inline-flex items-center gap-1.5 min-w-0">
+          {selected?.icon}
+          <span className="truncate">{selected?.label ?? placeholder}</span>
+          {selected?.hint && <span className="opacity-50 shrink-0">{selected.hint}</span>}
+        </span>
+        <ChevronDown size={12} className="opacity-70 shrink-0" />
+      </button>
+
+      {open && pos && createPortal(
+        <>
+          <div className="fixed inset-0 z-[200]" onClick={() => setOpen(false)} />
+          <div
+            className="glass fixed rounded-xl flex flex-col z-[201]"
+            style={{
+              top: pos.top, bottom: pos.bottom, left: pos.left, right: pos.right,
+              minWidth: pos.width, maxWidth: fullWidth ? pos.width : PANEL_MAX_WIDTH, maxHeight: pos.maxHeight,
+              boxShadow: '0 8px 24px rgba(0,0,0,.25)',
+            }}
+          >
+            <div className="p-2 pb-1 shrink-0">
+              <Input
+                variant="search"
+                size="sm"
+                value={query}
+                onChange={setQuery}
+                onClear={() => setQuery('')}
+                placeholder={searchPlaceholder}
+                autoFocus
+              />
+            </div>
+            <div className="overflow-y-auto py-1 flex-1">
+              {filtered.length === 0 ? (
+                <p className="px-3 py-2 text-role-label text-glass-muted">Keine Treffer</p>
+              ) : filtered.map(o => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => { setOpen(false); onChange(o.value); }}
+                  className="w-full text-left px-3 py-2 text-role-body text-glass flex items-center gap-2"
+                  style={o.value === value ? { fontWeight: 700 } : undefined}
+                >
+                  {o.icon}
+                  <span className="truncate">{o.label}</span>
+                  {o.hint && <span className="ml-auto shrink-0 text-glass-muted text-role-label">{o.hint}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+export interface MultiSelectOption<T extends string> {
+  value: T;
+  label: string;
+  icon?: React.ReactNode;
+  count?: number;
+  disabled?: boolean;
+  /** Akzentfarbe für den aktiven Zustand (Pill-Rahmen/-Tönung), z.B. Typ-Farbe. */
+  color?: string;
+}
+
+/**
+ * Mehrfach-Auswahl-Dropdown (Portal-Panel wie `CustomSelect`). Die aktuelle
+ * Auswahl wird direkt im Trigger als entfernbare **Pills** angezeigt; das
+ * geöffnete Panel listet alle Optionen (Icon + Label + Count), Tippen schaltet
+ * eine Option an/aus, ohne das Panel zu schließen (Mehrfachauswahl). Für Fälle
+ * wie den Pokémon-Typ-Filter, wo ein reines Pill-Band zu breit/unruhig wird.
+ */
+export function MultiSelect<T extends string>({
+  values,
+  onChange,
+  options,
+  placeholder = 'Auswählen …',
+  className,
+  height = 'md',
+  fullWidth = true,
+  'aria-label': ariaLabel,
+}: {
+  values: T[];
+  onChange: (values: T[]) => void;
+  options: MultiSelectOption<T>[];
+  placeholder?: string;
+  className?: string;
+  height?: 'sm' | 'md';
+  fullWidth?: boolean;
+  'aria-label'?: string;
+}) {
+  useGlassTheme();
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<PanelPos | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const { className: variantClassName, style: variantStyle } = selectVariantStyle('secondary');
+
+  const selectedSet = new Set(values);
+  const selectedOptions = options.filter(o => selectedSet.has(o.value));
+
+  const toggle = (v: T) =>
+    onChange(selectedSet.has(v) ? values.filter(x => x !== v) : [...values, v]);
+
+  function openPanel() {
+    if (btnRef.current) setPos(computePanelPos(btnRef.current.getBoundingClientRect()));
+    setOpen(true);
+  }
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => (open ? setOpen(false) : openPanel())}
+        aria-label={ariaLabel}
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-full transition-transform duration-150 active:scale-[.97] btn-glass-interactive pl-2.5 pr-2.5 min-h-9',
+          fullWidth ? 'w-full justify-between' : 'shrink-0',
+          variantClassName,
+          height === 'sm' ? 'text-[12px]' : 'text-xs',
+          className,
+        )}
+        style={{ border: 'none', ...variantStyle }}
+      >
+        {selectedOptions.length === 0 ? (
+          <span className="text-glass-muted pl-0.5 py-1.5">{placeholder}</span>
+        ) : (
+          <span className="flex flex-wrap items-center gap-1 py-1 min-w-0">
+            {selectedOptions.map(o => (
+              <span
+                key={o.value}
+                role="button"
+                tabIndex={0}
+                aria-label={`${o.label} entfernen`}
+                onClick={e => { e.stopPropagation(); toggle(o.value); }}
+                className="inline-flex items-center gap-1 rounded-full border pl-1.5 pr-1 py-0.5 text-[11px] font-semibold"
+                style={{
+                  borderColor: o.color ?? 'var(--pokedex-red)',
+                  background: `color-mix(in srgb, ${o.color ?? 'var(--pokedex-red)'} 15%, transparent)`,
+                  color: o.color ?? 'var(--pokedex-red)',
+                }}
+              >
+                {o.icon}
+                {o.label}
+                <X size={12} className="opacity-70" />
+              </span>
+            ))}
+          </span>
+        )}
+        <ChevronDown size={12} className="opacity-70 shrink-0" />
+      </button>
+
+      {open && pos && createPortal(
+        <>
+          <div className="fixed inset-0 z-[200]" onClick={() => setOpen(false)} />
+          <div
+            className="glass fixed rounded-xl overflow-y-auto py-1 z-[201]"
+            style={{
+              top: pos.top, bottom: pos.bottom, left: pos.left, right: pos.right,
+              minWidth: pos.width, maxWidth: fullWidth ? pos.width : PANEL_MAX_WIDTH, maxHeight: pos.maxHeight,
+              boxShadow: '0 8px 24px rgba(0,0,0,.25)',
+            }}
+          >
+            {options.map(o => {
+              const active = selectedSet.has(o.value);
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  disabled={o.disabled}
+                  onClick={() => !o.disabled && toggle(o.value)}
+                  className="w-full text-left px-3 py-2 text-role-body text-glass flex items-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
+                  style={active ? { fontWeight: 700 } : undefined}
+                >
+                  {o.icon}
+                  <span className="truncate">{o.label}</span>
+                  {o.count != null && (
+                    <span className="ml-auto shrink-0 text-glass-muted text-role-label">{o.count}</span>
+                  )}
+                  {active && <Check size={14} className={o.count != null ? 'ml-1 shrink-0' : 'ml-auto shrink-0'} />}
+                </button>
+              );
+            })}
           </div>
         </>,
         document.body,

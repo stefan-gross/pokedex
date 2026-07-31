@@ -46,7 +46,13 @@ export async function searchCatalogCards(
   const minLen = opts.minComboLen ?? 3;
 
   const scopeToSet = (cards: CatalogCard[]) => (setId ? cards.filter(c => c.setId === setId) : cards);
-  const byName = (part: string) => searchCatalog(part, setId, displayLimit);
+  // Namenssuche NICHT server-seitig set-scopen: `searchCatalog(q, setId)` bräuchte
+  // einen Composite-Index (setId + nameDeLower/nameLower-Range), der nicht
+  // existiert → die Query würfe. Stattdessen ungescopet holen (bei gesetztem Set
+  // eine größere Kandidatenmenge) und wie Dex-/Illustrator-Treffer client-seitig
+  // auf das Set filtern.
+  const byName = async (part: string) =>
+    scopeToSet(await searchCatalog(part, '', setId ? candidateLimit : displayLimit));
   const byArtist = async (word: string, limit: number) => scopeToSet(await searchCatalogByArtist(word, limit));
 
   // 0. Pokédex-Nummer

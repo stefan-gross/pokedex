@@ -32,6 +32,19 @@ export function buildRarityBreakdown(
     .sort((a, b) => (a.group.order ?? 50) - (b.group.order ?? 50));
 }
 
+/** Zusätzlicher Chip am Ende der Rarity-Leiste (gleicher Stil), z.B.
+ *  „Sonderformen" — eine eigene Filterdimension, die optisch bei den Raritäten
+ *  mitläuft statt in einer eigenen Zeile. */
+export interface RarityExtraChip {
+  key:      string;
+  label:    string;   // wird wie ein Rarity-Symbol als Text angezeigt (z.B. „Sonderformen")
+  count?:   number;
+  color:    string;
+  active:   boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}
+
 interface Props {
   cards:          CardInfo[];
   ownedIds:       Set<string>;
@@ -39,9 +52,11 @@ interface Props {
   onToggle:       (label: string) => void;
   /** Vorberechnete Firestore-Counts pro Rarity-Label (für Anzeige ohne geladene Karten) */
   rarityCounts?:  Record<string, number>;
+  /** Zusätzliche Chips am Ende (gleicher Stil), z.B. „Sonderformen". */
+  extraChips?:    RarityExtraChip[];
 }
 
-export function RarityFilterBar({ cards, ownedIds, activeRarities, onToggle, rarityCounts }: Props) {
+export function RarityFilterBar({ cards, ownedIds, activeRarities, onToggle, rarityCounts, extraChips }: Props) {
   // Wenn Karten geladen: Breakdown aus Karten (inkl. ownedCount)
   // Wenn keine Karten aber rarityCounts: Chips aus RARITY_GROUPS mit globalen Counts
   const breakdown = useMemo((): RarityBreakdownItem[] => {
@@ -60,7 +75,7 @@ export function RarityFilterBar({ cards, ownedIds, activeRarities, onToggle, rar
     return [];
   }, [cards, ownedIds, rarityCounts]);
 
-  if (breakdown.length === 0) return null;
+  if (breakdown.length === 0 && !extraChips?.length) return null;
 
   return (
     <div className="flex flex-wrap gap-x-2 gap-y-1.5">
@@ -104,6 +119,33 @@ export function RarityFilterBar({ cards, ownedIds, activeRarities, onToggle, rar
             <span className={`text-xs ${active ? '' : 'text-glass-muted'}`} style={active ? { color: activeBorder } : undefined}>
               {totalCount.toLocaleString('de')}
             </span>
+          </button>
+        );
+      })}
+
+      {/* Zusätzliche Chips (z.B. „Sonderformen") — gleicher Stil wie die
+          Rarity-Chips, Label als Text statt Symbol. */}
+      {extraChips?.map(chip => {
+        const disabled = chip.disabled ?? false;
+        return (
+          <button
+            key={chip.key}
+            onClick={() => !disabled && chip.onToggle()}
+            disabled={disabled}
+            className={`flex items-center gap-1 rounded-full transition-all px-2 py-0.5 border disabled:opacity-30 disabled:cursor-not-allowed ${chip.active ? '' : 'text-glass-muted'}`}
+            style={chip.active
+              ? { background: `${chip.color}22`, borderColor: chip.color }
+              : { borderColor: 'transparent' }
+            }
+          >
+            <span className={`text-xs font-bold ${disabled ? 'text-glass-muted' : ''}`} style={!disabled ? { color: chip.color } : undefined}>
+              {chip.label}
+            </span>
+            {chip.count != null && (
+              <span className={`text-xs ${chip.active ? '' : 'text-glass-muted'}`} style={chip.active ? { color: chip.color } : undefined}>
+                {chip.count.toLocaleString('de')}
+              </span>
+            )}
           </button>
         );
       })}

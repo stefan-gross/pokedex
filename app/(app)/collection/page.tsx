@@ -2,19 +2,24 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Search, X, SlidersHorizontal, ChevronDown } from 'lucide-react';
+import { Search, SlidersHorizontal } from 'lucide-react';
 import { CardGrid, CardGridSkeleton } from '@/components/card/CardGrid';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { ButtonGroup } from '@/components/ui/button-group';
+import { Input } from '@/components/ui/input';
+import { SearchableSelect, MultiSelect, CustomSelect } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Grabber } from '@/components/ui/Grabber';
+import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
+import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { getCards } from '@/lib/firestore/cards';
 import { getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts } from '@/lib/firestore/catalog';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { applyFacetFilters, type FacetState, type FacetDim } from '@/lib/search/facet-filter';
-import { getSubtypeDe, SPECIAL_MECHANIC_KEYS } from '@/lib/card-constants';
+import { SPECIAL_MECHANIC_KEYS } from '@/lib/card-constants';
 import { useCardBrowser, TCG_TYPES, type TcgType, type CardBrowserFilter } from '@/lib/hooks/useCardBrowser';
 import { useWishlist } from '@/lib/hooks/use-wishlist';
 import { EnergyIcon, ENERGY_META } from '@/components/ui/EnergyIcon';
@@ -64,16 +69,6 @@ const SEARCH_SORT_OPTIONS: { value: SearchSortKey; label: string }[] = [
   { value: 'hp',      label: 'KP'          },
 ];
 
-const EVOLUTION_OPTIONS: { value: string | null; label: string }[] = [
-  { value: null,      label: 'Alle Stufen' },
-  { value: 'Basic',   label: 'Basis'   },
-  { value: 'Stage 1', label: 'Phase 1' },
-  { value: 'Stage 2', label: 'Phase 2' },
-];
-
-const SPECIAL_MECHANIC_OPTIONS: { value: string; label: string }[] =
-  SPECIAL_MECHANIC_KEYS.map(k => ({ value: k, label: getSubtypeDe(k) }));
-
 function fmt(n: number) { return n.toLocaleString('de'); }
 
 function CollectionContent() {
@@ -104,7 +99,7 @@ function CollectionContent() {
   const [searchSort,    setSearchSort]    = useState<SearchSortKey>('number');
   const [searchSortDir, setSearchSortDir] = useState<'asc' | 'desc'>('asc');
   const [filterSet,     setFilterSet]     = useState('');
-  const [sets,          setSets]          = useState<{ id: string; name: string }[]>([]);
+  const [sets,          setSets]          = useState<{ id: string; name: string; count: number }[]>([]);
   const [catalogCount,  setCatalogCount]  = useState(0);
   const catalogCountRef = useRef(0);
   const [searchVisibleCount, setSearchVisibleCount] = useState(20);
@@ -113,9 +108,9 @@ function CollectionContent() {
   // ── UI-State ──────────────────────────────────────────────────
   const [filterCounts,     setFilterCounts]     = useState<FilterCounts | null>(null);
   const [browseTotal,      setBrowseTotal]      = useState<number | null>(null);
-  const [filtersCollapsed, setFiltersCollapsed] = useState(false);
-  const lastScrollY      = useRef(0);
-  const scrollLockRef    = useRef(false);
+  // Grabber-/Scroll-Kollaps über den geteilten Hook (1 Region, s.u.).
+  const panelRef    = useRef<HTMLDivElement>(null);
+  const gridWrapRef = useRef<HTMLDivElement>(null);
   const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sentinelRef    = useRef<HTMLDivElement>(null);
@@ -131,6 +126,29 @@ function CollectionContent() {
   // Set-Metadaten (Symbol/Kürzel) für die Set-Badges auf Karten-Kacheln —
   // einmalig geladen, ~140 Docs, für die gesamte Seiten-Lebensdauer gecacht.
   const setsMetaMap = useMemo(() => new Map(allSets.map(s => [s.id, s])), [allSets]);
+  // Nur Sets, in denen der aktuelle Suchbegriff mindestens eine Karte hat
+  // (aus `sets` = alle Treffer-Sets). Deutschen Namen + Kürzel/EN-Name via
+  // `setsMetaMap` auflösen, alphabetisch aufsteigend.
+  const setFilterOptions = useMemo(
+    () => [
+      { value: '', label: 'Alle Sets' },
+      ...sets
+        .map(s => {
+          const meta = setsMetaMap.get(s.id);
+          return {
+            value: s.id,
+            label: meta?.nameDe ?? s.name,
+            keywords: [meta?.name, s.name, meta?.ptcgoCode].filter(Boolean).join(' '),
+            hint: s.count.toLocaleString('de'),   // Treffer-Anzahl rechts (statt Kürzel)
+            icon: meta?.symbolUrl
+              ? <img src={meta.symbolUrl} alt="" className="w-4 h-4 object-contain shrink-0" />
+              : undefined,
+          };
+        })
+        .sort((a, b) => a.label.localeCompare(b.label, 'de')),
+    ],
+    [sets, setsMetaMap],
+  );
 
   // ── Dynamische Counts (debounced) ─────────────────────────────
   const activeTypesKey = useMemo(() => [...activeTypes].sort().join(','), [activeTypes]);
@@ -163,34 +181,6 @@ function CollectionContent() {
     getBrowseCount(browseFilter).then(n => setBrowseTotal(n >= 0 ? n : null)).catch(() => setBrowseTotal(null));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTypesKey, activeSupertype, activeEvolutionsKey, hasActiveFilterForCount]);
-
-  // ── Scroll-Collapse ───────────────────────────────────────────
-  useEffect(() => {
-    lastScrollY.current = window.scrollY;
-    const onScroll = () => {
-      if (scrollLockRef.current) return;
-      const y = Math.max(0, window.scrollY);
-      if (y > lastScrollY.current + 60 && y > 100) {
-        setFiltersCollapsed(true);
-        lastScrollY.current = y;
-        scrollLockRef.current = true;
-        setTimeout(() => {
-          lastScrollY.current = Math.max(0, window.scrollY);
-          scrollLockRef.current = false;
-        }, 200);
-      } else if (y < lastScrollY.current - 70) {
-        setFiltersCollapsed(false);
-        lastScrollY.current = y;
-        scrollLockRef.current = true;
-        setTimeout(() => {
-          lastScrollY.current = Math.max(0, window.scrollY);
-          scrollLockRef.current = false;
-        }, 200);
-      }
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
 
   // ── Derived ───────────────────────────────────────────────────
   const ownedMap = useMemo(() => {
@@ -251,9 +241,11 @@ function CollectionContent() {
       if (catalogCountRef.current === 0) { setResults([]); setSets([]); return; }
 
       // Gemeinsame Server-Such-Pipeline (Dex → Name → Mehrwort Name∪Illustrator
-      // → Illustrator-Fallback), set-vorgefiltert über `filterSet`.
+      // → Illustrator-Fallback) — bewusst OHNE `setId`: wir holen ALLE Treffer,
+      // damit das Set-Dropdown genau die Sets zeigt, in denen der Suchbegriff
+      // vorkommt. Die Eingrenzung auf das gewählte Set passiert danach
+      // client-seitig (kein zweiter Query, kein Composite-Index nötig).
       const { cards, sortHint } = await searchCatalogCards(q, {
-        setId: filterSet,
         displayLimit: SEARCH_DISPLAY_LIMIT,
         candidateLimit: SEARCH_CANDIDATE_LIMIT,
         minComboLen: MIN_COMBO_LEN,
@@ -262,11 +254,20 @@ function CollectionContent() {
       if (cards.length === 0) { setResults([]); setSets([]); return; }
 
       const infos = cards.map(catalogCardToInfo);
-      const setMap = new Map<string, string>();
-      infos.forEach(c => setMap.set(c.setId, c.setName));
-      setSets(Array.from(setMap.entries()).map(([id, name]) => ({ id, name })));
-      baseResultsRef.current = infos;
-      setResults(infos);
+      // Set-Liste fürs Dropdown aus ALLEN Treffern (unabhängig vom gewählten Set),
+      // sonst schrumpfte sie nach der Auswahl auf genau dieses eine Set. Pro Set
+      // die Trefferzahl mitzählen (fürs Dropdown-Anzeige rechts).
+      const setMap = new Map<string, { name: string; count: number }>();
+      infos.forEach(c => {
+        const e = setMap.get(c.setId) ?? { name: c.setName, count: 0 };
+        e.count++;
+        setMap.set(c.setId, e);
+      });
+      setSets(Array.from(setMap.entries()).map(([id, { name, count }]) => ({ id, name, count })));
+      // Anzeige auf das gewählte Set eingrenzen (client-seitig).
+      const scoped = filterSet ? infos.filter(c => c.setId === filterSet) : infos;
+      baseResultsRef.current = scoped;
+      setResults(scoped);
       if (sortHint === 'pokedex') setSearchSort('pokedex');
     } catch {
       setResults([]);
@@ -349,11 +350,6 @@ function CollectionContent() {
   }, [results, facetState, searchSort, searchSortDir]);
 
   const isBrowseMode = !inputValue;
-  // Zählt nur die Filter, die im eingeklappten Zustand NICHT sichtbar/bedienbar
-  // bleiben (Typ, Stufe, Alternative Formen, Rarity) — Owned-Switch und
-  // Supertype bleiben immer sichtbar, zählen daher hier nicht mit.
-  const extraFilterCount = activeTypes.size + activeEvolutions.size + activeSpecialMechanics.size + (activeRarity ? 1 : 0);
-
   // Zeigt an, ob die Suchergebnisse mehrere unterschiedliche Sets enthalten —
   // nur dann macht das Set-Badge auf den Karten-Kacheln Sinn (sonst redundant).
   const resultsSpanMultipleSets = useMemo(
@@ -376,30 +372,6 @@ function CollectionContent() {
     setResults([]);
     setSets([]);
     router.replace('/collection', { scroll: false });
-  };
-
-  const toggleType = (t: TcgType) => {
-    setActiveTypes(prev => {
-      const next = new Set(prev);
-      if (next.has(t)) next.delete(t); else next.add(t);
-      return next;
-    });
-  };
-
-  const toggleEvolution = (stage: string) => {
-    setActiveEvolutions(prev => {
-      const next = new Set(prev);
-      if (next.has(stage)) next.delete(stage); else next.add(stage);
-      return next;
-    });
-  };
-
-  const toggleSpecialMechanic = (key: string) => {
-    setActiveSpecialMechanics(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
   };
 
   // Ergebniszahl — immer die exakte Gesamtzahl, unabhängig davon wie viele
@@ -430,25 +402,29 @@ function CollectionContent() {
     return Object.fromEntries(TCG_TYPES.map(t => [t, base.filter(c => c.types?.includes(t)).length]));
   }, [isBrowseMode, filterCounts, results, facetState]);
 
-  // Disabled-Logik für Entwicklungsstufen-Pills
-  const evolutionCountInContext = useMemo((): Record<string, number> | null => {
-    const base = isBrowseMode ? browseCards : applyFacetFilters(results, facetState, 'evolutions');
-    if (base.length === 0) return null;
-    return {
-      'Basic':   base.filter(c => c.subtypes?.includes('Basic')).length,
-      'Stage 1': base.filter(c => c.subtypes?.includes('Stage 1')).length,
-      'Stage 2': base.filter(c => c.subtypes?.includes('Stage 2')).length,
-    };
+  // „Sonderformen" fasst alle Spezial-Mechaniken (GX/ex/V/VMAX/VSTAR/V-Union …)
+  // zu EINEM Filter zusammen — aktiv = irgendeine Mechanik gewählt.
+  const specialFormsActive = activeSpecialMechanics.size > 0;
+  const specialFormsCount = useMemo(() => {
+    const base = isBrowseMode ? browseCards : applyFacetFilters(results, facetState, 'specialMechanics');
+    if (base.length === 0) return undefined;
+    const keys = new Set<string>(SPECIAL_MECHANIC_KEYS as readonly string[]);
+    return base.filter(c => c.subtypes?.some(s => keys.has(s))).length;
   }, [isBrowseMode, browseCards, results, facetState]);
 
-  // Disabled-Logik für Alternative-Formen-Pills
-  const specialMechanicCountInContext = useMemo((): Record<string, number> | null => {
-    const base = isBrowseMode ? browseCards : applyFacetFilters(results, facetState, 'specialMechanics');
-    if (base.length === 0) return null;
-    return Object.fromEntries(
-      SPECIAL_MECHANIC_KEYS.map(k => [k, base.filter(c => c.subtypes?.includes(k)).length]),
-    );
-  }, [isBrowseMode, browseCards, results, facetState]);
+  // Typ-Optionen für den Mehrfach-Auswahl-Dropdown (Icon + DE-Label + Count +
+  // Typfarbe für die Pills, 0-Treffer ausgegraut).
+  const typeOptions = useMemo(
+    () => TCG_TYPES.map(t => ({
+      value: t,
+      label: ENERGY_META[t].de,
+      icon: <EnergyIcon type={t} size={16} />,
+      count: typeCountInContext?.[t],
+      disabled: typeCountInContext?.[t] === 0,
+      color: ENERGY_META[t].bg,
+    })),
+    [typeCountInContext],
+  );
 
   // Owned-Optionen (Alle|Vorhanden|Fehlen) mit Zählern
   const ownedOptions = useMemo(() => {
@@ -500,188 +476,113 @@ function CollectionContent() {
   // alle Filter außer Rarity selbst)
   const rarityCards  = isBrowseMode ? browseCards : applyFacetFilters(results, facetState, 'rarity');
 
+  // Grabber-/Scroll-Kollaps (1 Region: Set/Supertyp/Typ/Rarity/Stufen/Sonderformen).
+  const { stage, registerRegion, regionStyle, grabberProps } = useGrabberCollapse({
+    regionCount: 1,
+    panelRef,
+    gridWrapRef,
+    measureDeps: [isBrowseMode, showTypePills, showEvolution, sets.length, activeSupertype],
+  });
+
   return (
     <div className="flex flex-col min-h-screen">
 
       {/* ── Sticky Header ──────────────────────────────────────── */}
-      <div className="sticky top-safe z-20 mx-3 mt-2 glass rounded-[20px] px-4 pt-4 pb-3 space-y-2">
+      {/* ── Sticky Header ──────────────────────────────────────── */}
+      <div ref={panelRef} className="sticky top-safe z-20 mx-3 mt-2 glass rounded-[20px] px-4 pt-4 pb-3 space-y-2">
 
-        {/* Suchfeld — im expandierten Zustand größer */}
-        <div className="relative">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-glass-muted pointer-events-none" />
-          <input
-            type="search"
-            value={inputValue}
-            onChange={e => setInputValue(e.target.value)}
-            placeholder="Name, Illustrator … oder stöbern"
-            className={`w-full pl-9 pr-8 rounded-xl glass-inner text-glass placeholder:text-glass-muted focus:outline-none focus:ring-1 focus:ring-ring transition-all ${
-              filtersCollapsed ? 'h-9 text-sm' : 'h-12 text-base'
-            }`}
-          />
-          {inputValue && (
-            <button type="button" onClick={clearSearch}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-glass-muted">
-              <X size={14} />
-            </button>
-          )}
-        </div>
-
-        {/* Zeile: Vorhanden/Fehlen (volle Breite) + Set-Filter in Suche — bleibt
-            in beiden Zuständen (expandiert/eingeklappt) sichtbar/bedienbar */}
-        <div className="flex items-center gap-2">
-          <ButtonGroup
-            className="flex-1"
-            options={ownedOptions.map(o => ({ ...o, disabled: o.count === 0 }))}
-            value={ownedFilter}
-            onChange={v => setOwnedFilter(v as OwnedFilter)}
-          />
-          {!filtersCollapsed && !isBrowseMode && sets.length > 1 && (
-            <select value={filterSet} onChange={e => setFilterSet(e.target.value)}
-              className="h-8 px-2 rounded-lg glass-inner text-xs max-w-[120px]">
-              <option value="">Alle Sets</option>
-              {sets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          )}
-        </div>
-
-        {/* Zeile: Supertype mit Counts (volle Breite) — bleibt ebenfalls sichtbar */}
-        <ButtonGroup
-          options={supertypeOptions.map(o => ({ ...o, disabled: o.count === 0 }))}
-          value={activeSupertype}
-          onChange={v => { setActiveSupertype(v as Supertype | 'all'); setActiveTypes(new Set()); setActiveEvolutions(new Set()); }}
+        {/* Suchfeld — immer sichtbar */}
+        <Input
+          variant="search"
+          size="lg"
+          value={inputValue}
+          onChange={setInputValue}
+          onClear={clearSearch}
+          placeholder="Name, Illustrator … oder stöbern"
         />
 
-        {/* Eingeklappt: Hinweis auf weitere aktive Filter, tippen klappt wieder auf —
-            animiert über CSS-Grid-Rows (0fr↔1fr), da Höhe von "auto" nicht direkt
-            transitionierbar ist */}
-        <div
-          className="grid transition-[grid-template-rows] duration-300 ease-in-out"
-          style={{ gridTemplateRows: filtersCollapsed && extraFilterCount > 0 ? '1fr' : '0fr' }}
-        >
-          <div className="overflow-hidden">
-            <button
-              onClick={() => setFiltersCollapsed(false)}
-              className="flex items-center justify-center gap-1 w-full text-role-label text-glass-muted py-1"
-            >
-              {extraFilterCount} weitere Filter aktiv <ChevronDown size={12} />
-            </button>
-          </div>
-        </div>
+        {/* Owned (Alle|Vorhanden|Fehlen) — immer sichtbar */}
+        <ButtonGroup
+          options={ownedOptions.map(o => ({ ...o, disabled: o.count === 0 }))}
+          value={ownedFilter}
+          onChange={v => setOwnedFilter(v as OwnedFilter)}
+        />
 
-        {/* Vollständige Filter-Zeilen — animiert ein-/ausklappend */}
-        <div
-          className="grid transition-[grid-template-rows] duration-300 ease-in-out"
-          style={{ gridTemplateRows: filtersCollapsed ? '0fr' : '1fr' }}
-        >
-          <div className="overflow-hidden flex flex-col gap-2">
-            {/* Typ-Pills (Mehrfachauswahl, OR) — fixe Reihenfolge, 0-Treffer ausgegraut */}
+        {/* Kollaps-Region (1): Supertyp + Typ + Rarity + Evolutionslinie +
+            Sonderformen + Set — per Griff/Scroll ein-/ausklappbar. Suchfeld,
+            Owned und Sortierung/Anzahl bleiben immer sichtbar. */}
+        <div style={regionStyle(0)} className="overflow-hidden">
+          <div ref={registerRegion(0)} className="flex flex-col gap-2 pt-0.5">
+            {/* Supertyp (Alle|Pokémon|Trainer|Energie) als Einfach-Auswahl-Dropdown */}
+            <CustomSelect
+              value={activeSupertype}
+              onChange={v => { setActiveSupertype(v as Supertype | 'all'); setActiveTypes(new Set()); setActiveEvolutions(new Set()); }}
+              options={supertypeOptions.map(o => ({
+                value: o.value,
+                label: o.label,
+                count: o.count,
+                disabled: o.count === 0 && o.value !== 'all',
+              }))}
+              height="sm"
+              fullWidth
+              aria-label="Kartenart"
+            />
+
+            {/* Pokémon-Typ als Mehrfach-Auswahl-Dropdown (Auswahl als Pills) */}
             {showTypePills && (
-              <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
-                {TCG_TYPES.map(t => {
-                  const active    = activeTypes.has(t);
-                  const meta      = ENERGY_META[t];
-                  const count     = typeCountInContext?.[t];
-                  const isDisabled = count === 0;
-                  return (
-                    <button
-                      key={t}
-                      onClick={() => !isDisabled && toggleType(t)}
-                      disabled={isDisabled}
-                      className={`flex items-center gap-1.5 text-role-label min-h-11 pl-1 pr-2.5 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
-                      style={{
-                        borderColor: active ? meta.bg : 'transparent',
-                        background:  active ? `${meta.bg}22` : undefined,
-                        color:       active ? meta.bg : undefined,
-                        fontWeight:  active ? 600 : 400,
-                      }}
-                    >
-                      <EnergyIcon type={t} size={18} />
-                      {meta.de}
-                      {count != null && count > 0 && (
-                        <span className="text-[10px] opacity-50 font-normal">{fmt(count)}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+              <MultiSelect
+                values={[...activeTypes]}
+                onChange={vals => setActiveTypes(new Set(vals))}
+                options={typeOptions}
+                placeholder="Alle Typen"
+                aria-label="Pokémon-Typ"
+              />
             )}
 
-            {/* Rarity — Browse: globale Firestore-Counts; Suche: aus Ergebnissen */}
+            {/* Rarity — Browse: globale Firestore-Counts; Suche: aus Ergebnissen.
+                „Sonderformen" läuft als zusätzlicher Chip am Ende der Rarity-Leiste
+                mit (gleiche Optik wie z.B. Promo), fasst alle Spezial-Mechaniken
+                (GX/ex/V/VMAX/VSTAR/V-Union …) zu EINEM Filter zusammen. */}
             <RarityFilterBar
               cards={rarityCards}
               ownedIds={ownedIds}
               activeRarities={activeRarity ? new Set([activeRarity]) : new Set()}
               onToggle={label => setActiveRarity(prev => prev === label ? null : label)}
               rarityCounts={isBrowseMode ? filterCounts?.rarities : undefined}
+              extraChips={showTypePills ? [{
+                key: 'special-forms',
+                label: 'Sonderformen',
+                count: specialFormsCount,
+                color: 'var(--pokedex-red)',
+                active: specialFormsActive,
+                disabled: specialFormsCount === 0,
+                onToggle: () => setActiveSpecialMechanics(prev =>
+                  prev.size ? new Set() : new Set(SPECIAL_MECHANIC_KEYS)),
+              }] : undefined}
             />
 
-            {/* Entwicklungsstufe als Pills + Evolutionslinie als Checkbox */}
-            {showEvolution && (
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
-                {EVOLUTION_OPTIONS.filter(o => o.value !== null).map(o => {
-                  const active     = activeEvolutions.has(o.value!);
-                  const count      = evolutionCountInContext?.[o.value!];
-                  const isDisabled = count === 0;
-                  return (
-                    <button
-                      key={o.value}
-                      onClick={() => !isDisabled && toggleEvolution(o.value!)}
-                      disabled={isDisabled}
-                      className={`flex items-center gap-1.5 text-role-label min-h-11 px-3 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
-                      style={{
-                        borderColor: active ? 'var(--pokedex-red)' : 'transparent',
-                        background:  active ? 'color-mix(in srgb, var(--pokedex-red) 15%, transparent)' : undefined,
-                        color:       active ? 'var(--pokedex-red)' : undefined,
-                        fontWeight:  active ? 600 : 400,
-                      }}
-                    >
-                      {o.label}
-                      {count != null && count > 0 && (
-                        <span className="text-[10px] opacity-50 font-normal">{count}</span>
-                      )}
-                    </button>
-                  );
-                })}
-                {!isBrowseMode && (
-                  <Switch
-                    checked={evoLineActive}
-                    onChange={setEvoLineActive}
-                    label="Evolutionslinie"
-                    className="ml-auto pl-2"
-                  />
-                )}
-              </div>
+            {/* Evolutionslinie als Checkbox (Stufen-Pills entfernt) */}
+            {showEvolution && !isBrowseMode && (
+              <Switch
+                checked={evoLineActive}
+                onChange={setEvoLineActive}
+                label="Evolutionslinie"
+                className="self-start"
+              />
             )}
 
-            {/* Alternative Formen (ex/GX/V/VMAX/VSTAR/Mega/…) — eigene Dimension,
-                nicht mit den Entwicklungsstufen vermischt */}
-            {showTypePills && (
-              <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
-                {SPECIAL_MECHANIC_OPTIONS.map(o => {
-                  const active     = activeSpecialMechanics.has(o.value);
-                  const count      = specialMechanicCountInContext?.[o.value];
-                  const isDisabled = count === 0;
-                  return (
-                    <button
-                      key={o.value}
-                      onClick={() => !isDisabled && toggleSpecialMechanic(o.value)}
-                      disabled={isDisabled}
-                      className={`flex items-center gap-1.5 text-role-label min-h-11 px-3 py-1 rounded-full border-2 whitespace-nowrap transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'glass-inner text-glass-muted'}`}
-                      style={{
-                        borderColor: active ? 'var(--pokedex-red)' : 'transparent',
-                        background:  active ? 'color-mix(in srgb, var(--pokedex-red) 15%, transparent)' : undefined,
-                        color:       active ? 'var(--pokedex-red)' : undefined,
-                        fontWeight:  active ? 600 : 400,
-                      }}
-                    >
-                      {o.label}
-                      {count != null && count > 0 && (
-                        <span className="text-[10px] opacity-50 font-normal">{count}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+            {/* Set-Filter — ganz unten, volle Breite, mit Symbol + Kürzel. Nur im
+                Suchmodus; listet nur Sets mit mindestens einem Treffer. */}
+            {!isBrowseMode && (
+              <SearchableSelect
+                value={filterSet}
+                onChange={setFilterSet}
+                options={setFilterOptions}
+                height="sm"
+                fullWidth
+                searchPlaceholder="Set suchen …"
+                aria-label="Set-Filter"
+              />
             )}
           </div>
         </div>
@@ -706,10 +607,13 @@ function CollectionContent() {
             resultLabel={showResultCount && resultCount != null ? `${resultCount} Karten` : undefined}
           />
         )}
+
+        {/* Griff (Grabber): Filter-Region ein-/ausklappen (ziehen oder tippen) */}
+        <Grabber expanded={stage === 0} {...grabberProps} />
       </div>
 
       {/* ── Content ─────────────────────────────────────────────── */}
-      <div className="flex-1 px-3 py-3">
+      <div ref={gridWrapRef} className="flex-1 px-3 py-3">
 
         {/* Browse-Modus — zeigt initial den gesamten Katalog, dynamisches Nachladen beim Scrollen */}
         {isBrowseMode && (
@@ -771,6 +675,8 @@ function CollectionContent() {
           </>
         )}
       </div>
+
+      <ScrollToTopButton />
     </div>
   );
 }
