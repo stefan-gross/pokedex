@@ -59,7 +59,7 @@ export function CardSortBar<K extends string>({
       <div className="flex items-center gap-2 ml-auto">
         {extra}
         {resultLabel && (
-          <span className="text-xs text-glass-muted tabular-nums shrink-0">{resultLabel}</span>
+          <span className="text-sm font-semibold text-glass tabular-nums shrink-0">{resultLabel}</span>
         )}
       </div>
     </div>
