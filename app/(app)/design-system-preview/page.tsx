@@ -1069,16 +1069,10 @@ export default function DesignSystemPreviewPage() {
       <Section title="OwnedCopyRow (Kartendetail-Zeile)">
         <div className="space-y-3">
           <p className="text-role-label text-glass-muted">
-            Swipe nach links: leichter Zug legt die Löschen-Fläche frei (Tap zum
-            Bestätigen), genug Schwung löscht direkt — hier ohne Risiko, da rein
-            lokale Demo-Daten. Tap auf eine Zeile mit gelbem Rahmen markiert sie
-            als geprüft. Letztes Ereignis: <strong>{demoLog}</strong>
-          </p>
-          <p className="text-role-label text-glass-muted">
-            Hintergrund der Zeile WÄHREND des Swipens (<code>.glass-swipe-solid</code>,
-            blickdicht) — Light/Dark unabhängig einstellbar, da der Ruhezustand
-            in beiden Modi unterschiedlich aussieht. Erst nach „Speichern" (oben
-            rechts) wirkt sich das auf die echten Zeilen hier UND in der App aus.
+            Zwei Zeilen: oben Sprache + Zustand + roter Löschen-Button (2-Tap-
+            Bestätigung), darunter die aktuelle Sammlung. Gibt es Zielsammlungen,
+            ist sie ein Button (öffnet die Auswahl); sonst reine Anzeige. Rein
+            lokale Demo-Daten. Letztes Ereignis: <strong>{demoLog}</strong>
           </p>
           <div className="flex flex-wrap gap-6">
             {(['light', 'dark'] as const).map(m => (
@@ -1114,10 +1108,8 @@ export default function DesignSystemPreviewPage() {
                 binder={DEMO_BINDER}
                 isDefaultBinder={false}
                 isDeleting={false}
-                onMarkReviewed={() => {
-                  setDemoCopies(cs => cs.map(c => c.id === copy.id ? { ...c, needsReview: false } : c));
-                  setDemoLog(`"${copy.id}" als geprüft markiert`);
-                }}
+                allBinders={[DEMO_BINDER, DEMO_OTHER_BINDER]}
+                suggestedBinderIds={[]}
                 onMoveToBinder={(targetId) => setDemoLog(targetId ? `Verschoben nach "${targetId === DEMO_BINDER.id ? DEMO_BINDER.name : DEMO_OTHER_BINDER.name}"` : 'Nach "Unsortiert" verschoben')}
                 onDelete={() => {
                   setDemoCopies(cs => cs.filter(c => c.id !== copy.id));

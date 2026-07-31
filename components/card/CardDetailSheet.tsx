@@ -2,15 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Minus, Heart, ChevronDown, ChevronLeft, Info, Repeat2, LayoutGrid } from 'lucide-react';
+import { X, Plus, Heart, ChevronDown, ChevronRight, ChevronLeft, Info, Repeat2, LayoutGrid, Trash2 } from 'lucide-react';
 import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
-import { CustomSelect } from '@/components/ui/select';
 import { Sheet } from '@/components/ui/modal';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
-import { markReviewed, deleteCard, getCardsByTcgId } from '@/lib/firestore/cards';
+import { deleteCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { getBinders, removeCardFromBinderAndCleanup, ensureDefaultBinder, setCardExclusiveBinder } from '@/lib/firestore/binders';
 import { matchTemplateBinders } from '@/lib/template-binders/match-hint';
 import { syncTemplateBinders } from '@/lib/template-binders/sync';
@@ -96,71 +95,6 @@ const CONDITION_COLOR: Record<string, string> = {
   HP: '#f87171',
   Poor: '#9ca3af',
 };
-// Swipe-nach-links auf einer Karten-Kopie: es gibt bewusst KEINEN
-// Zwischenzustand ("Fläche bleibt offen stehen"). Beim Loslassen entweder
-// (a) weit genug gezogen → Löschung wird sofort ausgeführt, oder
-// (b) nicht weit genug → schnappt zurück auf 0. Nichts dazwischen.
-// Kleiner Schwellwert — die Fläche zeigt nur ein einzelnes Icon (kein
-// großer Text-Button mehr), braucht also keine große Zugstrecke mehr, um
-// zu "aktivieren".
-
-// Sentinel für "Unsortiert" (Default-Sammlung) in der Sammlungs-Auswahl der
-// OwnedCopyRow — `CustomSelect.value` ist generisch über `string`,
-// `onMoveToBinder` erwartet aber `null` für Unsortiert.
-const UNSORTED_SENTINEL = '__unsorted__';
-
-const SWIPE_DELETE_PX = 80;
-// Ab hier (deutlich vor der Lösch-Schwelle, nicht erst kurz davor) setzt der
-// Gummiband-Widerstand ein — bis dahin folgt die Zeile 1:1 dem Finger, danach
-// bewegt sie sich zunehmend langsamer, bis der harte Anschlag exakt bei
-// `SWIPE_DELETE_PX` erreicht ist (siehe `rubberBand` unten). Es soll sich
-// nicht weiter ziehen lassen, als bis der Button aktiviert ist — nur das
-// "Wie" (linear vs. gedämpft) ändert sich.
-const SWIPE_RUBBER_START_PX = SWIPE_DELETE_PX * 0.4;
-// Zusätzliche Zieh-Distanz (über `SWIPE_RUBBER_START_PX` hinaus), die nötig
-// ist, um den Anschlag zu erreichen — je größer, desto zäher/deutlicher der
-// Widerstand. Ein fester Wert (statt einer reinen Rate) garantiert, dass der
-// Anschlag bei einer konkreten, endlichen Zug-Distanz sicher erreicht wird.
-const SWIPE_RUBBER_TRAVEL_PX = 130;
-// Der äußere Wrapper wird um diesen Betrag nach links verbreitert (per
-// negativem `marginLeft`, rechte Kante bleibt unverändert) — größer als
-// `SWIPE_DELETE_PX` (der Zug wird dort hart gedeckelt, siehe unten), damit
-// die Zeile beim Ziehen nie an einem harten Rand abgeschnitten wird. Der
-// Wrapper trägt nur `overflow-hidden` (Clip der Überbreite) — die sichtbare
-// Rundung kommt von der Zeile selbst (siehe `rounded-xl` unten), nicht vom
-// Wrapper-Rand, da dessen eigene Ecken weit links außerhalb des sichtbaren
-// Bereichs liegen.
-const OVERSCAN_PX = 160;
-// Leichtes Überschwingen beim Zurückschnappen — federartig statt linear,
-// dadurch fühlt sich das Zurückspringen weniger robotisch an.
-const SWIPE_SPRING_EASE = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
-// Die Löschen-Fläche reicht um diesen Betrag über ihre eigentliche Breite
-// hinaus nach LINKS unter die Zeile — größer als deren Eckenradius (14px).
-// Ohne das bleibt exakt in der gerundeten Ecke der Zeile ein winziger
-// Bereich frei, den weder die (dort weggeschnittene) Zeile noch die
-// bündig anschließende Löschen-Fläche abdecken — dort schimmert der
-// Hintergrund dahinter durch. Da die Zeile während des Ziehens blickdicht
-// ist (`.glass-swipe-solid`, kein Blur), verdeckt sie den überlappenden
-// Teil der Löschen-Fläche in der geraden Mitte vollständig — nur in der
-// Ecke, wo die Zeile selbst nichts mehr zeichnet, wird die Überlappung
-// sichtbar und schließt die Lücke.
-const DELETE_AREA_CORNER_OVERLAP_PX = 18;
-
-/** Bis `SWIPE_RUBBER_START_PX` 1:1, danach eine Ease-Out-Kurve (anfangs noch
- *  spürbar nachgebend, wird zum Anschlag hin zunehmend zäher) — landet exakt
- *  bei `SWIPE_DELETE_PX`, sobald `SWIPE_RUBBER_TRAVEL_PX` zusätzliche
- *  Zug-Distanz erreicht ist. Nie darüber hinaus (harter Anschlag genau an der
- *  Aktivierungsgrenze des Buttons, kein Überschwingen). */
-function rubberBand(raw: number): number {
-  const dist = -raw;
-  if (dist <= SWIPE_RUBBER_START_PX) return raw;
-  const remaining = SWIPE_DELETE_PX - SWIPE_RUBBER_START_PX;
-  const t = Math.min(1, (dist - SWIPE_RUBBER_START_PX) / SWIPE_RUBBER_TRAVEL_PX);
-  const eased = 1 - (1 - t) * (1 - t);
-  const damped = SWIPE_RUBBER_START_PX + remaining * eased;
-  return -damped;
-}
-
 /** Eine Zeile "eigene Kopie" im Kartendetail: Sprache/Zustand/Sammlung als
  *  Pills, gelber Rahmen statt Pill für den Prüfen-Status (Tap auf die Zeile
  *  markiert als geprüft), Swipe nach links legt eine Löschen-Fläche frei und
@@ -168,267 +102,134 @@ function rubberBand(raw: number): number {
  *  Lösch-Button. */
 export function OwnedCopyRow({
   copy, condColor, binder, isDefaultBinder,
-  onMarkReviewed, onMoveToBinder, onDelete, isDeleting,
+  allBinders, suggestedBinderIds, onMoveToBinder, onDelete, isDeleting,
 }: {
   copy: CardDoc;
   condColor: string;
   binder: BinderDoc | undefined;
   isDefaultBinder: boolean;
-  onMarkReviewed: () => void;
-  /** Verschiebt die Kopie nach „Unsortiert" (`null`). Andere Ziele gibt es aus
-   *  dem Kartendetail bewusst nicht mehr — siehe Karten-Fluss-Modell. */
+  /** Alle Sammlungen — für die Zielsammlung-Auswahl (Sheet). */
+  allBinders: BinderDoc[];
+  /** IDs der Auto-Sammlungen, zu denen diese Karte passt (Vorschläge, priorisiert). */
+  suggestedBinderIds: string[];
+  /** Verschiebt die Kopie exklusiv in den Ziel-Binder (`null` = Unsortiert). */
   onMoveToBinder: (targetBinderId: string | null) => void;
   onDelete: () => void;
   isDeleting: boolean;
 }) {
-  const [dragX, setDragX]         = useState(0);
-  const [dragging, setDragging]   = useState(false);
-  const [committed, setCommitted] = useState(false);
-  const startXRef  = useRef<number | null>(null);
-  const movedRef   = useRef(false);
-  // War der Gestenstart auf einem eigenständig klickbaren Kind (Sammlung-Pill/
-  // Entfernen-Button)? Dann soll ein reiner Tap NUR dessen eigenes onClick
-  // auslösen (Navigation/Entfernen), nicht zusätzlich "als geprüft markieren"
-  // — Ziehen von dort aus soll aber trotzdem die ganze Zeile swipen können.
-  const tapOnChildRef = useRef(false);
-  // Aktueller Drag-Wert synchron in einem Ref mitgeführt — `dragX` (State)
-  // kann in schnellen Ereignisfolgen kurzzeitig hinter dem tatsächlichen
-  // Zeigerstand zurückliegen (Render/Batching), die Schwellwert-Entscheidung
-  // in `handlePointerUp` braucht aber den exakt aktuellen Wert.
-  const dragXRef   = useRef(0);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // 2-Tap-Löschen: erster Tap „schärft" (rot „Wirklich?"), zweiter löscht.
+  const [delArmed, setDelArmed] = useState(false);
+  const delTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function applyDragX(x: number) {
-    dragXRef.current = x;
-    setDragX(x);
-  }
-
-  function commitDelete() {
-    setCommitted(true);
-    applyDragX(-500);
-    setTimeout(onDelete, 200);
-  }
-
-  function handlePointerDown(e: React.PointerEvent) {
-    if (isDeleting || committed) return;
-    movedRef.current = false;
-    tapOnChildRef.current = !!(e.target as HTMLElement).closest('[data-swipe-passthrough]');
-    startXRef.current = e.clientX;
-    setDragging(true);
-    // Pointer-Capture NICHT sofort setzen, wenn die Geste auf einem eigenen
-    // klickbaren Kind (Sammlung-Pill) beginnt — Capture retargeted alle
-    // folgenden Pointer-Events (inkl. pointerup) auf die Zeile, wodurch der
-    // Browser bei einem reinen Tap keinen "click" mehr auf dem Kind-Button
-    // synthetisiert (Dropdown öffnete sich dadurch nie bei echtem Antippen,
-    // nur bei programmatischem `.click()`). Bei echtem Ziehen wird die
-    // Capture stattdessen verzögert in `handlePointerMove` gesetzt, sobald
-    // Bewegung erkannt wird — für die Swipe-Verfolgung reicht das.
-    if (!tapOnChildRef.current) {
-      try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
-    }
-  }
-  function handlePointerMove(e: React.PointerEvent) {
-    if (startXRef.current == null) return;
-    const dx = e.clientX - startXRef.current;
-    if (Math.abs(dx) > 6) {
-      if (!movedRef.current && tapOnChildRef.current) {
-        try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
-      }
-      movedRef.current = true;
-    }
-    applyDragX(rubberBand(Math.min(0, dx)));
-  }
-  function handlePointerUp() {
-    if (startXRef.current == null) return;
-    startXRef.current = null;
-    setDragging(false);
-    if (!movedRef.current) {
-      // Reiner Tap ohne Bewegung (falls "Prüfen" aktiv) markiert als geprüft
-      // — außer der Tap war auf der Sammlung-Pill/Entfernen-Button, die haben
-      // ihr eigenes onClick (Navigation/Entfernen).
-      if (!tapOnChildRef.current && copy.needsReview) onMarkReviewed();
+  function armDelete() {
+    if (delArmed) {
+      if (delTimer.current) clearTimeout(delTimer.current);
+      setDelArmed(false);
+      onDelete();
       return;
     }
-    // Kein Zwischenzustand: entweder weit genug gezogen → sofort löschen,
-    // oder zurück auf 0 — nie "offen stehen bleiben".
-    if (dragXRef.current <= -SWIPE_DELETE_PX) { commitDelete(); return; }
-    applyDragX(0);
+    setDelArmed(true);
+    delTimer.current = setTimeout(() => setDelArmed(false), 2500);
   }
-  function handlePointerCancel() {
-    startXRef.current = null;
-    setDragging(false);
-    applyDragX(0);
+  function move(targetId: string | null) {
+    setPickerOpen(false);
+    onMoveToBinder(targetId);
   }
 
-  // Löst ein Loslassen JETZT die Löschung aus? Steuert, ob der Button
-  // überhaupt antippbar ist (exakt ab der Schwelle, ab der ein Loslassen
-  // wirklich löschen würde).
-  const canConfirmDelete = dragX <= -SWIPE_DELETE_PX;
-  // 0 (Zug-Beginn) bis 1 (Schwelle erreicht) — treibt die kontinuierliche
-  // Farbblendung des Buttons von gedämpft zu voll rot (siehe unten), statt
-  // erst exakt an der Schwelle hart umzuschalten.
-  const swipeProgress = Math.min(1, -dragX / SWIPE_DELETE_PX);
-  // Beim Zurückschnappen (nicht während des aktiven Ziehens) federnd statt
-  // linear — beim Wegfliegen (Löschen) dagegen beschleunigend statt federnd,
-  // ein Bounce beim Verschwinden sähe unnatürlich aus.
-  const settleTransition = committed
-    ? 'transform 220ms cubic-bezier(0.4, 0, 1, 1)'
-    : `transform 320ms ${SWIPE_SPRING_EASE}`;
+  // Zielsammlungen fürs Sheet: Vorschläge (passende Auto-Sammlungen) zuerst,
+  // dann manuelle Sammlungen, dann „Unsortiert". Aktuelle Ablage wird nicht
+  // als Ziel angeboten. Eingang/isInbox wird nicht als Ziel angeboten.
+  const suggested = allBinders.filter(b => b.template && suggestedBinderIds.includes(b.id) && b.id !== binder?.id);
+  const manual    = allBinders.filter(b => !b.template && !b.isDefault && !b.isInbox && b.id !== binder?.id);
+  const locName   = isDefaultBinder ? 'Unsortiert' : (binder?.name ?? 'Unsortiert');
+  const locIcon   = binder?.icon ?? 'cards';
+  // Gibt es überhaupt eine Zielsammlung? (Vorschläge + manuelle + „Unsortiert",
+  // falls die Kopie nicht schon dort liegt). Wenn nicht → kein Verschieben-Feld.
+  const hasTargets = suggested.length > 0 || manual.length > 0 || !isDefaultBinder;
 
   return (
-    // Nach links verbreitert (negativer `marginLeft`, siehe `OVERSCAN_PX`) —
-    // die rechte Kante bleibt exakt an ihrer ursprünglichen Position, die
-    // Zeile bekommt per `marginLeft`/`width`-Ausgleich wieder ihre normale
-    // Breite/Position zurück — dadurch kann sie beim Ziehen frei nach links
-    // wandern, ohne an einem harten Rand abgeschnitten zu werden. KEIN
-    // `overflow-hidden` hier (auch keine eigene `rounded-xl`-Klasse) — das
-    // hätte den rechten/unteren Schatten der Zeile abgeschnitten, da der
-    // Wrapper-Rand dort exakt an der Zeilen-Box klebt. Unnötig: `html`/`body`
-    // haben bereits global `overflow-x: clip` (siehe globals.css) als
-    // Sicherheitsnetz gegen horizontales Scrollen durch den negativen Margin
-    // — ein eigenes Clipping auf diesem Wrapper bringt nichts außer dem
-    // abgeschnittenen Schatten.
-    <div className="relative" style={{ minHeight: 48, marginLeft: -OVERSCAN_PX, width: `calc(100% + ${OVERSCAN_PX}px)` }}>
-      {/* Löschen-Fläche — flächiges Rot, rechtsbündig, ohne Text-Label. Breite
-          wächst mit der Zieh-Distanz (`Math.abs(dragX)`) statt die ganze
-          Zeilenbreite zu belegen — sie liegt dadurch NIE unter dem noch
-          sichtbaren Teil der transluzenten `.glass`-Zeile (die sonst durch
-          die Transparenz hindurchscheinen würde). Bleibt "deaktiviert"
-          (gedämpftes Rot, nicht antippbar), solange ein Loslassen JETZT noch
-          nicht löschen würde — springt erst ab der Lösch-Schwelle auf voll
-          rot/deckend/antippbar. */}
-      <div
-        className="absolute inset-y-0 right-0 overflow-hidden rounded-r-xl"
-        style={{
-          width: dragX === 0 ? 0 : Math.abs(dragX) + DELETE_AREA_CORNER_OVERLAP_PX,
-          transition: dragging ? 'none' : settleTransition,
-        }}
-      >
-        {/* `inset-0` — der Button deckt IMMER die gesamte freigelegte Fläche
-            ab (kein Zusatzweg ins Rote ohne Button, sonst ließe sich über den
-            Button hinausziehen). Das Icon selbst wird NICHT mehr per Flexbox
-            innerhalb dieser wachsenden Box zentriert (das rechnete bei sehr
-            kleiner Zieh-Distanz falsch, weil Icon+Padding nicht hineinpassten
-            — sichtbar als leichtes Nachlinks-Rutschen zu Beginn des Swipes),
-            sondern eigenständig absolut auf den festen rechten Rand
-            positioniert (siehe `span` unten) — dadurch bleibt seine Position
-            über die ganze Ziehstrecke konstant, unabhängig von der Breite
-            dieser Box. */}
-        {/* Deaktiviert/aktiviert wird über eine ANDERE, aber weiterhin
-            voll deckende Rotvariante ausgedrückt (`--action-delete-muted`),
-            NICHT über `opacity` — `opacity` hätte mit dem durchgeschimmert,
-            was hinter dem Button liegt (unterschiedlich je nach Kontext),
-            wodurch der Button verwaschen/rosa statt erkennbar rot wirkte.
-            Die Blendung von gedämpft zu voll läuft kontinuierlich mit dem
-            Zug mit (`color-mix`, `swipeProgress` 0→1), statt erst exakt an
-            der Schwelle hart umzuschalten. */}
-        <button
-          onClick={commitDelete}
-          disabled={isDeleting || !canConfirmDelete}
-          className="absolute inset-0 text-white rounded-r-xl"
-          style={{
-            background: `color-mix(in srgb, var(--action-delete-muted), var(--action-delete) ${Math.round(swipeProgress * 100)}%)`,
-            transition: dragging ? 'none' : 'background-color 150ms ease-out',
-            pointerEvents: dragX === 0 ? 'none' : 'auto',
-          }}
-          aria-label="Karte löschen"
+    <div className="glass rounded-xl px-3 py-2.5 flex flex-col gap-2" style={{ opacity: isDeleting ? 0.5 : 1 }}>
+      {/* Zeile 1 — Sprache · Zustand · Löschen (rot, oben rechts, 2-Tap) */}
+      <div className="flex items-center gap-2">
+        <span className="w-7 h-7 rounded-full overflow-hidden shrink-0 flex items-center justify-center">
+          <LanguageFlag lang={copy.language} size={28} />
+        </span>
+        <span
+          className="text-role-label px-2 py-1 rounded-full border shrink-0"
+          style={{ borderColor: condColor, color: condColor }}
         >
-          <span className="absolute top-1/2 right-4 -translate-y-1/2">
-            <Minus size={20} strokeWidth={2.5} />
-          </span>
-        </button>
+          {CONDITION_LABEL[copy.condition] ?? copy.condition}
+        </span>
+        <Button
+          variant="primary"
+          accentColor="#c53030"
+          size="sm"
+          className="ml-auto shrink-0"
+          onClick={armDelete}
+          disabled={isDeleting}
+          aria-label="Aus Besitz löschen"
+        >
+          <Trash2 size={14} />{delArmed && <span className="ml-1">Wirklich?</span>}
+        </Button>
       </div>
 
-      {/* Vordergrund — Inhalt der Zeile, per Swipe verschiebbar. Bleibt beim
-          Löschen voll deckend (kein Opacity-Fade) — nur die Verschiebung
-          nach links macht sie unsichtbar. `.glass` statt `.glass-inner` —
-          "Glas auf Glas" (dieselbe Rezeptur wie die umgebende "Karten &
-          Preise"-Sektion, gestapelt), analog zum "Details"-Abschnitt weiter
-          oben, der seine Fakten-Zeilen ebenso in verschachteltem `.glass`
-          statt `.glass-inner` zeigt. `rounded-xl` IMMER auf der Zeile selbst
-          (nicht auf dem Wrapper, siehe oben), unverändert auch während des
-          Ziehens. Zusätzlich `overflow-hidden` auf der Zeile selbst (NICHT
-          auf dem Wrapper — der hätte sonst wieder den Schatten
-          abgeschnitten, siehe Kommentar oben): ohne das ragte der Inhalt
-          (z.B. die Sammlung-Pille) über die gerundete rechte Ecke hinaus in
-          die Löschen-Fläche hinein (sichtbar als eckig wirkende Ecke +
-          durchscheinende Pille über Rot) — `overflow-hidden` auf einem
-          Element clippt nur seine eigenen Kinder, nie seinen eigenen
-          `box-shadow`, daher bleibt der Schatten-Fix unberührt. Während des
-          Ziehens zusätzlich `.glass-swipe-solid`: die Blur von `.glass`
-          tastet auch leicht über den Elementrand hinaus ab und würde sonst
-          die danebenliegende rote Löschen-Fläche durch die Zeile
-          durchschimmern lassen — die blickdichte Variante hat dieselbe
-          Helligkeit, nur ohne Transparenz/Blur. Zusätzlich `.glass-swipe-
-          shadow`: ein zusätzlicher Schatten nach rechts verkauft das
-          "Zeile liegt auf der roten Löschen-Fläche"-Layering deutlicher.
-          `touchAction: 'pan-y'`: ohne das erkennt der Browser eine leichte
-          vertikale Abweichung während des (eigentlich horizontalen) Ziehens
-          selbst als Scroll-Versuch und übernimmt die Geste — bei dieser
-          niedrigen Zeile (nur ~48px hoch) reicht dafür schon ein winziges
-          Verrutschen, was die Geste per `pointercancel` sofort abbrach
-          ("Swipe ist vorbei, sobald man das Element verlässt"). `pan-y`
-          erlaubt dem Browser weiterhin natives vertikales Scrollen (falls
-          die Geste tatsächlich vertikal gemeint ist), beansprucht eine
-          überwiegend horizontale Geste aber nicht mehr für sich. */}
-      <div
-        className={`glass rounded-xl overflow-hidden flex items-center gap-2 px-2.5 py-2 relative ${dragX !== 0 ? 'glass-swipe-solid glass-swipe-shadow' : ''}`}
-        style={{
-          minHeight: 48,
-          marginLeft: OVERSCAN_PX,
-          width: `calc(100% - ${OVERSCAN_PX}px)`,
-          transform: `translateX(${dragX}px)`,
-          transition: dragging ? 'none' : settleTransition,
-          touchAction: 'pan-y',
-          // Eigener Rahmen überschreibt `.glass`s Standardrahmen nur, wenn
-          // "Prüfen" aktiv ist — sonst soll der normale Glas-Rahmen durchscheinen.
-          ...(copy.needsReview ? { border: '2px solid var(--pokedex-yellow)' } : undefined),
-        }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
-      >
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <span className="w-7 h-7 rounded-full overflow-hidden shrink-0 flex items-center justify-center">
-            <LanguageFlag lang={copy.language} size={28} />
+      {/* Zeile 2 — aktuelle Sammlung, volle Breite. Gibt es Zielsammlungen,
+          ist es ein Button (Tap öffnet die Auswahl); sonst reine Anzeige. */}
+      {hasTargets ? (
+        <Button
+          variant="secondary"
+          size="sm"
+          className="w-full justify-between"
+          onClick={() => setPickerOpen(true)}
+          aria-label="Sammlung wechseln"
+        >
+          <span className="inline-flex items-center gap-1.5 min-w-0">
+            <BinderIcon name={locIcon} size={14} className="shrink-0" />
+            <span className="truncate">{locName}</span>
           </span>
-          <span
-            className="text-role-label px-2 py-1 rounded-full border shrink-0"
-            style={{ borderColor: condColor, color: condColor }}
-          >
-            {CONDITION_LABEL[copy.condition] ?? copy.condition}
-          </span>
-          {/* Sammlung (Karten-Fluss-Modell): Dropdown NUR wenn es eine echte
-              Wahl gibt — Kopie liegt in Eingang oder einer manuellen Sammlung,
-              dann kann man sie nach „Unsortiert" schieben (manuelle Sammlungen
-              füllt man über die Seitenansicht, nicht hier). In Unsortiert
-              selbst oder einer Automatik-Sammlung (vom Sync verwaltet) reine
-              Anzeige ohne Chevron. */}
-          <div className="shrink-0 ml-auto" data-swipe-passthrough style={{ maxWidth: 190 }}>
-            {(!isDefaultBinder && !binder?.template && binder) ? (
-              <CustomSelect
-                variant="primary"
-                height="sm"
-                value={binder.id}
-                onChange={v => { if (v === UNSORTED_SENTINEL) onMoveToBinder(null); }}
-                options={[
-                  { value: binder.id, label: binder.name, icon: binder.icon ? <BinderIcon name={binder.icon} size={13} className="shrink-0" /> : undefined },
-                  { value: UNSORTED_SENTINEL, label: 'Unsortiert' },
-                ]}
-              />
-            ) : (
-              <span
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full glass-inner text-[12px] text-glass min-w-0"
-                title={binder?.template ? 'Automatische Sammlung — vom Sync verwaltet' : undefined}
-              >
-                {binder?.icon && <BinderIcon name={binder.icon} size={13} className="shrink-0" />}
-                <span className="truncate">{isDefaultBinder ? 'Unsortiert' : (binder?.name ?? 'Unsortiert')}</span>
-              </span>
-            )}
-          </div>
+          <ChevronRight size={14} className="opacity-70 shrink-0" />
+        </Button>
+      ) : (
+        <div className="w-full inline-flex items-center gap-1.5 min-w-0 text-role-label text-glass-muted px-1">
+          <BinderIcon name={locIcon} size={14} className="shrink-0" />
+          <span className="truncate">{locName}</span>
         </div>
-      </div>
+      )}
+
+      {/* Zielsammlung-Sheet: Vorschläge → manuelle Sammlungen → Unsortiert */}
+      <Sheet open={pickerOpen} onClose={() => setPickerOpen(false)} title="Verschieben nach">
+        <div className="flex flex-col">
+          {suggested.length > 0 && <p className="text-role-label text-glass-muted px-1 pt-1 pb-1">Vorschläge</p>}
+          {suggested.map(b => <TargetRow key={b.id} icon={b.icon ?? 'cards'} name={b.name} hint="Automatisch" onClick={() => move(b.id)} />)}
+          {manual.length > 0 && <p className="text-role-label text-glass-muted px-1 pt-3 pb-1">Manuelle Sammlungen</p>}
+          {manual.map(b => <TargetRow key={b.id} icon={b.icon ?? 'folder'} name={b.name} onClick={() => move(b.id)} />)}
+          {!isDefaultBinder && (
+            <>
+              <p className="text-role-label text-glass-muted px-1 pt-3 pb-1">Ablage</p>
+              <TargetRow icon="cards" name="Unsortiert" onClick={() => move(null)} />
+            </>
+          )}
+        </div>
+      </Sheet>
     </div>
+  );
+}
+
+/** Eine Zielsammlungs-Zeile im „Verschieben nach"-Sheet. */
+function TargetRow({ icon, name, hint, onClick }: {
+  icon: string; name: string; hint?: string; onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center gap-3 px-1 py-3 text-left border-b border-[var(--border)] last:border-b-0"
+    >
+      <BinderIcon name={icon} size={18} className="shrink-0 text-glass-muted" />
+      <span className="flex-1 truncate text-role-body text-glass">{name}</span>
+      {hint && <span className="text-[11px] text-glass-muted shrink-0">{hint}</span>}
+    </button>
   );
 }
 
@@ -799,20 +600,22 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     if (newItem) setFreeWishlistItem({ listId: list.id, itemId: newItem.id });
   }
 
-  // Karten-Fluss-Modell: die einzige Sammlungs-Aktion im Kartendetail ist
-  // „nach Unsortiert" (`targetBinderId` immer null). Verschiebt die Kopie
-  // exklusiv in „Unsortiert" (raus aus Eingang/manueller Sammlung, inkl.
-  // Slot-Bereinigung via `setCardExclusiveBinder`) und stößt danach den
-  // Vorlagen-Sync an — liegt die Karte jetzt in Unsortiert und passt zu einer
-  // automatischen Sammlung, wird sie sofort eingesammelt.
-  async function handleMoveToBinder(copy: CardDoc, _targetBinderId: string | null) {
-    const defaultId = await ensureDefaultBinder();
-    if (bindersOf(copy).some(b => b.id === defaultId)) return;
-    await setCardExclusiveBinder(copy.id, defaultId);
-    if (card) {
-      const matched = matchTemplateBinders(card, (await getBinders()).filter(b => b.template));
-      if (matched.length > 0) await syncTemplateBinders({ binderIds: matched.map(b => b.id) });
-    }
+  // Verschiebt die Kopie exklusiv in den Ziel-Binder (`null` = „Unsortiert").
+  // `setCardExclusiveBinder` entfernt sie aus allen anderen Sammlungen (inkl.
+  // Slot-Bereinigung) und legt sie ins Ziel. Danach werden die betroffenen
+  // Auto-Sammlungen re-gesynct: das gewählte Ziel (falls Auto → positioniert die
+  // Karte im Slot + entfernt sie aus dessen Wunschliste) sowie alle Auto-
+  // Sammlungen, aus denen die Karte evtl. herausgefallen ist (Slot frei →
+  // Wunschliste aktualisiert).
+  async function handleMoveToBinder(copy: CardDoc, targetBinderId: string | null) {
+    const targetId = targetBinderId ?? await ensureDefaultBinder();
+    if (bindersOf(copy).some(b => b.id === targetId)) return;
+    await setCardExclusiveBinder(copy.id, targetId);
+    const toSync = new Set<string>();
+    const targetBinder = resolvedBinders.find(b => b.id === targetId);
+    if (targetBinder?.template) toSync.add(targetId);
+    if (card) matchTemplateBinders(card, resolvedBinders.filter(b => b.template)).forEach(b => toSync.add(b.id));
+    if (toSync.size > 0) await syncTemplateBinders({ binderIds: [...toSync] });
     const fresh = await getBinders();
     setResolvedBinders(fresh);
     await reloadCopies();
@@ -1207,6 +1010,9 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                       {variantCopies.length > 0 && (
                         <div className="flex flex-col gap-1.5">
                           {(() => {
+                            const suggestedBinderIds = card
+                              ? matchTemplateBinders(card, resolvedBinders.filter(b => b.template)).map(b => b.id)
+                              : [];
                             return variantCopies.map(copy => {
                             const copyBinders = bindersOf(copy);
                             const isDeleting = deletingId === copy.id;
@@ -1221,11 +1027,8 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                 binder={binder}
                                 isDefaultBinder={isDefaultBinder}
                                 isDeleting={isDeleting}
-                                onMarkReviewed={async () => {
-                                  await markReviewed(copy.id);
-                                  window.dispatchEvent(new Event('review-count-changed'));
-                                  onSaved?.();
-                                }}
+                                allBinders={resolvedBinders}
+                                suggestedBinderIds={suggestedBinderIds}
                                 onMoveToBinder={(targetId) => handleMoveToBinder(copy, targetId)}
                                 onDelete={() => handleDelete(copy)}
                               />

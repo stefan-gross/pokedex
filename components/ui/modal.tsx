@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 /** Sperrt das Scrollen von `<body>` während ein Modal offen ist — sonst
@@ -96,9 +97,9 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
 
   useBodyScrollLock(mounted);
   useEscapeToClose(mounted, onClose);
-  if (!mounted) return null;
+  if (!mounted || typeof document === 'undefined') return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[60] flex items-end">
       <div
         className="absolute inset-0 transition-opacity duration-[250ms] glass-sheet-backdrop"
@@ -155,7 +156,8 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -169,8 +171,8 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
 export function Dialog({ open, onClose, title, children, style }: OverlayProps) {
   useBodyScrollLock(open);
   useEscapeToClose(open, onClose);
-  if (!open) return null;
-  return (
+  if (!open || typeof document === 'undefined') return null;
+  return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 transition-opacity duration-[250ms] glass-sheet-backdrop" onClick={onClose} />
       <div className="relative w-full max-w-sm rounded-2xl glass-sheet max-h-[85dvh] flex flex-col" style={style}>
@@ -186,6 +188,7 @@ export function Dialog({ open, onClose, title, children, style }: OverlayProps) 
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

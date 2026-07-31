@@ -458,7 +458,9 @@ export default function BinderDetailPage({ params }: Props) {
       </div>
 
       {isBox || view === 'grid' ? (
-        <GridView cards={cards} onCardTap={openDetail} prices={cardPrices} />
+        binder.isInbox
+          ? <InboxTriageView cards={cards} onCardTap={openDetail} prices={cardPrices} />
+          : <GridView cards={cards} onCardTap={openDetail} prices={cardPrices} />
       ) : view === 'binder' ? (
         <BinderOverview
           sheets={sheets}
@@ -667,6 +669,56 @@ function GridView({ cards, onCardTap, prices }: {
           />
         );
       })}
+    </div>
+  );
+}
+
+// ── Eingang-Triage-Ansicht ───────────────────────────────────────────────
+// Frisch gescannte/hinzugefügte Karten schnell wiederfinden: neueste zuerst,
+// gruppiert in „Heute / Diese Woche / Älter" (aus `addedAt`). Nutzt pro
+// Abschnitt das bestehende `GridView` weiter.
+function toDateSafe(ts: CardDoc['addedAt']): number {
+  const t = ts as unknown as { toDate?: () => Date; seconds?: number };
+  if (t?.toDate) return t.toDate().getTime();
+  if (typeof t?.seconds === 'number') return t.seconds * 1000;
+  return new Date(ts as unknown as string).getTime() || 0;
+}
+
+function InboxTriageView({ cards, onCardTap, prices }: {
+  cards: CardDoc[]; onCardTap: (c: CardDoc) => void; prices?: Map<string, PriceResult | null>;
+}) {
+  const sections = useMemo(() => {
+    const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
+    const weekAgo = new Date(startToday); weekAgo.setDate(weekAgo.getDate() - 7);
+    const tToday = startToday.getTime();
+    const tWeek = weekAgo.getTime();
+    const sorted = [...cards].sort((a, b) => toDateSafe(b.addedAt) - toDateSafe(a.addedAt));
+    const heute: CardDoc[] = [], woche: CardDoc[] = [], aelter: CardDoc[] = [];
+    for (const c of sorted) {
+      const t = toDateSafe(c.addedAt);
+      if (t >= tToday) heute.push(c);
+      else if (t >= tWeek) woche.push(c);
+      else aelter.push(c);
+    }
+    return [
+      { key: 'heute', label: 'Heute', cards: heute },
+      { key: 'woche', label: 'Diese Woche', cards: woche },
+      { key: 'aelter', label: 'Älter', cards: aelter },
+    ].filter(s => s.cards.length > 0);
+  }, [cards]);
+
+  if (cards.length === 0) return <GridView cards={cards} onCardTap={onCardTap} prices={prices} />;
+
+  return (
+    <div>
+      {sections.map(s => (
+        <section key={s.key}>
+          <h3 className="text-role-label text-glass-muted px-4 pt-3 pb-0.5">
+            {s.label} · {s.cards.length}
+          </h3>
+          <GridView cards={s.cards} onCardTap={onCardTap} prices={prices} />
+        </section>
+      ))}
     </div>
   );
 }
