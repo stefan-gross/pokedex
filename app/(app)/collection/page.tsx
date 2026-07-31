@@ -9,7 +9,8 @@ import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Switch } from '@/components/ui/switch';
 import { getCards } from '@/lib/firestore/cards';
-import { searchCatalog, searchCatalogByArtist, getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts, type CatalogCard } from '@/lib/firestore/catalog';
+import { getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts } from '@/lib/firestore/catalog';
+import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { applyFacetFilters, type FacetState, type FacetDim } from '@/lib/search/facet-filter';
@@ -245,83 +246,28 @@ function CollectionContent() {
   const doSearch = useCallback(async (q: string) => {
     if (!q.trim()) { setResults([]); setSets([]); return; }
     setSearchLoading(true);
-
-    const setAndReturn = (cards: CardInfo[]) => {
-      const setMap = new Map<string, string>();
-      cards.forEach(c => setMap.set(c.setId, c.setName));
-      setSets(Array.from(setMap.entries()).map(([id, name]) => ({ id, name })));
-      baseResultsRef.current = cards;
-      setResults(cards);
-    };
-
     try {
-      // Pokédex-Nummer-Erkennung: "#25" oder reine Zahl (1–1025)
-      const dexMatch = q.trim().match(/^#?(\d{1,4})$/);
-      const dexNum = dexMatch ? parseInt(dexMatch[1], 10) : null;
-      if (dexNum && dexNum >= 1 && dexNum <= 1025 && catalogCountRef.current > 0) {
-        const dexHits = await getCardsByDexNumber(dexNum, SEARCH_DISPLAY_LIMIT);
-        if (dexHits.length > 0) {
-          setAndReturn(dexHits.map(catalogCardToInfo));
-          setSearchSort('pokedex');
-          return;
-        }
-      }
-
-      // catalogCountRef statt catalogCount — keine Re-Render durch nachladen
-      if (catalogCountRef.current > 0) {
-        const words = q.trim().split(/\s+/).filter(Boolean);
-
-        // Namensteil per Firestore-Präfix — sucht DE (nameDeLower) UND EN
-        // (nameLower); der TCGdex-Katalog enthält deutsche Namen nativ, ein
-        // separater TCGdex-Fallback ist nicht mehr nötig.
-        const findByName = async (namePart: string): Promise<CatalogCard[]> =>
-          searchCatalog(namePart, filterSet, SEARCH_DISPLAY_LIMIT);
-
-        // 1. Gesamte Eingabe als Name (deckt auch mehrteilige Namen ab)
-        let hits = await findByName(q);
-
-        // 2. Mehrwort-Eingabe ("Knapfel Morii", "Morii Knapfel", "Yuka Knapf" …):
-        // pro Wort gilt Name ODER Illustrator, über alle Wörter hinweg UND —
-        // Kandidatenmenge pro Wort (Name-Treffer ∪ Illustrator-Treffer) bilden,
-        // dann über alle Wörter schneiden. Deckt beliebige Wortanzahl/
-        // -reihenfolge ab, ohne feste Wortblock-Splits durchprobieren zu müssen.
-        if (hits.length === 0 && words.length > 1 && words.length <= 6 && words.every(w => w.length >= MIN_COMBO_LEN)) {
-          // Höheres Limit als bei der reinen Anzeige-Suche (Schritt 3): hier
-          // wird nur als Kandidatenmenge für die Schnittmenge gebraucht, nicht
-          // direkt angezeigt. Firestore liefert ohne orderBy nach Dokument-ID
-          // (=tcgId) — alte Sets ("bw", "dp", "ecard", "ex…") sortieren VOR
-          // neuen ("sv…"), ein niedriges Limit würde produktive Illustratoren
-          // (z.B. 200+ Karten) systematisch auf ihre ältesten Karten
-          // beschränken und moderne Sets nie erreichen.
-          const perWordMaps = await Promise.all(words.map(async w => {
-            const [nameHits, artistHits] = await Promise.all([findByName(w), searchCatalogByArtist(w, SEARCH_CANDIDATE_LIMIT)]);
-            const map = new Map<string, CatalogCard>();
-            [...nameHits, ...artistHits].forEach(c => map.set(c.id, c));
-            return map;
-          }));
-          let ids = new Set(perWordMaps[0].keys());
-          for (const m of perWordMaps.slice(1)) ids = new Set([...ids].filter(id => m.has(id)));
-          if (ids.size > 0) {
-            hits = [...ids].map(id => perWordMaps.find(m => m.has(id))!.get(id)!);
-          }
-        }
-
-        // 3. Reine Illustrator-Suche (Einzelwort-Fallback — bei Mehrwort-
-        // Eingaben deckt Schritt 2 den Fall "alle Wörter nur im Illustrator-
-        // Feld" bereits als Sonderfall der Schnittmenge ab)
-        if (hits.length === 0 && q.trim().length >= MIN_COMBO_LEN) {
-          hits = await searchCatalogByArtist(q, SEARCH_DISPLAY_LIMIT);
-        }
-
-        if (hits.length > 0) { setAndReturn(hits.map(catalogCardToInfo)); return; }
-        setResults([]);
-        setSets([]);
-        return;
-      }
-
       // Kein lokaler Katalog (vor dem ersten Sync) → keine Treffer.
-      setResults([]);
-      setSets([]);
+      if (catalogCountRef.current === 0) { setResults([]); setSets([]); return; }
+
+      // Gemeinsame Server-Such-Pipeline (Dex → Name → Mehrwort Name∪Illustrator
+      // → Illustrator-Fallback), set-vorgefiltert über `filterSet`.
+      const { cards, sortHint } = await searchCatalogCards(q, {
+        setId: filterSet,
+        displayLimit: SEARCH_DISPLAY_LIMIT,
+        candidateLimit: SEARCH_CANDIDATE_LIMIT,
+        minComboLen: MIN_COMBO_LEN,
+      });
+
+      if (cards.length === 0) { setResults([]); setSets([]); return; }
+
+      const infos = cards.map(catalogCardToInfo);
+      const setMap = new Map<string, string>();
+      infos.forEach(c => setMap.set(c.setId, c.setName));
+      setSets(Array.from(setMap.entries()).map(([id, name]) => ({ id, name })));
+      baseResultsRef.current = infos;
+      setResults(infos);
+      if (sortHint === 'pokedex') setSearchSort('pokedex');
     } catch {
       setResults([]);
     } finally {
