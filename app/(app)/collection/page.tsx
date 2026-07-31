@@ -278,6 +278,10 @@ function CollectionContent() {
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    // Ladezustand SOFORT beim Tippen setzen (nicht erst im Fetch) — sonst blieben
+    // während der 350ms-Debounce die alten Treffer stehen. So erscheint das
+    // Karten-Skeleton unmittelbar und bleibt bis die neuen Ergebnisse da sind.
+    if (inputValue.trim()) setSearchLoading(true);
     debounceRef.current = setTimeout(() => {
       doSearch(inputValue);
       router.replace(
