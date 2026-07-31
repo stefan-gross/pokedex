@@ -19,6 +19,7 @@ import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { getRarityGroup, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
+import { filterCardsByQuery } from '@/lib/search/card-query';
 import { useWishlist } from '@/lib/hooks/use-wishlist';
 import type { CatalogCard } from '@/lib/firestore/catalog';
 import type { CardDoc, BinderDoc } from '@/types';
@@ -349,19 +350,11 @@ function SetDetailContent() {
     if (filter === 'owned')   result = result.filter(c => ownedTcgIds.has(c.id));
     if (filter === 'missing') result = result.filter(c => !ownedTcgIds.has(c.id));
 
-    // In-Set-Suche: Name (DE), englischer Name und Kartennummer (mit/ohne
-    // führende Nullen) — alle Set-Karten liegen bereits client-seitig vor.
-    const q = search.trim().toLowerCase();
-    if (q) {
-      const qNum = q.replace(/^0+/, '');
-      result = result.filter(c => {
-        const num = c.number.toLowerCase();
-        return c.name.toLowerCase().includes(q)
-          || (c.nameEn?.toLowerCase().includes(q) ?? false)
-          || num.includes(q)
-          || num.replace(/^0+/, '').includes(qNum);
-      });
-    }
+    // In-Set-Suche über die geteilte Such-Logik (`lib/search/card-query`):
+    // Name (DE), englischer Name, **Illustrator**, Nummer (mit/ohne führende
+    // Nullen) und Dex-Nr, inkl. Mehrwort-Schnitt — identische Semantik wie die
+    // Suche-Seite. Alle Set-Karten liegen bereits client-seitig vor.
+    result = filterCardsByQuery(result, search);
 
     if (rarityFilter.size > 0) {
       result = result.filter(c => {
@@ -539,7 +532,7 @@ function SetDetailContent() {
                       value={search}
                       onChange={setSearch}
                       onClear={() => setSearch('')}
-                      placeholder="Karte suchen (Name oder Nummer)"
+                      placeholder="Suchen (Name, Nummer, Illustrator)"
                       size="sm"
                     />
                     <ButtonGroup
