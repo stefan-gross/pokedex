@@ -19,6 +19,22 @@ export interface CatalogSearchResult {
   sortHint?: 'pokedex';
 }
 
+/** Trifft ein einzelnes Suchwort eine Karte? (Name EN/DE, Illustrator, Nummer)
+ *  — Substring-Vergleich, damit z.B. „morii" auch „Yuka Morii" trifft. */
+function matchesWord(c: CatalogCard, word: string): boolean {
+  const w = word.toLowerCase();
+  if (
+    (c.nameLower ?? c.name.toLowerCase()).includes(w) ||
+    (c.nameDeLower ?? c.nameDe?.toLowerCase() ?? '').includes(w) ||
+    (c.artist?.toLowerCase() ?? '').includes(w)
+  ) return true;
+  // Reine Zahl: Kartennummer mit/ohne führende Nullen
+  if (/^\d+$/.test(w)) {
+    return (c.number ?? '').replace(/^0+/, '') === w.replace(/^0+/, '');
+  }
+  return false;
+}
+
 /**
  * Server-seitige Katalog-Suche — die gemeinsame Such-Semantik der Suche-Seite,
  * gekapselt und **set-vorfilterbar**. Ablauf (wie zuvor inline in
@@ -68,17 +84,27 @@ export async function searchCatalogCards(
   // 1. Gesamte Eingabe als Name
   let hits = await byName(q);
 
-  // 2. Mehrwort: pro Wort Name ∪ Illustrator, Schnittmenge über alle Wörter
+  // 2. Mehrwort: jedes Wort muss (in Name ODER Illustrator) vorkommen, UND über
+  //    alle Wörter. Vorgehen: pro Wort die Kandidaten (Name ∪ Illustrator) holen,
+  //    dann die KLEINSTE (selektivste) Menge als Basis nehmen und in-memory
+  //    prüfen, dass ALLE Wörter treffen.
+  //
+  //    Warum die kleinste Menge + in-memory statt Schnittmenge gekappter Server-
+  //    Mengen: ein häufiges Wort (z.B. Vorname „yuka" über viele Illustratoren)
+  //    läuft ins `candidateLimit` und schnitte gültige Treffer ab. Die seltenste
+  //    Abfrage (z.B. ein Pokémon-Name mit ~80 Karten) ist dagegen vollständig; die
+  //    übrigen Wörter werden am `artist`/`name`-Feld der Karte selbst geprüft —
+  //    limit-unabhängig. So findet „Glurak Yuka Morii" die Glurak-Karten von Yuka
+  //    Morii, und „Yuka Morii" liefert alle Yuka-Morii-Karten (korrekte Set-Zähler).
   if (hits.length === 0 && words.length > 1 && words.length <= 6 && words.every(w => w.length >= minLen)) {
-    const perWordMaps = await Promise.all(words.map(async w => {
+    const perWord = await Promise.all(words.map(async w => {
       const [nameHits, artistHits] = await Promise.all([byName(w), byArtist(w, candidateLimit)]);
       const map = new Map<string, CatalogCard>();
       [...nameHits, ...artistHits].forEach(c => map.set(c.id, c));
       return map;
     }));
-    let ids = new Set(perWordMaps[0].keys());
-    for (const m of perWordMaps.slice(1)) ids = new Set([...ids].filter(id => m.has(id)));
-    if (ids.size > 0) hits = [...ids].map(id => perWordMaps.find(m => m.has(id))!.get(id)!);
+    const base = perWord.reduce((a, b) => (b.size < a.size ? b : a));
+    hits = [...base.values()].filter(c => words.every(w => matchesWord(c, w)));
   }
 
   // 3. Reine Illustrator-Suche (Einzelwort-Fallback)
