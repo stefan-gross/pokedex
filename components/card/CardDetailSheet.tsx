@@ -139,9 +139,9 @@ export function OwnedCopyRow({
 
   // Zielsammlungen fürs Sheet: Vorschläge (passende Auto-Sammlungen) zuerst,
   // dann manuelle Sammlungen, dann „Unsortiert". Aktuelle Ablage wird nicht
-  // als Ziel angeboten. Eingang/isInbox wird nicht als Ziel angeboten.
+  // als Ziel angeboten.
   const suggested = allBinders.filter(b => b.template && suggestedBinderIds.includes(b.id) && b.id !== binder?.id);
-  const manual    = allBinders.filter(b => !b.template && !b.isDefault && !b.isInbox && b.id !== binder?.id);
+  const manual    = allBinders.filter(b => !b.template && !b.isDefault && b.id !== binder?.id);
   const locName   = isDefaultBinder ? 'Unsortiert' : (binder?.name ?? 'Unsortiert');
   const locIcon   = binder?.icon ?? 'cards';
   // Gibt es überhaupt eine Zielsammlung? (Vorschläge + manuelle + „Unsortiert",

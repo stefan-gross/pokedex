@@ -19,7 +19,7 @@ export function AutomaticBadge({ size = 'md' }: { size?: 'sm' | 'md' }) {
   );
 }
 
-/** Pin-Badge für feste System-Sammlungen (Eingang/Meine Sammlung). */
+/** Pin-Badge für die feste System-Sammlung „Unsortiert". */
 export function SystemBadge({ size = 'md' }: { size?: 'sm' | 'md' }) {
   const dim = size === 'sm' ? 18 : 24;
   return (
@@ -35,11 +35,11 @@ export function SystemBadge({ size = 'md' }: { size?: 'sm' | 'md' }) {
 }
 
 /** Kleines Badge, das den Sammlungstyp eines konkreten Binders anzeigt: „A"
- *  für automatische Vorlagen-Sammlungen (`template` gesetzt), Pin für feste
- *  System-Sammlungen (`isInbox`/`isDefault`). Normale, manuell gepflegte
+ *  für automatische Vorlagen-Sammlungen (`template` gesetzt), Pin für die feste
+ *  System-Sammlung „Unsortiert" (`isDefault`). Normale, manuell gepflegte
  *  Sammlungen bekommen kein Badge — das ist der unauffällige Standardfall. */
 export function CollectionTypeBadge({ binder, size = 'md' }: { binder: BinderDoc; size?: 'sm' | 'md' }) {
   if (binder.template) return <AutomaticBadge size={size} />;
-  if (binder.isDefault || binder.isInbox) return <SystemBadge size={size} />;
+  if (binder.isDefault) return <SystemBadge size={size} />;
   return null;
 }

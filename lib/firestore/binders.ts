@@ -91,26 +91,6 @@ export async function ensureDefaultBinder(): Promise<string> {
   return addBinder({ name: 'Unsortiert', isDefault: true, sortOrder: -1, collectionType: 'box', color: '#ffffff', icon: 'cards' });
 }
 
-/** „Eingang"-Inbox (früher „Neue Karten"): Sammelt ungespeicherte Karten beim
- *  Verlassen des Scanners. Persistent — wird NICHT auto-gelöscht wenn leer
- *  (UI blendet ihn dann aus). Icon 'alert' + Farbe Weiß, siehe Migration in
- *  `app/(app)/binders/page.tsx`. */
-export async function ensureInboxBinder(): Promise<string> {
-  const binders = await getBinders();
-  const byFlag = binders.find(b => b.isInbox);
-  if (byFlag) {
-    // Alte, noch nicht umbenannte Bestandsdaten migrieren.
-    if (byFlag.name === 'Neue Karten') await updateBinder(byFlag.id, { name: 'Eingang' });
-    return byFlag.id;
-  }
-  const byName = binders.find(b => b.name === 'Neue Karten' || b.name === 'Eingang');
-  if (byName) {
-    await updateBinder(byName.id, { isInbox: true, sortOrder: -2, collectionType: 'box', name: 'Eingang', color: '#ffffff', icon: 'alert' });
-    return byName.id;
-  }
-  return addBinder({ name: 'Eingang', isInbox: true, sortOrder: -2, collectionType: 'box', color: '#ffffff', icon: 'alert' });
-}
-
 /** Entfernt eine Kopie aus ALLEN Bindern außer `keepBinderId` — setzt das
  *  Exklusivitäts-Prinzip durch (eine physische Kopie gehört zu genau EINER
  *  Sammlung). Bei Bindern mit positionalem Layout (`pages`, manuelle
@@ -140,13 +120,10 @@ export async function setCardExclusiveBinder(cardId: string, targetBinderId: str
   await addCardToBinder(targetBinderId, cardId);
 }
 
-/** Entfernt eine Karte aus einem Binder und löscht den Default-Binder automatisch wenn er danach leer ist. */
+/** Entfernt eine Karte aus einem Binder. „Unsortiert" (isDefault) ist der
+ *  dauerhafte Hub und wird NICHT gelöscht, wenn er leer wird. */
 export async function removeCardFromBinderAndCleanup(binderId: string, cardId: string): Promise<void> {
   await removeCardFromBinder(binderId, cardId);
-  const binder = await getBinder(binderId);
-  if (binder?.isDefault && binder.cardIds.length === 0) {
-    await deleteBinder(binderId);
-  }
 }
 
 /** Löscht einen ganzen Binder sicher: enthaltene Karten werden zuerst zurück

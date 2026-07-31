@@ -315,7 +315,7 @@ export default function BinderDetailPage({ params }: Props) {
     );
   }
 
-  const isProtected = !!binder.isDefault || !!binder.isInbox;
+  const isProtected = !!binder.isDefault;
   const binderColor = binder.color ?? '#e53e3e'; // var(--pokedex-red) als Hex — tintedGlassStyle() braucht echtes Hex, kein CSS-Var
   const layoutCols = binderSizeCols(binderSize);
   const layoutLabel = isBox ? 'Box' : binderSizeLabel(binderSize);
@@ -458,8 +458,8 @@ export default function BinderDetailPage({ params }: Props) {
       </div>
 
       {isBox || view === 'grid' ? (
-        binder.isInbox
-          ? <InboxTriageView cards={cards} onCardTap={openDetail} prices={cardPrices} />
+        binder.isDefault
+          ? <RecentTriageView cards={cards} onCardTap={openDetail} prices={cardPrices} />
           : <GridView cards={cards} onCardTap={openDetail} prices={cardPrices} />
       ) : view === 'binder' ? (
         <BinderOverview
@@ -684,7 +684,9 @@ function toDateSafe(ts: CardDoc['addedAt']): number {
   return new Date(ts as unknown as string).getTime() || 0;
 }
 
-function InboxTriageView({ cards, onCardTap, prices }: {
+/** Triage-Ansicht für „Unsortiert": frische Karten (Heute/Diese Woche/Älter
+ *  nach `addedAt`, neueste zuerst) schnell wiederfinden, um sie zuzuordnen. */
+function RecentTriageView({ cards, onCardTap, prices }: {
   cards: CardDoc[]; onCardTap: (c: CardDoc) => void; prices?: Map<string, PriceResult | null>;
 }) {
   const sections = useMemo(() => {

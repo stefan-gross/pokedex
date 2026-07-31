@@ -24,25 +24,27 @@ export default function BindersPage() {
 
   const load = async () => {
     try {
-      const [binderData, cardData] = await Promise.all([getBinders(), getCards()]);
-      // Alte Bestandsdaten (Name/Icon/Farbe der beiden Systemsammlungen)
-      // einmalig auf den aktuellen Stand anheben: Eingang war „Neue Karten",
-      // Unsortiert war „Meine Sammlung" — beide bekommen zusätzlich Icon +
-      // weiße Farbe, falls das bei der Erstellung noch fehlte.
+      let binderData = await getBinders();
+      // Einmalige Migration zum neuen Modell: der frühere „Eingang" (isInbox)
+      // entfällt — seine Karten wandern nach „Unsortiert", der Binder wird
+      // gelöscht (deleteBinderCascade übernimmt beides). Danach neu laden.
       const inbox = binderData.find(b => b.isInbox);
-      if (inbox && (inbox.name !== 'Eingang' || inbox.icon !== 'alert' || inbox.color !== '#ffffff')) {
-        await updateBinder(inbox.id, { name: 'Eingang', color: '#ffffff', icon: 'alert' });
-        Object.assign(inbox, { name: 'Eingang', color: '#ffffff', icon: 'alert' });
+      if (inbox) {
+        await deleteBinderCascade(inbox);
+        binderData = await getBinders();
       }
+      const cardData = await getCards();
+      // Alte Bestandsdaten: „Unsortiert" war früher „Meine Sammlung" — Name/
+      // Icon/Farbe einmalig auf den aktuellen Stand anheben, falls nötig.
       const def = binderData.find(b => b.isDefault);
       if (def && (def.name !== 'Unsortiert' || def.icon !== 'cards' || def.color !== '#ffffff')) {
         await updateBinder(def.id, { name: 'Unsortiert', color: '#ffffff', icon: 'cards' });
         Object.assign(def, { name: 'Unsortiert', color: '#ffffff', icon: 'cards' });
       }
-      // Inbox „Eingang" und Default „Unsortiert" immer zuerst — danach normal nach sortOrder.
+      // „Unsortiert" (Default) immer zuerst — danach normal nach sortOrder.
       const sorted = [...binderData].sort((a, b) => {
-        const aRank = a.isInbox ? 0 : a.isDefault ? 1 : 2;
-        const bRank = b.isInbox ? 0 : b.isDefault ? 1 : 2;
+        const aRank = a.isDefault ? 0 : 1;
+        const bRank = b.isDefault ? 0 : 1;
         if (aRank !== bRank) return aRank - bRank;
         return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
       });
@@ -75,11 +77,10 @@ export default function BindersPage() {
     return m;
   }, [cards]);
 
-  // Anzahl der fest vorangestellten, ungelöschbaren Binder (Inbox „Neue
-  // Karten" + Standard „Meine Sammlung") — die "+"-Kachel wird direkt
-  // dahinter eingefügt statt ganz ans Grid-Ende.
+  // Anzahl der fest vorangestellten, ungelöschbaren Binder (nur „Unsortiert") —
+  // die "+"-Kachel wird direkt dahinter eingefügt statt ganz ans Grid-Ende.
   const protectedCount = useMemo(
-    () => binders.filter(b => b.isInbox || b.isDefault).length,
+    () => binders.filter(b => b.isDefault).length,
     [binders],
   );
 
@@ -270,10 +271,9 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
   // Bei hellen Sammlungsfarben (z.B. Weiß) wäre weißer Text auf der
   // ebenfalls hellen Banderole unlesbar — luminanzbasierte Kontrastfarbe.
   const bandTextColor = readableTextColor(bandColor);
-  // Inbox und Standard-Binder sind strukturell wichtig (u.a. Scanner-Ziel)
-  // — im Bearbeiten-Modus weder wackeln noch löschbar, analog zum
-  // bestehenden `!binder.isDefault`-Schutz im Aktionen-Menü der Detailseite.
-  const isProtected = !!binder.isDefault || !!binder.isInbox;
+  // „Unsortiert" (Default) ist der dauerhafte Hub (u.a. Scanner-Ziel) — im
+  // Bearbeiten-Modus weder wackeln noch löschbar.
+  const isProtected = !!binder.isDefault;
   // Negativer Start-Versatz (aus der Binder-ID abgeleitet, daher stabil
   // zwischen Renders) — sonst wackeln alle Kacheln exakt synchron, echtes
   // iOS wirkt dagegen asynchron/organisch, da jedes Icon zufällig phasenverschoben ist.

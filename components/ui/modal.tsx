@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { Button } from './button';
 
 /** Sperrt das Scrollen von `<body>` während ein Modal offen ist — sonst
  *  scrollt der Hintergrund unter dem Overlay mit (iOS-Safari-typisches
@@ -148,9 +149,7 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
           {!header && title && (
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold">{title}</h2>
-              <button onClick={onClose} className="w-11 h-11 rounded-full glass-inner flex items-center justify-center shrink-0" aria-label="Schließen">
-                <X size={20} />
-              </button>
+              <Button variant="ghost" onClick={onClose} icon={<X />} className="shrink-0" aria-label="Schließen" />
             </div>
           )}
           {children}
@@ -180,9 +179,7 @@ export function Dialog({ open, onClose, title, children, style }: OverlayProps) 
           {title && (
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold">{title}</h2>
-              <button onClick={onClose} className="w-11 h-11 rounded-full glass-inner flex items-center justify-center shrink-0" aria-label="Schließen">
-                <X size={20} />
-              </button>
+              <Button variant="ghost" onClick={onClose} icon={<X />} className="shrink-0" aria-label="Schließen" />
             </div>
           )}
           {children}

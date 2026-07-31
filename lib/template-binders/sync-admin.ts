@@ -47,13 +47,12 @@ export async function syncTemplateBindersAdmin(opts?: { binderIds?: string[] }):
     }
   }
 
-  // Automatische Sammlungen ziehen NUR aus „Unsortiert" + ihren eigenen,
-  // bereits gehaltenen Karten (siehe Kommentar in sync.ts).
-  const defaultCardIds = allBinders.find(b => b.id === defaultBinderId)?.cardIds ?? [];
-
+  // Automatische Sammlungen greifen NIE von sich aus nach Karten (kein stilles
+  // Übernehmen) — sie arrangieren nur ihre EIGENEN Karten + pflegen die
+  // Wunschliste (siehe Kommentar in sync.ts).
   for (const binder of templateBinders) {
     try {
-      const poolIds = new Set<string>([...defaultCardIds, ...binder.cardIds]);
+      const poolIds = new Set<string>(binder.cardIds);
       const candidateCards = ownedCards.filter(c => poolIds.has(c.id));
       let wl = allWishlists.find(w => w.templateBinderId === binder.id);
       if (!wl) {

@@ -6,7 +6,7 @@ import { ChevronDown, Plus } from 'lucide-react';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition, CardLanguage, CardVariant, CardDoc, BinderDoc } from '@/types';
 import { addCard, getCardsByTcgId } from '@/lib/firestore/cards';
-import { getBinders, addCardToBinder, ensureInboxBinder } from '@/lib/firestore/binders';
+import { getBinders, addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
 import { LANGUAGES, CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
 import { CardPrice } from '@/components/card/CardPrice';
 import { BinderIcon } from '@/lib/binder-icons';
@@ -37,11 +37,11 @@ interface Props {
  *  Liquid-Glass-Design, folgt dem App-Theme; im Scanner per erzwungener
  *  `.dark`-Klasse immer dunkel (siehe Handoff design_handoff_add_drawer).
  *
- *  Karten-Fluss-Modell (siehe Plan „Karten-Fluss in Sammlungen"): jede neu
- *  hinzugefügte Karte landet IMMER im „Eingang" (Posteingang). Es gibt hier
- *  bewusst KEINE Sammlungs-Auswahl mehr — sortiert wird danach (Kartendetail:
- *  „nach Unsortiert"; manuelle Sammlungen über die Seitenansicht; automatische
- *  Sammlungen ziehen selbst aus Unsortiert). */
+ *  Karten-Fluss-Modell: jede neu hinzugefügte Karte landet IMMER in
+ *  „Unsortiert" (dem dauerhaften Hub). Es gibt hier bewusst KEINE Sammlungs-
+ *  Auswahl — zugeordnet wird danach (Kartendetail: Vorschläge/„Verschieben nach";
+ *  manuelle Sammlungen über die Seitenansicht). Automatische Sammlungen greifen
+ *  NICHT von selbst zu — sie schlagen nur vor. */
 export function AddToCollectionModal({
   card, preVariant, preCondition, preLanguage,
   fromScanner = false,
@@ -121,11 +121,10 @@ export function AddToCollectionModal({
         // gewählt → kein Review-Status.
         needsReview: fromScanner,
       });
-      // Immer in den „Eingang" (Posteingang) — von dort sortiert der Nutzer
-      // weiter. Kein direktes Zuweisen zu einer Sammlung mehr (siehe
+      // Immer nach „Unsortiert" — von dort ordnet der Nutzer weiter zu (siehe
       // Fluss-Modell im Klassen-Kommentar).
-      const inboxId = await ensureInboxBinder();
-      await addCardToBinder(inboxId, cardId);
+      const unsortedId = await ensureDefaultBinder();
+      await addCardToBinder(unsortedId, cardId);
       onSaved();
     } catch (err) {
       console.error('Save error:', err);
@@ -272,7 +271,7 @@ export function AddToCollectionModal({
           icon={saving ? undefined : <Plus strokeWidth={2.5} />}
           className="w-full shrink-0"
         >
-          {saving ? 'Wird gespeichert…' : 'In den Eingang'}
+          {saving ? 'Wird gespeichert…' : 'Zu Unsortiert'}
         </Button>
       </div>
     </div>

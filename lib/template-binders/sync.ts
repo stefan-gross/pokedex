@@ -88,16 +88,14 @@ export async function syncTemplateBinders(opts?: { binderIds?: string[] }): Prom
     ensureDefaultBinder(),
   ]);
 
-  // Automatische Sammlungen ziehen NUR aus „Unsortiert" (dem Default-Binder) —
-  // plus ihre eigenen, bereits gehaltenen Karten (sonst würden sie ihre
-  // aktuellen Gewinner verlieren, weil die exklusiv im Vorlagen-Binder liegen
-  // und nicht mehr in Unsortiert). Karten in Eingang oder manuellen Sammlungen
-  // bleiben unangetastet.
-  const defaultCardIds = allBinders.find(b => b.id === defaultBinderId)?.cardIds ?? [];
-
+  // Automatische Sammlungen greifen NIE von sich aus nach Karten (kein stilles
+  // Übernehmen) — sie arrangieren ausschließlich ihre EIGENEN, bereits
+  // enthaltenen Karten in Slots und pflegen ihre Wunschliste. Karten kommen nur
+  // in eine automatische Sammlung, wenn der Nutzer sie selbst dorthin verschiebt
+  // (Vorschläge im Kartendetail). Unsortiert bleibt unangetastet.
   for (const binder of templateBinders) {
     try {
-      const poolIds = new Set<string>([...defaultCardIds, ...binder.cardIds]);
+      const poolIds = new Set<string>(binder.cardIds);
       const candidateCards = ownedCards.filter(c => poolIds.has(c.id));
       const { moved, changedCardEvents } = await syncOneBinder(binder, candidateCards, allWishlists, defaultBinderId);
       result.moved += moved;

@@ -5,7 +5,7 @@ import { Loader2, Plus } from 'lucide-react';
 import type { CardCondition, CardLanguage, CardVariant } from '@/types';
 import type { CardInfo } from '@/lib/card-info';
 import { addCard } from '@/lib/firestore/cards';
-import { addCardToBinder, ensureInboxBinder } from '@/lib/firestore/binders';
+import { addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
 import { LANGUAGES, CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
 
 export interface BulkJob {
@@ -38,10 +38,9 @@ function mode<T extends string | undefined>(items: T[]): T | undefined {
   return best;
 }
 
-/** Mehrfach-Hinzufügen — wie der Einzel-Drawer landen alle Karten IMMER im
- *  „Eingang" (Posteingang); keine Sammlungs-Auswahl mehr (siehe Fluss-Modell,
- *  Plan „Karten-Fluss in Sammlungen"). Sortiert wird danach von Hand bzw. per
- *  Automatik aus Unsortiert. */
+/** Mehrfach-Hinzufügen — wie der Einzel-Drawer landen alle Karten IMMER in
+ *  „Unsortiert" (dem dauerhaften Hub); keine Sammlungs-Auswahl. Zugeordnet wird
+ *  danach von Hand (Vorschläge im Kartendetail / Seitenansicht). */
 export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved }: Props) {
   // Default-Werte aus den Jobs ableiten (häufigster Wert)
   const defaultVariant   = (mode(jobs.map(j => j.editedVariant)) ?? 'standard') as CardVariant;
@@ -67,7 +66,7 @@ export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved
     setSaving(true);
     setProgress(0);
     try {
-      const inboxId = await ensureInboxBinder();
+      const unsortedId = await ensureDefaultBinder();
       for (const job of jobs) {
         const card = job.card;
         try {
@@ -90,7 +89,7 @@ export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved
             tcgImageUrl: card.imgLargeDe || card.imgLarge,
             needsReview: true,
           });
-          await addCardToBinder(inboxId, cardId);
+          await addCardToBinder(unsortedId, cardId);
           onJobSaved(job.id);
         } catch (err) {
           console.error('[bulk-modal] error for job', job.id, err);
@@ -114,7 +113,7 @@ export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved
           {jobs.length} {jobs.length === 1 ? 'Karte' : 'Karten'} hinzufügen
         </h2>
         <p className="text-xs text-muted-foreground mb-3">
-          Werte werden für alle ausgewählten Karten übernommen. Sie landen im Eingang.
+          Werte werden für alle ausgewählten Karten übernommen. Sie landen in Unsortiert.
         </p>
 
         {/* Variant + Condition */}
@@ -185,7 +184,7 @@ export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved
           ) : (
             <>
               <Plus size={18} strokeWidth={2.5} />
-              {jobs.length} {jobs.length === 1 ? 'Karte' : 'Karten'} in den Eingang
+              {jobs.length} {jobs.length === 1 ? 'Karte' : 'Karten'} zu Unsortiert
             </>
           )}
         </button>

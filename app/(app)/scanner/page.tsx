@@ -14,7 +14,7 @@ import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
 import { resolveScannedCard } from '@/lib/scan/resolve-card';
 import type { CatalogCard } from '@/lib/firestore/catalog';
 import { addCard, getCardsByTcgId } from '@/lib/firestore/cards';
-import { addCardToBinder, ensureDefaultBinder, ensureInboxBinder } from '@/lib/firestore/binders';
+import { addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
 import { BulkAddToCollectionModal } from '@/components/scanner/BulkAddToCollectionModal';
 import { ValueBadge } from '@/components/card/ValueBadge';
 import { CardPrice } from '@/components/card/CardPrice';
@@ -629,7 +629,7 @@ export default function ScannerPage() {
     if (targets.length === 0) { router.push('/'); return; }
     setClosingSaving(true);
     try {
-      const inboxId = await ensureInboxBinder();
+      const unsortedId = await ensureDefaultBinder();
       for (const job of targets) {
         const card = job.result!.card!;
         const v = (job.editedVariant ?? card.variants?.[0] ?? 'standard') as CardVariant;
@@ -655,7 +655,7 @@ export default function ScannerPage() {
             tcgImageUrl: card.imgLargeDe || card.imgLarge,
             needsReview: true,
           });
-          await addCardToBinder(inboxId, cardId);
+          await addCardToBinder(unsortedId, cardId);
         } catch (err) {
           console.error('[scanner-close] save error for job', job.id, err);
         }
