@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Heart, Lock } from 'lucide-react';
 import { getWishlists, ensureDefaultWishlist } from '@/lib/firestore/wishlists';
+import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import type { WishlistDoc } from '@/types';
 
 /** Übersicht aller Wunschlisten — analog zur Sammlungsübersicht
@@ -48,6 +49,8 @@ export default function WishlistOverviewPage() {
           <WishlistTile key={list.id} list={list} />
         ))}
       </div>
+
+      <ScrollToTopButton />
     </div>
   );
 }

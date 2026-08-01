@@ -39,6 +39,7 @@ import { Card } from '@/components/card/Card';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal';
+import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
 import { findVariantPrice, pickTrendPrice } from '@/lib/prices/value-tier';
@@ -534,6 +535,8 @@ export default function BinderDetailPage({ params }: Props) {
           onSaved={load}
         />
       )}
+
+      <ScrollToTopButton />
     </div>
   );
 }

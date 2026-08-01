@@ -12,6 +12,7 @@ import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { Card } from '@/components/card/Card';
 import { Button } from '@/components/ui/button';
+import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
 import { pickTrendPrice } from '@/lib/prices/value-tier';
 import type { WishlistDoc, WishlistItem, CardDoc } from '@/types';
@@ -316,6 +317,8 @@ export default function WishlistDetailPage({ params }: Props) {
           onSaved={load}
         />
       )}
+
+      <ScrollToTopButton />
     </div>
   );
 }

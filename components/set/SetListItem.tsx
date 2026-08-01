@@ -21,6 +21,8 @@ interface SetListItemProps {
   symbolUrl?: string;
   /** pokemontcg.io-Serie, entscheidet ob Symbol statt Kürzel gezeigt wird */
   series?: string;
+  /** ISO-Erscheinungsdatum (YYYY-MM-DD) — wird als „Monat Jahr" angezeigt */
+  releaseDate?: string;
   href: string;
   /** Trennlinie unten (für gruppierte Listen) */
   separator?: boolean;
@@ -33,13 +35,22 @@ interface SetListItemProps {
  * Wiederverwendbares Set-Listenelement mit Logo, Name, Fortschrittsbalken.
  * Genutzt auf Dashboard und in der Sets-Übersicht.
  */
+/** ISO-Datum → „März 2025"; ungültig/fehlend → null (nichts anzeigen). */
+function formatMonthYear(iso?: string): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+}
+
 export function SetListItem({
-  setId, name, nameDe, logoDe, owned, total, ptcgoCode, symbolUrl, series, href, separator = false,
+  setId, name, nameDe, logoDe, owned, total, ptcgoCode, symbolUrl, series, releaseDate, href, separator = false,
   variant = 'default',
 }: SetListItemProps) {
   const displayName = nameDe ?? name;
   const logoSrc     = logoDe ?? "";
   const pct         = total ? Math.round((owned / total) * 100) : null;
+  const releaseLabel = formatMonthYear(releaseDate);
   const isSymbolOnlySet = !!series && SYMBOL_ONLY_SERIES.includes(series);
   const isGlass = variant === 'glass';
 
@@ -105,8 +116,9 @@ export function SetListItem({
             style={{ width: `${pct ?? 0}%`, ...(isGlass ? {} : { background: 'var(--pokedex-red)' }) }}
           />
         </div>
-        <div className={`text-[11px] tabular-nums ${isGlass ? 'text-glass-muted' : 'text-muted-foreground'}`}>
-          {owned} / {total ?? '?'} Karten
+        <div className={`text-[11px] tabular-nums flex items-center justify-between gap-2 ${isGlass ? 'text-glass-muted' : 'text-muted-foreground'}`}>
+          <span>{owned} / {total ?? '?'} Karten</span>
+          {releaseLabel && <span className="shrink-0">{releaseLabel}</span>}
         </div>
       </div>
     </Link>

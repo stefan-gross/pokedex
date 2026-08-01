@@ -9,6 +9,7 @@ import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { CreateTemplateBinderModal } from '@/components/binder/CreateTemplateBinderModal';
 import { BinderCover } from '@/components/binder/BinderCover';
 import { CollectionTypeBadge } from '@/components/binder/CollectionTypeBadge';
+import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import { readableTextColor } from '@/lib/color-utils';
@@ -211,6 +212,8 @@ export default function BindersPage() {
           onSaved={() => { setCreateMode('closed'); load(); }}
         />
       )}
+
+      <ScrollToTopButton />
     </div>
   );
 }
