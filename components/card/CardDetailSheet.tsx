@@ -23,7 +23,7 @@ import { getSetById } from '@/lib/firestore/sets';
 import { CardImage } from '@/components/card/CardImage';
 import { EvolutionTree } from '@/components/card/EvolutionTree';
 import { CardNameLabel } from '@/components/card/CardNameLabel';
-import type { CardDoc, BinderDoc, CardVariant } from '@/types';
+import type { CardDoc, BinderDoc, CardVariant, WishlistDoc } from '@/types';
 
 /* ── Helpers ─────────────────────────────────────────────────── */
 
@@ -321,6 +321,28 @@ async function pickEvolutionCards(
 
 /* ── Props / Types ───────────────────────────────────────────── */
 
+type WishlistState = {
+  /** Treffer in der freien/manuellen Liste (steuert den Button-Zustand). */
+  free: { listId: string; itemId: string } | null;
+  /** Vorlagen-Sammlungen, deren Auto-Wunschliste diese Karte enthält. */
+  needed: { binderId: string; name: string }[];
+};
+
+/** Leitet aus allen Wunschlisten den freien-Listen-Treffer + die automatischen
+ *  Bedarfe (Vorlagen-Listen) für eine Karte ab. Genutzt vom Lade-Effekt und
+ *  nach dem Einsortieren, damit der Wunschlistenbereich frisch bleibt. */
+function computeWishlistState(lists: WishlistDoc[], cardId: string): WishlistState {
+  let free: WishlistState['free'] = null;
+  const needed: WishlistState['needed'] = [];
+  for (const list of lists) {
+    const item = list.items.find(i => i.tcgId === cardId);
+    if (!item) continue;
+    if (list.templateBinderId) needed.push({ binderId: list.templateBinderId, name: list.name });
+    else free = { listId: list.id, itemId: item.id };
+  }
+  return { free, needed };
+}
+
 export type { SetMeta };
 
 interface Props {
@@ -392,6 +414,17 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     if (!card) return;
     try { setCopies(await getCardsByTcgId(card.id)); } catch { /* Netzwerkfehler ignorieren, alter Stand bleibt */ }
   }, [card]);
+  // Wunschlisten-Zustand (freie Liste + automatische Bedarfe) neu einlesen —
+  // nach jeder Mutation, die Slots/Wunschlisten ändern kann (Verschieben,
+  // Löschen, Einsortieren), damit „Benötigt für" / „Du besitzt sie" aktuell bleibt.
+  const reloadWishlistState = useCallback(async () => {
+    if (!card) return;
+    try {
+      const { free, needed } = computeWishlistState(await getWishlists(), card.id);
+      setFreeWishlistItem(free);
+      setNeededByCollections(needed);
+    } catch { /* Netzwerkfehler ignorieren, alter Stand bleibt */ }
+  }, [card]);
   const resolvedMeta = useSetMeta(card?.setId, setMeta, card?.setName);
   const [resolvedBinders, setResolvedBinders] = useState<BinderDoc[]>(binders ?? []);
   // Zwei getrennte "Bedarf"-Register (siehe Wunschlisten-Plan): der manuelle
@@ -399,7 +432,8 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   // (Vorlagen-Sammlungen, die diese Karte noch brauchen — read-only, vom Sync
   // verwaltet). Beide unabhängig; der Button fasst NIE eine Auto-Liste an.
   const [freeWishlistItem, setFreeWishlistItem] = useState<{ listId: string; itemId: string } | null>(null);
-  const [neededByCollections, setNeededByCollections] = useState<string[]>([]);
+  const [neededByCollections, setNeededByCollections] = useState<{ binderId: string; name: string }[]>([]);
+  const [sortingBinderId, setSortingBinderId] = useState<string | null>(null);
 
   // Besessene Exemplare synchron zur angezeigten Karte halten: Initial-Karte →
   // Prop (frisch vom Aufrufer); eine per Evo-Navigation gestackte Karte → frisch
@@ -423,16 +457,8 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     setNeededByCollections([]);
     getWishlists().then(lists => {
       if (cancelled) return;
-      // Alle Listen durchgehen (kein früher Abbruch): freie Liste → Button-
-      // Zustand, Vorlagen-Listen → Namen für den read-only "Benötigt für"-
-      // Hinweis. Der Listen-`name` ist bereits der Sammlungsname.
-      const needed: string[] = [];
-      for (const list of lists) {
-        const item = list.items.find(i => i.tcgId === card.id);
-        if (!item) continue;
-        if (list.templateBinderId) needed.push(list.name);
-        else setFreeWishlistItem({ listId: list.id, itemId: item.id });
-      }
+      const { free, needed } = computeWishlistState(lists, card.id);
+      setFreeWishlistItem(free);
       setNeededByCollections(needed);
     }).catch(() => {});
 
@@ -619,7 +645,24 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     const fresh = await getBinders();
     setResolvedBinders(fresh);
     await reloadCopies();
+    await reloadWishlistState();
     onSaved?.();
+  }
+
+  // Kurzbefehl aus dem „Benötigt für"-Hinweis: eine besessene Kopie in die
+  // automatische Sammlung einsortieren (füllt deren Slot). Bevorzugt eine Kopie,
+  // die noch in keiner Auto-Sammlung liegt, damit nicht ungewollt aus einer
+  // anderen Vorlage herausgerissen wird. `handleMoveToBinder` frischt den
+  // Wunschlisten-State bereits auf, sodass der Hinweis danach verschwindet.
+  async function sortInto(binderId: string) {
+    if (!card || copies.length === 0) return;
+    const copy = copies.find(c => !bindersOf(c).some(b => b.template)) ?? copies[0];
+    setSortingBinderId(binderId);
+    try {
+      await handleMoveToBinder(copy, binderId);
+    } finally {
+      setSortingBinderId(null);
+    }
   }
 
   // Bestätigung passiert jetzt über die Swipe-Geste selbst (Reveal + Tap bzw.
@@ -635,6 +678,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
         if (matched.length > 0) await syncTemplateBinders({ binderIds: matched.map(b => b.id) });
       }
       await reloadCopies();
+      await reloadWishlistState();
       onSaved?.();
     } finally { setDeletingId(null); }
   }
@@ -973,7 +1017,6 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
               <div>
                 {variants.map((variant, vi) => {
                   const variantCopies = copies.filter(c => c.variant === variant);
-                  const isOwned = variantCopies.length > 0;
                   return (
                     <div
                       key={variant}
@@ -986,14 +1029,6 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                       <div className="flex items-center justify-between gap-2 mb-2">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-role-title">{VARIANT_LABELS[variant]}</span>
-                          {isOwned && (
-                            <span
-                              className="text-role-badge px-1.5 py-0.5 rounded-full shrink-0"
-                              style={{ background: 'color-mix(in srgb, #48bb78 15%, transparent)', color: '#48bb78' }}
-                            >
-                              ✓
-                            </span>
-                          )}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <CardVariantPrice tcgId={card.id} variant={variant} />
@@ -1051,12 +1086,38 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 vom Besitz — der Sync entfernt Einträge erst bei zugewiesenem
                 qualifizierendem Exemplar). */}
             {neededByCollections.length > 0 && (
-              <div className="glass-inner w-full rounded-[14px] px-3 py-2.5 flex items-center gap-2 text-role-label text-glass-muted">
-                <Heart size={15} fill="#ef4444" stroke="#ef4444" className="shrink-0" />
-                <span>Benötigt für: {neededByCollections.join(', ')}</span>
-              </div>
+              copies.length > 0 ? (
+                // Besitzt: Karte ist nur noch nicht einsortiert → Kurzbefehl.
+                neededByCollections.map(nc => (
+                  <div
+                    key={nc.binderId}
+                    className="glass-inner w-full rounded-[14px] px-3 py-2 flex items-center justify-between gap-2"
+                  >
+                    <span className="text-role-label text-glass-muted min-w-0">
+                      Du besitzt sie – noch nicht in <span className="text-glass">{nc.name}</span>
+                    </span>
+                    <Button
+                      variant="primary" accentColor="#2f855a" size="sm"
+                      className="shrink-0"
+                      onClick={() => sortInto(nc.binderId)}
+                      disabled={sortingBinderId != null}
+                    >
+                      Einsortieren
+                    </Button>
+                  </div>
+                ))
+              ) : (
+                // Nicht besessen: read-only Hinweis, welche Sammlungen sie brauchen.
+                <div className="glass-inner w-full rounded-[14px] px-3 py-2.5 flex items-center gap-2 text-role-label text-glass-muted">
+                  <Heart size={15} fill="#ef4444" stroke="#ef4444" className="shrink-0" />
+                  <span>Benötigt für: {neededByCollections.map(nc => nc.name).join(', ')}</span>
+                </div>
+              )
             )}
-            {/* Manueller Wunsch — steuert ausschließlich die freie Liste. */}
+            {/* Manueller Wunsch — steuert ausschließlich die freie („meine")
+                Liste; bleibt auch bei Besitz sichtbar (evtl. Zweit-Exemplar
+                nötig). Text bewusst „meine", um die Verwechslung mit der
+                automatischen „Benötigt für"-Liste zu vermeiden. */}
             <Button
               variant="secondary"
               size="lg"
@@ -1065,7 +1126,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
               className="w-full"
               style={freeWishlistItem ? { color: '#ef4444' } : undefined}
             >
-              {freeWishlistItem ? 'Von Wunschliste entfernen' : 'Auf Wunschliste setzen'}
+              {freeWishlistItem ? 'Von meiner Wunschliste entfernen' : 'Auf meine Wunschliste'}
             </Button>
           </div>
       </Sheet>
