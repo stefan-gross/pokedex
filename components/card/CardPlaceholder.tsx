@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { ENERGY_META, type EnergyType } from '@/components/ui/EnergyIcon';
 
 // useLayoutEffect vermeidet ein sichtbares „Zucken" der Namensgröße; auf dem
 // Server (SSR) auf useEffect ausweichen, um die React-Warnung zu vermeiden.
@@ -41,7 +42,7 @@ export function CardPlaceholder({
   style?: React.CSSProperties;
   onClick?: () => void;
 }) {
-  const { name, hp, number, dexNumber, setCode, pending } = info;
+  const { name, hp, number, dexNumber, setCode, types, pending } = info;
 
   // Namensgröße: Basis = KP-Wert-Größe (5.8cqw). Nur wenn der Name zu breit wird
   // und sonst ins KP-Feld liefe, schrumpft er gerade so weit, dass er komplett
@@ -74,7 +75,19 @@ export function CardPlaceholder({
   const numFont = '"Futura", "Futura-Bold", "Jost", "Century Gothic", sans-serif';
 
   // Beide Vorlagen haben denselben Kartenrahmen → identische Overlay-Positionen.
-  const bgSrc = pending ? '/pending-card-template.png' : '/no-card-image.png';
+  // Für „kein Bild" (katalogisiert) kann es ein Platzhalterbild JE ENERGIETYP
+  // geben (`/no-card-image-<typ>.png`, z.B. `/no-card-image-grass.png`). Fehlt
+  // eins (noch), fällt es automatisch (onError) auf das generische Bild zurück.
+  // Pending-Karten haben meist keinen bekannten Typ → immer generisches Template.
+  const NO_IMAGE_GENERIC = '/no-card-image.png';
+  const t0 = types?.[0];
+  const typeKey = (!pending && t0 && t0 in ENERGY_META) ? (t0 as EnergyType).toLowerCase() : null;
+  const preferredBg = pending
+    ? '/pending-card-template.png'
+    : (typeKey ? `/no-card-image-${typeKey}.png` : NO_IMAGE_GENERIC);
+  const [bgFailed, setBgFailed] = useState(false);
+  useEffect(() => { setBgFailed(false); }, [preferredBg]);
+  const bgSrc = bgFailed ? NO_IMAGE_GENERIC : preferredBg;
 
   return (
     <div
@@ -89,6 +102,7 @@ export function CardPlaceholder({
         src={bgSrc}
         alt=""
         className="absolute inset-0 w-full h-full object-cover rounded-[5%]"
+        onError={() => { if (bgSrc !== NO_IMAGE_GENERIC) setBgFailed(true); }}
       />
       {/* Rotes „?"-Eck-Badge oben links — NUR bei vorläufigen Karten. Gleiche
           Form/Optik wie das gelbe „!"-Prüfen-Badge (CardBadge, corner="tl"):
