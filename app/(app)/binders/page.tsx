@@ -2,7 +2,7 @@
 
 import { Fragment, useState, useEffect, useMemo, useId, useRef, useLayoutEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Folder, Heart, Check, Minus, FolderPlus, BookOpen, Package, Repeat2 } from 'lucide-react';
+import { Plus, Folder, Heart, Check, Minus, FolderPlus, BookOpen, Package, Repeat2, Palette } from 'lucide-react';
 import { getBinders, deleteBinderCascade, updateBinder } from '@/lib/firestore/binders';
 import { getCards } from '@/lib/firestore/cards';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
@@ -13,6 +13,7 @@ import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/modal';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
+import { resolveTemplateSlots } from '@/lib/template-binders/resolve';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import { readableTextColor } from '@/lib/color-utils';
 import { wiggleDelay } from '@/lib/utils';
@@ -23,7 +24,7 @@ export default function BindersPage() {
   const [cards, setCards] = useState<CardDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [createMode, setCreateMode] = useState<'closed' | 'choose' | 'manual' | 'template'>('closed');
-  const [templateKind, setTemplateKind] = useState<'pokedex' | 'pokemon' | 'masterSet' | null>(null);
+  const [templateKind, setTemplateKind] = useState<'pokedex' | 'pokemon' | 'masterSet' | 'artist' | null>(null);
   const [editMode, setEditMode] = useState(false);
 
   const load = async () => {
@@ -192,6 +193,7 @@ export default function BindersPage() {
               ['masterSet', Package,  'Master-Set', 'Alle Karten einer Erweiterung, eine Kachel pro Nummer'],
               ['pokemon',   Repeat2,  'Pokémon',   'Alle Karten eines Pokémon, optional inkl. Entwicklungslinie'],
               ['pokedex',   BookOpen, 'Pokédex',   'Alle ~1025 Pokémon, eine Kachel pro Nummer'],
+              ['artist',    Palette,  'Illustrator', 'Alle Karten eines Illustrators, eine Kachel pro Karte'],
             ] as const).map(([k, Icon, label, sub]) => (
               <button
                 key={k}
@@ -281,6 +283,18 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
   const cardCount = binder.cardIds.length;
   const isBox     = binder.collectionType === 'box';
   const totalValue = useTotalValue(binderCards);
+  // Automatische Sammlung: Gesamt-Slotzahl (max. Karten) auflösen, damit die
+  // Banderole „besessen / max" zeigt statt nur der besessenen Anzahl.
+  const [templateTotal, setTemplateTotal] = useState<number | null>(null);
+  useEffect(() => {
+    const template = binder.template;
+    if (!template) { setTemplateTotal(null); return; }
+    let cancelled = false;
+    resolveTemplateSlots(template)
+      .then(slots => { if (!cancelled) setTemplateTotal(slots.length); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [binder.template]);
   const wishlistCount = binder.wishlistCardIds?.length ?? 0;
   const grainUid = useId().replace(/:/g, '');
   const bandColor = lightenColor(binder.color ?? '#e53e3e', 0.14);
@@ -441,7 +455,9 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
               : ''}
           </span>
           <span className="font-sans font-bold shrink-0 tabular-nums" style={{ fontSize: 13, color: bandTextColor }}>
-            {cardCount} {cardCount === 1 ? 'Karte' : 'Karten'}
+            {templateTotal != null
+              ? `${cardCount} / ${templateTotal} Karten`
+              : `${cardCount} ${cardCount === 1 ? 'Karte' : 'Karten'}`}
           </span>
         </div>
       </div>

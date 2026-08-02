@@ -920,7 +920,12 @@ export default function ScannerPage() {
             debug.lookupSteps!.push(`getCardsByNameAndNumber("${gemini.name}", "${alt}")`);
             const altCards = await getCardsByNameAndNumber(gemini.name, alt);
             debug.lookupSteps![debug.lookupSteps!.length - 1] += ` → ${altCards.length} Kandidaten`;
-            if (altCards.length > 0) catalogCard = altCards[0];
+            if (altCards.length === 1) {
+              catalogCard = altCards[0];
+            } else if (altCards.length > 1) {
+              ambiguousCandidates = altCards;
+              catalogCard = altCards[0];
+            }
           }
         } else if (nameCards.length > 1) {
           // Mehrdeutig — z.B. derselbe Name+Nummer existiert zufällig in zwei
@@ -939,35 +944,39 @@ export default function ScannerPage() {
               `name+number mehrdeutig: ${nameCards.length} Kandidaten — per Set-Gesamtzahl (${gemini.printedTotal}) auf ${picked.id} aufgelöst`,
             );
           } else {
+            // Mehrere Karten teilen Name+Nummer (verschiedene Sets), keine
+            // Gesamtzahl trennt sie → NICHT raten, Kandidaten zur Auswahl zeigen.
+            ambiguousCandidates = nameCards;
             catalogCard = nameCards[0];
-            debug.lookupSteps!.push(`name+number mehrdeutig: ${nameCards.length} — erster gewählt`);
+            debug.lookupSteps!.push(`name+number mehrdeutig: ${nameCards.length} — Kandidaten zur Auswahl (nicht geraten)`);
           }
         } else {
           catalogCard = nameCards[0];
         }
       }
 
-      // 4) Fallback: Pokédex-Nummer mit Number-Filter — kein blindes [0]
+      // 4) Fallback: Pokédex-Nummer + Number-Filter. NIE blind raten — nur wenn
+      //    die gelesene Nummer TATSÄCHLICH zu Karten dieser Dex-Nummer passt.
+      //    Passt sie zu keiner (z.B. eine Promo/Neuware, die (noch) nicht im
+      //    Katalog ist), lieber ehrlich „nicht gefunden" zeigen, statt irgendeine
+      //    Karte des Pokémon zu präsentieren — das war die Ursache dafür, dass
+      //    beim wiederholten Scannen jedes Mal eine ANDERE (falsche) Karte kam
+      //    (Geminis OCR schwankt, die Nummer traf nie → früher: erste Karte der
+      //    Liste).
       if (!catalogCard && gemini.nationalDexNumber) {
         debug.lookupSteps!.push(`getCardsByDexNumber(${gemini.nationalDexNumber}, 100)`);
         const dexCards = await getCardsByDexNumber(gemini.nationalDexNumber, 100);
         dexCandidateCount = dexCards.length;
         debug.lookupSteps![debug.lookupSteps!.length - 1] += ` → ${dexCards.length} Kandidaten`;
 
-        if (dexCards.length > 0) {
-          // Filtere auf number === rawNumber (oder Format-Variante)
-          let filtered = dexCards;
-          if (rawNumber) {
-            const altNumber = /^\d+$/.test(rawNumber)
-              ? String(parseInt(rawNumber, 10))
-              : rawNumber.padStart(3, '0');
-            filtered = dexCards.filter(c => c.number === rawNumber || c.number === altNumber);
-            debug.lookupSteps!.push(`filter by number=${rawNumber} → ${filtered.length} übrig`);
-          }
-          if (filtered.length === 0) filtered = dexCards;
+        if (dexCards.length > 0 && rawNumber) {
+          const altNumber = /^\d+$/.test(rawNumber)
+            ? String(parseInt(rawNumber, 10))
+            : rawNumber.padStart(3, '0');
+          let filtered = dexCards.filter(c => c.number === rawNumber || c.number === altNumber);
+          debug.lookupSteps!.push(`filter by number=${rawNumber} → ${filtered.length} übrig`);
 
-          // Falls Gemini einen Letter-Code lieferte (sollte zwar oben gematcht haben,
-          // aber falls Set noch nicht gesynct ist): bevorzuge Karten mit gleichem setCode
+          // Bei mehreren Treffern per Letter-Code eingrenzen, falls Gemini einen las.
           if (filtered.length > 1 && gemini.setCode) {
             const byCode = filtered.filter(c => c.setCode === gemini.setCode);
             if (byCode.length > 0) {
@@ -976,12 +985,19 @@ export default function ScannerPage() {
             }
           }
 
-          if (filtered.length > 0) {
+          if (filtered.length === 1) {
             catalogCard = filtered[0];
-            if (filtered.length > 1) {
-              debug.lookupSteps!.push(`mehrdeutig: ${filtered.length} Kandidaten — erster gewählt`);
-            }
+          } else if (filtered.length > 1) {
+            // Echte Mehrdeutigkeit (mehrere Sets, gleiche Dex+Nummer) → Auswahl
+            // anbieten statt zu raten.
+            ambiguousCandidates = filtered;
+            catalogCard = filtered[0];
+            debug.lookupSteps!.push(`dex+number mehrdeutig: ${filtered.length} Kandidaten (nicht geraten)`);
+          } else {
+            debug.lookupSteps!.push(`Nummer ${rawNumber} passt zu keiner Karte von Dex ${gemini.nationalDexNumber} → nicht geraten`);
           }
+        } else if (dexCards.length > 0) {
+          debug.lookupSteps!.push(`Dex ${gemini.nationalDexNumber}: ${dexCards.length} Karten, aber keine Nummer gelesen → nicht geraten`);
         }
       }
 
@@ -1056,31 +1072,51 @@ export default function ScannerPage() {
           });
       }
 
-      // ── pHash-Bild-Verifikation non-blocking nachladen ─────────────────────
-      // Vergleicht das aufgenommene Foto mit dem Katalog-Bild der gefundenen Karte
-      // (server-seitig, da images.pokemontcg.io keine CORS-Header sendet). Nutzt
-      // `debug.imageBase64` — die lokale Variable, NICHT `finalDebug`, da Letzteres
-      // das Bild bei Erfolg bereits stripped. Rein diagnostisch: Fehler hier
-      // beeinträchtigen den eigentlichen Scan nicht, `pHashDistance` bleibt dann
-      // einfach unbesetzt (kein gelber/roter Rahmen).
-      if (catalogCard && debug.imageBase64) {
-        const cardInfoForHash = catalogCardToInfo(catalogCard);
+      // ── pHash-Bild-Verifikation / Kandidaten-Rangfolge (non-blocking) ──────
+      // Server-seitig (images.tcgdex/pokemontcg.io senden keine CORS-Header), nutzt
+      // `debug.imageBase64` (lokale Var — NICHT `finalDebug`, das strippt das Bild).
+      //  • Eindeutige Karte: nur diagnostischer Ähnlichkeits-Abstand (gelber/roter
+      //    Rahmen), ändert die Erkennung nicht.
+      //  • Mehrdeutig: Bild-Hash gegen JEDEN Kandidaten → nach Ähnlichkeit sortieren
+      //    und den visuell NÄCHSTEN vorwählen, statt blind Kandidat [0]. Der Nutzer
+      //    kann im Picker weiter frei umwählen. Fehler degradieren still (kein Rang).
+      if (debug.imageBase64) {
         const lang = (gemini.language ?? 'de') as CardLanguage;
-        const catalogImageUrl = (lang === 'de' && cardInfoForHash.imgLargeDe) || cardInfoForHash.imgLarge
-          || (lang === 'de' && cardInfoForHash.imgSmallDe) || cardInfoForHash.imgSmall || null;
-        if (catalogImageUrl) {
-          fetch('/api/scan/verify-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64: debug.imageBase64, catalogImageUrl }),
-          })
-            .then(r => r.json())
-            .then(({ distance }) => {
-              if (typeof distance === 'number') {
-                setJobs(prev => prev.map(j => j.id === id ? { ...j, pHashDistance: distance } : j));
-              }
-            })
-            .catch(() => {});
+        const pickImageUrl = (info: CardInfo) =>
+          (lang === 'de' && info.imgLargeDe) || info.imgLarge
+          || (lang === 'de' && info.imgSmallDe) || info.imgSmall || null;
+        const phashOne = async (url: string): Promise<number | null> => {
+          try {
+            const { distance } = await fetch('/api/scan/verify-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ imageBase64: debug.imageBase64, catalogImageUrl: url }),
+            }).then(r => r.json());
+            return typeof distance === 'number' ? distance : null;
+          } catch { return null; }
+        };
+
+        if (ambiguousCandidates && ambiguousCandidates.length > 1) {
+          const infos = ambiguousCandidates.map(catalogCardToInfo);
+          void (async () => {
+            const scored = await Promise.all(infos.map(async info => {
+              const url = pickImageUrl(info);
+              const distance = url ? await phashOne(url) : null;
+              return { info, distance: distance ?? Infinity };
+            }));
+            scored.sort((a, b) => a.distance - b.distance);
+            const best = scored[0];
+            setJobs(prev => prev.map(j => j.id === id && j.result ? {
+              ...j,
+              result: { ...j.result, card: best.info, candidates: scored.map(s => s.info) },
+              pHashDistance: Number.isFinite(best.distance) ? best.distance : undefined,
+            } : j));
+          })();
+        } else if (catalogCard) {
+          const url = pickImageUrl(catalogCardToInfo(catalogCard));
+          if (url) void phashOne(url).then(distance => {
+            if (distance != null) setJobs(prev => prev.map(j => j.id === id ? { ...j, pHashDistance: distance } : j));
+          });
         }
       }
     } catch (err) {

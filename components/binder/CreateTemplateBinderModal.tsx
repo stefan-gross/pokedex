@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { getAllSets, type TcgSet } from '@/lib/firestore/sets';
 import { SERIES_NAMES_DE } from '@/lib/card-constants';
-import { searchCatalog, type CatalogCard } from '@/lib/firestore/catalog';
+import { searchCatalog, searchCatalogByArtist, type CatalogCard } from '@/lib/firestore/catalog';
 import { pokemonArtworkUrl } from '@/lib/binder-icons';
 import { SearchableSelect } from '@/components/ui/select';
 import { Sheet } from '@/components/ui/modal';
@@ -44,7 +44,7 @@ interface ReadyTemplate {
   initialSetDisplay?: { label: string; sub?: string; hint?: string };
 }
 
-type Kind = 'masterSet' | 'pokedex' | 'pokemon';
+type Kind = 'masterSet' | 'pokedex' | 'pokemon' | 'artist';
 
 /** Einstieg für Vorlagen-Binder: Pokédex, Evolutionslinie und Master-Set
  *  (Illustrator nutzt bereits denselben Sync-/Sperren-/Hinweis-Mechanismus,
@@ -179,11 +179,41 @@ export function CreateTemplateBinderModal({ onClose, onSaved, initialMasterSetId
     });
   }
 
+  // ── Illustrator (Template-Typ `artist`) ──────────────────────────────
+  const [artistQuery, setArtistQuery] = useState('');
+  const [artistResults, setArtistResults] = useState<string[]>([]);
+  const [artistPicked, setArtistPicked] = useState<string | null>(null);
+  const artistDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (kind !== 'artist') return;
+    if (artistDebounceRef.current) clearTimeout(artistDebounceRef.current);
+    if (artistQuery.trim().length < 2) { setArtistResults([]); return; }
+    artistDebounceRef.current = setTimeout(async () => {
+      const hits = await searchCatalogByArtist(artistQuery.trim(), 300);
+      // Eindeutige Illustrator-Namen (die Suche liefert Karten, mehrere pro Name).
+      const names = [...new Set(hits.map(c => c.artist).filter(Boolean) as string[])];
+      names.sort((a, b) => a.localeCompare(b, 'de'));
+      setArtistResults(names.slice(0, 50));
+    }, 350);
+    return () => { if (artistDebounceRef.current) clearTimeout(artistDebounceRef.current); };
+  }, [artistQuery, kind]);
+
+  function confirmArtist() {
+    if (!artistPicked) return;
+    setReady({
+      template: { type: 'artist', artist: artistPicked },
+      initialName: artistPicked,
+      initialColor: '#805ad5',
+    });
+  }
+
   // Schritt-3-Überschrift (Settings) — trägt den Vorlagentyp.
   const settingsTitles: Record<Kind, string> = {
     masterSet: 'Neue Master-Set Sammlung',
     pokedex: 'Neue Pokédex Sammlung',
     pokemon: 'Neue Pokémon Sammlung',
+    artist: 'Neue Illustrator Sammlung',
   };
 
   // ── Konvergenzpunkt: sobald ein Typ konfiguriert ist, übernimmt das
@@ -214,6 +244,7 @@ export function CreateTemplateBinderModal({ onClose, onSaved, initialMasterSetId
     masterSet: 'Master-Set wählen',
     pokedex: 'Pokédex wählen',
     pokemon: 'Pokémon wählen',
+    artist: 'Illustrator wählen',
   };
 
   // Zurück-Pfeil: immer „einen Schritt hoch" zum ersten Sheet (`onBack`) bzw.
@@ -229,6 +260,7 @@ export function CreateTemplateBinderModal({ onClose, onSaved, initialMasterSetId
   const nextAction: (() => void) | null =
     kind === 'masterSet' && selectedSet && !masterLoading ? confirmMasterSet
     : kind === 'pokemon' && evoPicked ? confirmPokemon
+    : kind === 'artist' && artistPicked ? confirmArtist
     : null;
 
   return (
@@ -323,6 +355,38 @@ export function CreateTemplateBinderModal({ onClose, onSaved, initialMasterSetId
               {evoPicked && (
                 <p className="text-xs text-muted-foreground mt-3 text-center">
                   {evoPicked.name} gewählt · tippe oben rechts auf „Weiter"
+                </p>
+              )}
+            </>
+          )}
+
+          {kind === 'artist' && (
+            <>
+              <p className="text-xs text-muted-foreground mb-3">
+                Wähle einen Illustrator — der Binder umfasst automatisch jede
+                Karte, die er gezeichnet hat, eine Kachel pro Karte.
+              </p>
+              {/* Dropdown mit Autosuggest über den Illustrator-Namen. Die
+                  Auswahl bleibt sichtbar/änderbar; „Weiter" oben rechts. */}
+              <SearchableSelect
+                fullWidth
+                aria-label="Illustrator wählen"
+                value={artistPicked}
+                onChange={(name) => setArtistPicked(name)}
+                onQueryChange={setArtistQuery}
+                options={[
+                  ...(artistPicked && !artistResults.includes(artistPicked)
+                    ? [{ value: artistPicked, label: artistPicked }]
+                    : []),
+                  ...artistResults.map(a => ({ value: a, label: a })),
+                ]}
+                placeholder="Illustrator wählen"
+                searchPlaceholder="Name des Illustrators (z.B. Mitsuhiro Arita)"
+                emptyMessage="Mind. 2 Buchstaben eingeben"
+              />
+              {artistPicked && (
+                <p className="text-xs text-muted-foreground mt-3 text-center">
+                  {artistPicked} gewählt · tippe oben rechts auf „Weiter"
                 </p>
               )}
             </>

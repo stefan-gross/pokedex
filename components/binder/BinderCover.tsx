@@ -164,12 +164,12 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   // leichter/kleiner. Gezielter Größenausgleich nur für dieses eine Icon,
   // damit es optisch mit den übrigen Basis-Icons mithält.
   const ICON_SIZE_MULTIPLIER: Record<string, number> = { cards: 1.35 };
-  // Pokémon-Artwork (`pokemon:<dex>`) hat viel transparenten Rand — größer
-  // rendern, damit das sichtbare Pokémon optisch mit den übrigen Icons (56px)
-  // mithält (analog zum `cards`-Ausgleich oben).
+  // Pokémon-Artwork (`pokemon:<dex>`) hat viel transparenten Rand — deutlich
+  // größer rendern, damit das sichtbare Pokémon die Kachel ähnlich prägt wie
+  // ein Set-Logo (die füllen die Breite bis ~2.4× der Basis-Icon-Größe).
   const isPokemonIcon = icon?.startsWith('pokemon:') ?? false;
   const iconRenderSize = isPokemonIcon
-    ? iconSize * 1.6
+    ? iconSize * 2.4
     : iconSize * (ICON_SIZE_MULTIPLIER[icon ?? ''] ?? 1);
   // ECHTE (deckende) Farbe, leicht dunkler als die Fläche (coverAccentColor,
   // 40%/15% Anthrazit) — der background-clip:text-Trick wurde verworfen,

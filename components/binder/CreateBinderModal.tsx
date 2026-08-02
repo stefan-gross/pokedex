@@ -97,6 +97,9 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
   // Icon ergibt sich aus der Auswahl, daher read-only statt Tab-Picker.
   const isPokemonTemplate = templateDraft?.type === 'pokemon';
   const isMasterSetTemplate = templateDraft?.type === 'masterSet';
+  // Illustrator-Vorlage: kein festes Icon (kein Logo/Artwork), aber Typ-/Set-/
+  // Pokémon-Icons ergeben inhaltlich keinen Sinn → nur die Basis-Icons anbieten.
+  const isArtistTemplate = templateDraft?.type === 'artist';
 
   // Sets für das Dropdown vorladen, sobald der „Sets"-Tab aktiv ist.
   useEffect(() => {
@@ -123,7 +126,8 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
     return () => { if (pokeDebounceRef.current) clearTimeout(pokeDebounceRef.current); };
   }, [pokeQuery]);
 
-  // Alle Sets alphabetisch (deutscher Name) für das Dropdown.
+  // Alle Sets alphabetisch (deutscher Name) für das Dropdown — gleiche
+  // reichhaltige Zeile wie im Master-Set-Schritt: Logo · Name · Zyklus · Kürzel.
   const setOptions = useMemo(
     () => [...allSets]
       .sort((a, b) => (a.nameDe ?? a.name).localeCompare(b.nameDe ?? b.name, 'de'))
@@ -131,7 +135,12 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
         value: s.id,
         label: s.nameDe ?? s.name,
         keywords: `${s.ptcgoCode ?? ''} ${s.name} ${SERIES_NAMES_DE[s.series] ?? s.series}`,
+        sub: SERIES_NAMES_DE[s.series] ?? s.series,
         hint: s.ptcgoCode,
+        icon: s.logoUrl
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={s.logoUrl} alt="" className="w-8 h-5 object-contain shrink-0" />
+          : undefined,
       })),
     [allSets],
   );
@@ -298,22 +307,24 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
             </div>
           ) : (
           <>
-          {/* Tabs (Underline) */}
-          <Tabs
-            className="mb-3"
-            value={pickerTab}
-            onChange={setPickerTab}
-            accentColor={ACCENT}
-            options={[
-              { value: 'icons',   label: 'Basis' },
-              { value: 'types',   label: 'Typen' },
-              { value: 'set',     label: 'Sets' },
-              { value: 'pokemon', label: 'Pokémon' },
-            ]}
-          />
+          {/* Tabs (Underline) — bei Illustrator ausgeblendet: dort nur Basis-Icons. */}
+          {!isArtistTemplate && (
+            <Tabs
+              className="mb-3"
+              value={pickerTab}
+              onChange={setPickerTab}
+              accentColor={ACCENT}
+              options={[
+                { value: 'icons',   label: 'Basis' },
+                { value: 'types',   label: 'Typen' },
+                { value: 'set',     label: 'Sets' },
+                { value: 'pokemon', label: 'Pokémon' },
+              ]}
+            />
+          )}
 
           {/* Basis */}
-          {pickerTab === 'icons' && (
+          {(isArtistTemplate || pickerTab === 'icons') && (
             <div className="flex flex-wrap gap-2">
               {BINDER_ICON_KEYS.map(key => (
                 <button
