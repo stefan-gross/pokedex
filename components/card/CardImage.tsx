@@ -49,26 +49,23 @@ export function CardImage({
   // || statt ?? — fängt auch leere Strings aus Firestore ab
   const activeSrc = (!failed && srcDe) ? srcDe : (src || undefined);
 
-  // Kein Bild (weder TCGdex noch Backfill) → Platzhalter statt Leerraum.
-  // Mit Karteninfos: nachempfundene Karte mit Name/KP/Nummer/Dex + „Bild fehlt".
-  // Ohne Infos (z.B. Evolutions-Thumbnail): schlichte neutrale Fläche.
+  // Kein Bild (weder TCGdex noch Backfill):
+  // - Vorläufige (nicht katalogisierte) Karte → eigenes Template mit den
+  //   erkannten Werten (Name/KP/Set/Nr.) via CardPlaceholder.
+  // - Alle anderen Karten ohne Bild → statische „Kein Bild"-Platzhalterkarte
+  //   (`/no-card-image.png`, gleiche Kartenproportion).
   // Sobald ein späterer TCGdex-Sync ein (deutsches) Bild liefert, wird das Feld
   // gefüllt und hier automatisch das echte Bild gezeigt.
   if (!activeSrc) {
+    // Mit Karteninfos: Platzhalterkarte mit Daten-Overlay (CardPlaceholder wählt
+    // je nach `pending` das Template + „?"-Badge). Ohne Infos (z.B. Evolutions-
+    // Thumbnail): nur die statische „Kein Bild"-Karte.
     if (placeholderInfo) {
       return <CardPlaceholder info={placeholderInfo} className={className} style={style} onClick={onClick} />;
     }
     return (
-      <div className={className} style={style} onClick={onClick} aria-label={alt} role="img">
-        <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 rounded-[7%] bg-[rgba(30,40,80,0.06)] dark:bg-white/10 text-glass-muted">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-1/4 h-1/4 opacity-60" aria-hidden="true">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <circle cx="12" cy="12" r="3.2" />
-            <path d="M3 12h5.8M15.2 12H21" />
-          </svg>
-          <span className="text-[10px] leading-none opacity-60">kein Bild</span>
-        </div>
-      </div>
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src="/no-card-image.png" alt={alt} className={className} style={style} onClick={onClick} role="img" />
     );
   }
 
