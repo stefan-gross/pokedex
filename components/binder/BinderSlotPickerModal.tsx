@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { Loader2, Search, X } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Loader2, X } from 'lucide-react';
 import { getCards } from '@/lib/firestore/cards';
 import { VARIANT_LABELS } from '@/lib/card-constants';
+import { Sheet } from '@/components/ui/modal';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import type { CardDoc } from '@/types';
-
-const CLOSE_ANIM_MS = 250;
 
 interface Props {
   excludeBinderId?: string; // (zukünftig: nur Karten zeigen, die noch nicht in diesem Binder sind — aktuell aus)
@@ -20,23 +21,10 @@ interface Props {
 export function BinderSlotPickerModal({ onClose, onPick }: Props) {
   const [cards, setCards] = useState<CardDoc[] | null>(null);
   const [search, setSearch] = useState('');
-  const [visible, setVisible] = useState(false);
-  const [dragY, setDragY] = useState(0);
-  const dragStartYRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    const r = requestAnimationFrame(() => setVisible(true));
-    return () => cancelAnimationFrame(r);
-  }, []);
 
   useEffect(() => {
     getCards().then(setCards).catch(() => setCards([]));
   }, []);
-
-  const handleClose = () => {
-    setVisible(false);
-    setTimeout(onClose, CLOSE_ANIM_MS);
-  };
 
   const filtered = useMemo(() => {
     if (!cards) return [];
@@ -50,78 +38,32 @@ export function BinderSlotPickerModal({ onClose, onPick }: Props) {
   }, [cards, search]);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end">
-      <div
-        className="absolute inset-0 bg-black/60 transition-opacity duration-[250ms]"
-        style={{ opacity: visible ? 1 : 0 }}
-        onClick={handleClose}
-      />
-
-      <div
-        className="relative w-full rounded-t-2xl bg-card border-t border-border pb-safe flex flex-col"
-        style={{
-          maxHeight: '80vh',
-          transform: visible ? `translateY(${dragY}px)` : 'translateY(100%)',
-          transition: dragStartYRef.current != null ? 'none' : `transform ${CLOSE_ANIM_MS}ms ease-out`,
-        }}
-      >
-        {/* Handle */}
-        <div
-          className="flex items-center justify-center -mt-1 mb-1 py-2 cursor-grab shrink-0"
-          style={{ touchAction: 'none' }}
-          onPointerDown={e => {
-            dragStartYRef.current = e.clientY;
-            setDragY(0);
-            (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
-          }}
-          onPointerMove={e => {
-            if (dragStartYRef.current == null) return;
-            const dy = e.clientY - dragStartYRef.current;
-            setDragY(Math.max(0, dy));
-          }}
-          onPointerUp={e => {
-            if (dragStartYRef.current == null) return;
-            const dy = e.clientY - dragStartYRef.current;
-            dragStartYRef.current = null;
-            try { (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId); } catch {}
-            if (dy > 80) handleClose();
-            else setDragY(0);
-          }}
-          onPointerCancel={() => { dragStartYRef.current = null; setDragY(0); }}
-        >
-          <div className="w-10 h-1 rounded-full bg-border" />
-        </div>
-
-        {/* Header */}
-        <div className="px-4 pb-2 flex items-center justify-between gap-2 shrink-0">
-          <h2 className="text-base font-semibold">Karte wählen</h2>
-          <button
-            onClick={handleClose}
-            className="w-11 h-11 rounded-md flex items-center justify-center"
-            style={{ background: 'var(--secondary)' }}
-            aria-label="Schließen"
-          >
-            <X size={14} />
-          </button>
-        </div>
-
-        {/* Search */}
-        <div className="px-4 pb-3 shrink-0">
-          <div className="flex items-center gap-2 px-3 h-10 rounded-md border border-border bg-secondary">
-            <Search size={14} className="text-muted-foreground shrink-0" />
-            <input
-              type="text"
+    <Sheet
+      open
+      onClose={onClose}
+      dragToClose
+      elevated
+      bodyClassName="px-2 pb-4"
+      header={
+        <div className="shrink-0">
+          <div className="px-4 pb-2 flex items-center justify-between gap-2">
+            <h2 className="font-semibold">Karte wählen</h2>
+            <Button variant="ghost" onClick={onClose} icon={<X />} aria-label="Schließen" className="shrink-0" />
+          </div>
+          <div className="px-4 pb-3">
+            <Input
+              variant="search"
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={setSearch}
+              onClear={() => setSearch('')}
               placeholder="Name, Nummer oder Set suchen…"
-              className="flex-1 bg-transparent text-sm outline-none"
               autoFocus
             />
           </div>
         </div>
-
-        {/* List */}
-        <div className="flex-1 overflow-y-auto px-2 pb-4">
+      }
+    >
+        <div className="flex-1 overflow-y-auto">
           {cards === null ? (
             <div className="flex items-center justify-center py-8 text-muted-foreground">
               <Loader2 size={16} className="animate-spin" />
@@ -172,7 +114,6 @@ export function BinderSlotPickerModal({ onClose, onPick }: Props) {
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }

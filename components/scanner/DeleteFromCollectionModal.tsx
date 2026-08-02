@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useEffect } from 'react';
 import { Minus } from 'lucide-react';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardDoc, BinderDoc } from '@/types';
@@ -14,8 +13,8 @@ import { CardPrice } from '@/components/card/CardPrice';
 import { BinderIcon } from '@/lib/binder-icons';
 import { useSetMeta } from '@/lib/hooks/use-set-meta';
 import { CardNameLabel } from '@/components/card/CardNameLabel';
-
-const CLOSE_ANIM_MS = 250;
+import { Sheet } from '@/components/ui/modal';
+import { Button } from '@/components/ui/button';
 
 const CONDITION_COLOR: Record<string, string> = {
   NM: '#48bb78', LP: '#facc15', MP: '#fb923c', HP: '#f87171', Poor: '#9ca3af',
@@ -51,15 +50,6 @@ export function DeleteFromCollectionModal({ card, fromScanner = false, onClose, 
   const cardNumTotal = setMeta?.printedTotal ? String(setMeta.printedTotal).padStart(3, '0') : null;
   const cardNumDisplay = cardNumTotal ? `${cardNumBase}/${cardNumTotal}` : card.number;
 
-  const [visible, setVisible] = useState(false);
-  const [dragY, setDragY] = useState(0);
-  const dragStartYRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    const r = requestAnimationFrame(() => setVisible(true));
-    return () => cancelAnimationFrame(r);
-  }, []);
-
   useEffect(() => {
     Promise.all([getBinders(), getCardsByTcgId(card.id)]).then(([b, c]) => {
       setAllBinders(b);
@@ -67,11 +57,6 @@ export function DeleteFromCollectionModal({ card, fromScanner = false, onClose, 
       setLoaded(true);
     });
   }, [card.id]);
-
-  const handleClose = () => {
-    setVisible(false);
-    setTimeout(onClose, CLOSE_ANIM_MS);
-  };
 
   const bindersOf = (copy: CardDoc) => allBinders.filter(b => b.cardIds.includes(copy.id));
 
@@ -86,7 +71,7 @@ export function DeleteFromCollectionModal({ card, fromScanner = false, onClose, 
       const matched = matchTemplateBinders(card, allBinders.filter(b => b.template));
       if (matched.length > 0) await syncTemplateBinders({ binderIds: matched.map(b => b.id) });
       onDeleted();
-      if (remaining.length === 0) handleClose();
+      if (remaining.length === 0) onClose();
     } finally {
       setDeletingId(null);
       setConfirmId(null);
@@ -104,60 +89,34 @@ export function DeleteFromCollectionModal({ card, fromScanner = false, onClose, 
       const matched = matchTemplateBinders(card, allBinders.filter(b => b.template));
       if (matched.length > 0) await syncTemplateBinders({ binderIds: matched.map(b => b.id) });
       onDeleted();
-      handleClose();
+      onClose();
     } finally {
       setDeletingAll(false);
       setConfirmAll(false);
     }
   };
 
-  const sheetTransition = dragStartYRef.current != null ? 'none' : `transform ${CLOSE_ANIM_MS}ms ease-out`;
-
-  return createPortal((
-    <div className={fromScanner ? 'dark fixed inset-0 z-[100] flex items-end' : 'fixed inset-0 z-[100] flex items-end'}>
-      <div
-        className="absolute inset-0 transition-opacity duration-[250ms] glass-sheet-backdrop"
-        style={{ opacity: visible ? 1 : 0 }}
-        onClick={handleClose}
-      />
-
-      <div
-        className="relative w-full rounded-t-[26px] glass-sheet max-h-[90dvh] flex flex-col text-foreground"
-        style={{
-          transform: visible ? `translateY(${dragY}px)` : 'translateY(100%)',
-          transition: sheetTransition,
-          padding: '12px 18px calc(22px + env(safe-area-inset-bottom, 0px))',
-          colorScheme: fromScanner ? 'dark' : undefined,
-        }}
-      >
-        {/* Handle — Swipe-Down zum Schließen */}
-        <div
-          className="flex items-center justify-center -mt-1 mb-3 py-2 cursor-grab shrink-0"
-          style={{ touchAction: 'none' }}
-          onPointerDown={e => {
-            dragStartYRef.current = e.clientY;
-            setDragY(0);
-            (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
-          }}
-          onPointerMove={e => {
-            if (dragStartYRef.current == null) return;
-            const dy = e.clientY - dragStartYRef.current;
-            setDragY(Math.max(0, dy));
-          }}
-          onPointerUp={e => {
-            if (dragStartYRef.current == null) return;
-            const dy = e.clientY - dragStartYRef.current;
-            dragStartYRef.current = null;
-            try { (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ }
-            if (dy > 80) handleClose();
-            else setDragY(0);
-          }}
-          onPointerCancel={() => { dragStartYRef.current = null; setDragY(0); }}
+  return (
+    <Sheet
+      open
+      onClose={onClose}
+      dragToClose
+      forceDark={fromScanner}
+      elevated
+      footer={ownedCopies.length > 0 ? (
+        <Button
+          onClick={deleteAll}
+          disabled={deletingAll}
+          variant="primary"
+          accentColor="#c53030"
+          size="lg"
+          className="w-full"
+          icon={!deletingAll ? <Minus size={18} strokeWidth={2.5} /> : undefined}
         >
-          <div className="w-9 h-1 rounded-full bg-[rgba(46,46,50,0.2)] dark:bg-white/30" />
-        </div>
-
-        <div className="overflow-y-auto">
+          {deletingAll ? 'Wird gelöscht…' : confirmAll ? 'Wirklich überall löschen?' : 'Überall löschen'}
+        </Button>
+      ) : undefined}
+    >
           {/* Karten-Zeile */}
           <div className="flex items-center gap-3 pb-[14px] mb-4 border-b border-[rgba(46,46,50,0.1)] dark:border-white/10">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -225,24 +184,6 @@ export function DeleteFromCollectionModal({ card, fromScanner = false, onClose, 
               })
             )}
           </div>
-        </div>
-
-        {ownedCopies.length > 0 && (
-          <button
-            onClick={deleteAll}
-            disabled={deletingAll}
-            className="w-full rounded-[15px] font-bold text-white disabled:opacity-50 transition-opacity shrink-0 flex items-center justify-center gap-1.5"
-            style={{
-              height: 54, fontSize: 17,
-              background: 'var(--action-delete)',
-              boxShadow: '0 6px 20px rgba(197,48,48,0.4)',
-            }}
-          >
-            {!deletingAll && <Minus size={18} strokeWidth={2.5} />}
-            {deletingAll ? 'Wird gelöscht…' : confirmAll ? 'Wirklich überall löschen?' : 'Überall löschen'}
-          </button>
-        )}
-      </div>
-    </div>
-  ), document.body);
+    </Sheet>
+  );
 }

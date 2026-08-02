@@ -67,6 +67,16 @@ interface SheetProps extends OverlayProps {
    *  `CardDetailSheet`s `drawer-panel`-Karten mit `mx-4`) übergeben eigene
    *  Klassen ohne horizontales Padding, um doppelten Abstand zu vermeiden. */
   bodyClassName?: string;
+  /** Fixierter Fußbereich (z.B. „Speichern"-CTA), bleibt unter dem
+   *  scrollenden Inhalt stehen (`shrink-0`, Trennlinie oben) — für Modals mit
+   *  Sticky-Footer-Button (CreateBinder/Bulk-Add …). */
+  footer?: React.ReactNode;
+  /** Erzwingt Dark-Optik unabhängig vom App-Theme (Scanner-Drawer über dem
+   *  Kamerabild — immer dunkel). */
+  forceDark?: boolean;
+  /** Höhere Stapelebene (`z-[100]` statt `z-[60]`) — nötig über der Scanner-
+   *  Chrome, die selbst hohe z-Werte nutzt. */
+  elevated?: boolean;
 }
 
 /**
@@ -78,7 +88,7 @@ interface SheetProps extends OverlayProps {
  * Swipe-Down-Schließen — vorher jeweils individuell in `CardDetailSheet`
  * nachgebaut, jetzt hier zentral für jeden `Sheet`-Aufrufer verfügbar.
  */
-export function Sheet({ open, onClose, title, header, dragToClose, children, style, bodyClassName = 'px-4 pb-4 pt-2' }: SheetProps) {
+export function Sheet({ open, onClose, title, header, dragToClose, children, style, bodyClassName = 'px-4 pb-4 pt-2', footer, forceDark, elevated }: SheetProps) {
   const [mounted, setMounted] = useState(open);
   const [visible, setVisible] = useState(false);
   const [dragY, setDragY] = useState(0);
@@ -101,7 +111,7 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
   if (!mounted || typeof document === 'undefined') return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-end">
+    <div className={`fixed inset-0 ${elevated ? 'z-[100]' : 'z-[60]'} flex items-end${forceDark ? ' dark' : ''}`}>
       <div
         className="absolute inset-0 transition-opacity duration-[250ms] glass-sheet-backdrop"
         style={{ opacity: visible ? 1 : 0 }}
@@ -111,6 +121,7 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
         className="relative w-full rounded-t-2xl glass-sheet max-h-[93dvh] flex flex-col"
         style={{
           ...style,
+          colorScheme: forceDark ? 'dark' : undefined,
           transform: visible ? `translateY(${dragY}px)` : 'translateY(100%)',
           transition: dragStartYRef.current != null ? 'none' : 'transform 250ms ease-out',
         }}
@@ -154,6 +165,11 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
           )}
           {children}
         </div>
+        {footer && (
+          <div className="shrink-0 px-4 pt-2 pb-safe border-t border-white/20 dark:border-white/10">
+            {footer}
+          </div>
+        )}
       </div>
     </div>,
     document.body,

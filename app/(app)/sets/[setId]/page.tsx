@@ -15,6 +15,7 @@ import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { Grabber } from '@/components/ui/Grabber';
 import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
 import { CreateTemplateBinderModal } from '@/components/binder/CreateTemplateBinderModal';
 import { CardGrid } from '@/components/card/CardGrid';
 import { CardSortBar } from '@/components/card/CardSortBar';
@@ -373,10 +374,9 @@ function SetDetailContent() {
                       <span className="text-role-title text-glass">{ownedCount} / {totalCount} Karten</span>
                       <span className="text-role-label text-glass-muted">{pct}%</span>
                     </div>
-                    <div className="h-2 rounded-full glass-inner overflow-hidden">
-                      <div className="h-full rounded-full transition-all"
-                           style={{ width: `${pct}%`, background: pct === 100 ? '#48bb78' : 'var(--pokedex-red)' }} />
-                    </div>
+                    <Progress value={ownedCount} max={totalCount} accentColor="var(--pokedex-red)" />
+                    {/* var(--pokedex-red) ist als CSS-Var ok — Progress nutzt es
+                        nur direkt als `background`, keine Hex-Parsing-Tönung. */}
 
                     {/* Besitz-Wert / Gesamtwert des Sets — links unter dem Balken. */}
                     <div className="pt-0.5 text-role-label tabular-nums">

@@ -7,6 +7,9 @@ import type { CardInfo } from '@/lib/card-info';
 import { addCard } from '@/lib/firestore/cards';
 import { addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
 import { LANGUAGES, CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
+import { Sheet } from '@/components/ui/modal';
+import { Button } from '@/components/ui/button';
+import { CustomSelect } from '@/components/ui/select';
 
 export interface BulkJob {
   id: string;
@@ -103,92 +106,64 @@ export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end">
-      <div className="absolute inset-0 bg-black/60" onClick={saving ? undefined : onClose} />
-
-      <div className="relative w-full rounded-t-2xl bg-card border-t border-border p-4 pb-safe max-h-[85vh] overflow-y-auto">
-        <div className="w-10 h-1 rounded-full bg-border mx-auto mb-4" />
-
-        <h2 className="text-base font-semibold mb-1">
-          {jobs.length} {jobs.length === 1 ? 'Karte' : 'Karten'} hinzufügen
-        </h2>
-        <p className="text-xs text-muted-foreground mb-3">
-          Werte werden für alle ausgewählten Karten übernommen. Sie landen in Unsortiert.
-        </p>
-
-        {/* Variant + Condition */}
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted-foreground">Variante</span>
-            <select
-              value={variant}
-              onChange={e => setVariant(e.target.value as CardVariant)}
-              className="h-9 rounded-lg border border-border bg-secondary px-2 text-sm"
-              disabled={saving}
-            >
-              {availableVariants.map(v => (
-                <option key={v} value={v}>{VARIANT_LABELS[v] ?? v}</option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted-foreground">Zustand</span>
-            <select
-              value={condition}
-              onChange={e => setCondition(e.target.value as CardCondition)}
-              className="h-9 rounded-lg border border-border bg-secondary px-2 text-sm"
-              disabled={saving}
-            >
-              {CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-          </label>
-        </div>
-
-        {/* Sprache */}
-        <label className="flex flex-col gap-1 mb-3">
-          <span className="text-xs text-muted-foreground">Sprache</span>
-          <select
-            value={language}
-            onChange={e => setLanguage(e.target.value as CardLanguage)}
-            className="h-9 rounded-lg border border-border bg-secondary px-2 text-sm"
-            disabled={saving}
-          >
-            {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
-          </select>
-        </label>
-
-        {/* Karten-Vorschau */}
-        {jobs.length > 0 && (
-          <div className="mb-4 max-h-32 overflow-y-auto rounded-lg border border-border bg-secondary/40 p-2">
-            <ul className="text-xs text-muted-foreground space-y-0.5">
-              {jobs.map(j => (
-                <li key={j.id} className="truncate">
-                  <span className="font-mono">{j.card.setCode ?? '—'} {j.card.number}</span> · {j.card.name}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <button
+    <Sheet
+      open
+      onClose={saving ? () => {} : onClose}
+      elevated
+      title={`${jobs.length} ${jobs.length === 1 ? 'Karte' : 'Karten'} hinzufügen`}
+      footer={
+        <Button
           onClick={save}
           disabled={saving || jobs.length === 0}
-          className="w-full h-11 rounded-md font-semibold text-sm text-white disabled:opacity-50 transition-opacity flex items-center justify-center gap-2"
-          style={{ background: 'var(--action-add)' }}
+          variant="primary"
+          accentColor="#2f855a"
+          size="lg"
+          className="w-full"
+          icon={saving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={18} strokeWidth={2.5} />}
         >
-          {saving ? (
-            <>
-              <Loader2 size={16} className="animate-spin" />
-              Speichere … {progress}/{jobs.length}
-            </>
-          ) : (
-            <>
-              <Plus size={18} strokeWidth={2.5} />
-              {jobs.length} {jobs.length === 1 ? 'Karte' : 'Karten'} zu Unsortiert
-            </>
-          )}
-        </button>
+          {saving
+            ? `Speichere … ${progress}/${jobs.length}`
+            : `${jobs.length} ${jobs.length === 1 ? 'Karte' : 'Karten'} zu Unsortiert`}
+        </Button>
+      }
+    >
+      <p className="text-xs text-glass-muted mb-3">
+        Werte werden für alle ausgewählten Karten übernommen. Sie landen in Unsortiert.
+      </p>
+
+      {/* Variant + Condition */}
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-glass-muted">Variante</span>
+          <CustomSelect fullWidth aria-label="Variante" value={variant} onChange={v => setVariant(v as CardVariant)}
+            options={availableVariants.map(v => ({ value: v, label: VARIANT_LABELS[v] ?? v }))} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-glass-muted">Zustand</span>
+          <CustomSelect fullWidth aria-label="Zustand" value={condition} onChange={v => setCondition(v as CardCondition)}
+            options={CONDITIONS.map(c => ({ value: c.value, label: c.label }))} />
+        </label>
       </div>
-    </div>
+
+      {/* Sprache */}
+      <label className="flex flex-col gap-1 mb-3">
+        <span className="text-xs text-glass-muted">Sprache</span>
+        <CustomSelect fullWidth aria-label="Sprache" value={language} onChange={v => setLanguage(v as CardLanguage)}
+          options={LANGUAGES.map(l => ({ value: l.value, label: l.label }))} />
+      </label>
+
+      {/* Karten-Vorschau */}
+      {jobs.length > 0 && (
+        <div className="mb-4 max-h-32 overflow-y-auto rounded-lg glass-inner p-2">
+          <ul className="text-xs text-glass-muted space-y-0.5">
+            {jobs.map(j => (
+              <li key={j.id} className="truncate">
+                <span className="font-mono">{j.card.setCode ?? '—'} {j.card.number}</span> · {j.card.name}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Sheet>
   );
 }

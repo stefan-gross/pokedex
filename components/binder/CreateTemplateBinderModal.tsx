@@ -1,11 +1,15 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Search, BookOpen, Repeat2, Package, ChevronLeft } from 'lucide-react';
+import { X, BookOpen, Repeat2, Package, ChevronLeft } from 'lucide-react';
 import { getAllSets, filterSets, type TcgSet } from '@/lib/firestore/sets';
 import { SERIES_NAMES_DE } from '@/lib/card-constants';
 import { searchCatalog, type CatalogCard } from '@/lib/firestore/catalog';
 import { CardImage } from '@/components/card/CardImage';
+import { Sheet } from '@/components/ui/modal';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import {
   resolveMasterSetTemplate, resolvePokedexTemplate, resolvePokemonTemplate,
@@ -208,29 +212,27 @@ export function CreateTemplateBinderModal({ onClose, onSaved, initialMasterSetId
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end">
-      <div className="absolute inset-0 transition-opacity duration-[250ms] glass-sheet-backdrop" onClick={onClose} />
-      <div className="relative w-full rounded-t-2xl glass-sheet max-h-[85dvh] flex flex-col">
-        <div className="w-9 h-1 rounded-full bg-[rgba(46,46,50,0.2)] dark:bg-white/30 mx-auto mt-3 mb-1 shrink-0" />
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 pt-2">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-1">
-              {kind !== 'choose' && (
-                <button
-                  onClick={() => { setKind('choose'); setSelectedSet(null); setMasterSlotCount(null); setEvoPicked(null); setEvoDexNumbers(null); setEvoSlotCount(null); setIncludeFamily(false); }}
-                  className="w-9 h-9 -ml-1.5 rounded-full glass-inner flex items-center justify-center"
-                  aria-label="Zurück"
-                >
-                  <ChevronLeft size={18} />
-                </button>
-              )}
-              <h2 className="font-semibold">{titles[kind]}</h2>
-            </div>
-            <button onClick={onClose} className="w-11 h-11 rounded-full glass-inner flex items-center justify-center" aria-label="Schließen">
-              <X size={20} />
-            </button>
+    <Sheet
+      open
+      onClose={onClose}
+      header={
+        <div className="flex items-center justify-between px-4 pt-1 pb-4 shrink-0">
+          <div className="flex items-center gap-1 min-w-0">
+            {kind !== 'choose' && (
+              <Button
+                variant="ghost"
+                onClick={() => { setKind('choose'); setSelectedSet(null); setMasterSlotCount(null); setEvoPicked(null); setEvoDexNumbers(null); setEvoSlotCount(null); setIncludeFamily(false); }}
+                icon={<ChevronLeft size={18} />}
+                aria-label="Zurück"
+                className="-ml-1 shrink-0"
+              />
+            )}
+            <h2 className="font-semibold truncate">{titles[kind]}</h2>
           </div>
-
+          <Button variant="ghost" onClick={onClose} icon={<X />} aria-label="Schließen" className="shrink-0" />
+        </div>
+      }
+    >
           {kind === 'choose' && (
             <div className="flex flex-col gap-2">
               <button
@@ -289,16 +291,15 @@ export function CreateTemplateBinderModal({ onClose, onSaved, initialMasterSetId
                   Wähle eine Erweiterung — der Binder füllt sich automatisch mit
                   allen Karten (vorhandene + fehlende), eine Kachel pro Nummer.
                 </p>
-                <div className="relative mb-2">
-                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                  <input
-                    type="search"
-                    value={setQuery}
-                    onChange={e => setSetQuery(e.target.value)}
-                    placeholder="Name oder Kürzel (z.B. PAF)"
-                    className="w-full h-9 pl-7 pr-3 rounded-lg glass-inner text-sm focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
-                  />
-                </div>
+                <Input
+                  variant="search"
+                  size="sm"
+                  className="mb-2"
+                  value={setQuery}
+                  onChange={setSetQuery}
+                  onClear={() => setSetQuery('')}
+                  placeholder="Name oder Kürzel (z.B. PAF)"
+                />
                 {allSets.length === 0 ? (
                   <p className="text-xs text-muted-foreground text-center py-3">Lade Sets…</p>
                 ) : (
@@ -354,15 +355,14 @@ export function CreateTemplateBinderModal({ onClose, onSaved, initialMasterSetId
             evoPicked ? (
               <div className="text-center py-6">
                 <p className="text-sm font-semibold mb-1">{evoPicked.name}</p>
-                <label className="flex items-center justify-center gap-2 mb-3 text-xs cursor-pointer select-none">
-                  <input
-                    type="checkbox"
+                <div className="flex justify-center mb-3">
+                  <Checkbox
                     checked={includeFamily}
                     onChange={toggleIncludeFamily}
-                    className="w-4 h-4 accent-[var(--action-add)]"
+                    accentColor="#2f855a"
+                    label="Entwicklungslinie einschließen (z.B. Drapfel, Sirapfel, Hydrapfel)"
                   />
-                  Entwicklungslinie einschließen (z.B. Drapfel, Sirapfel, Hydrapfel)
-                </label>
+                </div>
                 <p className="text-xs text-muted-foreground mb-4">
                   {evoResolving ? 'Ermittle Kartenanzahl…' : `${evoDexNumbers?.length ?? 1} Pokémon · ${evoSlotCount} Karten`}
                 </p>
@@ -384,16 +384,15 @@ export function CreateTemplateBinderModal({ onClose, onSaved, initialMasterSetId
                   GX, … eine eigene Kachel). Die Entwicklungslinie kann im
                   nächsten Schritt optional mit eingeschlossen werden.
                 </p>
-                <div className="relative mb-2">
-                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                  <input
-                    type="search"
-                    value={evoQuery}
-                    onChange={e => setEvoQuery(e.target.value)}
-                    placeholder="z.B. Knapfel, Glumanda"
-                    className="w-full h-9 pl-7 pr-3 rounded-lg glass-inner text-sm focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
-                  />
-                </div>
+                <Input
+                  variant="search"
+                  size="sm"
+                  className="mb-2"
+                  value={evoQuery}
+                  onChange={setEvoQuery}
+                  onClear={() => setEvoQuery('')}
+                  placeholder="z.B. Knapfel, Glumanda"
+                />
                 {evoSearching ? (
                   <p className="text-xs text-muted-foreground text-center py-3">Suche…</p>
                 ) : evoQuery.trim().length >= 2 && evoResults.length === 0 ? (
@@ -427,8 +426,6 @@ export function CreateTemplateBinderModal({ onClose, onSaved, initialMasterSetId
               </>
             )
           )}
-        </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }

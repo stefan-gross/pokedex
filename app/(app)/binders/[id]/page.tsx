@@ -38,6 +38,8 @@ import { CardBadge } from '@/components/card/CardBadge';
 import { Card } from '@/components/card/Card';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
+import { ButtonGroup } from '@/components/ui/button-group';
+import { Progress } from '@/components/ui/progress';
 import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
@@ -325,15 +327,12 @@ export default function BinderDetailPage({ params }: Props) {
 
   return (
     <div className="min-h-screen">
-      {/* ── Sticky top bar (außerhalb des Panels, wie bei der Set-Detailseite) ── */}
-      <div className="sticky top-safe z-20 px-4 pt-3 pb-2">
-        <Button variant="ghost" onClick={() => router.back()} className="px-0" icon={<ChevronLeft size={18} strokeWidth={2} />} aria-label="Zurück">
+      {/* ── Sticky Header-/Info-Panel (Zurück-Button jetzt im Panel) ── */}
+      <div className="sticky top-safe z-20 mx-3 mt-3 mb-2 glass rounded-[20px] px-4 pt-2 pb-2">
+        <Button variant="ghost" onClick={() => router.back()} className="px-0 -ml-1" icon={<ChevronLeft size={18} strokeWidth={2} />}>
           Sammlungen
         </Button>
-      </div>
-
-      <div className="sticky z-20 mx-3 mb-2 glass rounded-[20px] px-4 pt-3 pb-2" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 41px)' }}>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 mt-1">
           <BinderIcon
             name={binder.icon ?? (isBox ? 'box' : 'folder')}
             size={40}
@@ -373,15 +372,7 @@ export default function BinderDetailPage({ params }: Props) {
               </span>
               <span className="text-role-label text-glass-muted">{Math.round((templateProgress.owned / templateProgress.total) * 100)}%</span>
             </div>
-            <div className="h-2 rounded-full glass-inner overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all"
-                style={{
-                  width: `${Math.round((templateProgress.owned / templateProgress.total) * 100)}%`,
-                  background: templateProgress.owned === templateProgress.total ? '#48bb78' : binderColor,
-                }}
-              />
-            </div>
+            <Progress value={templateProgress.owned} max={templateProgress.total} accentColor={binderColor} />
           </div>
         )}
 
@@ -391,11 +382,17 @@ export default function BinderDetailPage({ params }: Props) {
         <div className="flex items-center justify-between gap-2 mt-3">
           <div className="flex items-center gap-2 min-w-0">
             {!isBox && (
-              <div className="flex rounded-full p-0.5 glass-inner shrink-0">
-                <ViewBtn icon={<BookOpen size={15} />} active={view === 'binder'} onClick={() => { setView('binder'); setEditMode(false); }} color={binderColor} label="Blätter" />
-                <ViewBtn icon={<FileText size={15} />} active={view === 'page'} onClick={() => { setView('page'); setEditMode(false); }} color={binderColor} label="Seite" />
-                <ViewBtn icon={<LayoutGrid size={15} />} active={view === 'grid'} onClick={() => { setView('grid'); setEditMode(false); }} color={binderColor} label="Liste" />
-              </div>
+              <ButtonGroup
+                iconOnly
+                className="shrink-0"
+                value={view}
+                onChange={(v) => { setView(v); setEditMode(false); }}
+                options={[
+                  { value: 'binder', label: <BookOpen size={18} />, ariaLabel: 'Blätter' },
+                  { value: 'page', label: <FileText size={18} />, ariaLabel: 'Seite' },
+                  { value: 'grid', label: <LayoutGrid size={18} />, ariaLabel: 'Liste' },
+                ]}
+              />
             )}
             {!isBox && view === 'page' && pages.length > 2 && (
               <label className="relative inline-flex items-center shrink-0">
@@ -538,23 +535,6 @@ export default function BinderDetailPage({ params }: Props) {
 
       <ScrollToTopButton />
     </div>
-  );
-}
-
-function ViewBtn({
-  icon, active, onClick, color, label,
-}: { icon: React.ReactNode; active: boolean; onClick: () => void; color: string; label: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-11 h-11 flex items-center justify-center rounded-full transition-transform hover:enabled:-translate-y-px active:scale-[.97]"
-      style={active
-        ? { ...tintedGlassStyle(color), color: readableTextColor(color) }
-        : { background: 'transparent', color: 'var(--muted-foreground)' }}
-      aria-label={label}
-    >
-      {icon}
-    </button>
   );
 }
 

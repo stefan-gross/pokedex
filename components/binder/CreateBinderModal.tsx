@@ -1,18 +1,19 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Search } from 'lucide-react';
 import { addBinder, updateBinder } from '@/lib/firestore/binders';
 import { syncTemplateBinders } from '@/lib/template-binders/sync';
 import { BINDER_ICON_KEYS, BinderIcon } from '@/lib/binder-icons';
 import { EnergyIcon } from '@/components/ui/EnergyIcon';
 import { ButtonGroup } from '@/components/ui/button-group';
+import { Sheet } from '@/components/ui/modal';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { TCG_TYPES } from '@/lib/hooks/useCardBrowser';
 import { getAllSets, filterSets, type TcgSet } from '@/lib/firestore/sets';
 import { SERIES_NAMES_DE } from '@/lib/card-constants';
 import { BINDER_SIZES, type BinderSize } from '@/lib/binder-sizes';
 import { initialSheetCount } from '@/lib/binder-sheets';
-import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import type { BinderDoc, BinderPage, BinderTemplate } from '@/types';
 
 type PickerTab = 'icons' | 'types' | 'set';
@@ -118,26 +119,23 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end">
-      {/* Backdrop — entsättigt & dimmt die Seite dahinter, wie bei jedem anderen
-          Drawer in der App (CardDetailSheet/AddToCollectionModal), statt einer
-          eigenen Schwarz-Abdunkelung — Konsistenz-Vorgabe: ein Muster für alle
-          Drawer statt abweichender Ad-hoc-Werte pro Modal. */}
-      <div
-        className="absolute inset-0 transition-opacity duration-[250ms] glass-sheet-backdrop"
-        onClick={onClose}
-      />
-      <div className="relative w-full rounded-t-2xl glass-sheet max-h-[93dvh] flex flex-col">
-        <div className="w-9 h-1 rounded-full bg-[rgba(46,46,50,0.2)] dark:bg-white/30 mx-auto mt-3 mb-1 shrink-0" />
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 pt-2">
-
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold">{existing ? 'Sammlung bearbeiten' : 'Neue Sammlung'}</h2>
-          <button onClick={onClose} className="w-11 h-11 rounded-full glass-inner flex items-center justify-center" aria-label="Schließen">
-            <X size={20} />
-          </button>
-        </div>
-
+    <Sheet
+      open
+      onClose={onClose}
+      title={existing ? 'Sammlung bearbeiten' : 'Neue Sammlung'}
+      footer={
+        <Button
+          variant="primary"
+          accentColor={existing ? PRIMARY_ACCENT : ADD_ACCENT}
+          size="lg"
+          className="w-full"
+          onClick={save}
+          disabled={!name.trim() || saving}
+        >
+          {saving ? 'Speichern…' : existing ? 'Änderungen speichern' : 'Sammlung erstellen'}
+        </Button>
+      }
+    >
         {/* Typ-Auswahl — nur beim Erstellen, nicht für Vorlagen-Binder
             (immer 'binder', da Vorlagen positionale Slots brauchen) */}
         {!existing && !templateDraft && (
@@ -171,12 +169,10 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
         {/* Name */}
         <div className="mb-3">
           <label className="text-xs text-muted-foreground mb-1 block">Name</label>
-          <input
-            type="text"
+          <Input
             value={name}
-            onChange={e => setName(e.target.value)}
+            onChange={setName}
             placeholder={isBinder ? 'z.B. Elektro-Stars' : 'z.B. Hoenn-Box'}
-            className="w-full h-10 px-3 rounded-xl glass-inner text-sm focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
           />
         </div>
 
@@ -231,16 +227,15 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
           {/* Sets */}
           {pickerTab === 'set' && (
             <div>
-              <div className="relative mb-2">
-                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                <input
-                  type="search"
-                  value={setQuery}
-                  onChange={e => setSetQuery(e.target.value)}
-                  placeholder="Name oder Kürzel (z.B. PAL)"
-                  className="w-full h-8 pl-7 pr-3 rounded-lg glass-inner text-xs focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
-                />
-              </div>
+              <Input
+                variant="search"
+                size="sm"
+                className="mb-2"
+                value={setQuery}
+                onChange={setSetQuery}
+                onClear={() => setSetQuery('')}
+                placeholder="Name oder Kürzel (z.B. PAL)"
+              />
               {allSets.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-3">Lade Sets…</p>
               ) : filteredSets.length === 0 ? (
@@ -326,15 +321,11 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
               <label className="text-xs text-muted-foreground mb-1 block">
                 Kapazität <span className="text-muted-foreground/60">(optional)</span>
               </label>
-              <input
+              <Input
                 type="number"
-                inputMode="numeric"
-                min={1}
-                step={1}
                 value={capacity}
-                onChange={e => setCapacity(e.target.value.replace(/[^0-9]/g, ''))}
+                onChange={v => setCapacity(v.replace(/[^0-9]/g, ''))}
                 placeholder="z.B. 400 — wie viele Karten passen rein?"
-                className="w-full h-10 rounded-md glass-inner px-3 text-sm placeholder:text-muted-foreground"
               />
             </div>
 
@@ -359,20 +350,6 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
           </>
         )}
 
-        </div>{/* end scroll container */}
-
-        {/* Sticky footer */}
-        <div className="px-4 pb-safe pt-2 border-t border-white/20 dark:border-white/10 shrink-0">
-          <button
-            onClick={save}
-            disabled={!name.trim() || saving}
-            className="w-full h-11 rounded-xl font-semibold text-sm text-white disabled:opacity-40"
-            style={tintedGlassStyle(existing ? PRIMARY_ACCENT : ADD_ACCENT)}
-          >
-            {saving ? 'Speichern…' : existing ? 'Änderungen speichern' : 'Sammlung erstellen'}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }
