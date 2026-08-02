@@ -44,11 +44,24 @@ interface Props {
   initialName?: string;
   initialIcon?: string;
   initialColor?: string;
+  /** Klarer Pokémon-Name für den Icon-Picker-Trigger, wenn `initialIcon` ein
+   *  `pokemon:<dex>` ist (sonst zeigt der Trigger nur die Dex-Nummer). */
+  initialPokemonName?: string;
+  /** Set-Anzeige (Name/Zyklus/Kürzel) für die fixe Icon-Kachel bei
+   *  Master-Set-Vorlagen — analog zur read-only Pokémon-Kachel. */
+  initialSetDisplay?: { label: string; sub?: string; hint?: string };
+  /** Überschreibt die Titelzeile (z.B. „Neue Pokémon Sammlung" aus dem
+   *  Vorlagen-Flow); ohne Angabe der bisherige Default. */
+  title?: string;
+  /** Letzter Schritt eines mehrstufigen Erstellen-Flows: zeigt links einen
+   *  Zurück-Chevron (zum vorherigen Schritt). Ohne diese Prop (z.B.
+   *  Bearbeiten-Modus) bleibt die Titelzeile bei reinem X. */
+  onBack?: () => void;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function CreateBinderModal({ existing, templateDraft, initialName, initialIcon, initialColor, onClose, onSaved }: Props) {
+export function CreateBinderModal({ existing, templateDraft, initialName, initialIcon, initialColor, initialPokemonName, initialSetDisplay, title, onBack, onClose, onSaved }: Props) {
   const [collectionType, setCollectionType] = useState<'binder' | 'box'>(existing?.collectionType ?? 'binder');
   const [name,   setName]   = useState(existing?.name ?? initialName ?? '');
   const [icon,   setIcon]   = useState(existing?.icon ?? initialIcon ?? 'folder');
@@ -74,10 +87,16 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
   const [pokeResults, setPokeResults] = useState<{ dex: number; name: string }[]>([]);
   // Name des aktuell gewählten Pokémon, damit der Dropdown-Trigger ihn zeigt,
   // auch wenn er nicht (mehr) in den aktuellen Suchtreffern steckt.
-  const [selectedPokeName, setSelectedPokeName] = useState<string | null>(null);
+  const [selectedPokeName, setSelectedPokeName] = useState<string | null>(
+    (existing?.icon ?? initialIcon ?? '').startsWith('pokemon:') ? (initialPokemonName ?? null) : null,
+  );
   const pokeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isBinder = collectionType === 'binder';
+  // Vorlagen mit fixem Icon: Pokémon (Artwork) bzw. Master-Set (Set-Logo) — das
+  // Icon ergibt sich aus der Auswahl, daher read-only statt Tab-Picker.
+  const isPokemonTemplate = templateDraft?.type === 'pokemon';
+  const isMasterSetTemplate = templateDraft?.type === 'masterSet';
 
   // Sets für das Dropdown vorladen, sobald der „Sets"-Tab aktiv ist.
   useEffect(() => {
@@ -186,7 +205,8 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
     <Sheet
       open
       onClose={onClose}
-      title={existing ? 'Sammlung bearbeiten' : 'Neue Sammlung'}
+      title={title ?? (existing ? 'Sammlung bearbeiten' : 'Neue Sammlung')}
+      onBack={onBack}
       footer={
         <Button
           variant="primary"
@@ -244,6 +264,40 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
         <div className="mb-3">
           <label className="text-xs text-muted-foreground mb-1.5 block">Icon</label>
 
+          {isPokemonTemplate ? (
+            /* Pokémon-Vorlage: Icon ist fix das Artwork des gewählten Pokémon
+               — read-only, keine Icon-Typ-Tabs. */
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl glass-inner">
+              {pokeDex && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={pokemonArtworkUrl(pokeDex)} alt="" className="w-8 h-8 object-contain shrink-0" />
+              )}
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate">{selectedPokeName ?? name}</p>
+                {pokeDex && (
+                  <p className="text-xs text-glass-muted">#{String(pokeDex).padStart(3, '0')}</p>
+                )}
+              </div>
+            </div>
+          ) : isMasterSetTemplate ? (
+            /* Master-Set-Vorlage: Icon ist fix das Set-Logo — read-only, keine
+               Icon-Typ-Tabs (Logo · Name · Zyklus · Kürzel wie im Dropdown). */
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl glass-inner">
+              <div className="shrink-0 flex items-center">
+                <BinderIcon name={icon} size={24} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold truncate">{initialSetDisplay?.label ?? name}</p>
+                {initialSetDisplay?.sub && (
+                  <p className="text-xs text-glass-muted truncate">{initialSetDisplay.sub}</p>
+                )}
+              </div>
+              {initialSetDisplay?.hint && (
+                <span className="text-xs text-glass-muted shrink-0">{initialSetDisplay.hint}</span>
+              )}
+            </div>
+          ) : (
+          <>
           {/* Tabs (Underline) */}
           <Tabs
             className="mb-3"
@@ -321,6 +375,8 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
               emptyMessage="Mind. 2 Buchstaben eingeben"
             />
           )}
+          </>
+          )}
         </div>
 
         {/* Color picker */}
@@ -354,17 +410,21 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
               />
             </div>
 
-            <div className="mb-5">
-              <label className="text-xs text-muted-foreground mb-1 block">
-                Kapazität <span className="text-muted-foreground/60">(optional)</span>
-              </label>
-              <Input
-                type="number"
-                value={capacity}
-                onChange={v => setCapacity(v.replace(/[^0-9]/g, ''))}
-                placeholder="z.B. 400 — wie viele Karten passen rein?"
-              />
-            </div>
+            {/* Kapazität nur bei manuellen Sammlungen — Vorlagen-Sammlungen
+                berechnen sie automatisch aus der Slot-Anzahl (Sync). */}
+            {!templateDraft && (
+              <div className="mb-5">
+                <label className="text-xs text-muted-foreground mb-1 block">
+                  Kapazität <span className="text-muted-foreground/60">(optional)</span>
+                </label>
+                <Input
+                  type="number"
+                  value={capacity}
+                  onChange={v => setCapacity(v.replace(/[^0-9]/g, ''))}
+                  placeholder="z.B. 400 — wie viele Karten passen rein?"
+                />
+              </div>
+            )}
 
             <div className="mb-5">
               <label className="text-xs text-muted-foreground mb-1 block">Seiten-Hintergrund</label>

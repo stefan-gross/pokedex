@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from './button';
 
 /** Sperrt das Scrollen von `<body>` während ein Modal offen ist — sonst
@@ -77,6 +77,18 @@ interface SheetProps extends OverlayProps {
   /** Höhere Stapelebene (`z-[100]` statt `z-[60]`) — nötig über der Scanner-
    *  Chrome, die selbst hohe z-Werte nutzt. */
   elevated?: boolean;
+  /** Wizard-Navigation (mehrstufige Prozesse): `onBack` zeigt links einen
+   *  Zurück-Chevron, `onNext` rechts einen Weiter-Chevron. Konvention:
+   *  Zwischenschritte tragen Zurück+Weiter (kein X → `showClose={false}`),
+   *  nur der letzte Schritt trägt Zurück+X. `onNext` darf fehlen (z.B. noch
+   *  ladend), dann bleibt rechts frei. Nur wirksam mit der eingebauten
+   *  `title`-Zeile (nicht bei eigenem `header`). */
+  onBack?: () => void;
+  onNext?: () => void;
+  /** Zeigt den Schließen-(X)-Button in der Titelzeile (Default an). Auf
+   *  Zwischenschritten eines Wizards auf `false` setzen — dort führt der
+   *  Zurück-Chevron heraus. */
+  showClose?: boolean;
 }
 
 /**
@@ -88,7 +100,7 @@ interface SheetProps extends OverlayProps {
  * Swipe-Down-Schließen — vorher jeweils individuell in `CardDetailSheet`
  * nachgebaut, jetzt hier zentral für jeden `Sheet`-Aufrufer verfügbar.
  */
-export function Sheet({ open, onClose, title, header, dragToClose, children, style, bodyClassName = 'px-4 pb-4 pt-2', footer, forceDark, elevated }: SheetProps) {
+export function Sheet({ open, onClose, title, header, dragToClose, children, style, bodyClassName = 'px-4 pb-4 pt-2', footer, forceDark, elevated, onBack, onNext, showClose = true }: SheetProps) {
   const [mounted, setMounted] = useState(open);
   const [visible, setVisible] = useState(false);
   const [dragY, setDragY] = useState(0);
@@ -112,9 +124,12 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
 
   return createPortal(
     <div className={`fixed inset-0 ${elevated ? 'z-[100]' : 'z-[60]'} flex items-end${forceDark ? ' dark' : ''}`}>
+      {/* Backdrop SOFORT sichtbar (kein Opacity-Fade) — sonst blitzt beim
+          direkten Wechsel zwischen zwei Sheets kurz der helle Hintergrund
+          durch, während der neue Backdrop von 0 einblendet. Nur das Panel
+          gleitet noch herein (`visible`). */}
       <div
-        className="absolute inset-0 transition-opacity duration-[250ms] glass-sheet-backdrop"
-        style={{ opacity: visible ? 1 : 0 }}
+        className="absolute inset-0 glass-sheet-backdrop"
         onClick={onClose}
       />
       <div
@@ -159,8 +174,20 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
         <div className={`flex-1 min-h-0 overflow-y-auto ${bodyClassName}`}>
           {!header && title && (
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold">{title}</h2>
-              <Button variant="ghost" onClick={onClose} icon={<X />} className="shrink-0" aria-label="Schließen" />
+              <div className="flex items-center gap-1 min-w-0">
+                {onBack && (
+                  <Button variant="ghost" onClick={onBack} icon={<ChevronLeft size={18} />} className="-ml-1 shrink-0" aria-label="Zurück" />
+                )}
+                <h2 className="font-semibold truncate">{title}</h2>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                {onNext && (
+                  <Button variant="ghost" onClick={onNext} icon={<ChevronRight size={18} />} className="shrink-0" aria-label="Weiter" />
+                )}
+                {showClose && (
+                  <Button variant="ghost" onClick={onClose} icon={<X />} className="shrink-0" aria-label="Schließen" />
+                )}
+              </div>
             </div>
           )}
           {children}

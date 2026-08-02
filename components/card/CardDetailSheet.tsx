@@ -941,7 +941,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           <div className="glass mx-4 rounded-[18px] overflow-hidden mb-3">
             <AccHeader
               icon={<Repeat2 size={16} />}
-              title="Evolutionslinie"
+              title="Entwicklungen"
               open={openSec.has('evo')}
               onToggle={() => toggle('evo')}
               border={false}
@@ -951,7 +951,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 {!evoLoaded ? (
                   <div className="flex items-center gap-2 pt-3">
                     <div className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin shrink-0" />
-                    <p className="text-role-body text-glass-muted">Lade Evolutionslinie…</p>
+                    <p className="text-role-body text-glass-muted">Lade Entwicklungen…</p>
                   </div>
                 ) : evoCards.length > 1 || specialForms.length > 0 ? (
                   <>
@@ -998,7 +998,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                     )}
                   </>
                 ) : (
-                  <p className="text-role-body text-glass-muted pt-3">Keine Evolutionslinie</p>
+                  <p className="text-role-body text-glass-muted pt-3">Keine Entwicklungen</p>
                 )}
               </div>
             )}

@@ -284,6 +284,8 @@ export interface SearchableSelectOption<T extends string> {
   icon?: React.ReactNode;
   /** Gedämpfter Zusatz rechts (z.B. Set-Kürzel „MEW"). */
   hint?: string;
+  /** Optionale zweite Zeile unter dem Label (z.B. Zyklus/Serie eines Sets). */
+  sub?: string;
 }
 
 /**
@@ -365,18 +367,27 @@ export function SearchableSelect<T extends string>({
         onClick={() => (open ? setOpen(false) : openPanel())}
         aria-label={ariaLabel}
         className={cn(
-          'inline-flex items-center gap-1.5 rounded-full transition-transform duration-150 active:scale-[.97] btn-glass-interactive pl-3 pr-2.5',
+          'inline-flex items-center gap-1.5 rounded-full transition-transform duration-150 active:scale-[.97] btn-glass-interactive pl-3 pr-2.5 py-1',
           fullWidth ? 'w-full justify-between' : 'shrink-0',
           variantClassName,
-          height === 'sm' ? 'h-9 text-[12px]' : 'h-11 text-xs',
+          height === 'sm' ? 'min-h-9 text-[12px]' : 'min-h-11 text-xs',
           className,
         )}
         style={{ border: 'none', ...variantStyle }}
       >
-        <span className="inline-flex items-center gap-1.5 min-w-0">
+        {/* Trigger spiegelt die Options-Zeile: Icon · Name (+ Sub-Zeile) ·
+            rechtsbündiger Hint. */}
+        <span className="inline-flex items-center gap-1.5 min-w-0 flex-1 text-left">
           {selected?.icon}
-          <span className="truncate">{selected?.label ?? placeholder}</span>
-          {selected?.hint && <span className="opacity-50 shrink-0">{selected.hint}</span>}
+          {selected ? (
+            <span className="min-w-0 flex-1">
+              <span className="truncate block">{selected.label}</span>
+              {selected.sub && <span className="truncate block text-glass-muted text-role-label">{selected.sub}</span>}
+            </span>
+          ) : (
+            <span className="truncate text-glass-muted">{placeholder}</span>
+          )}
+          {selected?.hint && <span className="ml-auto shrink-0 opacity-50">{selected.hint}</span>}
         </span>
         <ChevronDown size={12} className="opacity-70 shrink-0" />
       </button>
@@ -415,8 +426,11 @@ export function SearchableSelect<T extends string>({
                   style={o.value === value ? { fontWeight: 700 } : undefined}
                 >
                   {o.icon}
-                  <span className="truncate">{o.label}</span>
-                  {o.hint && <span className="ml-auto shrink-0 text-glass-muted text-role-label">{o.hint}</span>}
+                  <span className="min-w-0 flex-1">
+                    <span className="truncate block">{o.label}</span>
+                    {o.sub && <span className="truncate block text-glass-muted text-role-label">{o.sub}</span>}
+                  </span>
+                  {o.hint && <span className="shrink-0 text-glass-muted text-role-label">{o.hint}</span>}
                 </button>
               ))}
             </div>

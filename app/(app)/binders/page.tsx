@@ -2,7 +2,7 @@
 
 import { Fragment, useState, useEffect, useMemo, useId, useRef, useLayoutEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Folder, Heart, Check, Minus, LayoutTemplate, FolderPlus } from 'lucide-react';
+import { Plus, Folder, Heart, Check, Minus, FolderPlus, BookOpen, Package, Repeat2 } from 'lucide-react';
 import { getBinders, deleteBinderCascade, updateBinder } from '@/lib/firestore/binders';
 import { getCards } from '@/lib/firestore/cards';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
@@ -23,6 +23,7 @@ export default function BindersPage() {
   const [cards, setCards] = useState<CardDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [createMode, setCreateMode] = useState<'closed' | 'choose' | 'manual' | 'template'>('closed');
+  const [templateKind, setTemplateKind] = useState<'pokedex' | 'pokemon' | 'masterSet' | null>(null);
   const [editMode, setEditMode] = useState(false);
 
   const load = async () => {
@@ -164,7 +165,13 @@ export default function BindersPage() {
       </div>
 
       {createMode === 'choose' && (
-        <Sheet open onClose={() => setCreateMode('closed')} title="Neue Sammlung">
+        <Sheet
+          open
+          onClose={() => setCreateMode('closed')}
+          title="Neue Sammlung"
+          onBack={() => setCreateMode('closed')}
+          showClose={false}
+        >
           <div className="flex flex-col gap-2">
             <button
               onClick={() => setCreateMode('manual')}
@@ -176,22 +183,35 @@ export default function BindersPage() {
                 <p className="text-xs text-glass-muted">Leerer Binder, du befüllst ihn selbst</p>
               </div>
             </button>
-            <button
-              onClick={() => setCreateMode('template')}
-              className="flex items-center gap-3 px-4 py-3 rounded-xl glass-inner text-left"
-            >
-              <LayoutTemplate size={20} className="text-glass-muted shrink-0" />
-              <div>
-                <p className="text-sm font-semibold">Aus Vorlage</p>
-                <p className="text-xs text-glass-muted">Pokédex, Entwicklungslinie oder Master-Set — füllt sich automatisch</p>
-              </div>
-            </button>
+
+            {/* Trenner + Vorlagen direkt hier wählbar (spart den Zwischenschritt) */}
+            <p className="text-role-label text-glass-muted px-1 pt-2 pb-0.5 border-t border-[var(--border)] mt-1">
+              Aus Vorlage — füllt sich automatisch
+            </p>
+            {([
+              ['masterSet', Package,  'Master-Set', 'Alle Karten einer Erweiterung, eine Kachel pro Nummer'],
+              ['pokemon',   Repeat2,  'Pokémon',   'Alle Karten eines Pokémon, optional inkl. Entwicklungslinie'],
+              ['pokedex',   BookOpen, 'Pokédex',   'Alle ~1025 Pokémon, eine Kachel pro Nummer'],
+            ] as const).map(([k, Icon, label, sub]) => (
+              <button
+                key={k}
+                onClick={() => { setTemplateKind(k); setCreateMode('template'); }}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl glass-inner text-left"
+              >
+                <Icon size={20} className="text-glass-muted shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold">{label}</p>
+                  <p className="text-xs text-glass-muted">{sub}</p>
+                </div>
+              </button>
+            ))}
           </div>
         </Sheet>
       )}
 
       {createMode === 'manual' && (
         <CreateBinderModal
+          onBack={() => setCreateMode('choose')}
           onClose={() => setCreateMode('closed')}
           onSaved={() => { setCreateMode('closed'); load(); }}
         />
@@ -199,8 +219,10 @@ export default function BindersPage() {
 
       {createMode === 'template' && (
         <CreateTemplateBinderModal
-          onClose={() => setCreateMode('closed')}
-          onSaved={() => { setCreateMode('closed'); load(); }}
+          initialKind={templateKind ?? 'masterSet'}
+          onBack={() => setCreateMode('choose')}
+          onClose={() => { setCreateMode('closed'); setTemplateKind(null); }}
+          onSaved={() => { setCreateMode('closed'); setTemplateKind(null); load(); }}
         />
       )}
 
