@@ -11,6 +11,7 @@ import { Sheet } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SearchableSelect } from '@/components/ui/select';
+import { Tabs } from '@/components/ui/tabs';
 import { TCG_TYPES } from '@/lib/hooks/useCardBrowser';
 import { getAllSets, type TcgSet } from '@/lib/firestore/sets';
 import { SERIES_NAMES_DE } from '@/lib/card-constants';
@@ -243,11 +244,12 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
         <div className="mb-3">
           <label className="text-xs text-muted-foreground mb-1.5 block">Icon</label>
 
-          {/* Tabs */}
-          <ButtonGroup
-            className="mb-2"
+          {/* Tabs (Underline) */}
+          <Tabs
+            className="mb-3"
             value={pickerTab}
             onChange={setPickerTab}
+            accentColor={ACCENT}
             options={[
               { value: 'icons',   label: 'Basis' },
               { value: 'types',   label: 'Typen' },

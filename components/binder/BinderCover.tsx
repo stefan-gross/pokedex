@@ -164,7 +164,13 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 
   // leichter/kleiner. Gezielter Größenausgleich nur für dieses eine Icon,
   // damit es optisch mit den übrigen Basis-Icons mithält.
   const ICON_SIZE_MULTIPLIER: Record<string, number> = { cards: 1.35 };
-  const iconRenderSize = iconSize * (ICON_SIZE_MULTIPLIER[icon ?? ''] ?? 1);
+  // Pokémon-Artwork (`pokemon:<dex>`) hat viel transparenten Rand — größer
+  // rendern, damit das sichtbare Pokémon optisch mit den übrigen Icons (56px)
+  // mithält (analog zum `cards`-Ausgleich oben).
+  const isPokemonIcon = icon?.startsWith('pokemon:') ?? false;
+  const iconRenderSize = isPokemonIcon
+    ? iconSize * 1.6
+    : iconSize * (ICON_SIZE_MULTIPLIER[icon ?? ''] ?? 1);
   // ECHTE (deckende) Farbe, leicht dunkler als die Fläche (coverAccentColor,
   // 40%/15% Anthrazit) — der background-clip:text-Trick wurde verworfen,
   // weil der helle Schein bei unserer kleinen Schriftgröße (15-19px) breiter
