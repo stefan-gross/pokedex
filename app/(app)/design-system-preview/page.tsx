@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ButtonGroup } from '@/components/ui/button-group';
+import { Tabs } from '@/components/ui/tabs';
 import { Select, CustomSelect } from '@/components/ui/select';
 import { BinderIcon } from '@/lib/binder-icons';
 import { Chip } from '@/components/ui/chip';
@@ -525,6 +526,7 @@ export default function DesignSystemPreviewPage() {
 
   const [chipA, setChipA] = useState(true);
   const [chipB, setChipB] = useState(false);
+  const [tabDemo, setTabDemo] = useState<'overview' | 'details' | 'history' | 'settings'>('overview');
   const [switchOn, setSwitchOn] = useState(true);
   const [checked, setChecked] = useState(true);
   const [selectVal, setSelectVal] = useState('b');
@@ -1391,6 +1393,26 @@ export default function DesignSystemPreviewPage() {
             />
           </label>
         </div>
+      </Section>
+
+      <Section title="Tabs (Underline)">
+        <p className="text-role-label text-glass-muted -mt-1">
+          Klassische Tab-Leiste mit gleitendem Unterstrich — eigene Rolle neben
+          der Pillen-`ButtonGroup` (oben): für Inhalts-/Sektions-Navigation
+          (z.B. Icon-Switch im „Neue Sammlung"-Drawer). Linksbündig, bei vielen
+          Tabs horizontal scrollbar.
+        </p>
+        <Tabs
+          value={tabDemo}
+          onChange={setTabDemo}
+          options={[
+            { value: 'overview', label: 'Übersicht' },
+            { value: 'details',  label: 'Details' },
+            { value: 'history',  label: 'Verlauf' },
+            { value: 'settings', label: 'Einstellungen' },
+          ]}
+        />
+        <p className="text-role-label text-glass-muted">Aktiv: <strong className="text-glass">{tabDemo}</strong></p>
       </Section>
 
       <Section title="Select">
