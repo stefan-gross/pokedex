@@ -2,7 +2,7 @@
 
 import { Fragment, useState, useEffect, useMemo, useId, useRef, useLayoutEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Folder, Heart, Check, Minus, LayoutTemplate, FolderPlus, X } from 'lucide-react';
+import { Plus, Folder, Heart, Check, Minus, LayoutTemplate, FolderPlus } from 'lucide-react';
 import { getBinders, deleteBinderCascade, updateBinder } from '@/lib/firestore/binders';
 import { getCards } from '@/lib/firestore/cards';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
@@ -10,6 +10,8 @@ import { CreateTemplateBinderModal } from '@/components/binder/CreateTemplateBin
 import { BinderCover } from '@/components/binder/BinderCover';
 import { CollectionTypeBadge } from '@/components/binder/CollectionTypeBadge';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
+import { Button } from '@/components/ui/button';
+import { Sheet } from '@/components/ui/modal';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import { readableTextColor } from '@/lib/color-utils';
@@ -87,27 +89,26 @@ export default function BindersPage() {
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
-      <div className="px-4 pt-4 pb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Sammlungen</h1>
-          <p className="text-role-body text-glass-muted">{binders.length} {binders.length === 1 ? 'Sammlung' : 'Sammlungen'}</p>
+      {/* Header-Panel (Glas) */}
+      <div className="sticky top-safe z-20 px-3 pt-3 pb-1">
+        <div className="glass rounded-[20px] px-4 pt-3 pb-3 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Sammlungen</h1>
+            <p className="text-role-label text-glass-muted">{binders.length} {binders.length === 1 ? 'Sammlung' : 'Sammlungen'}</p>
+          </div>
+          {/* Bearbeiten-Modus wird per Long-Press auf eine Kachel gestartet
+              (wie iOS-Homescreen). Rechts: im Bearbeiten-Modus „Fertig", sonst
+              ein Erstellen-Button (jederzeit erreichbar, nicht nur im Edit-Modus). */}
+          {editMode ? (
+            <Button variant="primary" onClick={() => setEditMode(false)} icon={<Check size={16} />} className="shrink-0">
+              Fertig
+            </Button>
+          ) : (
+            <Button variant="primary" accentColor="#2f855a" onClick={() => setCreateMode('choose')} icon={<Plus strokeWidth={2.5} />} className="shrink-0">
+              Erstellen
+            </Button>
+          )}
         </div>
-        {/* Kein eigener "Bearbeiten"-Einstiegsbutton mehr — der Modus wird
-            per Long-Press auf eine Kachel gestartet (wie beim iOS-
-            Homescreen). Zum Beenden bleibt aber ein "Fertig"-Button nötig,
-            genau wie iOS beim Verlassen des Wackel-Modus einen "Fertig"-
-            Button oben zeigt. */}
-        {editMode && (
-          <button
-            onClick={() => setEditMode(false)}
-            className="inline-flex items-center gap-1.5 h-11 px-3 rounded-full text-xs font-semibold"
-            style={{ background: 'var(--pokedex-blue)', color: '#fff', border: 'none' }}
-          >
-            <Check size={13} />
-            Fertig
-          </button>
-        )}
       </div>
 
       <div className="px-4 py-4">
@@ -163,40 +164,30 @@ export default function BindersPage() {
       </div>
 
       {createMode === 'choose' && (
-        <div className="fixed inset-0 z-[60] flex items-end">
-          <div className="absolute inset-0 glass-sheet-backdrop" onClick={() => setCreateMode('closed')} />
-          <div className="relative w-full rounded-t-2xl glass-sheet pb-safe">
-            <div className="w-9 h-1 rounded-full bg-[rgba(46,46,50,0.2)] dark:bg-white/30 mx-auto mt-3 mb-1" />
-            <div className="flex items-center justify-between px-4 pt-2 pb-3">
-              <h2 className="font-semibold">Neue Sammlung</h2>
-              <button onClick={() => setCreateMode('closed')} className="w-11 h-11 rounded-full glass-inner flex items-center justify-center" aria-label="Schließen">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="px-4 pb-4 flex flex-col gap-2">
-              <button
-                onClick={() => setCreateMode('manual')}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl glass-inner text-left"
-              >
-                <FolderPlus size={20} className="text-glass-muted shrink-0" />
-                <div>
-                  <p className="text-sm font-semibold">Manuell</p>
-                  <p className="text-xs text-muted-foreground">Leerer Binder, du befüllst ihn selbst</p>
-                </div>
-              </button>
-              <button
-                onClick={() => setCreateMode('template')}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl glass-inner text-left"
-              >
-                <LayoutTemplate size={20} className="text-glass-muted shrink-0" />
-                <div>
-                  <p className="text-sm font-semibold">Aus Vorlage</p>
-                  <p className="text-xs text-muted-foreground">Pokédex, Entwicklungslinie oder Master-Set — füllt sich automatisch</p>
-                </div>
-              </button>
-            </div>
+        <Sheet open onClose={() => setCreateMode('closed')} title="Neue Sammlung">
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => setCreateMode('manual')}
+              className="flex items-center gap-3 px-4 py-3 rounded-xl glass-inner text-left"
+            >
+              <FolderPlus size={20} className="text-glass-muted shrink-0" />
+              <div>
+                <p className="text-sm font-semibold">Manuell</p>
+                <p className="text-xs text-glass-muted">Leerer Binder, du befüllst ihn selbst</p>
+              </div>
+            </button>
+            <button
+              onClick={() => setCreateMode('template')}
+              className="flex items-center gap-3 px-4 py-3 rounded-xl glass-inner text-left"
+            >
+              <LayoutTemplate size={20} className="text-glass-muted shrink-0" />
+              <div>
+                <p className="text-sm font-semibold">Aus Vorlage</p>
+                <p className="text-xs text-glass-muted">Pokédex, Entwicklungslinie oder Master-Set — füllt sich automatisch</p>
+              </div>
+            </button>
           </div>
-        </div>
+        </Sheet>
       )}
 
       {createMode === 'manual' && (

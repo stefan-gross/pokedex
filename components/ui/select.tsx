@@ -304,6 +304,8 @@ export function SearchableSelect<T extends string>({
   variant = 'secondary',
   accentColor,
   fullWidth = false,
+  onQueryChange,
+  emptyMessage = 'Keine Treffer',
   'aria-label': ariaLabel,
 }: {
   value: T | null;
@@ -319,6 +321,12 @@ export function SearchableSelect<T extends string>({
   /** Trigger füllt die volle Breite (Label links, Chevron rechts); Panel
    *  übernimmt die Trigger-Breite statt der Standard-Max-Breite. */
   fullWidth?: boolean;
+  /** Remote-Modus: wird bei jeder Sucheingabe aufgerufen (Aufrufer entprellt +
+   *  liefert die passenden `options`). Gesetzt = KEINE Client-Filterung mehr,
+   *  `options` werden 1:1 gerendert (z.B. Firestore-Suche wie Pokémon). */
+  onQueryChange?: (query: string) => void;
+  /** Text, wenn keine Optionen da sind (Default „Keine Treffer"). */
+  emptyMessage?: string;
   'aria-label'?: string;
 }) {
   useGlassTheme();
@@ -330,12 +338,16 @@ export function SearchableSelect<T extends string>({
   const { className: variantClassName, style: variantStyle } = selectVariantStyle(variant, accentColor);
 
   const filtered = useMemo(() => {
+    if (onQueryChange) return options; // Remote-Modus: Aufrufer filtert
     const q = query.trim().toLowerCase();
     if (!q) return options;
     return options.filter(o =>
       o.label.toLowerCase().includes(q) || o.keywords?.toLowerCase().includes(q),
     );
-  }, [options, query]);
+  }, [options, query, onQueryChange]);
+
+  // Remote-Modus: Suchbegriff an den Aufrufer geben (der entprellt + sucht).
+  useEffect(() => { onQueryChange?.(query); }, [query, onQueryChange]);
 
   // Bei jedem Öffnen die Suche zurücksetzen (frische Liste).
   useEffect(() => { if (open) setQuery(''); }, [open]);
@@ -393,7 +405,7 @@ export function SearchableSelect<T extends string>({
             </div>
             <div className="overflow-y-auto py-1 flex-1">
               {filtered.length === 0 ? (
-                <p className="px-3 py-2 text-role-label text-glass-muted">Keine Treffer</p>
+                <p className="px-3 py-2 text-role-label text-glass-muted">{emptyMessage}</p>
               ) : filtered.map(o => (
                 <button
                   key={o.value}

@@ -43,6 +43,14 @@ export const BINDER_ICON_MAP: Record<string, IconComponent> = {
 
 export const BINDER_ICON_KEYS = Object.keys(BINDER_ICON_MAP);
 
+/** Offizielles Pokémon-Artwork („Hauptartwork") nach nationaler Dex-Nummer —
+ *  aus dem PokéAPI-Sprites-Repo (stabil, kein Key, Gen 1–9). Wird als Binder-
+ *  Icon `pokemon:<dex>` gerendert; nichts wird in Firestore abgelegt, nur die
+ *  Dex-Nummer am Binder gespeichert. */
+export function pokemonArtworkUrl(dexNum: number | string): string {
+  return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${dexNum}.png`;
+}
+
 export function BinderIcon({ name, size = 20, className, style, strokeWidth }: { name?: string; size?: number; className?: string; style?: React.CSSProperties; strokeWidth?: number }) {
   // Hook muss unabhängig vom `name`-Zweig immer aufgerufen werden (Rules of
   // Hooks) — löst nur einen Fetch aus, wenn setId gesetzt ist.
@@ -59,6 +67,18 @@ export function BinderIcon({ name, size = 20, className, style, strokeWidth }: {
       <span style={{ display: 'inline-flex', ...wrapperStyle }}>
         <EnergyIcon type={name.slice(5) as EnergyType} size={size} className={className} color={color as string | undefined} />
       </span>
+    );
+  }
+  if (name?.startsWith('pokemon:')) {
+    const dex = name.slice(8);
+    return (
+      <img
+        src={pokemonArtworkUrl(dex)}
+        style={{ height: size, width: size, objectFit: 'contain', ...style }}
+        className={className}
+        alt={`#${dex}`}
+        onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+      />
     );
   }
   if (setId) {

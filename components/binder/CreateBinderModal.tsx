@@ -3,20 +3,22 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { addBinder, updateBinder } from '@/lib/firestore/binders';
 import { syncTemplateBinders } from '@/lib/template-binders/sync';
-import { BINDER_ICON_KEYS, BinderIcon } from '@/lib/binder-icons';
+import { BINDER_ICON_KEYS, BinderIcon, pokemonArtworkUrl } from '@/lib/binder-icons';
+import { searchCatalog, type CatalogCard } from '@/lib/firestore/catalog';
 import { EnergyIcon } from '@/components/ui/EnergyIcon';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Sheet } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SearchableSelect } from '@/components/ui/select';
 import { TCG_TYPES } from '@/lib/hooks/useCardBrowser';
-import { getAllSets, filterSets, type TcgSet } from '@/lib/firestore/sets';
+import { getAllSets, type TcgSet } from '@/lib/firestore/sets';
 import { SERIES_NAMES_DE } from '@/lib/card-constants';
 import { BINDER_SIZES, type BinderSize } from '@/lib/binder-sizes';
 import { initialSheetCount } from '@/lib/binder-sheets';
 import type { BinderDoc, BinderPage, BinderTemplate } from '@/types';
 
-type PickerTab = 'icons' | 'types' | 'set';
+type PickerTab = 'icons' | 'types' | 'set' | 'pokemon';
 
 const COLORS = ['#1a1a1a', '#ffffff', '#e53e3e', '#4299e1', '#ecc94b', '#48bb78', '#667eea'];
 
@@ -56,14 +58,27 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
   const [saving,   setSaving]   = useState(false);
   const initialIconValue = existing?.icon ?? initialIcon ?? 'folder';
   const [pickerTab,  setPickerTab]  = useState<PickerTab>(
-    initialIconValue.startsWith('set:') ? 'set' : initialIconValue.startsWith('type:') ? 'types' : 'icons',
+    initialIconValue.startsWith('set:') ? 'set'
+      : initialIconValue.startsWith('type:') ? 'types'
+      : initialIconValue.startsWith('pokemon:') ? 'pokemon'
+      : 'icons',
   );
-  const [setQuery,   setSetQuery]   = useState('');
   const [allSets,    setAllSets]    = useState<TcgSet[]>([]);
   const setsLoadedRef = useRef(false);
 
+  // Pokémon-Dropdown: Remote-Suche nach Name → offizielles Artwork (pro Dex-
+  // Nummer ein Treffer) als Sammlungs-Icon `pokemon:<dex>`. `SearchableSelect`
+  // gibt den Suchbegriff via `onQueryChange` durch; hier entprellt + gesucht.
+  const [pokeQuery, setPokeQuery] = useState('');
+  const [pokeResults, setPokeResults] = useState<{ dex: number; name: string }[]>([]);
+  // Name des aktuell gewählten Pokémon, damit der Dropdown-Trigger ihn zeigt,
+  // auch wenn er nicht (mehr) in den aktuellen Suchtreffern steckt.
+  const [selectedPokeName, setSelectedPokeName] = useState<string | null>(null);
+  const pokeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const isBinder = collectionType === 'binder';
 
+  // Sets für das Dropdown vorladen, sobald der „Sets"-Tab aktiv ist.
   useEffect(() => {
     if (pickerTab === 'set' && !setsLoadedRef.current) {
       setsLoadedRef.current = true;
@@ -71,10 +86,58 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
     }
   }, [pickerTab]);
 
-  const filteredSets = useMemo(
-    () => filterSets(allSets, setQuery).slice(0, 15),
-    [allSets, setQuery],
+  useEffect(() => {
+    if (pokeDebounceRef.current) clearTimeout(pokeDebounceRef.current);
+    const q = pokeQuery.trim();
+    if (q.length < 2) { setPokeResults([]); return; }
+    pokeDebounceRef.current = setTimeout(async () => {
+      const hits = await searchCatalog(q, '', 60);
+      const byDex = new Map<number, CatalogCard>();
+      for (const c of hits) {
+        if (c.nationalDexNumber != null && !byDex.has(c.nationalDexNumber)) byDex.set(c.nationalDexNumber, c);
+      }
+      setPokeResults([...byDex.values()]
+        .sort((a, b) => a.nationalDexNumber! - b.nationalDexNumber!)
+        .map(c => ({ dex: c.nationalDexNumber!, name: c.nameDe ?? c.name })));
+    }, 350);
+    return () => { if (pokeDebounceRef.current) clearTimeout(pokeDebounceRef.current); };
+  }, [pokeQuery]);
+
+  // Alle Sets alphabetisch (deutscher Name) für das Dropdown.
+  const setOptions = useMemo(
+    () => [...allSets]
+      .sort((a, b) => (a.nameDe ?? a.name).localeCompare(b.nameDe ?? b.name, 'de'))
+      .map(s => ({
+        value: s.id,
+        label: s.nameDe ?? s.name,
+        keywords: `${s.ptcgoCode ?? ''} ${s.name} ${SERIES_NAMES_DE[s.series] ?? s.series}`,
+        hint: s.ptcgoCode,
+      })),
+    [allSets],
   );
+
+  // Pokémon-Dropdown-Optionen aus den Suchtreffern; die aktuelle Auswahl immer
+  // mit einschließen (sonst zeigt der Trigger nach dem Schließen keinen Namen).
+  const pokeDex = icon.startsWith('pokemon:') ? icon.slice(8) : null;
+  const pokeOptions = useMemo(() => {
+    const opts = pokeResults.map(p => ({
+      value: String(p.dex),
+      label: p.name,
+      hint: `#${String(p.dex).padStart(3, '0')}`,
+      // eslint-disable-next-line @next/next/no-img-element
+      icon: <img src={pokemonArtworkUrl(p.dex)} alt="" className="w-6 h-6 object-contain shrink-0" />,
+    }));
+    if (pokeDex && !opts.some(o => o.value === pokeDex)) {
+      opts.unshift({
+        value: pokeDex,
+        label: selectedPokeName ?? `#${pokeDex}`,
+        hint: `#${String(pokeDex).padStart(3, '0')}`,
+        // eslint-disable-next-line @next/next/no-img-element
+        icon: <img src={pokemonArtworkUrl(pokeDex)} alt="" className="w-6 h-6 object-contain shrink-0" />,
+      });
+    }
+    return opts;
+  }, [pokeResults, pokeDex, selectedPokeName]);
 
   const save = async () => {
     if (!name.trim()) return;
@@ -186,9 +249,10 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
             value={pickerTab}
             onChange={setPickerTab}
             options={[
-              { value: 'icons', label: 'Basis' },
-              { value: 'types', label: 'Typen' },
-              { value: 'set',   label: 'Sets' },
+              { value: 'icons',   label: 'Basis' },
+              { value: 'types',   label: 'Typen' },
+              { value: 'set',     label: 'Sets' },
+              { value: 'pokemon', label: 'Pokémon' },
             ]}
           />
 
@@ -224,65 +288,36 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
             </div>
           )}
 
-          {/* Sets */}
+          {/* Sets — Dropdown mit Autosuggest (Client-Filter über alle Sets) */}
           {pickerTab === 'set' && (
-            <div>
-              <Input
-                variant="search"
-                size="sm"
-                className="mb-2"
-                value={setQuery}
-                onChange={setSetQuery}
-                onClear={() => setSetQuery('')}
-                placeholder="Name oder Kürzel (z.B. PAL)"
-              />
-              {allSets.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-3">Lade Sets…</p>
-              ) : filteredSets.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-3">Kein Set gefunden</p>
-              ) : (
-                <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
-                  {filteredSets.map(s => (
-                    <button
-                      key={s.id}
-                      onClick={() => setIcon(`set:${s.id}`)}
-                      className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg border-2 text-left transition-colors ${icon === `set:${s.id}` ? '' : 'glass-inner'}`}
-                      style={{
-                        borderColor: icon === `set:${s.id}` ? ACCENT : 'transparent',
-                        background:  icon === `set:${s.id}` ? `${ACCENT}20` : undefined,
-                      }}
-                    >
-                      {/* Logo */}
-                      <div className="w-14 shrink-0 flex items-center justify-center">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={s.logoUrl ?? ""}
-                          alt={s.id}
-                          className="max-h-7 max-w-[56px] object-contain"
-                          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                        />
-                      </div>
-                      {/* Name + Serie */}
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-semibold truncate">{s.nameDe ?? s.name}</div>
-                        <div className="text-[10px] text-muted-foreground truncate">
-                          {SERIES_NAMES_DE[s.series] ?? s.series}
-                        </div>
-                      </div>
-                      {/* Kürzel-Badge */}
-                      {s.ptcgoCode && (
-                        <span
-                          className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border shrink-0"
-                          style={{ borderColor: 'currentcolor' }}
-                        >
-                          {s.ptcgoCode}
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <SearchableSelect
+              fullWidth
+              aria-label="Set wählen"
+              value={icon.startsWith('set:') ? icon.slice(4) : null}
+              onChange={(id) => setIcon(`set:${id}`)}
+              options={setOptions}
+              placeholder={allSets.length === 0 ? 'Lade Sets…' : 'Set wählen'}
+              searchPlaceholder="Name oder Kürzel (z.B. PAL)"
+              emptyMessage="Kein Set gefunden"
+            />
+          )}
+
+          {/* Pokémon — Dropdown mit Autosuggest (Remote-Suche → Artwork nach Dex) */}
+          {pickerTab === 'pokemon' && (
+            <SearchableSelect
+              fullWidth
+              aria-label="Pokémon wählen"
+              value={pokeDex}
+              onChange={(dex) => {
+                setIcon(`pokemon:${dex}`);
+                setSelectedPokeName(pokeResults.find(p => String(p.dex) === dex)?.name ?? null);
+              }}
+              options={pokeOptions}
+              onQueryChange={setPokeQuery}
+              placeholder="Pokémon wählen"
+              searchPlaceholder="Pokémon suchen (z.B. Glumanda)"
+              emptyMessage="Mind. 2 Buchstaben eingeben"
+            />
           )}
         </div>
 

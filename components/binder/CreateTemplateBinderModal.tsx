@@ -185,6 +185,8 @@ export function CreateTemplateBinderModal({ onClose, onSaved, initialMasterSetId
     setReady({
       template: { type: 'pokemon', dexNumbers: evoDexNumbers },
       initialName: includeFamily ? `${evoPicked.name}-Linie` : evoPicked.name,
+      // Offizielles Artwork des gewählten Pokémon als Icon vorschlagen.
+      initialIcon: `pokemon:${evoPicked.dexNumber}`,
       initialColor: '#48bb78',
     });
   }
