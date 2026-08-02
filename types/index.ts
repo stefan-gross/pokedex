@@ -24,6 +24,23 @@ export interface CardDoc {
   tcgImageUrl?: string;
   notes?: string;
   needsReview?: boolean;   // true = per Scanner hinzugefügt, noch nicht manuell geprüft
+  /** true = gescannt, aber (noch) nicht im TCGdex-Katalog gefunden. Die Karte
+   *  existiert ohne `tcgId`/Katalogbild; angezeigt wird ein generierter
+   *  Platzhalter aus `manualData`. Ein späterer Katalog-Sync verknüpft sie
+   *  automatisch (siehe lib/scan/reconcile-pending.ts), dann fällt das Flag
+   *  weg und echtes Bild/Preis erscheinen. */
+  pendingCatalog?: boolean;
+  /** Von Gemini gelesene Rohwerte einer vorläufigen Karte — Quelle für die
+   *  Platzhalter-Anzeige UND die spätere Katalog-Verknüpfung. */
+  manualData?: {
+    name: string;
+    hp?: number;
+    setCode?: string;
+    number?: string;
+    printedTotal?: number;
+    dexNumber?: number;
+    language?: CardLanguage;
+  };
   addedAt: Timestamp;
   updatedAt: Timestamp;
 }

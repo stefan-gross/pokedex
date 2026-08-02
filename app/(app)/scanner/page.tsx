@@ -18,7 +18,8 @@ import { addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
 import { BulkAddToCollectionModal } from '@/components/scanner/BulkAddToCollectionModal';
 import { ValueBadge } from '@/components/card/ValueBadge';
 import { CardPrice } from '@/components/card/CardPrice';
-import { catalogCardToInfo } from '@/lib/card-info';
+import { CardPlaceholder } from '@/components/card/CardPlaceholder';
+import { catalogCardToInfo, cardInfoToAddInput } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition as PersistedCondition, CardDoc, CardLanguage, CardVariant } from '@/types';
 import { CONDITIONS, VARIANT_LABELS, SERIES_NAMES_DE, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
@@ -57,6 +58,7 @@ interface GeminiResponse {
   language?: string;
   confidence?: string;
   nationalDexNumber?: number | null;
+  hp?: number | null;                    // KP/HP neben dem Kartennamen (für Platzhalter)
   condition?: CardCondition;
   fakeRisk?: 'low' | 'medium' | 'high';
   fakeReasons?: string[];
@@ -636,25 +638,9 @@ export default function ScannerPage() {
         const c = job.editedCondition ?? 'NM';
         const lang = job.result!.language ?? 'de';
         try {
-          const cardId = await addCard({
-            tcgId: card.id,
-            name: card.name,
-            setId: card.setId,
-            setName: card.setName,
-            series: card.series,
-            number: card.number,
-            rarity: card.rarity,
-            pokemonType: card.types?.[0],
-            supertype: card.supertype,
-            variant: v,
-            condition: c,
-            language: lang,
-            isFoil: v === 'holo',
-            isFirstEd: v === '1st-ed',
-            quantity: 1,
-            tcgImageUrl: card.imgLargeDe || card.imgLarge,
-            needsReview: true,
-          });
+          const cardId = await addCard(
+            cardInfoToAddInput(card, { variant: v, condition: c, language: lang, needsReview: true }),
+          );
           await addCardToBinder(unsortedId, cardId);
         } catch (err) {
           console.error('[scanner-close] save error for job', job.id, err);
@@ -1020,6 +1006,26 @@ export default function ScannerPage() {
       //    dauerhaft Bild-Bytes im Heap halten).
       const finalDebug: ScanDebug = { ...debug };
 
+      // Kein Katalog-Treffer, aber verwertbare Werte (Hard-Fail — gar keine
+      // Werte — wurde oben schon abgefangen): eine VORLÄUFIGE Platzhalter-Karte
+      // aus den gelesenen Werten bauen. Sie ist anzeig- UND aufnehmbar (rotes
+      // „?"-Badge, generische Kartenoptik) und wird beim nächsten Katalog-Sync
+      // automatisch mit dem echten Eintrag verknüpft (lib/scan/reconcile-pending).
+      const pendingCard: CardInfo | null = !catalogCard ? {
+        id: `pending-${id}`,
+        name: gemini.name ?? 'Unbekannte Karte',
+        number: rawNumber || gemini.number || '',
+        setId: '',
+        setName: gemini.setCode ?? '?',
+        setCode: gemini.setCode ?? undefined,
+        printedTotal: gemini.printedTotal ?? undefined,
+        hp: gemini.hp ?? undefined,
+        nationalDexNumber: gemini.nationalDexNumber ?? undefined,
+        imgSmall: '', imgLarge: '',
+        pendingCatalog: true,
+      } : null;
+      const finalCard: CardInfo | null = catalogCard ? catalogCardToInfo(catalogCard) : pendingCard;
+
       // Karte SOFORT rendern, ownedCount kommt asynchron nach.
       // Spart 5-15s Render-Verzögerung auf schwacher Firebase-Verbindung.
       const initialVariant: CardVariant = (catalogCard?.variants?.[0]) ?? 'standard';
@@ -1028,13 +1034,13 @@ export default function ScannerPage() {
         : 'NM';
       setJobs(prev => prev.map(j => j.id === id ? {
         ...j,
-        status: catalogCard ? 'done' : 'error',
+        status: finalCard ? 'done' : 'error',
         debugInfo: `${geminiSummary} | ${catalogInfo}`,
         debug: finalDebug,
         editedVariant:   initialVariant,
         editedCondition: initialCondition,
         result: {
-          card: catalogCard ? catalogCardToInfo(catalogCard) : null,
+          card: finalCard,
           language: (gemini.language ?? 'de') as CardLanguage,
           ownedCount: undefined, // wird non-blocking nachgeladen
           condition: gemini.condition,
@@ -1044,9 +1050,9 @@ export default function ScannerPage() {
         },
       } : j));
 
-      // Erkennen-Modus: nach erfolgreichem Catalog-Match Job zentral anzeigen.
-      // Stream wurde bereits beim Snap pausiert (handleCapture oben).
-      if (catalogCard && scanModeRef.current === 'recognize') {
+      // Erkennen-Modus: nach erfolgreicher Erkennung Job zentral anzeigen —
+      // auch für vorläufige (nicht katalogisierte) Karten.
+      if (finalCard && scanModeRef.current === 'recognize') {
         setRecognizedJobId(id);
       }
       scheduleImageCleanup(id);
@@ -3085,6 +3091,21 @@ function RecognizedCardLarge({
             // probieren (siehe cardImgUrlsLarge oben), statt das native
             // "kaputtes Bild"-Icon zu zeigen.
             onError={() => setImgIdx(i => i + 1)}
+          />
+        ) : card?.pendingCatalog ? (
+          /* Vorläufige (nicht katalogisierte) Karte: generische Platzhalter-
+             Optik mit den erkannten Werten statt Warn-Icon. */
+          <CardPlaceholder
+            info={{
+              name: card.name,
+              hp: card.hp,
+              number: card.number,
+              total: card.printedTotal,
+              dexNumber: card.nationalDexNumber,
+              setCode: card.setCode,
+              pending: true,
+            }}
+            className="w-full h-full"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-red-500/10">

@@ -24,7 +24,7 @@ import { getCard } from '@/lib/firestore/cards';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { resolveTemplateSlots } from '@/lib/template-binders/resolve';
 import { resolveSlotWinners } from '@/lib/template-binders/slot-winner';
-import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
+import { catalogCardToInfo, pendingCardInfo, type CardInfo } from '@/lib/card-info';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { CollectionTypeBadge } from '@/components/binder/CollectionTypeBadge';
 import { BinderIcon } from '@/lib/binder-icons';
@@ -212,7 +212,12 @@ export default function BinderDetailPage({ params }: Props) {
   };
 
   const openDetail = async (cardDoc: CardDoc) => {
-    if (!cardDoc.tcgId) return;
+    // Vorläufige Karte (kein Katalog-Eintrag): Platzhalter aus manualData zeigen.
+    if (cardDoc.pendingCatalog || !cardDoc.tcgId) {
+      setDetailOwned([cardDoc]);
+      setDetailCard(pendingCardInfo(cardDoc));
+      return;
+    }
     const [cc] = await getCatalogCardsByIds([cardDoc.tcgId]);
     if (!cc) return;
     setDetailOwned(cards.filter(c => c.tcgId === cardDoc.tcgId));
@@ -640,7 +645,7 @@ function GridView({ cards, onCardTap, prices }: {
         return (
           <Card
             key={`${c.id}-${i}`}
-            card={{
+            card={c.pendingCatalog ? pendingCardInfo(c) : {
               id: c.tcgId ?? c.id, name: c.name, number: c.number,
               setId: c.setId, setName: c.setName,
               imgSmall: c.tcgImageUrl ?? "",

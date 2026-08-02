@@ -759,6 +759,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                   dexNumber: card.nationalDexNumber,
                   setCode: card.setCode,
                   types: card.types,
+                  pending: card.pendingCatalog,
                 }}
               />
             </div>

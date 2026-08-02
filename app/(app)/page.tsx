@@ -4,13 +4,14 @@ import Link from 'next/link';
 import { Settings, Star, Clock, Percent, ArrowUp } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { getCardsRest } from '@/lib/firestore/cards-rest';
+import { reconcilePendingCards } from '@/lib/scan/reconcile-pending';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { getBindersRest } from '@/lib/firestore/binders-rest';
 import { getWishlistsRest } from '@/lib/firestore/wishlists-rest';
 import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
 import { getSetById } from '@/lib/firestore/sets';
 import { getRarityGroup } from '@/lib/card-constants';
-import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
+import { catalogCardToInfo, pendingCardInfo, type CardInfo } from '@/lib/card-info';
 import { getCountFromServer, collection, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { SetListItem } from '@/components/set/SetListItem';
@@ -45,7 +46,16 @@ export default function DashboardPage() {
     // REST statt Firestore-Web-SDK — vermeidet den WebSocket-Cold-Start
     // (10-20s auf iOS-PWA, besonders nach "App aktualisieren"), siehe
     // lib/firestore/rest-shared.ts.
-    getCardsRest().then(setCards).catch(() => setCards([]));
+    getCardsRest().then(async (cs) => {
+      setCards(cs);
+      // Vorläufige Karten (nicht im Katalog) gegen den aktuellen Katalog prüfen —
+      // ein zwischenzeitlicher Sync kann sie jetzt verknüpfen. Nur wenn welche
+      // existieren (billiger Guard); bei Verknüpfung frisch nachladen.
+      if (cs.some(c => c.pendingCatalog)) {
+        const { linked } = await reconcilePendingCards(cs).catch(() => ({ linked: 0, checked: 0 }));
+        if (linked > 0) getCardsRest().then(setCards).catch(() => {});
+      }
+    }).catch(() => setCards([]));
     getBindersRest().then(setBinders).catch(() => {});
     getWishlistsRest()
       .then(wls => setWishlistCount(wls.reduce((s, w) => s + w.items.filter(i => !i.acquired).length, 0)))
@@ -53,7 +63,12 @@ export default function DashboardPage() {
   }, []);
 
   async function openDetail(cardDoc: CardDoc) {
-    if (!cardDoc.tcgId) return;
+    // Vorläufige Karte (kein Katalog-Eintrag): Platzhalter aus manualData zeigen.
+    if (cardDoc.pendingCatalog || !cardDoc.tcgId) {
+      setDetailOwned([cardDoc]);
+      setDetailCard(pendingCardInfo(cardDoc));
+      return;
+    }
     const [catalogCard] = await getCatalogCardsByIds([cardDoc.tcgId]);
     if (!catalogCard) return;
     const info = catalogCardToInfo(catalogCard);
@@ -71,10 +86,11 @@ export default function DashboardPage() {
     ? cards.filter(c => (c.addedAt?.toMillis?.() ?? 0) > weekAgo).reduce((s, c) => s + c.quantity, 0)
     : null;
 
-  // Recently added — last 6 cards with image
+  // Recently added — last 6 cards with image (oder vorläufige Karten, die einen
+  // generierten Platzhalter zeigen).
   const recentCards = cards
     ? [...cards]
-        .filter(c => c.tcgImageUrl)
+        .filter(c => c.tcgImageUrl || c.pendingCatalog)
         .sort((a, b) => (b.addedAt?.seconds ?? 0) - (a.addedAt?.seconds ?? 0))
         .slice(0, 6)
     : [];
@@ -269,7 +285,7 @@ export default function DashboardPage() {
             {recentCards.map(card => (
               <Card
                 key={card.id}
-                card={{
+                card={card.pendingCatalog ? pendingCardInfo(card) : {
                   id: card.tcgId ?? card.id, name: card.name, number: card.number,
                   setId: card.setId, setName: card.setName,
                   imgSmall: card.tcgImageUrl ?? '', imgLarge: card.tcgImageUrl ?? '',

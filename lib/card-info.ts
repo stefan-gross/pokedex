@@ -5,7 +5,7 @@
  */
 
 import type { CatalogCard } from '@/lib/firestore/catalog';
-import type { CardVariant } from '@/types';
+import type { CardVariant, CardDoc, CardCondition, CardLanguage } from '@/types';
 
 export interface CardInfo {
   id: string;
@@ -38,6 +38,9 @@ export interface CardInfo {
   nationalDexNumber?: number;
   evolutionFamily?: number[];
   artist?: string;
+  /** true = vorläufige Karte ohne Katalog-Eintrag (kein Bild). Rendert einen
+   *  Platzhalter (CardImage → CardPlaceholder) und ein rotes „?"-Badge. */
+  pendingCatalog?: boolean;
 }
 
 /** Leitet die deutsche TCGdex-Bild-URL aus der englischen ab (/en/ → /de/).
@@ -78,5 +81,78 @@ export function catalogCardToInfo(c: CatalogCard): CardInfo {
     nationalDexNumber: c.nationalDexNumber,
     evolutionFamily: c.evolutionFamily,
     artist: c.artist,
+  };
+}
+
+/** Baut eine `CardInfo` aus einer vorläufigen (nicht katalogisierten) `CardDoc`.
+ *  Bild-URLs bleiben leer → `CardImage` fällt auf `CardPlaceholder` zurück, das
+ *  aus diesen Feldern (Name/KP/Nummer/Total/Dex/Set-Code) gezeichnet wird.
+ *  `pendingCatalog:true` steuert zusätzlich das rote „?"-Badge. */
+export function pendingCardInfo(doc: CardDoc): CardInfo {
+  const m = doc.manualData;
+  return {
+    id: doc.id,
+    name: m?.name ?? doc.name,
+    number: m?.number ?? doc.number,
+    setId: doc.setId,
+    setName: doc.setName || m?.setCode || '?',
+    setCode: m?.setCode,
+    printedTotal: m?.printedTotal,
+    hp: m?.hp,
+    nationalDexNumber: m?.dexNumber,
+    imgSmall: '',
+    imgLarge: '',
+    pendingCatalog: true,
+  };
+}
+
+/** Baut das `addCard`-Eingabeobjekt aus einer `CardInfo` — zentral für alle
+ *  Save-Pfade (Scanner-Auto-Save, Add-/Bulk-Modal). Behandelt vorläufige Karten
+ *  (`pendingCatalog`): kein `tcgId`/Bild, stattdessen `manualData` (Rohwerte für
+ *  Anzeige + spätere Verknüpfung) und das Flag. Reguläre Karten wie bisher mit
+ *  `tcgId` + Katalogbild. `ignoreUndefinedProperties` (Firestore-Client) strippt
+ *  leere Felder inkl. verschachtelter `manualData`-Werte. */
+export function cardInfoToAddInput(
+  card: CardInfo,
+  opts: { variant: CardVariant; condition: CardCondition; language: CardLanguage; needsReview?: boolean },
+): Omit<CardDoc, 'id' | 'addedAt' | 'updatedAt'> {
+  const { variant, condition, language, needsReview } = opts;
+  const base: Omit<CardDoc, 'id' | 'addedAt' | 'updatedAt'> = {
+    name: card.name,
+    setId: card.setId,
+    setName: card.setName,
+    series: card.series,
+    number: card.number,
+    rarity: card.rarity,
+    pokemonType: card.types?.[0],
+    supertype: card.supertype,
+    variant,
+    condition,
+    language,
+    isFoil: variant === 'holo',
+    isFirstEd: variant === '1st-ed',
+    quantity: 1,
+  };
+  if (card.pendingCatalog) {
+    // Rotes „?"-Badge ersetzt das Review-„!" → kein needsReview für Pending.
+    return {
+      ...base,
+      pendingCatalog: true,
+      manualData: {
+        name: card.name,
+        hp: card.hp,
+        setCode: card.setCode,
+        number: card.number || undefined,
+        printedTotal: card.printedTotal,
+        dexNumber: card.nationalDexNumber,
+        language,
+      },
+    };
+  }
+  return {
+    ...base,
+    tcgId: card.id,
+    tcgImageUrl: card.imgLargeDe || card.imgLarge,
+    ...(needsReview ? { needsReview: true } : {}),
   };
 }

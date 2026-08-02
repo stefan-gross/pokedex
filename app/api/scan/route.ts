@@ -43,6 +43,10 @@ printedTotal — the digits AFTER the slash in the SAME "NNN/TTT" group (the set
 language — German cards have "KP" (HP) and "Fähigkeit" (Ability).
   English cards have "HP" and "Ability". French has "PV" and "Talent" etc.
 
+hp — the KP/HP value printed next to the Pokémon name at the top of the card
+  (e.g. "350"). Read it as a plain integer. null for Trainer and Energy cards
+  (they have no HP).
+
 nationalDexNumber — VERY IMPORTANT: this is the fallback identifier when there
   is no letter set code. Always check carefully and parse as integer (drop leading
   zeros: "0271" → 271).
@@ -150,6 +154,11 @@ const SCHEMA = {
     nationalDexNumber: {
       type: SchemaType.INTEGER,
       nullable: true,
+    },
+    hp: {
+      type: SchemaType.INTEGER,
+      nullable: true,
+      description: 'KP/HP value next to the Pokémon name (integer); null for Trainer/Energy',
     },
   },
   required: ['language', 'confidence'],

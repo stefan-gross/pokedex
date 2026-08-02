@@ -69,9 +69,9 @@ interface CardSizePreset {
 // die kompakte Variante (z.B. Dashboard-Kacheln, 3-spaltig), Kontexte mit
 // größeren 2-spaltigen Kacheln (z.B. Suche) nutzen stattdessen `size="md"`.
 export const CARD_SIZE_PRESETS: Record<CardSize, CardSizePreset> = {
-  sm: { badgeSize: 28, badgeIconSize: 16, sublabelClassName: 'text-[11px]', imageSizes: '(max-width: 400px) 30vw, 120px' },
-  md: { badgeSize: 47, badgeIconSize: 27, sublabelClassName: 'text-sm', imageSizes: '200px' },
-  lg: { badgeSize: 75, badgeIconSize: 43, sublabelClassName: 'text-base', imageSizes: '320px' },
+  sm: { badgeSize: 25, badgeIconSize: 14, sublabelClassName: 'text-[11px]', imageSizes: '(max-width: 400px) 30vw, 120px' },
+  md: { badgeSize: 34, badgeIconSize: 20, sublabelClassName: 'text-sm', imageSizes: '200px' },
+  lg: { badgeSize: 67, badgeIconSize: 39, sublabelClassName: 'text-base', imageSizes: '320px' },
 };
 
 interface Props {
@@ -134,9 +134,11 @@ export function Card({
   useCardVisualTheme();
   const preset = CARD_SIZE_PRESETS[size];
   const radius = cornerRadius;
-  // Rundung der abgerundeten Badge-Diagonal-Ecken — etwas runder als der
-  // Karten-Radius (Faktor 1,5), skaliert aber mit ihm mit.
-  const badgeCornerRadius = Math.round(radius * 1.5);
+  // Rundung der abgerundeten Badge-Diagonal-Ecken = Karten-Radius: das Badge
+  // sitzt bündig in der Kartenecke (Offset 0), seine Außen-Ecke muss also exakt
+  // so stark gerundet sein wie die Kartenecke, damit beide Kurven konzentrisch
+  // ineinander liegen (vorher 1,5× → Badge runder als die Karte → Versatz).
+  const badgeCornerRadius = radius;
   const layout = badgeLayout;
   const totalOwned    = ownedCards.reduce((s, c) => s + c.quantity, 0);
   const isOwned       = totalOwned > 0;
@@ -181,6 +183,7 @@ export function Card({
               dexNumber: card.nationalDexNumber,
               setCode: card.setCode,
               types: card.types,
+              pending: card.pendingCatalog,
             }}
           />
           {/* Hologramm-Schimmer — nur bei diesem einen Effekt, animiertes
@@ -214,8 +217,11 @@ export function Card({
           />
         )}
 
-        {/* Prüfen-Badge — gelb, oben links, nur bei ungeprüften eigenen Exemplaren. */}
-        {needsReview && (
+        {/* Prüfen-Badge — gelb, oben links, nur bei ungeprüften eigenen
+            Exemplaren. Vorläufige (nicht im Katalog gefundene) Karten bekommen
+            KEIN Badge hier: ihr Platzhalter (CardPlaceholder) zeichnet bereits
+            ein eigenes rotes „?"-Eck-Badge (gleiche Form wie dieses „!"). */}
+        {!card.pendingCatalog && needsReview && (
           <CardBadge
             size={preset.badgeSize} color="var(--pokedex-yellow)" corner="tl" cornerRadius={badgeCornerRadius}
             style={{ top: layout.reviewBadge.top, left: layout.reviewBadge.left }}

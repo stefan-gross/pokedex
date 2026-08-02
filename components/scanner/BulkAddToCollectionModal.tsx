@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Loader2, Plus } from 'lucide-react';
 import type { CardCondition, CardLanguage, CardVariant } from '@/types';
-import type { CardInfo } from '@/lib/card-info';
+import { cardInfoToAddInput, type CardInfo } from '@/lib/card-info';
 import { addCard } from '@/lib/firestore/cards';
 import { addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
 import { LANGUAGES, CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
@@ -73,25 +73,9 @@ export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved
       for (const job of jobs) {
         const card = job.card;
         try {
-          const cardId = await addCard({
-            tcgId: card.id,
-            name: card.name,
-            setId: card.setId,
-            setName: card.setName,
-            series: card.series,
-            number: card.number,
-            rarity: card.rarity,
-            pokemonType: card.types?.[0],
-            supertype: card.supertype,
-            variant,
-            condition,
-            language,
-            isFoil: variant === 'holo',
-            isFirstEd: variant === '1st-ed',
-            quantity: 1,
-            tcgImageUrl: card.imgLargeDe || card.imgLarge,
-            needsReview: true,
-          });
+          const cardId = await addCard(
+            cardInfoToAddInput(card, { variant, condition, language, needsReview: true }),
+          );
           await addCardToBinder(unsortedId, cardId);
           onJobSaved(job.id);
         } catch (err) {

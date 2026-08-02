@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
-import type { CardInfo } from '@/lib/card-info';
+import { cardInfoToAddInput, type CardInfo } from '@/lib/card-info';
 import type { CardCondition, CardLanguage, CardVariant, CardDoc, BinderDoc } from '@/types';
 import { addCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { getBinders, addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
@@ -78,28 +78,12 @@ export function AddToCollectionModal({
   const save = async () => {
     setSaving(true);
     try {
-      const cardId = await addCard({
-        tcgId: card.id,
-        name: card.name,
-        setId: card.setId,
-        setName: card.setName,
-        series: card.series,
-        number: card.number,
-        rarity: card.rarity,
-        pokemonType: card.types?.[0],
-        supertype: card.supertype,
-        variant,
-        condition,
-        language,
-        isFoil: variant === 'holo',
-        isFirstEd: variant === '1st-ed',
-        quantity: 1,
-        tcgImageUrl: card.imgLargeDe || card.imgLarge,
-        // „Prüfen" nur für Scanner-Ergebnisse (KI-Erkennung, kann falsch
-        // liegen). Manuelles Hinzufügen aus Suche/Kartendetail ist bewusst
-        // gewählt → kein Review-Status.
-        needsReview: fromScanner,
-      });
+      // „Prüfen" nur für Scanner-Ergebnisse (KI-Erkennung, kann falsch liegen).
+      // Manuelles Hinzufügen aus Suche/Kartendetail ist bewusst gewählt → kein
+      // Review-Status. Vorläufige Karten (pendingCatalog) behandelt der Helper.
+      const cardId = await addCard(
+        cardInfoToAddInput(card, { variant, condition, language, needsReview: fromScanner }),
+      );
       // Immer nach „Unsortiert" — von dort ordnet der Nutzer weiter zu (siehe
       // Fluss-Modell im Klassen-Kommentar).
       const unsortedId = await ensureDefaultBinder();

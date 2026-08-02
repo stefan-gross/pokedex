@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import type { SyncMeta } from '@/lib/firestore/catalog';
 import { getCards, deleteCard } from '@/lib/firestore/cards';
+import { reconcilePendingCards } from '@/lib/scan/reconcile-pending';
 import { getBinders, updateBinder } from '@/lib/firestore/binders';
 import { getOwnedPriceStatus, type OwnedPriceStatus } from '@/lib/prices/owned-status';
 import { ButtonGroup } from '@/components/ui/button-group';
@@ -137,7 +138,13 @@ export default function SettingsPage() {
         if (data.status !== 'in-progress') break;
       }
 
-      const summary = `${setsData.synced ?? 0} Sets · ${evoTotal} Evo-Daten · ${speciesTotal} Artdaten`;
+      // 5. Vorläufige (nicht katalogisierte) Karten gegen den frischen Katalog
+      //    prüfen und eindeutige Treffer verknüpfen (z.B. eine zuvor gescannte
+      //    Neuware, die der Sync nun nachgezogen hat).
+      step('🔗 Vorläufige Karten werden geprüft…');
+      const { linked } = await reconcilePendingCards().catch(() => ({ linked: 0, checked: 0 }));
+
+      const summary = `${setsData.synced ?? 0} Sets · ${evoTotal} Evo-Daten · ${speciesTotal} Artdaten · ${linked} vorläufige verknüpft`;
       step(`✅ Fertig — ${summary}`);
       // Zusammenfassung dauerhaft merken (überlebt Reload), damit „Letzter
       // Daten-Lauf" auch später noch sichtbar ist.
