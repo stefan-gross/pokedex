@@ -85,7 +85,11 @@ const SAMPLE_H = 266;
 
 const CHECK_MS               = 150;   // ONNX-Inferenz ~80ms → etwas mehr Budget
 const MOTION_RESET_THRESHOLD = 1200;  // grobe Bewegung → stable zurücksetzen
-const MOTION_SNAP_THRESHOLD  = 700;   // unter diesem MSE-Wert gilt es als "ruhig"
+const MOTION_SNAP_THRESHOLD  = 2000;  // unter diesem MSE-Wert gilt es als "ruhig".
+                                      // War 700 → Haupt-Blocker bei Glanz-/Holo-Karten aus der Hand
+                                      // (Folienflimmern hält mse hoch, obwohl die Box ruhig liegt).
+                                      // Box-Ruhe (Δbox<35) + Schärfe-Gate schützen weiterhin vor
+                                      // echter Bewegung/Unschärfe.
 const SNAP_STABLE_FRAMES     = 1;     // 1 grüner Frame reicht — „grün" ist bereits scharf+ruhig+
                                       // im Rahmen+reflexionsfrei gegatet, ein 2. Tick verzögerte nur
                                       // (grün flackert durch Hand-Mikrobewegung → Zähler-Reset).
