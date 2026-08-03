@@ -16,6 +16,7 @@ import { getCountFromServer, collection, query, where } from 'firebase/firestore
 import { db } from '@/lib/firebase/client';
 import { SetListItem } from '@/components/set/SetListItem';
 import { ButtonGroup } from '@/components/ui/button-group';
+import { useUpdateAvailable } from '@/lib/hooks/use-update-available';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { Card } from '@/components/card/Card';
 import type { CardDoc, BinderDoc } from '@/types';
@@ -41,6 +42,7 @@ export default function DashboardPage() {
   const [setMeta,   setSetMeta]     = useState<Record<string, { nameDe?: string; logoDe?: string; ptcgoCode?: string; symbolUrl?: string; series?: string }>>({});
   const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
   const [detailOwned, setDetailOwned] = useState<CardDoc[]>([]);
+  const { updateAvailable } = useUpdateAvailable();
 
   useEffect(() => {
     // REST statt Firestore-Web-SDK — vermeidet den WebSocket-Cold-Start
@@ -174,10 +176,18 @@ export default function DashboardPage() {
         </div>
         <Link
           href="/settings"
-          className="glass w-[38px] h-[38px] rounded-full flex items-center justify-center text-glass"
+          className="glass w-[38px] h-[38px] rounded-full flex items-center justify-center text-glass relative"
           style={{ backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' }}
+          aria-label={updateAvailable ? 'Einstellungen — Update verfügbar' : 'Einstellungen'}
         >
           <Settings size={20} strokeWidth={1.8} />
+          {updateAvailable && (
+            <span
+              className="absolute top-0 right-0 w-3 h-3 rounded-full border-2"
+              style={{ background: '#f59e0b', borderColor: 'var(--glass-bg, #fff)' }}
+              aria-hidden="true"
+            />
+          )}
         </Link>
       </div>
 

@@ -16,6 +16,7 @@ import { ButtonGroup } from '@/components/ui/button-group';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { useScannerDebug, setScannerDebug } from '@/lib/scanner/debug-flags';
+import { useUpdateAvailable } from '@/lib/hooks/use-update-available';
 
 const THEMES = [
   { value: 'system', label: 'System', icon: Smartphone },
@@ -33,17 +34,8 @@ export default function SettingsPage() {
   // Scanner-Debug-Modi (mehrstufig): Scannen / KI / Daten
   const scannerDebug = useScannerDebug();
 
-  // Build-Kennung: eingebacken (Client-Bundle) vs. Laufzeit-Server (/api/version).
-  const buildSha  = process.env.NEXT_PUBLIC_BUILD_SHA ?? 'dev';
-  const buildTime = process.env.NEXT_PUBLIC_BUILD_TIME;
-  const [serverSha, setServerSha] = useState<string | null>(null);
-  const updateAvailable = serverSha != null && buildSha !== 'dev' && serverSha !== 'dev' && serverSha !== buildSha;
-  useEffect(() => {
-    fetch('/api/version', { cache: 'no-store' })
-      .then(r => r.json())
-      .then((d: { sha?: string }) => setServerSha(d.sha ?? null))
-      .catch(() => { /* offline / egal */ });
-  }, []);
+  // Build-Kennung + „neue Version verfügbar" (geteilter Hook, auch im Dashboard).
+  const { buildSha, buildTime, updateAvailable } = useUpdateAvailable();
 
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncLoading, setSyncLoading] = useState(true);
@@ -295,20 +287,20 @@ export default function SettingsPage() {
         {/* 1. App */}
         <section className="space-y-1.5">
           <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-2">App</p>
-          <Button variant="secondary" size="lg" className="w-full justify-start" icon={<RefreshCw size={18} />} onClick={handleAppUpdate}>
-            App aktualisieren
+          <Button
+            variant="secondary" size="lg" className="w-full" icon={<RefreshCw size={18} />}
+            onClick={handleAppUpdate} disabled={!updateAvailable}
+          >
+            <span className="flex-1 text-left">App aktualisieren</span>
+            {updateAvailable && (
+              <span className="flex items-center gap-1 text-xs text-yellow-700 dark:text-yellow-300">
+                <Clock size={12} /> Update verfügbar
+              </span>
+            )}
           </Button>
-          <p className="text-role-label text-glass-muted px-1">Lädt die neueste Version — Cache wird geleert</p>
           <p className="text-role-label text-glass-muted px-1 font-mono">
             Build {buildSha}{buildTime ? ` · ${new Date(buildTime).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}` : ''}
           </p>
-          {updateAvailable ? (
-            <p className="text-role-label px-1 font-medium" style={{ color: 'var(--pokedex-red)' }}>
-              Neue Version verfügbar ({serverSha}) — tippe „App aktualisieren"
-            </p>
-          ) : serverSha && buildSha !== 'dev' ? (
-            <p className="text-role-label text-glass-muted px-1">Aktuell — keine neue Version</p>
-          ) : null}
         </section>
 
         {/* 2. Karten-Catalog — ein Panel: Status + Preis-Status + letzter Lauf + Aktionen */}
