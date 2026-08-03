@@ -301,7 +301,7 @@ async function generateWithFallback(
 interface PreLookupResult {
   attempted: boolean;
   matched: boolean;
-  via?: 'number+dex' | 'number+dex+printedTotal';
+  via?: 'number+dex' | 'number+dex+printedTotal' | 'printedTotal+number' | 'printedTotal+number+dex';
   cardId?: string;
   candidateCount?: number;
 }
@@ -313,49 +313,96 @@ async function tryDirectCatalogLookup(parsed: Record<string, unknown>): Promise<
   if (parsed.setCode != null || parsed.error) return { attempted: false, matched: false };
   const number = typeof parsed.number === 'string' ? parsed.number : null;
   const dexNumber = typeof parsed.nationalDexNumber === 'number' ? parsed.nationalDexNumber : null;
-  if (!number || dexNumber == null) return { attempted: false, matched: false };
+  const printedTotal = typeof parsed.printedTotal === 'number' ? parsed.printedTotal : null;
+  // Braucht mindestens number + (dex ODER printedTotal). setCode/Symbolabgleich
+  // sind nicht nötig, wenn eine dieser robusten Zahlenkombis eindeutig auflöst.
+  if (!number || (dexNumber == null && printedTotal == null)) return { attempted: false, matched: false };
 
   try {
     const db: Firestore = getAdminDb();
     const numberVariants = new Set([number]);
     numberVariants.add(/^\d+$/.test(number) ? String(parseInt(number, 10)) : number.padStart(3, '0'));
 
-    let candidates: QueryDocumentSnapshot[] = [];
-    for (const num of numberVariants) {
-      const snap = await db.collection('tcg_catalog')
-        .where('nationalDexNumber', '==', dexNumber)
-        .where('number', '==', num)
-        .limit(10)
-        .get();
-      if (!snap.empty) { candidates = snap.docs; break; }
-    }
-
-    if (candidates.length === 1) {
-      const setCode = candidates[0].data().setCode;
-      if (typeof setCode === 'string') {
-        parsed.setCode = setCode;
-        return { attempted: true, matched: true, via: 'number+dex', cardId: candidates[0].id };
+    // ── A) number + dex (mit printedTotal-Feinauflösung bei Mehrdeutigkeit) ──
+    if (dexNumber != null) {
+      let candidates: QueryDocumentSnapshot[] = [];
+      for (const num of numberVariants) {
+        const snap = await db.collection('tcg_catalog')
+          .where('nationalDexNumber', '==', dexNumber)
+          .where('number', '==', num)
+          .limit(10)
+          .get();
+        if (!snap.empty) { candidates = snap.docs; break; }
       }
-      return { attempted: true, matched: false, via: 'number+dex', candidateCount: 1 };
-    }
 
-    if (candidates.length > 1 && typeof parsed.printedTotal === 'number') {
-      for (const c of candidates) {
-        const setId = c.data().setId;
-        if (typeof setId !== 'string') continue;
-        const setDoc = await db.collection('tcg_sets').doc(setId).get();
-        if (setDoc.data()?.printedTotal === parsed.printedTotal) {
-          const setCode = c.data().setCode;
-          if (typeof setCode === 'string') {
-            parsed.setCode = setCode;
-            return { attempted: true, matched: true, via: 'number+dex+printedTotal', cardId: c.id, candidateCount: candidates.length };
+      if (candidates.length === 1) {
+        const setCode = candidates[0].data().setCode;
+        if (typeof setCode === 'string') {
+          parsed.setCode = setCode;
+          return { attempted: true, matched: true, via: 'number+dex', cardId: candidates[0].id };
+        }
+      } else if (candidates.length > 1 && printedTotal != null) {
+        for (const c of candidates) {
+          const setId = c.data().setId;
+          if (typeof setId !== 'string') continue;
+          const setDoc = await db.collection('tcg_sets').doc(setId).get();
+          if (setDoc.data()?.printedTotal === printedTotal) {
+            const setCode = c.data().setCode;
+            if (typeof setCode === 'string') {
+              parsed.setCode = setCode;
+              return { attempted: true, matched: true, via: 'number+dex+printedTotal', cardId: c.id, candidateCount: candidates.length };
+            }
           }
         }
       }
     }
-    return { attempted: true, matched: false, candidateCount: candidates.length };
+
+    // ── B) printedTotal + number (greift v.a. wenn dex fehlt) ────────────────
+    // printedTotal ist der Set-Fingerabdruck; number grenzt die Karte ein.
+    // Gemini liest beide Zahlen am „NNN/TTT"-Stempel zuverlässig — deutlich
+    // robuster als das winzige Set-Kürzel oder der (fehleranfällige) Symbolabgleich.
+    if (printedTotal != null) {
+      const setSnap = await db.collection('tcg_sets').where('printedTotal', '==', printedTotal).get();
+      const setIds = setSnap.docs.map(d => d.id);
+      if (setIds.length) {
+        const hitsById = new Map<string, QueryDocumentSnapshot>();
+        for (const setId of setIds) {
+          for (const num of numberVariants) {
+            const snap = await db.collection('tcg_catalog')
+              .where('setId', '==', setId)
+              .where('number', '==', num)
+              .limit(2)
+              .get();
+            for (const d of snap.docs) hitsById.set(d.id, d);
+          }
+        }
+        let hits = [...hitsById.values()];
+        // Mehrdeutig (zwei Sets teilen printedTotal + Nummer)? Per dex nachfiltern.
+        if (hits.length > 1 && dexNumber != null) {
+          const byDex = hits.filter(h => h.data().nationalDexNumber === dexNumber);
+          if (byDex.length === 1) {
+            const setCode = byDex[0].data().setCode;
+            if (typeof setCode === 'string') {
+              parsed.setCode = setCode;
+              return { attempted: true, matched: true, via: 'printedTotal+number+dex', cardId: byDex[0].id, candidateCount: hits.length };
+            }
+          }
+          if (byDex.length >= 1) hits = byDex; // zumindest eingegrenzt
+        }
+        if (hits.length === 1) {
+          const setCode = hits[0].data().setCode;
+          if (typeof setCode === 'string') {
+            parsed.setCode = setCode;
+            return { attempted: true, matched: true, via: 'printedTotal+number', cardId: hits[0].id };
+          }
+        }
+        if (hits.length > 1) return { attempted: true, matched: false, via: 'printedTotal+number', candidateCount: hits.length };
+      }
+    }
+
+    return { attempted: true, matched: false };
   } catch (err) {
-    console.warn('[scan] Direkter Katalog-Lookup (number+dex) fehlgeschlagen:', err);
+    console.warn('[scan] Direkter Katalog-Lookup fehlgeschlagen:', err);
     return { attempted: true, matched: false };
   }
 }
