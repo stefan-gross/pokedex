@@ -87,7 +87,7 @@ const CHECK_MS               = 150;   // ONNX-Inferenz ~80ms → etwas mehr Budg
 const MOTION_RESET_THRESHOLD = 1200;  // grobe Bewegung → stable zurücksetzen
 const MOTION_SNAP_THRESHOLD  = 700;   // unter diesem MSE-Wert gilt es als "ruhig"
 const SNAP_STABLE_FRAMES     = 2;     // Grün muss ~2 Ticks (~300ms) anhalten (1=zu früh, 3=zu träge aus der Hand)
-const BOX_SETTLED_THRESHOLD  = 35;    // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames
+const BOX_SETTLED_THRESHOLD  = 45;    // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames (war 35 → dunkle Reverse-Holos zappelten, lösten nie ruhig aus)
 const CONSECUTIVE_SNAP_FRAMES = 2;    // Fallback: 2 aufeinanderfolgende Treffer
 // Szenen-Änderungs-Cooldown: nach Snap warten bis MSE vs. Snapshot > Threshold.
 // Verhindert Duplikat-Scans wenn dieselbe Karte noch im Bild liegt.
@@ -145,8 +145,8 @@ function medianCardBox(history: CardBox[]): CardBox {
 // Erkennung kritisch. 1024px/0.60 machten sie matschig → 1280px lange Kante +
 // JPEG 0.78. Nach dem Deskew ist die Karte formatfüllend (kein Hintergrund mehr),
 // daher bleibt die Datei trotzdem klein (~80–140KB Base64).
-const MAX_EDGE_PX = 1280;
-const JPEG_QUALITY = 0.78;
+const MAX_EDGE_PX = 1400;
+const JPEG_QUALITY = 0.82;
 function encodeCropToJpeg(src: HTMLCanvasElement, sx: number, sy: number, sw: number, sh: number): string {
   const scale = Math.min(1, MAX_EDGE_PX / Math.max(sw, sh));
   const dw = Math.round(sw * scale);
@@ -614,9 +614,11 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     startingRef.current = true; // Visibility-Handler blockiert ab hier
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        // 1280×720 reicht für Gemini-OCR und ONNX-Box-Detection — halbiert
-        // den Speicherbedarf pro Frame gegenüber 1920×1080 (Memory-Schutz auf iOS).
-        video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+        // Full HD: die Karte füllt oft nur ~25% des Bildes, bei 1280×720 blieben
+        // dem winzigen Set-Kürzel/-Nummer zu wenig native Pixel (unscharf nach
+        // Deskew-Upscaling). 1920×1080 gibt ~50% mehr lineare Auflösung → lesbarer.
+        // Detection läuft ohnehin auf 640px-Downscale, kostet also nicht mehr.
+        video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
       });
       _kameraStream = stream;
       streamRef.current = stream;
@@ -827,8 +829,10 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
               // Reduziert Jitter durch Maske-Rauschen und Hand-Zittern.
               const hist = cornerHistoryRef.current;
               hist.push(box);
-              if (hist.length > 3) hist.shift();
-              onnxBoxRef.current    = hist.length === 3 ? medianCardBox(hist) : box;
+              if (hist.length > 5) hist.shift();
+              // Median über 5 statt 3 Frames → ruhigerer Rahmen bei verrauschten
+              // Masken (dunkle Reverse-Holos zappelten in Form/Größe).
+              onnxBoxRef.current    = hist.length >= 3 ? medianCardBox(hist) : box;
               onnxStickyRef.current = ONNX_STICKY;
               consecutiveDetectRef.current += 1; // Zähler für Fallback-Trigger
             } else {
