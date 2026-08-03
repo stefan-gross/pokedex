@@ -341,24 +341,35 @@ export async function detectCardInFrame(
     if (!found) {
       best.corners = null;
     } else {
-      // ── Gedrehtes Karten-Viereck: konvexe Hülle + Minimum-Area-Rectangle ────
-      // Robust für JEDEN Winkel (im Gegensatz zu Diagonal-Extrema/PCA, die kleine
-      // Drehungen Richtung 0° kollabieren lassen). Rotating-Calipers über die
-      // Hülle liefert das flächenkleinste umschließende Rechteck = die Karte.
+      // ── Echtes Karten-Viereck: konvexe Hülle → Minimum-Area-Rectangle für
+      // Orientierung/Plausibilität, dann die ECHTEN Eckpunkte als die der Rechteck-
+      // Ecke jeweils nächstliegenden Hüllenpunkte. So folgt der Rahmen der echten
+      // Perspektive (Trapez bei schräger Aufnahme), nicht nur einem gedrehten Rechteck.
       const boundary: [number, number][] = [];
       for (let my = 0; my < MASK_SIZE; my++) {
         if (rowMin[my] < 0) continue;
         boundary.push([rowMin[my], my]);
         if (rowMax[my] !== rowMin[my]) boundary.push([rowMax[my], my]);
       }
-      const rect = minAreaRect(convexHull(boundary));
+      const hull = convexHull(boundary);
+      const rect = minAreaRect(hull);
       if (!rect) {
         best.corners = null;
       } else {
+        // Zu jeder Rechteck-Ecke den nächstgelegenen Hüllenpunkt = echte Kartenecke.
+        const quad = rect.map(rc => {
+          let bestPt = rc, bestD = Infinity;
+          for (const hp of hull) {
+            const d = (hp[0] - rc[0]) ** 2 + (hp[1] - rc[1]) ** 2;
+            if (d < bestD) { bestD = d; bestPt = hp; }
+          }
+          return bestPt;
+        });
+
         // Masken-Koords → Quell-Koords (affine Rücktransformation)
         const toSrc = (p: [number, number]): [number, number] =>
           [toSrcX((p[0] + 0.5) * maskScale), toSrcY((p[1] + 0.5) * maskScale)];
-        const rc = rect.map(toSrc);
+        const rc = quad.map(toSrc);
 
         // Ecken nach tl/tr/br/bl ordnen (Drehung < ~40° → Summe/Differenz eindeutig)
         const bySum  = [...rc].sort((a, b) => (a[0] + a[1]) - (b[0] + b[1]));

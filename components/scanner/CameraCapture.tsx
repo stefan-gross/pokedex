@@ -164,6 +164,90 @@ function deskewCornersToJpeg(src: HTMLCanvasElement, corners: [number, number][]
   return out.toDataURL('image/jpeg', JPEG_QUALITY).split(',')[1];
 }
 
+/** 8×8-LGS via Gauß-Elimination mit Teilpivotisierung. Gibt die 8 Unbekannten
+ *  oder null (singulär) zurück. */
+function gaussSolve(A: number[][], b: number[]): number[] | null {
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let col = 0; col < n; col++) {
+    let piv = col;
+    for (let r = col + 1; r < n; r++) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+    if (Math.abs(M[piv][col]) < 1e-9) return null;
+    [M[col], M[piv]] = [M[piv], M[col]];
+    const dv = M[col][col];
+    for (let c = col; c <= n; c++) M[col][c] /= dv;
+    for (let r = 0; r < n; r++) {
+      if (r === col) continue;
+      const factor = M[r][col];
+      if (factor === 0) continue;
+      for (let c = col; c <= n; c++) M[r][c] -= factor * M[col][c];
+    }
+  }
+  return M.map(row => row[n]);
+}
+
+/** Homographie [a,b,c,d,e,f,g,h] (h_33=1), die `dst`→`src` abbildet. */
+function solveHomography(dst: [number, number][], src: [number, number][]): number[] | null {
+  const A: number[][] = [];
+  const B: number[] = [];
+  for (let i = 0; i < 4; i++) {
+    const [X, Y] = dst[i];
+    const [x, y] = src[i];
+    A.push([X, Y, 1, 0, 0, 0, -X * x, -Y * x]); B.push(x);
+    A.push([0, 0, 0, X, Y, 1, -X * y, -Y * y]); B.push(y);
+  }
+  return gaussSolve(A, B);
+}
+
+/** Perspektivisch entzerrter Karten-Zuschnitt: das (evtl. trapezförmige) Viereck
+ *  [tl,tr,br,bl] wird per Homographie auf ein exaktes Rechteck gewarpt → Gemini
+ *  sieht die Karte frontal, ohne perspektivische Verzerrung. Nearest-Sampling
+ *  (für OCR bei dieser Auflösung ausreichend). Fällt bei singulärer Lösung auf
+ *  den affinen Deskew zurück. */
+function perspectiveWarpToJpeg(src: HTMLCanvasElement, corners: [number, number][]): string {
+  const [tl, tr, br, bl] = corners;
+  const d = (p: number[], q: number[]) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+  const wCard = Math.max(d(tl, tr), d(bl, br));
+  const hCard = Math.max(d(tl, bl), d(tr, br));
+  const scale = Math.min(1, MAX_EDGE_PX / Math.max(wCard, hCard));
+  const W = Math.max(1, Math.round(wCard * scale));
+  const H = Math.max(1, Math.round(hCard * scale));
+  const dst: [number, number][] = [[0, 0], [W, 0], [W, H], [0, H]];
+  const Hm = solveHomography(dst, corners); // dst(x,y) → src(u,v)
+  if (!Hm) return deskewCornersToJpeg(src, corners);
+
+  // Quell-AABB (nur diesen Bereich auslesen statt des ganzen Frames)
+  const xs = corners.map(c => c[0]), ys = corners.map(c => c[1]);
+  const ax = Math.max(0, Math.floor(Math.min(...xs)));
+  const ay = Math.max(0, Math.floor(Math.min(...ys)));
+  const aw = Math.min(src.width  - ax, Math.ceil(Math.max(...xs)) - ax);
+  const ah = Math.min(src.height - ay, Math.ceil(Math.max(...ys)) - ay);
+  if (aw < 2 || ah < 2) return deskewCornersToJpeg(src, corners);
+  const sImg = src.getContext('2d', { willReadFrequently: true })!.getImageData(ax, ay, aw, ah).data;
+
+  const out = document.createElement('canvas');
+  out.width = W; out.height = H;
+  const octx = out.getContext('2d')!;
+  const oImg = octx.createImageData(W, H);
+  // Hm = [a,b,c, d,e,f, g,h]: u=(ax+by+c)/w, v=(dx+ey+f)/w, w=gx+hy+1
+  const [a, b, c, e, f, g, p, q] = Hm;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const w = p * x + q * y + 1;
+      const u = Math.round((a * x + b * y + c) / w) - ax;
+      const v = Math.round((e * x + f * y + g) / w) - ay;
+      const oi = (y * W + x) * 4;
+      oImg.data[oi + 3] = 255;
+      if (u >= 0 && u < aw && v >= 0 && v < ah) {
+        const si = (v * aw + u) * 4;
+        oImg.data[oi] = sImg[si]; oImg.data[oi + 1] = sImg[si + 1]; oImg.data[oi + 2] = sImg[si + 2];
+      }
+    }
+  }
+  octx.putImageData(oImg, 0, 0);
+  return out.toDataURL('image/jpeg', JPEG_QUALITY).split(',')[1];
+}
+
 /** Karte aufrecht entzerrt in ein kleines Canvas rendern und als ImageData
  *  zurückgeben — für die Zonen-Reflexionsmessung je Tick (billig, ~120×168). */
 function deskewCornersToImageData(
@@ -591,12 +675,12 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     let cropInfo = `${canvas.width}×${canvas.height} (voll)`;
 
     if (box?.corners?.length === 4) {
-      // ── Deskew auf die 4 Ecken ──────────────────────────────────────────────
-      // Die gedrehte Karte wird geradegezogen und exakt auf den grünen Rahmen
-      // beschnitten → Gemini sieht NUR die Karte (kein Hintergrund, keine Neigung)
-      // → deutlich zuverlässigere OCR von Name/Setnummer/Pokédex-Nr.
-      imageBase64 = deskewCornersToJpeg(canvas, box.corners);
-      cropInfo    = `deskew (corners)`;
+      // ── Perspektivische Entzerrung auf die 4 Ecken ─────────────────────────
+      // Das (evtl. trapezförmige) Karten-Viereck wird per Homographie frontal
+      // geradegezogen und exakt auf den grünen Rahmen beschnitten → Gemini sieht
+      // NUR die Karte, ohne Neigung/Perspektive → zuverlässigere OCR.
+      imageBase64 = perspectiveWarpToJpeg(canvas, box.corners);
+      cropInfo    = `warp (corners)`;
 
     } else if (box && box.w > 50 && box.h > 50) {
       // ── Fallback: ONNX-AABB mit konservativem Padding ──────────────────────
