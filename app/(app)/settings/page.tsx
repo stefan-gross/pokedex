@@ -35,7 +35,7 @@ export default function SettingsPage() {
   const scannerDebug = useScannerDebug();
 
   // „Neue Version verfügbar" (geteilter Hook, auch im Dashboard).
-  const { updateAvailable } = useUpdateAvailable();
+  const { updateAvailable, confirmedCurrent } = useUpdateAvailable();
 
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncLoading, setSyncLoading] = useState(true);
@@ -289,7 +289,7 @@ export default function SettingsPage() {
           <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-2">App</p>
           <Button
             variant="secondary" size="lg" className="w-full" icon={<RefreshCw size={18} />}
-            onClick={handleAppUpdate} disabled={!updateAvailable}
+            onClick={handleAppUpdate} disabled={confirmedCurrent}
           >
             <span className="flex-1 text-left">App aktualisieren</span>
             {updateAvailable && (

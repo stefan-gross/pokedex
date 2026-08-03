@@ -11,7 +11,10 @@ export interface UpdateInfo {
   buildSha: string;
   buildTime: string | undefined;
   serverSha: string | null;
+  /** Server hat definitiv eine andere (neuere) SHA als das geladene Bundle. */
   updateAvailable: boolean;
+  /** Bestätigt aktuell (Server-SHA == geladene SHA). Nur dann sperren. */
+  confirmedCurrent: boolean;
 }
 
 export function useUpdateAvailable(): UpdateInfo {
@@ -21,15 +24,32 @@ export function useUpdateAvailable(): UpdateInfo {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/version', { cache: 'no-store' })
-      .then(r => r.json())
-      .then((d: { sha?: string }) => { if (!cancelled) setServerSha(d.sha ?? null); })
-      .catch(() => { /* offline / egal */ });
-    return () => { cancelled = true; };
+    const check = () => {
+      fetch('/api/version', { cache: 'no-store' })
+        .then(r => r.json())
+        .then((d: { sha?: string }) => { if (!cancelled) setServerSha(d.sha ?? null); })
+        .catch(() => { /* offline / egal — serverSha bleibt, Button nicht gesperrt */ });
+    };
+    check();
+    // Regelmäßig prüfen, damit ein neuer Deploy ohne Reload bemerkt wird …
+    const id = setInterval(check, 30_000);
+    // … und sofort bei Rückkehr in die App (App-Fokus / Tab sichtbar).
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
   }, []);
 
   const updateAvailable =
     serverSha != null && buildSha !== 'dev' && serverSha !== 'dev' && serverSha !== buildSha;
+  // „aktuell" nur, wenn der Server dieselbe SHA meldet — bei unbekannt (null,
+  // z.B. Prüfung fehlgeschlagen) NICHT sperren, damit man nie festhängt.
+  const confirmedCurrent = serverSha != null && serverSha === buildSha;
 
-  return { buildSha, buildTime, serverSha, updateAvailable };
+  return { buildSha, buildTime, serverSha, updateAvailable, confirmedCurrent };
 }
