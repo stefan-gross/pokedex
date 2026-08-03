@@ -316,15 +316,15 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
       ctx.shadowColor = frameGlow;
       ctx.shadowBlur  = 10;
 
-      const settled = boxDeltaRef.current < BOX_SETTLED_THRESHOLD;
-      if (settled && target.corners?.length === 4) {
-        // Box stabil → präzisen rotierten Rahmen aus Segmentierungsmaske
+      if (target.corners?.length === 4) {
+        // Ecken vorhanden → rotierten Rahmen zeichnen (dreht mit der Karte),
+        // auch während die Karte noch bewegt wird. Ecken sind median-geglättet.
         const pts = target.corners.map(
           ([x, y]) => [x * scale + ox, y * scale + oy] as [number, number]
         );
         drawRoundedPolygon(ctx, pts, 14);
       } else {
-        // Box noch am Einschwingen → geglättete AABB (ruckelfrei dank Lerp)
+        // Noch keine Ecken (erste Frames) → geglättete AABB (ruckelfrei dank Lerp)
         ctx.beginPath();
         ctx.roundRect(lb.x * scale + ox, lb.y * scale + oy, lb.w * scale, lb.h * scale, 14);
       }
@@ -616,13 +616,13 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
         const pCtx = prev.getContext('2d')!;
         const pData = pCtx.getImageData(0, 0, sw, sh).data;
 
-        // 2. ONNX: fire-and-forget. Ecken nur anfordern, wenn schon eine Karte
-        //    präsent ist → Rahmen dreht/skaliert mit (gedrehter Polygon-Pfad in
-        //    drawOverlay) + entzerrter Zuschnitt in doCapture. Auf leeren Frames
-        //    spart der Box-only-Pfad die Ecken-Berechnung.
+        // 2. ONNX: fire-and-forget. Ecken IMMER anfordern → Rahmen dreht/skaliert
+        //    mit der Karte (gedrehter Polygon-Pfad in drawOverlay) + entzerrter
+        //    Zuschnitt in doCapture. (Konsistente Ecken in der Median-Historie;
+        //    „nur wenn präsent" verwarf sie sonst in den ersten Frames.)
         if (!inferringRef.current && vw > 0) {
           inferringRef.current = true;
-          detectCardInFrame(video, onnxBoxRef.current !== null).then(box => {
+          detectCardInFrame(video, true).then(box => {
             if (box) {
               // Box-Delta: Drift des Mittelpunkts + Größe zwischen zwei ONNX-Frames
               const prev = prevBoxRef.current;
