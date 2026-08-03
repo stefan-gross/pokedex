@@ -277,8 +277,31 @@ function perspectiveWarpToJpeg(src: HTMLCanvasElement, corners: [number, number]
       }
     }
   }
+  unsharpMask(od, W, H, 0.7); // Kanten/Kleintext anheben → lesbarere Set-Nummer
   octx.putImageData(oImg, 0, 0);
   return out.toDataURL('image/jpeg', JPEG_QUALITY).split(',')[1];
+}
+
+/** Unsharp-Mask (in-place): hebt Kanten/Kleintext an. out = orig + amount·(orig−blur),
+ *  blur = 3×3-Box-Mittel. amount ~0.5–1.0. Uint8ClampedArray klemmt automatisch.
+ *  Ränder bleiben unverändert. Läuft nur einmal beim Aufnehmen (nicht je Frame). */
+function unsharpMask(data: Uint8ClampedArray, w: number, h: number, amount: number): void {
+  const src = new Uint8ClampedArray(data); // Originalwerte für die Faltung
+  const stride = w * 4;
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const base = y * stride + x * 4;
+      for (let ch = 0; ch < 3; ch++) {
+        const i = base + ch;
+        const blur = (
+          src[i - stride - 4] + src[i - stride] + src[i - stride + 4] +
+          src[i - 4]          + src[i]          + src[i + 4]          +
+          src[i + stride - 4] + src[i + stride] + src[i + stride + 4]
+        ) / 9;
+        data[i] = src[i] + amount * (src[i] - blur);
+      }
+    }
+  }
 }
 
 /** Karte aufrecht entzerrt in ein kleines Canvas rendern und als ImageData
