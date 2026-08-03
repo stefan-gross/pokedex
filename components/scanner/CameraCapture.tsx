@@ -140,6 +140,30 @@ function encodeCropToJpeg(src: HTMLCanvasElement, sx: number, sy: number, sw: nu
   return out.toDataURL('image/jpeg', JPEG_QUALITY).split(',')[1];
 }
 
+/** Entzerrter Karten-Zuschnitt: die 4 Ecken [tl,tr,br,bl] werden auf ein
+ *  aufrechtes Rechteck gedreht+beschnitten → Gemini sieht NUR die Karte, gerade,
+ *  ohne Hintergrund. (Die Ecken bilden bereits ein Rechteck → reine Rotation +
+ *  Crop, keine perspektivische Verzerrung nötig.) */
+function deskewCornersToJpeg(src: HTMLCanvasElement, corners: [number, number][]): string {
+  const [tl, tr, , bl] = corners;
+  const d = (p: number[], q: number[]) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+  const wCard = d(tl, tr);
+  const hCard = d(tl, bl);
+  const scale = Math.min(1, MAX_EDGE_PX / Math.max(wCard, hCard));
+  const W = Math.max(1, Math.round(wCard * scale));
+  const H = Math.max(1, Math.round(hCard * scale));
+  const angle = Math.atan2(tr[1] - tl[1], tr[0] - tl[0]);
+  const out = document.createElement('canvas');
+  out.width = W; out.height = H;
+  const octx = out.getContext('2d')!;
+  // dest = scale · R(−angle) · (src − tl)  ⇒ tl→(0,0), tr→(W,0), bl→(0,H)
+  octx.scale(scale, scale);
+  octx.rotate(-angle);
+  octx.translate(-tl[0], -tl[1]);
+  octx.drawImage(src, 0, 0);
+  return out.toDataURL('image/jpeg', JPEG_QUALITY).split(',')[1];
+}
+
 interface DebugInfo {
   conf: number;
   mse: number;
@@ -537,25 +561,12 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     let cropInfo = `${canvas.width}×${canvas.height} (voll)`;
 
     if (box?.corners?.length === 4) {
-      // ── Corners-AABB-Crop ───────────────────────────────────────────────────
-      // Achsenparalleler Bounding-Box der 4 Corners + großzügiges Padding.
-      // Landscape-Video (1920×1080): die Corners spannen die Karte korrekt auf,
-      // auch bei Neigung. Kein Deskew nötig — Gemini erkennt geneigte Karten.
-      const xs   = box.corners.map(([x]) => x);
-      const ys   = box.corners.map(([, y]) => y);
-      const minX = Math.min(...xs), maxX = Math.max(...xs);
-      const minY = Math.min(...ys), maxY = Math.max(...ys);
-      const bw   = maxX - minX;
-      const bh   = maxY - minY;
-      // Konservatives Padding: Eckpunkte liegen bereits nah an Kartenkanten
-      const padX = Math.round(bw * 0.05) + CROP_PADDING;
-      const padY = Math.round(bh * 0.08) + CROP_PADDING;
-      const cx   = Math.max(0, Math.round(minX - padX));
-      const cy   = Math.max(0, Math.round(minY - padY));
-      const cw   = Math.min(canvas.width  - cx, Math.round(bw + padX * 2));
-      const ch   = Math.min(canvas.height - cy, Math.round(bh + padY * 2));
-      imageBase64 = encodeCropToJpeg(canvas, cx, cy, cw, ch);
-      cropInfo    = `${cw}×${ch} (corners)`;
+      // ── Deskew auf die 4 Ecken ──────────────────────────────────────────────
+      // Die gedrehte Karte wird geradegezogen und exakt auf den grünen Rahmen
+      // beschnitten → Gemini sieht NUR die Karte (kein Hintergrund, keine Neigung)
+      // → deutlich zuverlässigere OCR von Name/Setnummer/Pokédex-Nr.
+      imageBase64 = deskewCornersToJpeg(canvas, box.corners);
+      cropInfo    = `deskew (corners)`;
 
     } else if (box && box.w > 50 && box.h > 50) {
       // ── Fallback: ONNX-AABB mit konservativem Padding ──────────────────────

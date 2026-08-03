@@ -15,7 +15,12 @@ import * as ort from 'onnxruntime-web';
 
 const MODEL_PATH       = '/models/card-detector.onnx';
 const MODEL_INPUT_SIZE = 640;
-const CONF_THRESHOLD   = 0.80; // 0.72 erkannte leere Kartonkiste als Karte
+const CONF_THRESHOLD   = 0.80; // „Vertrauens-Schwelle": direkt akzeptiert
+// Darunter (0.58–0.80) wird eine Detektion nur akzeptiert, wenn ihr Masken-
+// Rechteck plausibel kartenförmig ist (siehe Ende) — fängt schwach erkannte
+// Full-Art-/Glanzkarten, ohne leere Kartons durchzulassen (Textur-Filter greift
+// zusätzlich). Reines Absenken auf 0.72 hatte früher leere Kartons erkannt.
+const DETECT_FLOOR     = 0.58;
 const MASK_SIZE        = 160;  // Output1-Auflösung (640 / 4)
 
 // Klassen-Index laut Roboflow-Training
@@ -210,7 +215,7 @@ export async function detectCardInFrame(
 
   for (let i = 0; i < numAnchors; i++) {
     const cardConf = getVal(4 + CLASS_CARD, i);
-    if (cardConf < CONF_THRESHOLD) continue;
+    if (cardConf < DETECT_FLOOR) continue;
 
     const cx = getVal(0, i);
     const cy = getVal(1, i);
@@ -285,6 +290,11 @@ export async function detectCardInFrame(
   //    Eckpunkte: konvexe Hülle der Maskenränder → Minimum-Area-Rectangle
   //    (Rotating Calipers) → echtes gedrehtes Karten-Viereck bei jedem Winkel.
   const proto = outputs['output1']?.data as Float32Array | undefined;
+
+  // Ob das aus der Maske abgeleitete Rechteck plausibel kartenförmig war —
+  // dient unten als Zusatzbeleg, um schwach erkannte Karten (conf < CONF_THRESHOLD)
+  // trotzdem zu akzeptieren.
+  let cornersPlausible = false;
 
   if (includeCorners && best && bestIdx >= 0 && proto) {
     const coeffs     = new Float32Array(32);
@@ -370,16 +380,20 @@ export async function detectCardInFrame(
         const ratio        = longer / (shorter || 1);
         const frameShorter = Math.min(srcW, srcH);
 
-        best.corners = (
+        cornersPlausible = !(
           shorter > frameShorter * 0.98 ||  // fast formatfüllend → eher Fehldetektion
           shorter < frameShorter * 0.05 ||  // zu klein
           ratio < 1.05 || ratio > 2.3       // falsches Seitenverhältnis
-        )
-          ? null                            // Rahmen fällt auf AABB zurück
-          : [tl, tr, br, bl];
+        );
+        best.corners = cornersPlausible ? [tl, tr, br, bl] : null; // sonst AABB-Rahmen
       }
     }
   }
+
+  // Schwach erkannte Karten (conf zwischen DETECT_FLOOR und CONF_THRESHOLD) nur
+  // akzeptieren, wenn die Maske ein plausibles Karten-Rechteck lieferte. Ohne
+  // Ecken-Info (includeCorners=false) gilt weiterhin die harte Vertrauens-Schwelle.
+  if (best && best.conf < CONF_THRESHOLD && !cornersPlausible) return null;
 
   return best;
 }
