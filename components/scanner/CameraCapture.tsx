@@ -958,14 +958,20 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
         const consFrames      = consecutiveDetectRef.current;
         const boxSettled      = boxDeltaRef.current < BOX_SETTLED_THRESHOLD;
         const consecutiveOk   = consFrames >= CONSECUTIVE_SNAP_FRAMES;
-        // Karte muss komplett im Bild sein (alle 4 Box-Kanten mit Mindestabstand zum Frame-Rand)
+        // Karte muss komplett im Bild sein. Bei gedrehter Karte ist die AABB
+        // größer als die Karte (ihre Ecken ragen über die Kartenkanten hinaus) —
+        // deshalb gegen die ECHTEN 4 Kartenecken prüfen, wenn vorhanden. So blockt
+        // eine große, gedrehte, aber vollständig sichtbare Karte nicht fälschlich.
         const box = onnxBoxRef.current;
-        const EDGE_MARGIN_PX = 8; // erlaubte Toleranz zum Frame-Rand
-        const boxFullyInside = !!box && vw > 0 && vh > 0
-          && box.x >= EDGE_MARGIN_PX
-          && box.y >= EDGE_MARGIN_PX
-          && box.x + box.w <= vw - EDGE_MARGIN_PX
-          && box.y + box.h <= vh - EDGE_MARGIN_PX;
+        const EDGE_MARGIN_PX = 8; // erlaubte Toleranz zum Frame-Rand (Video-Pixel)
+        const boxFullyInside = !!box && vw > 0 && vh > 0 && (
+          box.corners?.length === 4
+            ? box.corners.every(([x, y]) =>
+                x >= EDGE_MARGIN_PX && y >= EDGE_MARGIN_PX
+                && x <= vw - EDGE_MARGIN_PX && y <= vh - EDGE_MARGIN_PX)
+            : box.x >= EDGE_MARGIN_PX && box.y >= EDGE_MARGIN_PX
+              && box.x + box.w <= vw - EDGE_MARGIN_PX && box.y + box.h <= vh - EDGE_MARGIN_PX
+        );
 
         // ── Live-Scanqualität (Ampel) — aus dem vorhandenen Sample-Puffer ──
         // Kein zusätzlicher Readback: `sData` (Center-Sample) ist die Kartenmitte,
