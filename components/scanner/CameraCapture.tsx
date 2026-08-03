@@ -180,6 +180,7 @@ interface DebugInfo {
   reason: string;        // Ampel-Grund (leer wenn grün/neutral)
   sharpness: number;     // Laplace-Varianz
   glare: number;         // % ausgebrannte Pixel
+  softGlare: number;     // % weich-helle Pixel (Schleier-Reflexion)
   meanLum: number;       // 0..255
   contrast: number;      // 0..255
   fill: number;          // % Kartenfläche am Bild
@@ -267,7 +268,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   const [debug,      setDebug]      = useState<DebugInfo>({
     conf: 0, mse: 0, stable: 0, boxDelta: Infinity, consecutiveFrames: 0,
     detected: false, sessionReady: false, cropSize: '–', triggerReason: '–', changeMse: 0,
-    level: 'neutral', reason: '', sharpness: 0, glare: 0, meanLum: 0, contrast: 0, fill: 0, tickMs: 0,
+    level: 'neutral', reason: '', sharpness: 0, glare: 0, softGlare: 0, meanLum: 0, contrast: 0, fill: 0, tickMs: 0,
     cornersN: 0, angleDeg: 0,
   });
 
@@ -755,7 +756,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
         // ── Live-Scanqualität (Ampel) — aus dem vorhandenen Sample-Puffer ──
         // Kein zusätzlicher Readback: `sData` (Center-Sample) ist die Kartenmitte,
         // wenn die Karte gut im Rahmen liegt. `fill` = Boxfläche / Bildfläche.
-        let qMetrics: { sharpness: number; glare: number; meanLum: number; contrast: number; fill: number } | null = null;
+        let qMetrics: { sharpness: number; glare: number; softGlare: number; meanLum: number; contrast: number; fill: number } | null = null;
         if (cardDetected && box && vw && vh) {
           const pm = computePixelMetrics(sData, sw, sh);
           const fill = (box.w * box.h) / (vw * vh);
@@ -785,6 +786,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
           reason:            qualityRef.current.reason ?? '',
           sharpness:         qMetrics ? Math.round(qMetrics.sharpness) : 0,
           glare:             qMetrics ? +(qMetrics.glare * 100).toFixed(1) : 0,
+          softGlare:         qMetrics ? +(qMetrics.softGlare * 100).toFixed(1) : 0,
           meanLum:           qMetrics ? Math.round(qMetrics.meanLum) : 0,
           contrast:          qMetrics ? Math.round(qMetrics.contrast) : 0,
           fill:              qMetrics ? Math.round(qMetrics.fill * 100) : 0,
@@ -932,7 +934,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
                 >
                   DEBUG · {debug.level}{debug.reason ? ` · ${debug.reason}` : ''}
                 </div>
-                <div>Schärfe {debug.sharpness} · Glare {debug.glare}%</div>
+                <div>Schärfe {debug.sharpness} · Glare {debug.glare}% · Soft {debug.softGlare}%</div>
                 <div>Licht {debug.meanLum} · Kontrast {debug.contrast}</div>
                 <div>Füllung {debug.fill}% · Δbox {debug.boxDelta}</div>
                 <div>MSE {debug.mse} · Tick {debug.tickMs}ms</div>
