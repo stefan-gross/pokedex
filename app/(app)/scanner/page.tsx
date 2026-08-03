@@ -257,8 +257,8 @@ function classifyJobError(job: ScanJob): ErrorClass {
       Icon: AlertTriangle,
       iconColor: '#fb923c',
       cardName: 'Enigmon',
-      attackTitle: 'Karten-Text unlesbar',
-      attackText: 'Beleuchte die Karte stärker oder rücke näher heran.',
+      attackTitle: 'Set & Nummer unlesbar',
+      attackText: 'Set-Kürzel und Nummer nicht erkannt. Rücke näher heran und entferne Hülle/Reflexion, damit die untere Karten-Ecke scharf ist.',
     };
   }
   if (isNonWestern) {
@@ -1011,7 +1011,15 @@ export default function ScannerPage() {
       // aus den gelesenen Werten bauen. Sie ist anzeig- UND aufnehmbar (rotes
       // „?"-Badge, generische Kartenoptik) und wird beim nächsten Katalog-Sync
       // automatisch mit dem echten Eintrag verknüpft (lib/scan/reconcile-pending).
-      const pendingCard: CardInfo | null = !catalogCard ? {
+      // Eine vorläufige Karte NUR anlegen, wenn außer dem Namen mindestens EIN
+      // Identifikator gelesen wurde (Set-Kürzel, Sammelnummer oder Pokédex-Nr.).
+      // Der Name allein trifft im Katalog viele Einträge (z.B. „Traunfugil" 21×)
+      // → nie eindeutig verknüpfbar. Fehlt jeder Identifikator, ist es kein
+      // sinnvoller „nicht im Katalog"-Fall, sondern ein zu dünner Scan: als
+      // Fehler behandeln (classifyJobError → 'gemini-thin' „Set & Nummer
+      // unlesbar"), damit der Nutzer näher/ohne Reflexion neu scannt.
+      const hasIdentifier = !!(gemini.setCode || rawNumber || gemini.number || gemini.nationalDexNumber);
+      const pendingCard: CardInfo | null = (!catalogCard && hasIdentifier) ? {
         id: `pending-${id}`,
         name: gemini.name ?? 'Unbekannte Karte',
         number: rawNumber || gemini.number || '',

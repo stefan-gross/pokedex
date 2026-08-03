@@ -21,6 +21,7 @@ import { fetchPokemonSpeciesDE, getEvolutionFamilyDexNumbers, getEvolutionTree, 
 import { useSetMeta, type SetMeta } from '@/lib/hooks/use-set-meta';
 import { getSetById } from '@/lib/firestore/sets';
 import { CardImage } from '@/components/card/CardImage';
+import { CardPlaceholder } from '@/components/card/CardPlaceholder';
 import { EvolutionTree } from '@/components/card/EvolutionTree';
 import { CardNameLabel } from '@/components/card/CardNameLabel';
 import type { CardDoc, BinderDoc, CardVariant, WishlistDoc } from '@/types';
@@ -1138,18 +1139,36 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           className="fixed inset-0 z-[70] bg-black/95 flex items-center justify-center"
           onClick={() => setZoomed(false)}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={imgSrcDe || card.imgLarge || card.imgSmall}
-            alt={card.name}
-            className="rounded-2xl"
-            style={{ maxWidth: '90vw', maxHeight: '85dvh', objectFit: 'contain' }}
-            onError={e => {
-              const target = e.currentTarget;
-              const en = card.imgLarge || card.imgSmall;
-              if (target.src !== en) target.src = en;
-            }}
-          />
+          {(imgSrcDe || card.imgLarge || card.imgSmall) ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={imgSrcDe || card.imgLarge || card.imgSmall}
+              alt={card.name}
+              className="rounded-2xl"
+              style={{ maxWidth: '90vw', maxHeight: '85dvh', objectFit: 'contain' }}
+              onError={e => {
+                const target = e.currentTarget;
+                const en = card.imgLarge || card.imgSmall;
+                if (target.src !== en) target.src = en;
+              }}
+            />
+          ) : (
+            /* Vorläufige / bildlose Karte: große Platzhalterkarte statt leerem <img> */
+            <CardPlaceholder
+              info={{
+                name: card.name,
+                hp: card.hp,
+                number: card.number,
+                total: card.printedTotal ?? card.total,
+                dexNumber: card.nationalDexNumber,
+                setCode: card.setCode,
+                types: card.types,
+                pending: card.pendingCatalog,
+              }}
+              className="rounded-2xl overflow-hidden"
+              style={{ width: 'min(90vw, calc(85dvh * 5 / 7))', aspectRatio: '2.5 / 3.5' }}
+            />
+          )}
           <button
             onClick={() => setZoomed(false)}
             className="absolute top-5 right-5 w-11 h-11 rounded-full flex items-center justify-center"

@@ -14,6 +14,8 @@ const PROMPT = `You are a Pokémon TCG card reader. Extract the printed informat
 
 Read the printed text on the card precisely. The stamp area (set symbol + slash-number + rarity dot) can be at different positions depending on the card's era — scan the whole card border. Focus closely: small stamps are often partially obscured by glare and easy to mis-read.
 
+The identifiers used to look the card up are the SET CODE + COLLECTOR NUMBER (the corner stamp) and the POKÉDEX NUMBER. The card NAME alone is NOT enough (many cards share a name). Even when the name is perfectly legible, you MUST still attempt to read the corner stamp (setCode + number) and the "Nr."/"NO."/"#" Pokédex number. Only return null for a field if it is genuinely unreadable in this image — never skip a field just because the name was easy.
+
 WHAT TO READ:
 
 setCode — the printed set abbreviation (2–4 contiguous uppercase letters):
@@ -106,11 +108,17 @@ H) HGSS Trainer "Doppelball" — top of card shows "TRAINER" sideways on the
    → { setCode: null, number: "072", printedTotal: 95, language: "de", confidence: "high",
        nationalDexNumber: null, name: "Doppelball" }
 
-ALSO read the printed card name (large text at the top — Pokémon name, Trainer
-card name, or Energy card name). Return it verbatim including hyphens and
-language-specific spelling: "Galar-Flunschlik", "Doppelball", "Charizard ex",
-"Glurak ex", "Boss's Orders". This name is critical as a fallback identifier
-when the set code is hidden by a symbol.
+name — the LARGE card title in the TOP row (Pokémon name, Trainer card name, or
+  Energy card name), printed next to the KP/HP value. Return it verbatim
+  including hyphens and language-specific spelling: "Galar-Flunschlik",
+  "Doppelball", "Charizard ex", "Glurak ex", "Boss's Orders". This name is a
+  fallback identifier when the set code is hidden by a symbol.
+  CRITICAL — do NOT confuse the name with an ATTACK/move name. Attack names are
+  in the LOWER half of the card, inside the text box below the artwork, each with
+  an energy-cost symbol row on the LEFT and a damage number on the RIGHT
+  (e.g. "Elektroschlag  60", "Spukschuss  40", "Doppelte Kopfnuss  10×"). The
+  Ability name (after "Fähigkeit"/"Ability") and the flavor text are also NOT the
+  card name. The card name is ONLY the bold title in the top row.
 
 If no Pokémon card is visible at all: set "error" to "No card detected" and
 leave the other fields null.`;
