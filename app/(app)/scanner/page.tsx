@@ -27,6 +27,7 @@ import { useSetMeta } from '@/lib/hooks/use-set-meta';
 import { CardNameLabel } from '@/components/card/CardNameLabel';
 import { getSetById, getSetIdsByPrintedTotal } from '@/lib/firestore/sets';
 import { useScannerDebug } from '@/lib/scanner/debug-flags';
+import type { CaptureMeta } from '@/components/scanner/CameraCapture';
 
 // Gemini liefert Condition in Kurzform (lowercase). Für Persistence wird in
 // die offizielle CardCondition (uppercase) gemappt.
@@ -368,7 +369,7 @@ export default function ScannerPage() {
   const scannerDebugFlags = useScannerDebug();
   const aiFlagRef = useRef(false);
   useEffect(() => { aiFlagRef.current = scannerDebugFlags.ai; }, [scannerDebugFlags.ai]);
-  const [previewImage, setPreviewImage] = useState<{ src: string; sizeKb: number } | null>(null);
+  const [previewImage, setPreviewImage] = useState<{ src: string; sizeKb: number; meta?: CaptureMeta } | null>(null);
   const [mode, setMode] = useState<'scanning' | 'review'>('scanning');
   // Review-Modus-Ansichten: grid (Default, 2-Spalten) / single (eine Karte groß + Swipe)
   const [viewMode, setViewMode] = useState<'grid' | 'single'>('grid');
@@ -679,15 +680,15 @@ export default function ScannerPage() {
     return () => { cancelled = true; };
   }, [activeJobId, jobs]);
 
-  const handleCapture = useCallback(async (imageBase64: string, mimeType: string) => {
+  const handleCapture = useCallback(async (imageBase64: string, mimeType: string, meta?: CaptureMeta) => {
     const id = Math.random().toString(36).slice(2);
     const t0 = Date.now();
     const imageSizeKb = Math.round((imageBase64.length * 3 / 4) / 1024);
 
-    // KI-Debug: NUR das entzerrte Bild zeigen — kein Gemini/Lookup. Stream
-    // pausieren, damit nicht sofort der nächste Snap kommt.
+    // KI-Debug: NUR das entzerrte Bild + Auslöse-Metriken zeigen — kein Gemini/
+    // Lookup. Stream pausieren, damit nicht sofort der nächste Snap kommt.
     if (aiFlagRef.current) {
-      setPreviewImage({ src: `data:${mimeType};base64,${imageBase64}`, sizeKb: imageSizeKb });
+      setPreviewImage({ src: `data:${mimeType};base64,${imageBase64}`, sizeKb: imageSizeKb, meta });
       setStreamPaused(true);
       return;
     }
@@ -2384,9 +2385,27 @@ export default function ScannerPage() {
           <img
             src={previewImage.src}
             alt="Vorschau"
-            className="max-w-[88%] max-h-[70vh] rounded-lg shadow-2xl object-contain"
+            className="max-w-[88%] max-h-[62vh] rounded-lg shadow-2xl object-contain"
             onClick={e => e.stopPropagation()}
           />
+          {previewImage.meta && (
+            <div
+              className="text-white/80 text-[11px] font-mono leading-relaxed text-center"
+              onClick={e => e.stopPropagation()}
+            >
+              <div>
+                Auslöser: <span className="text-blue-300">{previewImage.meta.trigger}</span>
+                {' · '}Ampel: <span className={previewImage.meta.level === 'green' ? 'text-green-400' : 'text-yellow-300'}>{previewImage.meta.level}</span>
+                {' · '}Δbox: <span className={previewImage.meta.boxDelta > 20 ? 'text-yellow-300' : 'text-green-400'}>{previewImage.meta.boxDelta}</span>
+              </div>
+              <div>
+                Schärfe {previewImage.meta.sharpness} · Kontrast {previewImage.meta.contrast} · Füllung {previewImage.meta.fill}%
+              </div>
+              <div>
+                Ecken {previewImage.meta.cornersN} · Winkel {previewImage.meta.angleDeg}° · Name {previewImage.meta.nameGlare}% · Code {previewImage.meta.codeGlare}%
+              </div>
+            </div>
+          )}
           <button
             onClick={() => { setPreviewImage(null); setStreamPaused(false); }}
             className="h-11 px-8 rounded-full font-semibold text-sm text-white"

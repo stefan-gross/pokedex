@@ -6,8 +6,25 @@ import { loadCardDetectorSession, detectCardInFrame, type CardBox } from '@/lib/
 import { computePixelMetrics, assessQuality, computeCriticalGlare, type QualityResult } from '@/lib/scanner/frame-quality';
 import { useScannerDebug } from '@/lib/scanner/debug-flags';
 
+/** Momentaufnahme der Auslöse-Metriken (für KI-Debug-Vorschau). */
+export interface CaptureMeta {
+  trigger: 'auto' | 'manual';
+  level: string;
+  boxDelta: number;
+  sharpness: number;
+  contrast: number;
+  glare: number;
+  softGlare: number;
+  nameGlare: number;
+  codeGlare: number;
+  meanLum: number;
+  fill: number;
+  cornersN: number;
+  angleDeg: number;
+}
+
 interface Props {
-  onCapture: (imageBase64: string, mimeType: string) => void;
+  onCapture: (imageBase64: string, mimeType: string, meta?: CaptureMeta) => void;
   pendingCount?: number;
   /** Soft-Pause: Stream läuft, Detection + Snap pausieren. */
   paused?: boolean;
@@ -69,7 +86,7 @@ const SAMPLE_H = 266;
 const CHECK_MS               = 150;   // ONNX-Inferenz ~80ms → etwas mehr Budget
 const MOTION_RESET_THRESHOLD = 1200;  // grobe Bewegung → stable zurücksetzen
 const MOTION_SNAP_THRESHOLD  = 700;   // unter diesem MSE-Wert gilt es als "ruhig"
-const SNAP_STABLE_FRAMES     = 1;     // 1 ruhiger Frame reicht
+const SNAP_STABLE_FRAMES     = 3;     // Grün muss ~3 Ticks (~450ms) anhalten (war 1 → löste zu früh aus)
 const BOX_SETTLED_THRESHOLD  = 35;    // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames
 const CONSECUTIVE_SNAP_FRAMES = 2;    // Fallback: 2 aufeinanderfolgende Treffer
 // Szenen-Änderungs-Cooldown: nach Snap warten bis MSE vs. Snapshot > Threshold.
@@ -337,6 +354,8 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
 
   // Kleines Canvas für die entzerrte Zonen-Reflexionsmessung (je Tick wiederverwendet)
   const critCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Letzter Debug-Snapshot (für die Auslöse-Metriken in der KI-Debug-Vorschau)
+  const lastDebugRef  = useRef<DebugInfo | null>(null);
 
   // Aufeinanderfolgende ONNX-Treffer (Fallback-Trigger ohne Box-Settling)
   const consecutiveDetectRef = useRef(0);
@@ -697,7 +716,23 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     }
 
     cropSizeRef.current = cropInfo;
-    onCaptureRef.current(imageBase64, 'image/jpeg');
+    const ds = lastDebugRef.current;
+    const meta: CaptureMeta | undefined = ds ? {
+      trigger:   force ? 'manual' : 'auto',
+      level:     ds.level,
+      boxDelta:  ds.boxDelta,
+      sharpness: ds.sharpness,
+      contrast:  ds.contrast,
+      glare:     ds.glare,
+      softGlare: ds.softGlare,
+      nameGlare: ds.nameGlare,
+      codeGlare: ds.codeGlare,
+      meanLum:   ds.meanLum,
+      fill:      ds.fill,
+      cornersN:  ds.cornersN,
+      angleDeg:  ds.angleDeg,
+    } : undefined;
+    onCaptureRef.current(imageBase64, 'image/jpeg', meta);
 
     // Weißer Blitz
     setFlashing(true); setTimeout(() => setFlashing(false), 180);
@@ -904,7 +939,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
         const triggerReason   = boxSettled ? 'delta' : consecutiveOk ? 'consecutive' : '–';
 
         // 7. Debug-State aktualisieren
-        setDebug({
+        const dbgSnapshot: DebugInfo = {
           conf:              onnxBoxRef.current?.conf ?? 0,
           mse:               Math.round(mse),
           stable:            stableRef.current,
@@ -932,7 +967,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
             if (!cs || cs.length !== 4) return 0;
             return Math.round(Math.atan2(cs[1][1] - cs[0][1], cs[1][0] - cs[0][0]) * 180 / Math.PI);
           })(),
-        });
+        };
+        setDebug(dbgSnapshot);
+        lastDebugRef.current = dbgSnapshot;
 
         if (snapCondition && (boxSettled || consecutiveOk)) {
           stableRef.current += 1;
