@@ -785,23 +785,27 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
         // ── Live-Scanqualität (Ampel) — aus dem vorhandenen Sample-Puffer ──
         // Kein zusätzlicher Readback: `sData` (Center-Sample) ist die Kartenmitte,
         // wenn die Karte gut im Rahmen liegt. `fill` = Boxfläche / Bildfläche.
-        let qMetrics: { sharpness: number; glare: number; softGlare: number; meanLum: number; contrast: number; fill: number; critGlare?: number; nameGlare?: number; codeGlare?: number } | null = null;
+        let qMetrics: { sharpness: number; glare: number; softGlare: number; meanLum: number; contrast: number; fill: number; nameGlare?: number; codeGlare?: number } | null = null;
         if (cardDetected && box && vw && vh) {
           const pm = computePixelMetrics(sData, sw, sh);
           const fill = (box.w * box.h) / (vw * vh);
           // Reflexion gezielt in den Lesezonen (Name oben, Set-Code unten links)
-          // der aufrecht entzerrten Karte — nur wenn Ecken vorhanden.
-          let critGlare: number | undefined, nameGlare: number | undefined, codeGlare: number | undefined;
-          if (box.corners?.length === 4 && video) {
+          // der aufrecht entzerrten Karte messen. Fehlen die Ecken (z.B. durch
+          // starke Reflexion verworfen), Fallback auf die AABB-Box → bei aufrechten
+          // Karten exakt, sonst grobe Näherung — Hauptsache die Prüfung LÄUFT.
+          let nameGlare: number | undefined, codeGlare: number | undefined;
+          if (video) {
+            const quad: [number, number][] = box.corners?.length === 4
+              ? box.corners
+              : [[box.x, box.y], [box.x + box.w, box.y], [box.x + box.w, box.y + box.h], [box.x, box.y + box.h]];
             if (!critCanvasRef.current) critCanvasRef.current = document.createElement('canvas');
-            const idata = deskewCornersToImageData(video, box.corners, critCanvasRef.current);
+            const idata = deskewCornersToImageData(video, quad, critCanvasRef.current);
             if (idata) {
               const cg = computeCriticalGlare(idata.data, idata.width, idata.height);
               nameGlare = cg.nameGlare; codeGlare = cg.codeGlare;
-              critGlare = Math.max(cg.nameGlare, cg.codeGlare);
             }
           }
-          qMetrics = { ...pm, fill, critGlare, nameGlare, codeGlare };
+          qMetrics = { ...pm, fill, nameGlare, codeGlare };
           qualityRef.current = assessQuality(qMetrics, { boxSettled, boxFullyInside });
         } else {
           qualityRef.current = { level: 'neutral', reason: null };

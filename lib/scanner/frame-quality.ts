@@ -27,9 +27,10 @@ export interface PixelMetrics {
 export interface QualityInput extends PixelMetrics {
   /** Flächenanteil der erkannten Karte am Kamerabild (0..1). */
   fill: number;
-  /** Reflexion NUR in den lese-kritischen Zonen (Name oben, Set-Code unten
-   *  links) der aufrecht entzerrten Karte. undefined, wenn (noch) keine Ecken. */
-  critGlare?: number;
+  /** Reflexion im oberen Namensband (0..1). undefined, wenn nicht messbar. */
+  nameGlare?: number;
+  /** Reflexion in der Set-Code/Nummer-Zone unten links (0..1). */
+  codeGlare?: number;
 }
 
 export interface CriticalGlare {
@@ -59,7 +60,7 @@ export function computeCriticalGlare(data: Uint8ClampedArray, w: number, h: numb
   };
   return {
     nameGlare: frac(0.08, 0.015, 0.92, 0.12), // oberes Namensband
-    codeGlare: frac(0.03, 0.90,  0.48, 0.99), // Set-Code + Nummer unten links
+    codeGlare: frac(0.02, 0.80,  0.55, 0.99), // Set-Code/Nummer + untere linke Ecke
   };
 }
 
@@ -82,8 +83,10 @@ export const QUALITY_THRESHOLDS = {
   veilLumMin: 118,    // mittlere Luminanz darüber = auffällig hell
   veilSoftMin: 0.16,  // Anteil weich-heller Pixel darüber = großflächiger Glanz
   // Reflexion in den Lesezonen (Name/Set-Code): dort wäscht Glanz Text weg,
-  // während Reflexion im Artwork egal ist. Startwert, am Gerät justieren.
-  critGlareMax: 0.35, // Anteil weich-heller Pixel in einer Lesezone darüber → rot
+  // während Reflexion im Artwork egal ist. Getrennte Schwellen (Set-Code kleiner
+  // & wichtiger → strenger). Startwerte, am Gerät justieren.
+  nameGlareMax: 0.28, // Anteil weich-heller Pixel im Namensband darüber → rot
+  codeGlareMax: 0.22, // Anteil weich-heller Pixel in der Set-Code-Zone darüber → rot
 };
 
 /** Bildmetriken über einen RGBA-Puffer (`ImageData.data`). */
@@ -146,8 +149,10 @@ export function assessQuality(
   if (m.glare > T.glareMax)        return { level: 'red', reason: 'Reflexion' };
   if (m.meanLum > T.veilLumMin && m.softGlare > T.veilSoftMin)
                                    return { level: 'red', reason: 'Reflexion' };
-  if (m.critGlare != null && m.critGlare > T.critGlareMax)
-                                   return { level: 'red', reason: 'Reflexion (Text)' };
+  if (m.nameGlare != null && m.nameGlare > T.nameGlareMax)
+                                   return { level: 'red', reason: 'Reflexion (Name)' };
+  if (m.codeGlare != null && m.codeGlare > T.codeGlareMax)
+                                   return { level: 'red', reason: 'Reflexion (Set-Nr.)' };
   if (m.sharpness < T.sharpMin)    return { level: 'red', reason: 'Unscharf' };
   if (m.contrast < T.contrastMin)  return { level: 'yellow', reason: 'Mehr Kontrast' };
   if (!geom.boxSettled)            return { level: 'yellow', reason: 'Ruhig halten' };
