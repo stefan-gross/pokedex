@@ -3,36 +3,33 @@
 /**
  * Mehrstufige Scanner-Debug-Flags (in den Einstellungen ein/ausschaltbar):
  *   - scan  → Live-Erkennung/Qualität (Ampel-Rahmen, Metriken); KEIN Foto/Gemini.
- *   - ai    → Gemini-Rohantwort + Latenz einblenden/loggen.
- *   - data  → Katalog-Lookup + Reconcile einblenden/loggen.
+ *   - ai    → Sendebild-Vorschau + Gemini-Antwort/Latenz + Lookup-Kette.
  * Persistiert in localStorage, reaktiv via `useScannerDebug()`. `dbg()` loggt nur,
  * wenn das jeweilige Flag an ist.
  */
 
 import { useEffect, useState } from 'react';
 
-export type ScannerDebugStage = 'scan' | 'ai' | 'data';
+export type ScannerDebugStage = 'scan' | 'ai';
 
 export interface ScannerDebugFlags {
   scan: boolean;
   ai: boolean;
-  data: boolean;
 }
 
 const KEYS: Record<ScannerDebugStage, string> = {
   scan: 'scanner-debug-scan',
   ai: 'scanner-debug-ai',
-  data: 'scanner-debug-data',
 };
 
 const CHANGE_EVENT = 'scanner-debug-changed';
 
 function readFlags(): ScannerDebugFlags {
-  if (typeof window === 'undefined') return { scan: false, ai: false, data: false };
+  if (typeof window === 'undefined') return { scan: false, ai: false };
   const g = (s: ScannerDebugStage) => {
     try { return localStorage.getItem(KEYS[s]) === '1'; } catch { return false; }
   };
-  return { scan: g('scan'), ai: g('ai'), data: g('data') };
+  return { scan: g('scan'), ai: g('ai') };
 }
 
 export function getScannerDebug(): ScannerDebugFlags {
@@ -48,7 +45,7 @@ export function setScannerDebug(stage: ScannerDebugStage, on: boolean): void {
 /** Reaktiver Hook. Startet mit `false` (SSR-sicher, keine Hydration-Mismatch),
  *  liest die echten Werte erst nach dem Mount. */
 export function useScannerDebug(): ScannerDebugFlags {
-  const [flags, setFlags] = useState<ScannerDebugFlags>({ scan: false, ai: false, data: false });
+  const [flags, setFlags] = useState<ScannerDebugFlags>({ scan: false, ai: false });
   useEffect(() => {
     const update = () => setFlags(readFlags());
     update();
@@ -62,10 +59,10 @@ export function useScannerDebug(): ScannerDebugFlags {
   return flags;
 }
 
-/** Konsolen-Log, nur wenn das Stage-Flag an ist. Präfix `[scan]/[ki]/[daten]`. */
+/** Konsolen-Log, nur wenn das Stage-Flag an ist. Präfix `[scan]/[ki]`. */
 export function dbg(stage: ScannerDebugStage, ...args: unknown[]): void {
   if (!readFlags()[stage]) return;
-  const prefix = stage === 'scan' ? '[scan]' : stage === 'ai' ? '[ki]' : '[daten]';
+  const prefix = stage === 'scan' ? '[scan]' : '[ki]';
   // eslint-disable-next-line no-console
   console.log(prefix, ...args);
 }

@@ -457,13 +457,6 @@ export default function SettingsPage() {
               </div>
               <Switch checked={scannerDebug.ai} onChange={v => setScannerDebug('ai', v)} accentColor="#3182ce" />
             </div>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-role-body font-medium">Daten</p>
-                <p className="text-role-label text-glass-muted">Katalog-Lookup und automatische Verknüpfung (Reconcile) einblenden/mitloggen.</p>
-              </div>
-              <Switch checked={scannerDebug.data} onChange={v => setScannerDebug('data', v)} accentColor="#3182ce" />
-            </div>
           </div>
         </section>
 
