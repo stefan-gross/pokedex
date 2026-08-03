@@ -87,7 +87,7 @@ const CHECK_MS               = 150;   // ONNX-Inferenz ~80ms → etwas mehr Budg
 const MOTION_RESET_THRESHOLD = 1200;  // grobe Bewegung → stable zurücksetzen
 const MOTION_SNAP_THRESHOLD  = 700;   // unter diesem MSE-Wert gilt es als "ruhig"
 const SNAP_STABLE_FRAMES     = 2;     // Grün muss ~2 Ticks (~300ms) anhalten (1=zu früh, 3=zu träge aus der Hand)
-const BOX_SETTLED_THRESHOLD  = 45;    // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames (war 35 → dunkle Reverse-Holos zappelten, lösten nie ruhig aus)
+const BOX_SETTLED_THRESHOLD  = 35;    // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames
 const CONSECUTIVE_SNAP_FRAMES = 2;    // Fallback: 2 aufeinanderfolgende Treffer
 // Szenen-Änderungs-Cooldown: nach Snap warten bis MSE vs. Snapshot > Threshold.
 // Verhindert Duplikat-Scans wenn dieselbe Karte noch im Bild liegt.
@@ -829,10 +829,8 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
               // Reduziert Jitter durch Maske-Rauschen und Hand-Zittern.
               const hist = cornerHistoryRef.current;
               hist.push(box);
-              if (hist.length > 5) hist.shift();
-              // Median über 5 statt 3 Frames → ruhigerer Rahmen bei verrauschten
-              // Masken (dunkle Reverse-Holos zappelten in Form/Größe).
-              onnxBoxRef.current    = hist.length >= 3 ? medianCardBox(hist) : box;
+              if (hist.length > 3) hist.shift();
+              onnxBoxRef.current    = hist.length === 3 ? medianCardBox(hist) : box;
               onnxStickyRef.current = ONNX_STICKY;
               consecutiveDetectRef.current += 1; // Zähler für Fallback-Trigger
             } else {
