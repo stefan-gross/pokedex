@@ -343,7 +343,12 @@ export async function detectCardInFrame(
         const tl = bySum[0], br = bySum[3];
         const tr = byDiff[3], bl = byDiff[0];
 
-        // ── Plausibilitätsprüfung über die echten Kantenlängen ────────────────
+        // ── Plausibilität des gedrehten Vierecks ──────────────────────────────
+        // Die Maskenränder sind rauschanfälliger als die Box-Regression; ist das
+        // Rechteck unplausibel (Streupixel, halbe Maske), NUR den gedrehten Rahmen
+        // verwerfen und auf die saubere AABB zurückfallen — die Karte bleibt
+        // erkannt. (Früher `return null` → gedrehte Karten wurden gar nicht mehr
+        // erkannt.)
         const dist = (p: number[], q: number[]) => Math.hypot(p[0] - q[0], p[1] - q[1]);
         const wEst = (dist(tl, tr) + dist(bl, br)) / 2;
         const hEst = (dist(tl, bl) + dist(tr, br)) / 2;
@@ -352,15 +357,13 @@ export async function detectCardInFrame(
         const ratio        = longer / (shorter || 1);
         const frameShorter = Math.min(srcW, srcH);
 
-        if (
-          shorter > frameShorter * 0.95 ||  // zu groß (iPhone-Display etc.)
-          shorter < frameShorter * 0.06 ||  // zu klein (Regalrand-Querschnitt etc.)
+        best.corners = (
+          shorter > frameShorter * 0.98 ||  // fast formatfüllend → eher Fehldetektion
+          shorter < frameShorter * 0.05 ||  // zu klein
           ratio < 1.05 || ratio > 2.3       // falsches Seitenverhältnis
-        ) {
-          return null;
-        }
-
-        best.corners = [tl, tr, br, bl];
+        )
+          ? null                            // Rahmen fällt auf AABB zurück
+          : [tl, tr, br, bl];
       }
     }
   }
