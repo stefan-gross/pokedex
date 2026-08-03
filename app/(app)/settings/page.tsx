@@ -255,22 +255,25 @@ export default function SettingsPage() {
 
   return (
     <div className="relative min-h-screen pb-16">
-      <div className="sticky top-safe z-20 px-4 pt-4 pb-3 flex items-center gap-3">
-        <Button variant="ghost" href="/" icon={<ChevronLeft size={22} />} aria-label="Zurück" />
-        <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)] flex-1">Einstellungen</h1>
-        {/* Farbschema — kompakt oben rechts */}
-        {mounted && (
-          <ButtonGroup
-            iconOnly
-            value={(theme ?? 'system') as 'system' | 'light' | 'dark'}
-            onChange={setTheme}
-            options={THEMES.map(({ value, label, icon: Icon }) => ({
-              value,
-              ariaLabel: label,
-              label: <Icon size={18} strokeWidth={theme === value ? 2.5 : 1.8} style={{ color: theme === value ? 'var(--pokedex-red)' : undefined }} />,
-            }))}
-          />
-        )}
+      {/* Header-Panel (Glas) — Zurück · Titel · Theme-Switch */}
+      <div className="sticky top-safe z-20 px-3 pt-3 pb-1">
+        <div className="glass rounded-[20px] px-3 py-2 flex items-center gap-2">
+          <Button variant="ghost" href="/" icon={<ChevronLeft size={22} />} aria-label="Zurück" />
+          <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)] flex-1">Einstellungen</h1>
+          {/* Farbschema — kompakt oben rechts */}
+          {mounted && (
+            <ButtonGroup
+              iconOnly
+              value={(theme ?? 'system') as 'system' | 'light' | 'dark'}
+              onChange={setTheme}
+              options={THEMES.map(({ value, label, icon: Icon }) => ({
+                value,
+                ariaLabel: label,
+                label: <Icon size={18} strokeWidth={theme === value ? 2.5 : 1.8} style={{ color: theme === value ? 'var(--pokedex-red)' : undefined }} />,
+              }))}
+            />
+          )}
+        </div>
       </div>
 
       <div className="px-4 py-5 space-y-6">
@@ -422,21 +425,21 @@ export default function SettingsPage() {
                 <p className="text-role-body font-medium">Scannen</p>
                 <p className="text-role-label text-glass-muted">Live-Erkennung + Qualitäts-Ampel (Rahmen/Hinweis/Metriken). Löst KEIN Foto aus, sendet nichts an die KI.</p>
               </div>
-              <Switch checked={scannerDebug.scan} onChange={v => setScannerDebug('scan', v)} accentColor="var(--pokedex-blue)" />
+              <Switch checked={scannerDebug.scan} onChange={v => setScannerDebug('scan', v)} accentColor="#3182ce" />
             </div>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-role-body font-medium">KI</p>
                 <p className="text-role-label text-glass-muted">Gemini-Rohantwort, erkannte Werte und Latenz einblenden/mitloggen.</p>
               </div>
-              <Switch checked={scannerDebug.ai} onChange={v => setScannerDebug('ai', v)} accentColor="var(--pokedex-blue)" />
+              <Switch checked={scannerDebug.ai} onChange={v => setScannerDebug('ai', v)} accentColor="#3182ce" />
             </div>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-role-body font-medium">Daten</p>
                 <p className="text-role-label text-glass-muted">Katalog-Lookup und automatische Verknüpfung (Reconcile) einblenden/mitloggen.</p>
               </div>
-              <Switch checked={scannerDebug.data} onChange={v => setScannerDebug('data', v)} accentColor="var(--pokedex-blue)" />
+              <Switch checked={scannerDebug.data} onChange={v => setScannerDebug('data', v)} accentColor="#3182ce" />
             </div>
           </div>
         </section>
