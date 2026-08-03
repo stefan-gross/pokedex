@@ -31,10 +31,16 @@ setCode — the printed set abbreviation (2–4 contiguous uppercase letters):
   - NEVER return a single isolated letter, a language-marker (DE/EN), or a
     description of a symbol (e.g. "flame", "★"). If you see a symbol → null.
 
-number — 1–3 digits before the slash in the "NNN/TTT" group. Stamp position
-  varies by era: bottom-LEFT (S&V, SWSH) or bottom-RIGHT (all older). Always
-  return only the digits before "/". If no slash-number exists (very old promo
-  cards) → number = null.
+number — the COLLECTOR number: 1–3 digits IMMEDIATELY before the slash in the
+  "NNN/TTT" group (e.g. "121/182" → number = "121"). Stamp position varies by
+  era: bottom-LEFT (S&V, SWSH) or bottom-RIGHT (all older).
+  CRITICAL — do NOT confuse it with the Pokédex number:
+  - The collector number is ALWAYS the part before a "/". If you cannot find a
+    "NNN/TTT" slash pair, number is null — do NOT substitute another number.
+  - A standalone 3–4 digit value after "Nr."/"NO."/"#" (e.g. "Nr. 0877") is the
+    POKÉDEX number → it goes in nationalDexNumber, NEVER in number.
+  - A 4-digit value (e.g. "0877", "1025") is virtually never a collector number
+    (those are ≤3 digits and paired with "/TTT") — it is the Pokédex number.
 
 printedTotal — the digits AFTER the slash in the SAME "NNN/TTT" group (the set's
   total card count as printed on the card, e.g. "053/172" → printedTotal = 172).
@@ -58,7 +64,9 @@ nationalDexNumber — VERY IMPORTANT: this is the fallback identifier when there
     "Nr. 0271 Frohmut-Pokémon Größe 1,2 m Gewicht 12,5 kg"). Sometimes also in
     the description area at the bottom of the card.
   - EN format: "NO." or "#" followed by 3–4 digits, e.g. "NO. 271" or "#271".
-  - The digit length varies: 1–4 digits ("25", "025", "0271", "1025").
+  - The digit length varies: 1–4 digits ("25", "025", "0271", "1025"). A 4-digit
+    value after "Nr."/"NO."/"#" is ALWAYS the Pokédex number — put it here, and
+    do NOT let it leak into the number (collector) field.
   - Position varies by era: name-banner area on modern cards (most common!),
     sometimes top-right (HGSS), sometimes inside the description block. SEARCH
     the WHOLE card text — do NOT only check the top corner.
@@ -107,6 +115,14 @@ H) HGSS Trainer "Doppelball" — top of card shows "TRAINER" sideways on the
    cards have no Pokémon dex), stamp "72/95" + set symbol bottom-RIGHT
    → { setCode: null, number: "072", printedTotal: 95, language: "de", confidence: "high",
        nationalDexNumber: null, name: "Doppelball" }
+
+I) Morpeko — banner "Nr. 0877 Alter-Ego-Pokémon Größe 0,3 m Gewicht 3,0 kg",
+   bottom-LEFT stamp "121/182" + set symbol, no letter code
+   → { setCode: null, number: "121", printedTotal: 182, language: "de", confidence: "high",
+       nationalDexNumber: 877, name: "Morpeko" }
+   (CRITICAL: "121" (before the "/") is the collector number; "0877" (after
+   "Nr.") is the Pokédex number → nationalDexNumber: 877. NEVER put 0877 into
+   the number field.)
 
 name — the LARGE card title in the TOP row (Pokémon name, Trainer card name, or
   Energy card name), printed next to the KP/HP value. Return it verbatim
