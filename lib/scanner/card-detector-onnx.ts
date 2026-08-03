@@ -244,6 +244,9 @@ export async function detectCardInFrame(
     let brX = 0, brY = 0, brV = -Infinity;
     let blX = 0, blY = 0, blV =  Infinity;
     let found = false;
+    // PCA-Akkumulatoren (Orientierung robust aus allen Maskenpunkten, nicht nur
+    // den 4 Diagonal-Extrema — diese unterschätzen kleine Drehungen).
+    let nPts = 0, sX = 0, sY = 0, sXX = 0, sYY = 0, sXY = 0;
 
     for (let my = 0; my < MASK_SIZE; my++) {
       for (let mx = 0; mx < MASK_SIZE; mx++) {
@@ -259,6 +262,7 @@ export async function detectCardInFrame(
         if (sx < 0 || sx >= srcW || sy < 0 || sy >= srcH) continue;
 
         found = true;
+        nPts++; sX += sx; sY += sy; sXX += sx * sx; sYY += sy * sy; sXY += sx * sy;
         if (sx + sy < tlV) { tlV = sx + sy; tlX = sx; tlY = sy; }
         if (sx - sy > trV) { trV = sx - sy; trX = sx; trY = sy; }
         if (sx + sy > brV) { brV = sx + sy; brX = sx; brY = sy; }
@@ -269,10 +273,27 @@ export async function detectCardInFrame(
     if (!found) {
       best.corners = null;
     } else {
-      // ── Winkel aus den Masken-Eckpunkten ────────────────────────────────────
-      // Auch eine spärliche Maske (nur Artwork-Bereich) liefert einen brauchbaren
-      // Winkel über die Richtung tl→tr.
-      const angle = Math.atan2(trY - tlY, trX - tlX);
+      // ── Kartenwinkel: robust per PCA über alle Maskenpunkte ─────────────────
+      // Die 4 Diagonal-Extrema unterschätzen kleine Drehungen (Ergebnis oft ~0°).
+      // Die Hauptachse der Punktwolke gibt die Orientierung zuverlässig:
+      //   Maske hochkant (volle Karte) → Oberkante ⟂ Hauptachse
+      //   Maske quer (nur Artwork)     → Oberkante = Hauptachse
+      // Fallback bleibt die tl→tr-Kante, falls zu wenige Punkte.
+      let angle = Math.atan2(trY - tlY, trX - tlX);
+      if (nPts > 30) {
+        const mX = sX / nPts, mY = sY / nPts;
+        const cxx = sXX / nPts - mX * mX;
+        const cyy = sYY / nPts - mY * mY;
+        const cxy = sXY / nPts - mX * mY;
+        const phi = 0.5 * Math.atan2(2 * cxy, cxx - cyy); // Hauptachsen-Winkel
+        if (cxx >= cyy) {
+          angle = phi; // quer → Hauptachse ist die Oberkante
+        } else {
+          let dx = Math.cos(phi), dy = Math.sin(phi);
+          if (dy < 0) { dx = -dx; dy = -dy; } // Längsachse nach unten
+          angle = Math.atan2(-dx, dy);        // Oberkante ⟂ Längsachse
+        }
+      }
       const cosA  = Math.cos(angle);
       const sinA  = Math.sin(angle);
       const aca   = Math.abs(cosA);
