@@ -160,6 +160,8 @@ interface DebugInfo {
   contrast: number;      // 0..255
   fill: number;          // % Kartenfläche am Bild
   tickMs: number;        // Sync-Kosten dieses Detection-Ticks
+  cornersN: number;      // erkannte Ecken (4 = rotierter Rahmen möglich)
+  angleDeg: number;      // Kartenwinkel aus den Ecken (0 = aufrecht)
 }
 
 export function CameraCapture({ onCapture, pendingCount = 0, paused = false, active, hideFrame = false }: Props) {
@@ -240,6 +242,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     conf: 0, mse: 0, stable: 0, boxDelta: Infinity, consecutiveFrames: 0,
     detected: false, sessionReady: false, cropSize: '–', triggerReason: '–', changeMse: 0,
     level: 'neutral', reason: '', sharpness: 0, glare: 0, meanLum: 0, contrast: 0, fill: 0, tickMs: 0,
+    cornersN: 0, angleDeg: 0,
   });
 
   // Mount-Counter in sessionStorage hochzählen — überlebt iOS-PWA-Reloads.
@@ -763,6 +766,12 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
           contrast:          qMetrics ? Math.round(qMetrics.contrast) : 0,
           fill:              qMetrics ? Math.round(qMetrics.fill * 100) : 0,
           tickMs:            +(performance.now() - tickStart).toFixed(1),
+          cornersN:          onnxBoxRef.current?.corners?.length ?? 0,
+          angleDeg:          (() => {
+            const cs = onnxBoxRef.current?.corners;
+            if (!cs || cs.length !== 4) return 0;
+            return Math.round(Math.atan2(cs[1][1] - cs[0][1], cs[1][0] - cs[0][0]) * 180 / Math.PI);
+          })(),
         });
 
         if (snapCondition && (boxSettled || consecutiveOk)) {
@@ -904,6 +913,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
                 <div>Licht {debug.meanLum} · Kontrast {debug.contrast}</div>
                 <div>Füllung {debug.fill}% · Δbox {debug.boxDelta}</div>
                 <div>MSE {debug.mse} · Tick {debug.tickMs}ms</div>
+                <div>Ecken {debug.cornersN} · Winkel {debug.angleDeg}°</div>
                 <div>conf {debug.conf.toFixed(2)} · {debug.detected ? 'erkannt' : '—'}</div>
               </div>
             </div>
