@@ -314,6 +314,7 @@ async function tryDirectCatalogLookup(parsed: Record<string, unknown>): Promise<
   const number = typeof parsed.number === 'string' ? parsed.number : null;
   const dexNumber = typeof parsed.nationalDexNumber === 'number' ? parsed.nationalDexNumber : null;
   const printedTotal = typeof parsed.printedTotal === 'number' ? parsed.printedTotal : null;
+  const nameLower = typeof parsed.name === 'string' ? parsed.name.trim().toLowerCase() : null;
   // Braucht mindestens number + (dex ODER printedTotal). setCode/Symbolabgleich
   // sind nicht nötig, wenn eine dieser robusten Zahlenkombis eindeutig auflöst.
   if (!number || (dexNumber == null && printedTotal == null)) return { attempted: false, matched: false };
@@ -377,7 +378,16 @@ async function tryDirectCatalogLookup(parsed: Record<string, unknown>): Promise<
           }
         }
         let hits = [...hitsById.values()];
-        // Mehrdeutig (zwei Sets teilen printedTotal + Nummer)? Per dex nachfiltern.
+        // Namensfilter (wie Client-R2 nameOk): eine andere Karte mit gleicher
+        // Nummer in einem Set mit gleichem printedTotal fällt so raus.
+        if (nameLower) {
+          const byName = hits.filter(h => {
+            const d = h.data();
+            return d.nameLower === nameLower || d.nameDeLower === nameLower;
+          });
+          if (byName.length) hits = byName;
+        }
+        // Noch mehrdeutig (zwei Sets teilen printedTotal + Nummer)? Per dex nachfiltern.
         if (hits.length > 1 && dexNumber != null) {
           const byDex = hits.filter(h => h.data().nationalDexNumber === dexNumber);
           if (byDex.length === 1) {
