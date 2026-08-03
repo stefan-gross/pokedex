@@ -26,6 +26,7 @@ import { CONDITIONS, VARIANT_LABELS, SERIES_NAMES_DE, SYMBOL_ONLY_SERIES } from 
 import { useSetMeta } from '@/lib/hooks/use-set-meta';
 import { CardNameLabel } from '@/components/card/CardNameLabel';
 import { getSetById, getSetIdsByPrintedTotal } from '@/lib/firestore/sets';
+import { useScannerDebug } from '@/lib/scanner/debug-flags';
 
 // Gemini liefert Condition in Kurzform (lowercase). Für Persistence wird in
 // die offizielle CardCondition (uppercase) gemappt.
@@ -362,6 +363,12 @@ export default function ScannerPage() {
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [activeOwnedCopies, setActiveOwnedCopies] = useState<CardDoc[]>([]);
   const [debugJobId, setDebugJobId] = useState<string | null>(null);
+  // KI-Debug (Settings): zeigt nach dem Auslösen NUR das aufgenommene, entzerrte
+  // Bild als Vorschau — KEIN Gemini/Lookup. Zum Prüfen, was gesendet WÜRDE.
+  const scannerDebugFlags = useScannerDebug();
+  const aiFlagRef = useRef(false);
+  useEffect(() => { aiFlagRef.current = scannerDebugFlags.ai; }, [scannerDebugFlags.ai]);
+  const [previewImage, setPreviewImage] = useState<{ src: string; sizeKb: number } | null>(null);
   const [mode, setMode] = useState<'scanning' | 'review'>('scanning');
   // Review-Modus-Ansichten: grid (Default, 2-Spalten) / single (eine Karte groß + Swipe)
   const [viewMode, setViewMode] = useState<'grid' | 'single'>('grid');
@@ -676,6 +683,15 @@ export default function ScannerPage() {
     const id = Math.random().toString(36).slice(2);
     const t0 = Date.now();
     const imageSizeKb = Math.round((imageBase64.length * 3 / 4) / 1024);
+
+    // KI-Debug: NUR das entzerrte Bild zeigen — kein Gemini/Lookup. Stream
+    // pausieren, damit nicht sofort der nächste Snap kommt.
+    if (aiFlagRef.current) {
+      setPreviewImage({ src: `data:${mimeType};base64,${imageBase64}`, sizeKb: imageSizeKb });
+      setStreamPaused(true);
+      return;
+    }
+
     const debug: ScanDebug = { imageBase64, mimeType, imageSizeKb, lookupSteps: [] };
 
     // Bild wird nur EINMAL gespeichert (in debug.imageBase64) — verhindert
@@ -2354,6 +2370,32 @@ export default function ScannerPage() {
           </div>
         );
       })()}
+
+      {/* ── KI-Debug: Vorschau des an Gemini gesendeten Bildes (ohne Senden) ── */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-[80] bg-black/90 flex flex-col items-center justify-center gap-4 p-5"
+          onClick={() => { setPreviewImage(null); setStreamPaused(false); }}
+        >
+          <p className="text-white/70 text-xs font-mono">
+            Debug „KI": entzerrtes Bild · {previewImage.sizeKb} KB · NICHT gesendet
+          </p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={previewImage.src}
+            alt="Vorschau"
+            className="max-w-[88%] max-h-[70vh] rounded-lg shadow-2xl object-contain"
+            onClick={e => e.stopPropagation()}
+          />
+          <button
+            onClick={() => { setPreviewImage(null); setStreamPaused(false); }}
+            className="h-11 px-8 rounded-full font-semibold text-sm text-white"
+            style={{ background: 'var(--pokedex-blue)' }}
+          >
+            Weiter scannen
+          </button>
+        </div>
+      )}
 
       {/* ── Closing-Overlay: Karten werden in Inbox gespeichert ──────── */}
       {closingSaving && (
