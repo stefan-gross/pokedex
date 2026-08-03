@@ -51,6 +51,60 @@ export interface CardBox {
   corners?: [number, number][] | null;
 }
 
+type Pt = [number, number];
+
+/** Konvexe Hülle (Andrew's Monotone Chain), Ergebnis gegen den Uhrzeigersinn. */
+function convexHull(pts: Pt[]): Pt[] {
+  if (pts.length < 3) return pts.slice();
+  const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o: Pt, a: Pt, b: Pt) =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower: Pt[] = [];
+  for (const pt of p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], pt) <= 0) lower.pop();
+    lower.push(pt);
+  }
+  const upper: Pt[] = [];
+  for (let i = p.length - 1; i >= 0; i--) {
+    const pt = p[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], pt) <= 0) upper.pop();
+    upper.push(pt);
+  }
+  lower.pop(); upper.pop();
+  return lower.concat(upper);
+}
+
+/** Flächenkleinstes umschließendes Rechteck einer konvexen Hülle via Rotating
+ *  Calipers. Eine Kante des Optimums liegt immer auf einer Hüllenkante — daher
+ *  wird über jede Kante rotiert und die minimale Fläche gemerkt. Gibt die 4
+ *  Ecken zurück (Reihenfolge unspezifiziert) oder null. */
+function minAreaRect(hull: Pt[]): Pt[] | null {
+  if (hull.length < 3) return null;
+  let best: { area: number; corners: Pt[] } | null = null;
+  const n = hull.length;
+  for (let i = 0; i < n; i++) {
+    const a = hull[i], b = hull[(i + 1) % n];
+    let ux = b[0] - a[0], uy = b[1] - a[1];
+    const len = Math.hypot(ux, uy);
+    if (len < 1e-6) continue;
+    ux /= len; uy /= len;      // Kantenrichtung
+    const vx = -uy, vy = ux;   // Normale
+    let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
+    for (const h of hull) {
+      const pu = h[0] * ux + h[1] * uy;
+      const pv = h[0] * vx + h[1] * vy;
+      if (pu < minU) minU = pu; if (pu > maxU) maxU = pu;
+      if (pv < minV) minV = pv; if (pv > maxV) maxV = pv;
+    }
+    const area = (maxU - minU) * (maxV - minV);
+    if (!best || area < best.area) {
+      const c = (pu: number, pv: number): Pt => [pu * ux + pv * vx, pu * uy + pv * vy];
+      best = { area, corners: [c(minU, minV), c(maxU, minV), c(maxU, maxV), c(minU, maxV)] };
+    }
+  }
+  return best ? best.corners : null;
+}
+
 /**
  * Erkennt die beste Pokémon-Karte im Video/Canvas-Frame.
  * Gibt null zurück wenn keine Karte mit conf >= CONF_THRESHOLD gefunden.
@@ -228,8 +282,8 @@ export async function detectCardInFrame(
   //    pixel_in_card = (Σ coeff[k] * proto[k,y,x]) > 0
   //    (entspricht sigmoid > 0.5, ohne Math.exp — spart ~25.600 teure Calls)
   //
-  //    Eckpunkte via extremale Diagonalrichtungen:
-  //      tl → min(x+y)   tr → max(x−y)   br → max(x+y)   bl → min(x−y)
+  //    Eckpunkte: konvexe Hülle der Maskenränder → Minimum-Area-Rectangle
+  //    (Rotating Calipers) → echtes gedrehtes Karten-Viereck bei jedem Winkel.
   const proto = outputs['output1']?.data as Float32Array | undefined;
 
   if (includeCorners && best && bestIdx >= 0 && proto) {
@@ -239,117 +293,75 @@ export async function detectCardInFrame(
     const PROTO_AREA = MASK_SIZE * MASK_SIZE;
     const maskScale  = MODEL_INPUT_SIZE / MASK_SIZE; // 4.0
 
-    let tlX = 0, tlY = 0, tlV =  Infinity;
-    let trX = 0, trY = 0, trV = -Infinity;
-    let brX = 0, brY = 0, brV = -Infinity;
-    let blX = 0, blY = 0, blV =  Infinity;
+    // Pro Maskenzeile linkeste/rechteste Karten-Spalte. Für eine (nahezu) konvexe
+    // Form genügen diese 2 Randpunkte je Zeile, um die konvexe Hülle exakt zu
+    // bestimmen — deutlich schlanker als alle Innenpunkte zu sammeln.
+    const rowMin = new Int16Array(MASK_SIZE).fill(-1);
+    const rowMax = new Int16Array(MASK_SIZE).fill(-1);
     let found = false;
-    // PCA-Akkumulatoren (Orientierung robust aus allen Maskenpunkten, nicht nur
-    // den 4 Diagonal-Extrema — diese unterschätzen kleine Drehungen).
-    let nPts = 0, sX = 0, sY = 0, sXX = 0, sYY = 0, sXY = 0;
 
     for (let my = 0; my < MASK_SIZE; my++) {
+      const rowBase = my * MASK_SIZE;
+      let lo = -1, hi = -1;
       for (let mx = 0; mx < MASK_SIZE; mx++) {
         // Skalarprodukt: Koeffizienten × Prototypen
         let raw = 0;
         for (let k = 0; k < 32; k++)
-          raw += coeffs[k] * proto[k * PROTO_AREA + my * MASK_SIZE + mx];
+          raw += coeffs[k] * proto[k * PROTO_AREA + rowBase + mx];
         if (raw <= 0) continue; // außerhalb der Karte
-
-        // Masken-Pixel → Modell-Koordinate → Quell-Koordinate
-        const sx = toSrcX((mx + 0.5) * maskScale);
-        const sy = toSrcY((my + 0.5) * maskScale);
-        if (sx < 0 || sx >= srcW || sy < 0 || sy >= srcH) continue;
-
-        found = true;
-        nPts++; sX += sx; sY += sy; sXX += sx * sx; sYY += sy * sy; sXY += sx * sy;
-        if (sx + sy < tlV) { tlV = sx + sy; tlX = sx; tlY = sy; }
-        if (sx - sy > trV) { trV = sx - sy; trX = sx; trY = sy; }
-        if (sx + sy > brV) { brV = sx + sy; brX = sx; brY = sy; }
-        if (sx - sy < blV) { blV = sx - sy; blX = sx; blY = sy; }
+        if (lo < 0) lo = mx;
+        hi = mx;
       }
+      if (lo >= 0) { rowMin[my] = lo; rowMax[my] = hi; found = true; }
     }
 
     if (!found) {
       best.corners = null;
     } else {
-      // ── Kartenwinkel: robust per PCA über alle Maskenpunkte ─────────────────
-      // Die 4 Diagonal-Extrema unterschätzen kleine Drehungen (Ergebnis oft ~0°).
-      // Die Hauptachse der Punktwolke gibt die Orientierung zuverlässig:
-      //   Maske hochkant (volle Karte) → Oberkante ⟂ Hauptachse
-      //   Maske quer (nur Artwork)     → Oberkante = Hauptachse
-      // Fallback bleibt die tl→tr-Kante, falls zu wenige Punkte.
-      let angle = Math.atan2(trY - tlY, trX - tlX);
-      if (nPts > 30) {
-        const mX = sX / nPts, mY = sY / nPts;
-        const cxx = sXX / nPts - mX * mX;
-        const cyy = sYY / nPts - mY * mY;
-        const cxy = sXY / nPts - mX * mY;
-        const phi = 0.5 * Math.atan2(2 * cxy, cxx - cyy); // Hauptachsen-Winkel
-        if (cxx >= cyy) {
-          angle = phi; // quer → Hauptachse ist die Oberkante
-        } else {
-          let dx = Math.cos(phi), dy = Math.sin(phi);
-          if (dy < 0) { dx = -dx; dy = -dy; } // Längsachse nach unten
-          angle = Math.atan2(-dx, dy);        // Oberkante ⟂ Längsachse
-        }
+      // ── Gedrehtes Karten-Viereck: konvexe Hülle + Minimum-Area-Rectangle ────
+      // Robust für JEDEN Winkel (im Gegensatz zu Diagonal-Extrema/PCA, die kleine
+      // Drehungen Richtung 0° kollabieren lassen). Rotating-Calipers über die
+      // Hülle liefert das flächenkleinste umschließende Rechteck = die Karte.
+      const boundary: [number, number][] = [];
+      for (let my = 0; my < MASK_SIZE; my++) {
+        if (rowMin[my] < 0) continue;
+        boundary.push([rowMin[my], my]);
+        if (rowMax[my] !== rowMin[my]) boundary.push([rowMax[my], my]);
       }
-      const cosA  = Math.cos(angle);
-      const sinA  = Math.sin(angle);
-      const aca   = Math.abs(cosA);
-      const asa   = Math.abs(sinA);
-
-      // ── Tatsächliche Karten-Dimensionen aus ONNX-AABB + Winkel ──────────────
-      // Für ein W×H-Rechteck mit Neigung a gilt:
-      //   AABB_W = W·|cos a| + H·|sin a|
-      //   AABB_H = W·|sin a| + H·|cos a|
-      // Lösung des 2×2-Systems (Determinante = cos(2a)):
-      const cos2a = aca * aca - asa * asa;
-      let estW: number, estH: number;
-      if (Math.abs(cos2a) > 0.15) {
-        estW = (aca * best.w - asa * best.h) / cos2a;
-        estH = (aca * best.h - asa * best.w) / cos2a;
+      const rect = minAreaRect(convexHull(boundary));
+      if (!rect) {
+        best.corners = null;
       } else {
-        estW = NaN; // Marker für Fallback
-        estH = NaN;
+        // Masken-Koords → Quell-Koords (affine Rücktransformation)
+        const toSrc = (p: [number, number]): [number, number] =>
+          [toSrcX((p[0] + 0.5) * maskScale), toSrcY((p[1] + 0.5) * maskScale)];
+        const rc = rect.map(toSrc);
+
+        // Ecken nach tl/tr/br/bl ordnen (Drehung < ~40° → Summe/Differenz eindeutig)
+        const bySum  = [...rc].sort((a, b) => (a[0] + a[1]) - (b[0] + b[1]));
+        const byDiff = [...rc].sort((a, b) => (a[0] - a[1]) - (b[0] - b[1]));
+        const tl = bySum[0], br = bySum[3];
+        const tr = byDiff[3], bl = byDiff[0];
+
+        // ── Plausibilitätsprüfung über die echten Kantenlängen ────────────────
+        const dist = (p: number[], q: number[]) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+        const wEst = (dist(tl, tr) + dist(bl, br)) / 2;
+        const hEst = (dist(tl, bl) + dist(tr, br)) / 2;
+        const shorter      = Math.min(wEst, hEst);
+        const longer       = Math.max(wEst, hEst);
+        const ratio        = longer / (shorter || 1);
+        const frameShorter = Math.min(srcW, srcH);
+
+        if (
+          shorter > frameShorter * 0.95 ||  // zu groß (iPhone-Display etc.)
+          shorter < frameShorter * 0.06 ||  // zu klein (Regalrand-Querschnitt etc.)
+          ratio < 1.05 || ratio > 2.3       // falsches Seitenverhältnis
+        ) {
+          return null;
+        }
+
+        best.corners = [tl, tr, br, bl];
       }
-      // Fallback: nahe 45° oder negative Lösung → Pokémon-Seitenverhältnis + Fläche
-      if (!isFinite(estW) || !isFinite(estH) || estW <= 0 || estH <= 0) {
-        const CARD_RATIO = 88 / 63; // ≈ 1.397
-        estW = Math.sqrt(best.w * best.h / CARD_RATIO);
-        estH = estW * CARD_RATIO;
-      }
-      // Hochformat sicherstellen (Pokémon-Karte ist immer höher als breit)
-      if (estW > estH) { const tmp = estW; estW = estH; estH = tmp; }
-
-      // ── Plausibilitätsprüfung ────────────────────────────────────────────────
-      const shorter      = estW;
-      const ratio        = estH / (estW || 1);
-      const frameShorter = Math.min(srcW, srcH);
-
-      if (
-        shorter > frameShorter * 0.85 ||  // zu groß (iPhone-Display etc.)
-        shorter < frameShorter * 0.06 ||  // zu klein (Regalrand-Querschnitt etc.)
-        ratio < 1.05 || ratio > 2.3       // falsches Seitenverhältnis
-      ) {
-        return null;
-      }
-
-      // ── Rotierte Corners aus AABB-Zentrum + Winkel + Dimensionen ────────────
-      // Koordinatensystem (y zeigt nach unten):
-      //   rightDir = (cos a, sin a)
-      //   downDir  = (−sin a, cos a)  [90° CCW auf Screen = "unten" auf Karte]
-      const cx = best.x + best.w / 2;
-      const cy = best.y + best.h / 2;
-      const hw = estW / 2;
-      const hh = estH / 2;
-
-      best.corners = [
-        [cx - hw * cosA + hh * sinA, cy - hw * sinA - hh * cosA], // tl
-        [cx + hw * cosA + hh * sinA, cy + hw * sinA - hh * cosA], // tr
-        [cx + hw * cosA - hh * sinA, cy + hw * sinA + hh * cosA], // br
-        [cx - hw * cosA - hh * sinA, cy - hw * sinA + hh * cosA], // bl
-      ];
     }
   }
 
