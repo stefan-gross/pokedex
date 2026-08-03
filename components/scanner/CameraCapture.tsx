@@ -896,7 +896,11 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
         }
 
         // changeDetectedThisTick: Snap erst im nächsten Tick möglich (Race-Condition-Schutz)
-        const snapCondition   = !cooldownRef.current && !changeDetectedThisTick && cardDetected && boxFullyInside && mse < MOTION_SNAP_THRESHOLD;
+        // Auto-Auslöser NUR bei grüner Ampel (scharf, gut belichtet, keine
+        // Reflexion in den Lesezonen, Box ruhig & ganz im Bild). Manueller Tap
+        // (doCapture(true)) übersteuert das weiterhin.
+        const snapCondition   = !cooldownRef.current && !changeDetectedThisTick && cardDetected
+          && boxFullyInside && mse < MOTION_SNAP_THRESHOLD && qualityRef.current.level === 'green';
         const triggerReason   = boxSettled ? 'delta' : consecutiveOk ? 'consecutive' : '–';
 
         // 7. Debug-State aktualisieren
