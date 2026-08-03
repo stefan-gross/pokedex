@@ -163,7 +163,7 @@ function computeBorderStatus(job: ScanJob): BorderStatus {
   if (typeof dist === 'number') {
     // Schwellwerte synchron mit classifyPHashDistance() in lib/scan/image-hash.ts
     if (dist >= 28) return 'auto-red';
-    if (dist >= 23) return 'auto-yellow';
+    if (dist >= 25) return 'auto-yellow';
   }
   if (job.flaggedManual) return 'manual-yellow';
   return 'none';

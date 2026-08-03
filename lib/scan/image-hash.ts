@@ -57,13 +57,14 @@ export function hammingDistance(a: bigint, b: bigint): number {
  * Grob rekalibriert an zwei realen Foto-vs-Katalogbild-Vergleichen (Handy-Foto
  * bei Umgebungslicht gegen sauberes Produktbild streut mehr als bei zwei
  * digitalen Bildern): korrekter Match (Bidiza/CRZ) lag bei Distanz 20, ein
- * echter Fehlmatch (Bidiza fälschlich als Sharfax/BRS) bei 28. Die
- * ursprünglichen, engeren Schwellwerte (0-11/12-19/20+) hätten den korrekten
- * Match als „mismatch" geflaggt. Mit nur zwei Datenpunkten kalibriert — bei
- * mehr realen Scans ggf. weiter nachjustieren.
+ * echter Fehlmatch (Bidiza fälschlich als Sharfax/BRS) bei 28. Dunkle
+ * Reverse-/Holo-Karten streuen höher (Folienschimmer im Foto, den das flache
+ * Katalogbild nicht hat): korrekte Morpeko-Scans lagen bei 16–20. Deshalb die
+ * Match-Decke von 22 → 24 (Luft für Holos), Mismatch-Linie bei 28 belassen
+ * (schützt den bekannten Fehlmatch). Weiter nachjustieren bei mehr realen Scans.
  */
 export function classifyPHashDistance(distance: number): PHashClass {
-  if (distance <= 22) return 'match';
+  if (distance <= 24) return 'match';
   if (distance <= 27) return 'unsure';
   return 'mismatch';
 }
