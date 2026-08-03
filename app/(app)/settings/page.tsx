@@ -33,6 +33,18 @@ export default function SettingsPage() {
   // Scanner-Debug-Modi (mehrstufig): Scannen / KI / Daten
   const scannerDebug = useScannerDebug();
 
+  // Build-Kennung: eingebacken (Client-Bundle) vs. Laufzeit-Server (/api/version).
+  const buildSha  = process.env.NEXT_PUBLIC_BUILD_SHA ?? 'dev';
+  const buildTime = process.env.NEXT_PUBLIC_BUILD_TIME;
+  const [serverSha, setServerSha] = useState<string | null>(null);
+  const updateAvailable = serverSha != null && buildSha !== 'dev' && serverSha !== 'dev' && serverSha !== buildSha;
+  useEffect(() => {
+    fetch('/api/version', { cache: 'no-store' })
+      .then(r => r.json())
+      .then((d: { sha?: string }) => setServerSha(d.sha ?? null))
+      .catch(() => { /* offline / egal */ });
+  }, []);
+
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncLoading, setSyncLoading] = useState(true);
   const [syncing, setSyncing]         = useState(false);
@@ -287,6 +299,16 @@ export default function SettingsPage() {
             App aktualisieren
           </Button>
           <p className="text-role-label text-glass-muted px-1">Lädt die neueste Version — Cache wird geleert</p>
+          <p className="text-role-label text-glass-muted px-1 font-mono">
+            Build {buildSha}{buildTime ? ` · ${new Date(buildTime).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}` : ''}
+          </p>
+          {updateAvailable ? (
+            <p className="text-role-label px-1 font-medium" style={{ color: 'var(--pokedex-red)' }}>
+              Neue Version verfügbar ({serverSha}) — tippe „App aktualisieren"
+            </p>
+          ) : serverSha && buildSha !== 'dev' ? (
+            <p className="text-role-label text-glass-muted px-1">Aktuell — keine neue Version</p>
+          ) : null}
         </section>
 
         {/* 2. Karten-Catalog — ein Panel: Status + Preis-Status + letzter Lauf + Aktionen */}

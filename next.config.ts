@@ -1,6 +1,16 @@
 import type { NextConfig } from 'next';
 
+// Build-Kennung: Commit-SHA (Vercel) + Build-Zeitpunkt. Wird ins Client-Bundle
+// eingebacken; /api/version liefert die Laufzeit-SHA zum Vergleich („neue
+// Version verfügbar", wenn die gecachte PWA älter ist als der aktuelle Deploy).
+const BUILD_SHA = (process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7) || 'dev';
+const BUILD_TIME = new Date().toISOString();
+
 const nextConfig: NextConfig = {
+  env: {
+    NEXT_PUBLIC_BUILD_SHA: BUILD_SHA,
+    NEXT_PUBLIC_BUILD_TIME: BUILD_TIME,
+  },
   webpack(config, { isServer }) {
     // onnxruntime-web ist nur im Browser nutzbar — auf dem Server ausblenden
     if (isServer) {
