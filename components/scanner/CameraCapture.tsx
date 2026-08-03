@@ -86,7 +86,7 @@ const SAMPLE_H = 266;
 const CHECK_MS               = 150;   // ONNX-Inferenz ~80ms → etwas mehr Budget
 const MOTION_RESET_THRESHOLD = 1200;  // grobe Bewegung → stable zurücksetzen
 const MOTION_SNAP_THRESHOLD  = 700;   // unter diesem MSE-Wert gilt es als "ruhig"
-const SNAP_STABLE_FRAMES     = 3;     // Grün muss ~3 Ticks (~450ms) anhalten (war 1 → löste zu früh aus)
+const SNAP_STABLE_FRAMES     = 2;     // Grün muss ~2 Ticks (~300ms) anhalten (1=zu früh, 3=zu träge aus der Hand)
 const BOX_SETTLED_THRESHOLD  = 35;    // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames
 const CONSECUTIVE_SNAP_FRAMES = 2;    // Fallback: 2 aufeinanderfolgende Treffer
 // Szenen-Änderungs-Cooldown: nach Snap warten bis MSE vs. Snapshot > Threshold.
