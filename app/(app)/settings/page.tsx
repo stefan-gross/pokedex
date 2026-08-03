@@ -17,6 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { useScannerDebug, setScannerDebug } from '@/lib/scanner/debug-flags';
 import { useUpdateAvailable } from '@/lib/hooks/use-update-available';
+import { auth } from '@/lib/firebase/client';
+import { onAuthStateChanged } from 'firebase/auth';
 
 const THEMES = [
   { value: 'system', label: 'System', icon: Smartphone },
@@ -36,6 +38,10 @@ export default function SettingsPage() {
 
   // „Neue Version verfügbar" (geteilter Hook, auch im Dashboard).
   const { updateAvailable, confirmedCurrent, buildSha, buildTime } = useUpdateAvailable();
+
+  // Aktuell angemeldetes Konto (Karten hängen am Konto, nicht am Gerät).
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  useEffect(() => onAuthStateChanged(auth, u => setUserEmail(u?.email ?? null)), []);
 
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncLoading, setSyncLoading] = useState(true);
@@ -487,6 +493,11 @@ export default function SettingsPage() {
         {/* 5. Account */}
         <section className="space-y-1.5">
           <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-2">Account</p>
+          {userEmail && (
+            <p className="text-role-label text-glass-muted px-1">
+              Angemeldet als <span className="font-medium text-glass">{userEmail}</span>
+            </p>
+          )}
           <Button
             variant="secondary" size="lg" className="w-full justify-start"
             icon={<LogOut size={18} className="text-red-600 dark:text-red-300" />}

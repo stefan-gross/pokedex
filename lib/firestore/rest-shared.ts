@@ -43,7 +43,12 @@ function waitForAuthUser(): Promise<User | null> {
  *  entscheidet dann serverseitig, ob der Request trotzdem durchgeht). */
 export async function getAuthHeader(): Promise<Record<string, string>> {
   try {
-    const u = await waitForAuthUser();
+    // WICHTIG: erst den LIVE-User prüfen. `waitForAuthUser` merkt sich das erste
+    // onAuthStateChanged-Ergebnis dauerhaft — feuert das direkt nach Login/Install
+    // noch mit `null` (Session-Restore läuft), bliebe es sonst für die ganze
+    // Seiten-Session `null` → alle authentifizierten Reads leer (0 Karten), obwohl
+    // man eingeloggt ist. `auth.currentUser` spiegelt den aktuellen Stand.
+    const u = auth.currentUser ?? await waitForAuthUser();
     if (!u) return {};
     const token = await u.getIdToken();
     return { Authorization: `Bearer ${token}` };
