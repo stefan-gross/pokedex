@@ -293,6 +293,19 @@ export async function detectCardInFrame(
     const PROTO_AREA = MASK_SIZE * MASK_SIZE;
     const maskScale  = MODEL_INPUT_SIZE / MASK_SIZE; // 4.0
 
+    // WICHTIG: nur Maskenpixel INNERHALB der (zuverlässigen) Box-Regression zählen.
+    // Die Prototyp-Maske hat oft Streu-Rauschen (positives Skalarprodukt) im
+    // Hintergrund; ungefiltert blähen einzelne Fernpixel die Zeilen-Silhouette auf
+    // → Rechteck viel zu groß → als unplausibel verworfen (Ecken 0). Die Box
+    // begrenzt zuverlässig auf die Karte (AABB der gedrehten Karte).
+    const toMaskX = (sx: number) => (padX + sx * scale) / maskScale;
+    const toMaskY = (sy: number) => (padY + sy * scale) / maskScale;
+    const PAD = 2; // Masken-Pixel Toleranz (Randunschärfe der Maske)
+    const bxL = Math.max(0, Math.floor(toMaskX(best.x) - PAD));
+    const bxR = Math.min(MASK_SIZE - 1, Math.ceil(toMaskX(best.x + best.w) + PAD));
+    const byT = Math.max(0, Math.floor(toMaskY(best.y) - PAD));
+    const byB = Math.min(MASK_SIZE - 1, Math.ceil(toMaskY(best.y + best.h) + PAD));
+
     // Pro Maskenzeile linkeste/rechteste Karten-Spalte. Für eine (nahezu) konvexe
     // Form genügen diese 2 Randpunkte je Zeile, um die konvexe Hülle exakt zu
     // bestimmen — deutlich schlanker als alle Innenpunkte zu sammeln.
@@ -300,10 +313,10 @@ export async function detectCardInFrame(
     const rowMax = new Int16Array(MASK_SIZE).fill(-1);
     let found = false;
 
-    for (let my = 0; my < MASK_SIZE; my++) {
+    for (let my = byT; my <= byB; my++) {
       const rowBase = my * MASK_SIZE;
       let lo = -1, hi = -1;
-      for (let mx = 0; mx < MASK_SIZE; mx++) {
+      for (let mx = bxL; mx <= bxR; mx++) {
         // Skalarprodukt: Koeffizienten × Prototypen
         let raw = 0;
         for (let k = 0; k < 32; k++)
