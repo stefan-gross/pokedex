@@ -255,12 +255,14 @@ export default function SettingsPage() {
 
   return (
     <div className="relative min-h-screen pb-16">
-      {/* Header-Panel (Glas) — Zurück · Titel · Theme-Switch */}
-      <div className="sticky top-safe z-20 px-3 pt-3 pb-1">
-        <div className="glass rounded-[20px] px-3 py-2 flex items-center gap-2">
-          <Button variant="ghost" href="/" icon={<ChevronLeft size={22} />} aria-label="Zurück" />
-          <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)] flex-1">Einstellungen</h1>
-          {/* Farbschema — kompakt oben rechts */}
+      {/* Header (nicht sticky, kein Panel) — Zurück „Dashboard" · Titel · Theme */}
+      <div className="px-4 pt-4 pb-1 space-y-1">
+        <Button variant="ghost" href="/" icon={<ChevronLeft size={18} />} className="px-0 -ml-1">
+          Dashboard
+        </Button>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Einstellungen</h1>
+          {/* Farbschema */}
           {mounted && (
             <ButtonGroup
               iconOnly

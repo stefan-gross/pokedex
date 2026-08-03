@@ -90,7 +90,7 @@ export default function SetsPage() {
       <div className="sticky top-safe z-20 px-3 pt-3 pb-1">
         <div className="glass rounded-[20px] px-4 pt-2 pb-3">
           <Button variant="ghost" href="/" className="px-0 -ml-1" icon={<ChevronLeft size={18} strokeWidth={2} />}>
-            Zurück
+            Dashboard
           </Button>
           <div className="flex items-end justify-between gap-3">
             <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">Alle Sets</h1>
