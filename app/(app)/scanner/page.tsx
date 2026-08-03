@@ -369,7 +369,10 @@ export default function ScannerPage() {
   const scannerDebugFlags = useScannerDebug();
   const aiFlagRef = useRef(false);
   useEffect(() => { aiFlagRef.current = scannerDebugFlags.ai; }, [scannerDebugFlags.ai]);
-  const [previewImage, setPreviewImage] = useState<{ src: string; sizeKb: number; meta?: CaptureMeta } | null>(null);
+  const autoDebugOpenedRef = useRef<string | null>(null);
+  const [previewImage, setPreviewImage] = useState<
+    { src: string; sizeKb: number; base64: string; mimeType: string; meta?: CaptureMeta } | null
+  >(null);
   const [mode, setMode] = useState<'scanning' | 'review'>('scanning');
   // Review-Modus-Ansichten: grid (Default, 2-Spalten) / single (eine Karte groß + Swipe)
   const [viewMode, setViewMode] = useState<'grid' | 'single'>('grid');
@@ -540,6 +543,19 @@ export default function ScannerPage() {
 
   const debugJob = jobs.find(j => j.id === debugJobId) ?? null;
 
+  // KI-Debug: nach „An Gemini senden" (Einzeln-Modus) das Debug-Modal automatisch
+  // öffnen, sobald die Antwort da ist (Bild + Gemini-Roh/-Parsed + Latenz + Lookup).
+  useEffect(() => {
+    if (!scannerDebugFlags.ai) return;
+    const ready = [...jobs].reverse().find(
+      j => j.origin === 'recognize' && j.status !== 'processing' && j.debug?.geminiParsed != null,
+    );
+    if (ready && autoDebugOpenedRef.current !== ready.id) {
+      autoDebugOpenedRef.current = ready.id;
+      setDebugJobId(ready.id);
+    }
+  }, [jobs, scannerDebugFlags.ai]);
+
   const pendingCount = jobs.filter(j => j.status === 'processing').length;
   const doneJobs = jobs.filter(j => j.status === 'done' && j.result?.card);
   const activeJob = jobs.find(j => j.id === activeJobId) ?? null;
@@ -680,15 +696,16 @@ export default function ScannerPage() {
     return () => { cancelled = true; };
   }, [activeJobId, jobs]);
 
-  const handleCapture = useCallback(async (imageBase64: string, mimeType: string, meta?: CaptureMeta) => {
+  const handleCapture = useCallback(async (imageBase64: string, mimeType: string, meta?: CaptureMeta, skipPreview = false) => {
     const id = Math.random().toString(36).slice(2);
     const t0 = Date.now();
     const imageSizeKb = Math.round((imageBase64.length * 3 / 4) / 1024);
 
-    // KI-Debug: NUR das entzerrte Bild + Auslöse-Metriken zeigen — kein Gemini/
-    // Lookup. Stream pausieren, damit nicht sofort der nächste Snap kommt.
-    if (aiFlagRef.current) {
-      setPreviewImage({ src: `data:${mimeType};base64,${imageBase64}`, sizeKb: imageSizeKb, meta });
+    // KI-Debug: erst NUR das entzerrte Bild + Auslöse-Metriken zeigen — kein
+    // Gemini/Lookup. Der Vorschau-Button „An Gemini senden" ruft handleCapture
+    // mit skipPreview=true erneut auf und lässt dann den echten Flow laufen.
+    if (aiFlagRef.current && !skipPreview) {
+      setPreviewImage({ src: `data:${mimeType};base64,${imageBase64}`, sizeKb: imageSizeKb, base64: imageBase64, mimeType, meta });
       setStreamPaused(true);
       return;
     }
@@ -2406,13 +2423,25 @@ export default function ScannerPage() {
               </div>
             </div>
           )}
-          <button
-            onClick={() => { setPreviewImage(null); setStreamPaused(false); }}
-            className="h-11 px-8 rounded-full font-semibold text-sm text-white"
-            style={{ background: 'var(--pokedex-blue)' }}
-          >
-            Weiter scannen
-          </button>
+          <div className="flex gap-3" onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => { setPreviewImage(null); setStreamPaused(false); }}
+              className="h-11 px-6 rounded-full font-semibold text-sm text-white/90 border border-white/25"
+            >
+              Weiter scannen
+            </button>
+            <button
+              onClick={() => {
+                const p = previewImage;
+                setPreviewImage(null);
+                if (p) handleCapture(p.base64, p.mimeType, p.meta, true);
+              }}
+              className="h-11 px-6 rounded-full font-semibold text-sm text-white"
+              style={{ background: 'var(--pokedex-blue)' }}
+            >
+              An Gemini senden
+            </button>
+          </div>
         </div>
       )}
 
