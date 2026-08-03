@@ -370,6 +370,7 @@ export default function ScannerPage() {
   const aiFlagRef = useRef(false);
   useEffect(() => { aiFlagRef.current = scannerDebugFlags.ai; }, [scannerDebugFlags.ai]);
   const autoDebugOpenedRef = useRef<string | null>(null);
+  const [debugCopied, setDebugCopied] = useState(false);
   const [previewImage, setPreviewImage] = useState<
     { src: string; sizeKb: number; base64: string; mimeType: string; meta?: CaptureMeta } | null
   >(null);
@@ -2466,13 +2467,51 @@ export default function ScannerPage() {
           >
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-white font-semibold text-base">Debug-Info</h2>
-              <button
-                onClick={() => setDebugJobId(null)}
-                className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10"
-                aria-label="Schließen"
-              >
-                <X size={18} color="#fff" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    const d = debugJob.debug!;
+                    const text = [
+                      '# Scanner-Debug',
+                      `Karte (erkannt): ${debugJob.result?.card ? `${debugJob.result.card.name} (${debugJob.result.card.id})` : '—'}`,
+                      `Modell: ${d.geminiModel ?? '—'} · Payload: ${d.imageSizeKb ?? '—'} KB`,
+                      `Latenz(ms): upload ${d.uploadMs ?? '—'} · gemini ${d.geminiMs ?? '—'} · lookup ${d.lookupMs ?? '—'} · total ${d.totalMs ?? '—'}`,
+                      d.geminiAttempts?.length ? `Versuche: ${d.geminiAttempts.map(a => JSON.stringify(a)).join(' | ')}` : '',
+                      d.error ? `Fehler: ${d.error}` : '',
+                      `pHash-Distanz: ${debugJob.pHashDistance ?? '—'}`,
+                      '',
+                      '## Gemini geparst:',
+                      JSON.stringify(d.geminiParsed ?? null, null, 2),
+                      '',
+                      '## Gemini roh:',
+                      d.geminiRaw ?? '—',
+                      '',
+                      '## Lookup-Schritte:',
+                      ...(d.lookupSteps?.length ? d.lookupSteps : ['—']),
+                      '',
+                      `## Katalog-Treffer: ${d.catalogMatch ? `${d.catalogMatch.name} (${d.catalogMatch.setId}/${d.catalogMatch.number}) id=${d.catalogMatch.id}` : '—'}`,
+                    ].filter(l => l !== '').join('\n');
+                    try {
+                      await navigator.clipboard.writeText(text);
+                      setDebugCopied(true);
+                      setTimeout(() => setDebugCopied(false), 1800);
+                    } catch {
+                      // Fallback: Text in ein auswählbares Feld legen (idR. langes Drücken → Kopieren)
+                      window.prompt('Debug-Text (kopieren):', text);
+                    }
+                  }}
+                  className="h-9 px-3 flex items-center rounded-full bg-white/10 text-white text-xs font-semibold"
+                >
+                  {debugCopied ? 'Kopiert ✓' : 'Kopieren'}
+                </button>
+                <button
+                  onClick={() => setDebugJobId(null)}
+                  className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10"
+                  aria-label="Schließen"
+                >
+                  <X size={18} color="#fff" />
+                </button>
+              </div>
             </div>
 
             {/* Aufgenommenes Bild */}
