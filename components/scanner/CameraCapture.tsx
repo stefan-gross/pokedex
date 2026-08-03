@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Zap, ZapOff, Camera } from 'lucide-react';
 import { loadCardDetectorSession, detectCardInFrame, type CardBox } from '@/lib/scanner/card-detector-onnx';
+import { computePixelMetrics, assessQuality, type QualityResult } from '@/lib/scanner/frame-quality';
+import { useScannerDebug } from '@/lib/scanner/debug-flags';
 
 interface Props {
   onCapture: (imageBase64: string, mimeType: string) => void;
@@ -149,6 +151,15 @@ interface DebugInfo {
   cropSize: string;
   triggerReason: string; // welcher Pfad den Snap ausgelöst hat
   changeMse: number;     // MSE vs. Snap-Snapshot (Kalibrierung CHANGE_DETECT_THRESHOLD)
+  // Live-Scanqualität (Debug-Modus „Scannen")
+  level: string;         // neutral | red | yellow | green
+  reason: string;        // Ampel-Grund (leer wenn grün/neutral)
+  sharpness: number;     // Laplace-Varianz
+  glare: number;         // % ausgebrannte Pixel
+  meanLum: number;       // 0..255
+  contrast: number;      // 0..255
+  fill: number;          // % Kartenfläche am Bild
+  tickMs: number;        // Sync-Kosten dieses Detection-Ticks
 }
 
 export function CameraCapture({ onCapture, pendingCount = 0, paused = false, active, hideFrame = false }: Props) {
@@ -201,7 +212,17 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   // Geglättete Box für flüssiges Overlay-Rendering (Lerp zur ONNX-Zielbox bei 60fps)
   const lerpBoxRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
 
+  // Live-Scanqualität (Ampel-Rahmen + Hinweis). Ref, weil drawOverlay im
+  // 60fps-rAF-Loop liest; wird je Detection-Tick (150ms) aktualisiert.
+  const qualityRef = useRef<QualityResult>({ level: 'neutral', reason: null });
+
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
+
+  // Debug-Flags: bei „Scannen" wird NICHT ausgelöst (kein Foto/Gemini), nur
+  // die Ampel/Metriken angezeigt. Ref-Spiegel für Nutzung in Closures (Tick/doCapture).
+  const debugFlags = useScannerDebug();
+  const scanDebugRef = useRef(debugFlags.scan);
+  useEffect(() => { scanDebugRef.current = debugFlags.scan; }, [debugFlags.scan]);
 
   const [streamReady, setStreamReady] = useState(false);
   // Front/Rück-Switch entfernt — Stream nutzt immer environment (Rückkamera).
@@ -218,6 +239,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   const [debug,      setDebug]      = useState<DebugInfo>({
     conf: 0, mse: 0, stable: 0, boxDelta: Infinity, consecutiveFrames: 0,
     detected: false, sessionReady: false, cropSize: '–', triggerReason: '–', changeMse: 0,
+    level: 'neutral', reason: '', sharpness: 0, glare: 0, meanLum: 0, contrast: 0, fill: 0, tickMs: 0,
   });
 
   // Mount-Counter in sessionStorage hochzählen — überlebt iOS-PWA-Reloads.
@@ -276,10 +298,22 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
       } : { x: target.x, y: target.y, w: target.w, h: target.h };
       lerpBoxRef.current = lb;
 
-      // Weißer Erkennungsrahmen — grüner Burst beim Snap übernimmt als Animation
-      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      // Ampel-Rahmen nach Live-Scanqualität: grün = bereit, gelb/rot = Mängel,
+      // weiß = Karte erkannt, aber (noch) keine Bewertung.
+      const qlvl = qualityRef.current.level;
+      const frameColor =
+        qlvl === 'green'  ? 'rgba(72,187,120,0.95)' :
+        qlvl === 'yellow' ? 'rgba(236,201,75,0.95)' :
+        qlvl === 'red'    ? 'rgba(239,68,68,0.95)'  :
+                            'rgba(255,255,255,0.85)';
+      const frameGlow =
+        qlvl === 'green'  ? 'rgba(72,187,120,0.40)' :
+        qlvl === 'yellow' ? 'rgba(236,201,75,0.40)' :
+        qlvl === 'red'    ? 'rgba(239,68,68,0.40)'  :
+                            'rgba(255,255,255,0.35)';
+      ctx.strokeStyle = frameColor;
       ctx.lineWidth = 3;
-      ctx.shadowColor = 'rgba(255,255,255,0.35)';
+      ctx.shadowColor = frameGlow;
       ctx.shadowBlur  = 10;
 
       const settled = boxDeltaRef.current < BOX_SETTLED_THRESHOLD;
@@ -299,6 +333,29 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
 
       ctx.fillStyle = 'rgba(255,255,255,0.04)';
       ctx.fill();
+
+      // Hinweistext DIREKT unter dem Rahmen (nur wenn nicht grün) — z.B.
+      // „Unscharf", „Zu dunkel", „Reflexion". Klebt an der Box-Unterkante.
+      const q = qualityRef.current;
+      if (q.reason && q.level !== 'green' && q.level !== 'neutral') {
+        const cx = (lb.x + lb.w / 2) * scale + ox;
+        const boxBottom = (lb.y + lb.h) * scale + oy;
+        const ty = Math.min(boxBottom + 20, dispH - 16);
+        ctx.font = '600 15px system-ui, -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowBlur = 0;
+        const tw = ctx.measureText(q.reason).width;
+        const padX = 11, pillH = 26, rw = tw + padX * 2;
+        ctx.fillStyle = 'rgba(0,0,0,0.62)';
+        ctx.beginPath();
+        ctx.roundRect(cx - rw / 2, ty - pillH / 2, rw, pillH, 13);
+        ctx.fill();
+        ctx.fillStyle = q.level === 'red' ? '#ff6b6b' : '#f2cf4a';
+        ctx.fillText(q.reason, cx, ty);
+        ctx.textAlign = 'start';
+        ctx.textBaseline = 'alphabetic';
+      }
       return;
     }
 
@@ -449,6 +506,8 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   // bild genutzt, damit der User auch ohne abgewartete Stille snappen kann.
   const doCapture = useCallback((force = false) => {
     if (paused) return;
+    // Debug „Scannen": nur beobachten — kein Foto, kein Gemini (auch nicht per Tap).
+    if (scanDebugRef.current) return;
     if (!force && cooldownRef.current) return;
     const video = videoRef.current, canvas = canvasRef.current;
     if (!video || !canvas || video.readyState < 2) return;
@@ -541,6 +600,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     const delay = setTimeout(() => {
       timerRef.current = setInterval(() => {
         if (paused) return;
+        const tickStart = performance.now();
         const video = videoRef.current, sample = sampleRef.current;
         const prev = prevRef.current;
         if (!video || !sample || !prev || video.readyState < 2) return;
@@ -556,10 +616,13 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
         const pCtx = prev.getContext('2d')!;
         const pData = pCtx.getImageData(0, 0, sw, sh).data;
 
-        // 2. ONNX: fire-and-forget
+        // 2. ONNX: fire-and-forget. Ecken nur anfordern, wenn schon eine Karte
+        //    präsent ist → Rahmen dreht/skaliert mit (gedrehter Polygon-Pfad in
+        //    drawOverlay) + entzerrter Zuschnitt in doCapture. Auf leeren Frames
+        //    spart der Box-only-Pfad die Ecken-Berechnung.
         if (!inferringRef.current && vw > 0) {
           inferringRef.current = true;
-          detectCardInFrame(video).then(box => {
+          detectCardInFrame(video, onnxBoxRef.current !== null).then(box => {
             if (box) {
               // Box-Delta: Drift des Mittelpunkts + Größe zwischen zwei ONNX-Frames
               const prev = prevBoxRef.current;
@@ -662,6 +725,20 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
           && box.y >= EDGE_MARGIN_PX
           && box.x + box.w <= vw - EDGE_MARGIN_PX
           && box.y + box.h <= vh - EDGE_MARGIN_PX;
+
+        // ── Live-Scanqualität (Ampel) — aus dem vorhandenen Sample-Puffer ──
+        // Kein zusätzlicher Readback: `sData` (Center-Sample) ist die Kartenmitte,
+        // wenn die Karte gut im Rahmen liegt. `fill` = Boxfläche / Bildfläche.
+        let qMetrics: { sharpness: number; glare: number; meanLum: number; contrast: number; fill: number } | null = null;
+        if (cardDetected && box && vw && vh) {
+          const pm = computePixelMetrics(sData, sw, sh);
+          const fill = (box.w * box.h) / (vw * vh);
+          qMetrics = { ...pm, fill };
+          qualityRef.current = assessQuality(qMetrics, { boxSettled, boxFullyInside });
+        } else {
+          qualityRef.current = { level: 'neutral', reason: null };
+        }
+
         // changeDetectedThisTick: Snap erst im nächsten Tick möglich (Race-Condition-Schutz)
         const snapCondition   = !cooldownRef.current && !changeDetectedThisTick && cardDetected && boxFullyInside && mse < MOTION_SNAP_THRESHOLD;
         const triggerReason   = boxSettled ? 'delta' : consecutiveOk ? 'consecutive' : '–';
@@ -678,6 +755,14 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
           cropSize:          cropSizeRef.current,
           triggerReason,
           changeMse,
+          level:             qualityRef.current.level,
+          reason:            qualityRef.current.reason ?? '',
+          sharpness:         qMetrics ? Math.round(qMetrics.sharpness) : 0,
+          glare:             qMetrics ? +(qMetrics.glare * 100).toFixed(1) : 0,
+          meanLum:           qMetrics ? Math.round(qMetrics.meanLum) : 0,
+          contrast:          qMetrics ? Math.round(qMetrics.contrast) : 0,
+          fill:              qMetrics ? Math.round(qMetrics.fill * 100) : 0,
+          tickMs:            +(performance.now() - tickStart).toFixed(1),
         });
 
         if (snapCondition && (boxSettled || consecutiveOk)) {
@@ -801,6 +886,28 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
             className="absolute inset-0 w-full h-full pointer-events-none"
             style={{ zIndex: 2, opacity: hideFrame ? 0 : 1, transition: 'opacity 150ms ease-out' }}
           />
+
+          {/* Debug „Scannen": Live-Metriken (nur beobachten, kein Foto/Gemini) */}
+          {debugFlags.scan && (
+            <div
+              className="absolute left-3 pointer-events-none"
+              style={{ top: 'calc(env(safe-area-inset-top, 0px) + 66px)', zIndex: 6 }}
+            >
+              <div className="glass-overlay rounded-xl px-3 py-2 text-[11px] leading-tight font-mono text-white/90" style={{ minWidth: 158 }}>
+                <div
+                  className="font-bold mb-1"
+                  style={{ color: debug.level === 'green' ? '#48bb78' : debug.level === 'yellow' ? '#ecc94b' : debug.level === 'red' ? '#ef4444' : '#fff' }}
+                >
+                  DEBUG · {debug.level}{debug.reason ? ` · ${debug.reason}` : ''}
+                </div>
+                <div>Schärfe {debug.sharpness} · Glare {debug.glare}%</div>
+                <div>Licht {debug.meanLum} · Kontrast {debug.contrast}</div>
+                <div>Füllung {debug.fill}% · Δbox {debug.boxDelta}</div>
+                <div>MSE {debug.mse} · Tick {debug.tickMs}ms</div>
+                <div>conf {debug.conf.toFixed(2)} · {debug.detected ? 'erkannt' : '—'}</div>
+              </div>
+            </div>
+          )}
 
           {/* Weißer Blitz beim Snap */}
           {flashing && (

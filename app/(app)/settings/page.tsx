@@ -14,6 +14,8 @@ import { getBinders, updateBinder } from '@/lib/firestore/binders';
 import { getOwnedPriceStatus, type OwnedPriceStatus } from '@/lib/prices/owned-status';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { useScannerDebug, setScannerDebug } from '@/lib/scanner/debug-flags';
 
 const THEMES = [
   { value: 'system', label: 'System', icon: Smartphone },
@@ -27,6 +29,9 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const router = useRouter();
+
+  // Scanner-Debug-Modi (mehrstufig): Scannen / KI / Daten
+  const scannerDebug = useScannerDebug();
 
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncLoading, setSyncLoading] = useState(true);
@@ -408,7 +413,35 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* 3. Gefahren-Zone */}
+        {/* 3. Scanner-Debug (mehrstufig) */}
+        <section className="space-y-1.5">
+          <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-2">Scanner-Debug</p>
+          <div className="shadow-card rounded-2xl p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-role-body font-medium">Scannen</p>
+                <p className="text-role-label text-glass-muted">Live-Erkennung + Qualitäts-Ampel (Rahmen/Hinweis/Metriken). Löst KEIN Foto aus, sendet nichts an die KI.</p>
+              </div>
+              <Switch checked={scannerDebug.scan} onChange={v => setScannerDebug('scan', v)} accentColor="var(--pokedex-blue)" />
+            </div>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-role-body font-medium">KI</p>
+                <p className="text-role-label text-glass-muted">Gemini-Rohantwort, erkannte Werte und Latenz einblenden/mitloggen.</p>
+              </div>
+              <Switch checked={scannerDebug.ai} onChange={v => setScannerDebug('ai', v)} accentColor="var(--pokedex-blue)" />
+            </div>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-role-body font-medium">Daten</p>
+                <p className="text-role-label text-glass-muted">Katalog-Lookup und automatische Verknüpfung (Reconcile) einblenden/mitloggen.</p>
+              </div>
+              <Switch checked={scannerDebug.data} onChange={v => setScannerDebug('data', v)} accentColor="var(--pokedex-blue)" />
+            </div>
+          </div>
+        </section>
+
+        {/* 4. Gefahren-Zone */}
         <section className="space-y-1.5">
           <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-2">Gefahren-Zone</p>
           <Button
@@ -431,7 +464,7 @@ export default function SettingsPage() {
           )}
         </section>
 
-        {/* 4. Account */}
+        {/* 5. Account */}
         <section className="space-y-1.5">
           <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-2">Account</p>
           <Button
