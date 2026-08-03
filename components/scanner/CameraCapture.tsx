@@ -93,7 +93,10 @@ const MOTION_SNAP_THRESHOLD  = 2000;  // unter diesem MSE-Wert gilt es als "ruhi
 const SNAP_STABLE_FRAMES     = 1;     // 1 grüner Frame reicht — „grün" ist bereits scharf+ruhig+
                                       // im Rahmen+reflexionsfrei gegatet, ein 2. Tick verzögerte nur
                                       // (grün flackert durch Hand-Mikrobewegung → Zähler-Reset).
-const BOX_SETTLED_THRESHOLD  = 35;    // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames
+const BOX_SETTLED_THRESHOLD  = 22;    // px — Box-Mittelpunkt-Drift zwischen ONNX-Frames.
+                                      // War 35 → löste teils bei noch driftender Karte aus (Δbox ~31);
+                                      // der 3-Frame-Median verschmierte dann die Ecken → Rahmen zu groß/
+                                      // versetzt. 22 verlangt eine wirklich ruhige Box → Rahmen sitzt sauber.
 const CONSECUTIVE_SNAP_FRAMES = 2;    // Fallback: 2 aufeinanderfolgende Treffer
 // Szenen-Änderungs-Cooldown: nach Snap warten bis MSE vs. Snapshot > Threshold.
 // Verhindert Duplikat-Scans wenn dieselbe Karte noch im Bild liegt.
