@@ -141,11 +141,12 @@ function medianCardBox(history: CardBox[]): CardBox {
   };
 }
 
-// Upload-Optimierung: lange Kante auf 1024px begrenzen + JPEG-Quality 0.60.
-// Vorher 0.75 ohne Resize → ~300-500KB Base64 → 20-40s Upload auf schwachem LTE.
-// Gemini-OCR liest Schriften zuverlässig auch bei 0.60 / 1024px.
-const MAX_EDGE_PX = 1024;
-const JPEG_QUALITY = 0.60;
+// Upload-Optimierung vs. Lesbarkeit: Set-Kürzel/-Nummer sind winzig und für die
+// Erkennung kritisch. 1024px/0.60 machten sie matschig → 1280px lange Kante +
+// JPEG 0.78. Nach dem Deskew ist die Karte formatfüllend (kein Hintergrund mehr),
+// daher bleibt die Datei trotzdem klein (~80–140KB Base64).
+const MAX_EDGE_PX = 1280;
+const JPEG_QUALITY = 0.78;
 function encodeCropToJpeg(src: HTMLCanvasElement, sx: number, sy: number, sw: number, sh: number): string {
   const scale = Math.min(1, MAX_EDGE_PX / Math.max(sw, sh));
   const dw = Math.round(sw * scale);
@@ -248,16 +249,29 @@ function perspectiveWarpToJpeg(src: HTMLCanvasElement, corners: [number, number]
   const oImg = octx.createImageData(W, H);
   // Hm = [a,b,c, d,e,f, g,h]: u=(ax+by+c)/w, v=(dx+ey+f)/w, w=gx+hy+1
   const [a, b, c, e, f, g, p, q] = Hm;
+  const od = oImg.data;
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const w = p * x + q * y + 1;
-      const u = Math.round((a * x + b * y + c) / w) - ax;
-      const v = Math.round((e * x + f * y + g) / w) - ay;
+      const fu = (a * x + b * y + c) / w - ax;
+      const fv = (e * x + f * y + g) / w - ay;
       const oi = (y * W + x) * 4;
-      oImg.data[oi + 3] = 255;
-      if (u >= 0 && u < aw && v >= 0 && v < ah) {
+      od[oi + 3] = 255;
+      const u0 = Math.floor(fu), v0 = Math.floor(fv);
+      if (u0 >= 0 && u0 + 1 < aw && v0 >= 0 && v0 + 1 < ah) {
+        // Bilineare Interpolation über die 4 Nachbarpixel → schärferer Kleintext
+        const du = fu - u0, dv = fv - v0;
+        const w00 = (1 - du) * (1 - dv), w10 = du * (1 - dv), w01 = (1 - du) * dv, w11 = du * dv;
+        const i00 = (v0 * aw + u0) * 4, i10 = i00 + 4, i01 = i00 + aw * 4, i11 = i01 + 4;
+        od[oi]     = sImg[i00]     * w00 + sImg[i10]     * w10 + sImg[i01]     * w01 + sImg[i11]     * w11;
+        od[oi + 1] = sImg[i00 + 1] * w00 + sImg[i10 + 1] * w10 + sImg[i01 + 1] * w01 + sImg[i11 + 1] * w11;
+        od[oi + 2] = sImg[i00 + 2] * w00 + sImg[i10 + 2] * w10 + sImg[i01 + 2] * w01 + sImg[i11 + 2] * w11;
+      } else {
+        // Rand: nächstliegendes Pixel (geklemmt)
+        const u = Math.min(aw - 1, Math.max(0, Math.round(fu)));
+        const v = Math.min(ah - 1, Math.max(0, Math.round(fv)));
         const si = (v * aw + u) * 4;
-        oImg.data[oi] = sImg[si]; oImg.data[oi + 1] = sImg[si + 1]; oImg.data[oi + 2] = sImg[si + 2];
+        od[oi] = sImg[si]; od[oi + 1] = sImg[si + 1]; od[oi + 2] = sImg[si + 2];
       }
     }
   }
