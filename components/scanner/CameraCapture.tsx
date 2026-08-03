@@ -432,6 +432,8 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   const [scanDebugLog, setScanDebugLog] = useState<string[]>([]);
   const scanLogCounterRef   = useRef(0);
   const [scanLogCopied, setScanLogCopied] = useState(false);
+  // Zählt je Tick, welcher Grund „grün/Auslösen" blockiert — zeigt den Engpass.
+  const scanBlockCountsRef  = useRef<Record<string, number>>({});
 
   const [streamReady, setStreamReady] = useState(false);
   // Front/Rück-Switch entfernt — Stream nutzt immer environment (Rückkamera).
@@ -894,7 +896,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
 
         // Scannen-Debug: Zeitstempel beim ERSTEN Erkennen (für „Erkennung→Trigger").
         if (cardDetected) {
-          if (firstDetectAtRef.current == null) firstDetectAtRef.current = performance.now();
+          if (firstDetectAtRef.current == null) { firstDetectAtRef.current = performance.now(); scanBlockCountsRef.current = {}; }
         } else {
           firstDetectAtRef.current = null;
         }
@@ -995,6 +997,18 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
           && boxFullyInside && mse < MOTION_SNAP_THRESHOLD && qualityRef.current.level === 'green';
         const triggerReason   = boxSettled ? 'delta' : consecutiveOk ? 'consecutive' : '–';
 
+        // Scannen-Debug: je Tick den blockierenden Grund zählen (Engpass-Analyse).
+        if (scanDebugRef.current && cardDetected) {
+          let blockReason: string;
+          if (qualityRef.current.level !== 'green') blockReason = qualityRef.current.reason ?? qualityRef.current.level;
+          else if (cooldownRef.current)             blockReason = 'Cooldown';
+          else if (changeDetectedThisTick)          blockReason = 'Szenenwechsel';
+          else if (mse >= MOTION_SNAP_THRESHOLD)    blockReason = 'Bewegung (mse)';
+          else if (!boxFullyInside)                 blockReason = 'nicht ganz im Rahmen';
+          else                                      blockReason = 'bereit';
+          scanBlockCountsRef.current[blockReason] = (scanBlockCountsRef.current[blockReason] ?? 0) + 1;
+        }
+
         // 7. Debug-State aktualisieren
         const dbgSnapshot: DebugInfo = {
           conf:              onnxBoxRef.current?.conf ?? 0,
@@ -1038,10 +1052,16 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
                 ? Math.round(performance.now() - firstDetectAtRef.current) : 0;
               const d = dbgSnapshot;
               const n = ++scanLogCounterRef.current;
+              const blockers = Object.entries(scanBlockCountsRef.current)
+                .sort((a, b) => b[1] - a[1])
+                .map(([r, c]) => `${r} ${c}×`)
+                .join(' · ');
               const entry = `#${n}  Erkennung→Trigger ${elapsed}ms · ${d.level} · Schärfe ${d.sharpness} · `
                 + `Kontrast ${d.contrast} · Δbox ${d.boxDelta} · Füllung ${d.fill}% · Ecken ${d.cornersN} · `
-                + `Winkel ${d.angleDeg}° · Name ${d.nameGlare}% · Code ${d.codeGlare}% · conf ${d.conf.toFixed(2)}`;
+                + `Winkel ${d.angleDeg}° · Name ${d.nameGlare}% · Code ${d.codeGlare}% · conf ${d.conf.toFixed(2)}`
+                + (blockers ? `\n     Blocker: ${blockers}` : '');
               setScanDebugLog(l => [...l, entry]);
+              scanBlockCountsRef.current = {};
               scanDebugStoppedRef.current = true;
               setScanDebugStopped(true);
               stableRef.current = 0;
