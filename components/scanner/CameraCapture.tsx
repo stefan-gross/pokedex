@@ -424,6 +424,15 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   const scanDebugRef = useRef(debugFlags.scan);
   useEffect(() => { scanDebugRef.current = debugFlags.scan; }, [debugFlags.scan]);
 
+  // Scannen-Debug: Zeit von „Karte zuerst erkannt" bis „würde auslösen" messen,
+  // dann NUR stoppen (kein Foto). Log sammeln + kopierbar.
+  const firstDetectAtRef    = useRef<number | null>(null);
+  const scanDebugStoppedRef = useRef(false);
+  const [scanDebugStopped, setScanDebugStopped] = useState(false);
+  const [scanDebugLog, setScanDebugLog] = useState<string[]>([]);
+  const scanLogCounterRef   = useRef(0);
+  const [scanLogCopied, setScanLogCopied] = useState(false);
+
   const [streamReady, setStreamReady] = useState(false);
   // Front/Rück-Switch entfernt — Stream nutzt immer environment (Rückkamera).
   const facingMode = 'environment' as const;
@@ -815,7 +824,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   useEffect(() => {
     const delay = setTimeout(() => {
       timerRef.current = setInterval(() => {
-        if (paused) return;
+        if (paused || scanDebugStoppedRef.current) return; // Scannen-Debug: nach Trigger-Messung gestoppt
         const tickStart = performance.now();
         const video = videoRef.current, sample = sampleRef.current;
         const prev = prevRef.current;
@@ -882,6 +891,13 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
           });
         }
         const cardDetected = onnxBoxRef.current !== null;
+
+        // Scannen-Debug: Zeitstempel beim ERSTEN Erkennen (für „Erkennung→Trigger").
+        if (cardDetected) {
+          if (firstDetectAtRef.current == null) firstDetectAtRef.current = performance.now();
+        } else {
+          firstDetectAtRef.current = null;
+        }
 
         // 3. Detected-State (Overlay läuft separat im rAF-Loop)
         setDetected(cardDetected);
@@ -1015,7 +1031,24 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
         if (snapCondition && (boxSettled || consecutiveOk)) {
           stableRef.current += 1;
           setProgress(1);
-          if (stableRef.current >= SNAP_STABLE_FRAMES) doCapture();
+          if (stableRef.current >= SNAP_STABLE_FRAMES) {
+            if (scanDebugRef.current) {
+              // Scannen-Debug: NICHT auslösen — nur Zeit messen + stoppen.
+              const elapsed = firstDetectAtRef.current != null
+                ? Math.round(performance.now() - firstDetectAtRef.current) : 0;
+              const d = dbgSnapshot;
+              const n = ++scanLogCounterRef.current;
+              const entry = `#${n}  Erkennung→Trigger ${elapsed}ms · ${d.level} · Schärfe ${d.sharpness} · `
+                + `Kontrast ${d.contrast} · Δbox ${d.boxDelta} · Füllung ${d.fill}% · Ecken ${d.cornersN} · `
+                + `Winkel ${d.angleDeg}° · Name ${d.nameGlare}% · Code ${d.codeGlare}% · conf ${d.conf.toFixed(2)}`;
+              setScanDebugLog(l => [...l, entry]);
+              scanDebugStoppedRef.current = true;
+              setScanDebugStopped(true);
+              stableRef.current = 0;
+            } else {
+              doCapture();
+            }
+          }
         } else if (!cooldownRef.current) {
           stableRef.current = 0;
           if (cardDetected) {
@@ -1154,6 +1187,65 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
                 <div>MSE {debug.mse} · Tick {debug.tickMs}ms</div>
                 <div>Ecken {debug.cornersN} · Winkel {debug.angleDeg}°</div>
                 <div>conf {debug.conf.toFixed(2)} · {debug.detected ? 'erkannt' : '—'}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Scannen-Debug: Stopp nach Trigger-Messung — Zeit-Log + Kopieren + Weiter */}
+          {debugFlags.scan && scanDebugStopped && (
+            <div
+              className="absolute inset-x-3 bottom-24 rounded-xl p-3 font-mono text-[11px] text-white"
+              style={{ zIndex: 8, background: 'rgba(0,0,0,0.82)' }}
+            >
+              <div className="font-bold text-green-400 mb-1">
+                Trigger erreicht (nicht ausgelöst) · {scanDebugLog.length} Messung(en)
+              </div>
+              <div className="max-h-40 overflow-y-auto space-y-1 mb-2">
+                {scanDebugLog.map((l, i) => (
+                  <div key={i} className="text-white/85 break-words">{l}</div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    const text = scanDebugLog.join('\n');
+                    try {
+                      await navigator.clipboard.writeText(text);
+                      setScanLogCopied(true);
+                      setTimeout(() => setScanLogCopied(false), 1600);
+                    } catch {
+                      window.prompt('Scan-Log (kopieren):', text);
+                    }
+                  }}
+                  className="h-9 px-4 rounded-full bg-white/15 text-white text-xs font-semibold"
+                >
+                  {scanLogCopied ? 'Kopiert ✓' : 'Kopieren'}
+                </button>
+                <button
+                  onClick={() => {
+                    // Weiter scannen: Stopp aufheben + Erkennung frisch starten
+                    scanDebugStoppedRef.current = false;
+                    setScanDebugStopped(false);
+                    firstDetectAtRef.current      = null;
+                    stableRef.current             = 0;
+                    onnxBoxRef.current            = null;
+                    prevBoxRef.current            = null;
+                    cornerHistoryRef.current      = [];
+                    onnxStickyRef.current         = 0;
+                    consecutiveDetectRef.current  = 0;
+                    boxDeltaRef.current           = Infinity;
+                  }}
+                  className="h-9 px-4 rounded-full text-white text-xs font-semibold"
+                  style={{ background: '#3182ce' }}
+                >
+                  Weiter scannen
+                </button>
+                <button
+                  onClick={() => { setScanDebugLog([]); scanLogCounterRef.current = 0; }}
+                  className="h-9 px-4 rounded-full bg-white/15 text-white/80 text-xs font-semibold"
+                >
+                  Leeren
+                </button>
               </div>
             </div>
           )}
