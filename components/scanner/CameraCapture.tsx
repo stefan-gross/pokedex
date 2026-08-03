@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Zap, ZapOff, Camera } from 'lucide-react';
 import { loadCardDetectorSession, detectCardInFrame, type CardBox } from '@/lib/scanner/card-detector-onnx';
-import { computePixelMetrics, assessQuality, type QualityResult } from '@/lib/scanner/frame-quality';
+import { computePixelMetrics, assessQuality, computeCriticalGlare, type QualityResult } from '@/lib/scanner/frame-quality';
 import { useScannerDebug } from '@/lib/scanner/debug-flags';
 
 interface Props {
@@ -164,6 +164,30 @@ function deskewCornersToJpeg(src: HTMLCanvasElement, corners: [number, number][]
   return out.toDataURL('image/jpeg', JPEG_QUALITY).split(',')[1];
 }
 
+/** Karte aufrecht entzerrt in ein kleines Canvas rendern und als ImageData
+ *  zurückgeben — für die Zonen-Reflexionsmessung je Tick (billig, ~120×168). */
+function deskewCornersToImageData(
+  src: CanvasImageSource, corners: [number, number][], out: HTMLCanvasElement, targetLong = 168,
+): ImageData | null {
+  const [tl, tr, , bl] = corners;
+  const d = (p: number[], q: number[]) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+  const wCard = d(tl, tr), hCard = d(tl, bl);
+  if (wCard < 8 || hCard < 8) return null;
+  const scale = targetLong / Math.max(wCard, hCard);
+  const W = Math.max(1, Math.round(wCard * scale));
+  const H = Math.max(1, Math.round(hCard * scale));
+  out.width = W; out.height = H;
+  const octx = out.getContext('2d', { willReadFrequently: true })!;
+  octx.setTransform(1, 0, 0, 1, 0, 0);
+  octx.clearRect(0, 0, W, H);
+  octx.scale(scale, scale);
+  octx.rotate(-Math.atan2(tr[1] - tl[1], tr[0] - tl[0]));
+  octx.translate(-tl[0], -tl[1]);
+  octx.drawImage(src, 0, 0);
+  octx.setTransform(1, 0, 0, 1, 0, 0);
+  return octx.getImageData(0, 0, W, H);
+}
+
 interface DebugInfo {
   conf: number;
   mse: number;
@@ -181,6 +205,8 @@ interface DebugInfo {
   sharpness: number;     // Laplace-Varianz
   glare: number;         // % ausgebrannte Pixel
   softGlare: number;     // % weich-helle Pixel (Schleier-Reflexion)
+  nameGlare: number;     // % Reflexion in der Namenszone (oben)
+  codeGlare: number;     // % Reflexion in der Set-Code-Zone (unten links)
   meanLum: number;       // 0..255
   contrast: number;      // 0..255
   fill: number;          // % Kartenfläche am Bild
@@ -225,6 +251,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   const prevBoxRef    = useRef<CardBox | null>(null); // letztes ONNX-Ergebnis
   const boxDeltaRef   = useRef<number>(Infinity);     // Positions-/Größen-Drift in px
 
+  // Kleines Canvas für die entzerrte Zonen-Reflexionsmessung (je Tick wiederverwendet)
+  const critCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
   // Aufeinanderfolgende ONNX-Treffer (Fallback-Trigger ohne Box-Settling)
   const consecutiveDetectRef = useRef(0);
 
@@ -268,7 +297,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   const [debug,      setDebug]      = useState<DebugInfo>({
     conf: 0, mse: 0, stable: 0, boxDelta: Infinity, consecutiveFrames: 0,
     detected: false, sessionReady: false, cropSize: '–', triggerReason: '–', changeMse: 0,
-    level: 'neutral', reason: '', sharpness: 0, glare: 0, softGlare: 0, meanLum: 0, contrast: 0, fill: 0, tickMs: 0,
+    level: 'neutral', reason: '', sharpness: 0, glare: 0, softGlare: 0, nameGlare: 0, codeGlare: 0, meanLum: 0, contrast: 0, fill: 0, tickMs: 0,
     cornersN: 0, angleDeg: 0,
   });
 
@@ -756,11 +785,23 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
         // ── Live-Scanqualität (Ampel) — aus dem vorhandenen Sample-Puffer ──
         // Kein zusätzlicher Readback: `sData` (Center-Sample) ist die Kartenmitte,
         // wenn die Karte gut im Rahmen liegt. `fill` = Boxfläche / Bildfläche.
-        let qMetrics: { sharpness: number; glare: number; softGlare: number; meanLum: number; contrast: number; fill: number } | null = null;
+        let qMetrics: { sharpness: number; glare: number; softGlare: number; meanLum: number; contrast: number; fill: number; critGlare?: number; nameGlare?: number; codeGlare?: number } | null = null;
         if (cardDetected && box && vw && vh) {
           const pm = computePixelMetrics(sData, sw, sh);
           const fill = (box.w * box.h) / (vw * vh);
-          qMetrics = { ...pm, fill };
+          // Reflexion gezielt in den Lesezonen (Name oben, Set-Code unten links)
+          // der aufrecht entzerrten Karte — nur wenn Ecken vorhanden.
+          let critGlare: number | undefined, nameGlare: number | undefined, codeGlare: number | undefined;
+          if (box.corners?.length === 4 && video) {
+            if (!critCanvasRef.current) critCanvasRef.current = document.createElement('canvas');
+            const idata = deskewCornersToImageData(video, box.corners, critCanvasRef.current);
+            if (idata) {
+              const cg = computeCriticalGlare(idata.data, idata.width, idata.height);
+              nameGlare = cg.nameGlare; codeGlare = cg.codeGlare;
+              critGlare = Math.max(cg.nameGlare, cg.codeGlare);
+            }
+          }
+          qMetrics = { ...pm, fill, critGlare, nameGlare, codeGlare };
           qualityRef.current = assessQuality(qMetrics, { boxSettled, boxFullyInside });
         } else {
           qualityRef.current = { level: 'neutral', reason: null };
@@ -787,6 +828,8 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
           sharpness:         qMetrics ? Math.round(qMetrics.sharpness) : 0,
           glare:             qMetrics ? +(qMetrics.glare * 100).toFixed(1) : 0,
           softGlare:         qMetrics ? +(qMetrics.softGlare * 100).toFixed(1) : 0,
+          nameGlare:         qMetrics?.nameGlare != null ? Math.round(qMetrics.nameGlare * 100) : 0,
+          codeGlare:         qMetrics?.codeGlare != null ? Math.round(qMetrics.codeGlare * 100) : 0,
           meanLum:           qMetrics ? Math.round(qMetrics.meanLum) : 0,
           contrast:          qMetrics ? Math.round(qMetrics.contrast) : 0,
           fill:              qMetrics ? Math.round(qMetrics.fill * 100) : 0,
@@ -935,6 +978,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
                   DEBUG · {debug.level}{debug.reason ? ` · ${debug.reason}` : ''}
                 </div>
                 <div>Schärfe {debug.sharpness} · Glare {debug.glare}% · Soft {debug.softGlare}%</div>
+                <div>Name {debug.nameGlare}% · Code {debug.codeGlare}%</div>
                 <div>Licht {debug.meanLum} · Kontrast {debug.contrast}</div>
                 <div>Füllung {debug.fill}% · Δbox {debug.boxDelta}</div>
                 <div>MSE {debug.mse} · Tick {debug.tickMs}ms</div>

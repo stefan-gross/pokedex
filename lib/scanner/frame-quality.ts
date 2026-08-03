@@ -27,6 +27,40 @@ export interface PixelMetrics {
 export interface QualityInput extends PixelMetrics {
   /** Flächenanteil der erkannten Karte am Kamerabild (0..1). */
   fill: number;
+  /** Reflexion NUR in den lese-kritischen Zonen (Name oben, Set-Code unten
+   *  links) der aufrecht entzerrten Karte. undefined, wenn (noch) keine Ecken. */
+  critGlare?: number;
+}
+
+export interface CriticalGlare {
+  /** Anteil weich-heller Pixel im oberen Namensband (0..1). */
+  nameGlare: number;
+  /** Anteil weich-heller Pixel in der Set-Code/Nummer-Zone unten links (0..1). */
+  codeGlare: number;
+}
+
+/** Reflexion in den lese-kritischen Zonen einer AUFRECHT entzerrten Karte:
+ *  oberes Namensband + Set-Code/Nummer unten links. Reflexion im Artwork
+ *  (Mitte) ist für die Erkennung unkritisch und wird bewusst ignoriert. */
+export function computeCriticalGlare(data: Uint8ClampedArray, w: number, h: number): CriticalGlare {
+  const frac = (x0: number, y0: number, x1: number, y1: number) => {
+    const cx0 = Math.max(0, Math.floor(x0 * w)), cx1 = Math.min(w, Math.ceil(x1 * w));
+    const cy0 = Math.max(0, Math.floor(y0 * h)), cy1 = Math.min(h, Math.ceil(y1 * h));
+    let n = 0, bright = 0;
+    for (let y = cy0; y < cy1; y++) {
+      for (let x = cx0; x < cx1; x++) {
+        const o = (y * w + x) * 4;
+        const l = (data[o] * 77 + data[o + 1] * 150 + data[o + 2] * 29) >> 8;
+        if (l >= 210) bright++;
+        n++;
+      }
+    }
+    return n ? bright / n : 0;
+  };
+  return {
+    nameGlare: frac(0.08, 0.015, 0.92, 0.12), // oberes Namensband
+    codeGlare: frac(0.03, 0.90,  0.48, 0.99), // Set-Code + Nummer unten links
+  };
 }
 
 export interface QualityResult {
@@ -47,6 +81,9 @@ export const QUALITY_THRESHOLDS = {
   // aber normale mittlere Helligkeit). Startwerte, am Gerät justieren.
   veilLumMin: 118,    // mittlere Luminanz darüber = auffällig hell
   veilSoftMin: 0.16,  // Anteil weich-heller Pixel darüber = großflächiger Glanz
+  // Reflexion in den Lesezonen (Name/Set-Code): dort wäscht Glanz Text weg,
+  // während Reflexion im Artwork egal ist. Startwert, am Gerät justieren.
+  critGlareMax: 0.35, // Anteil weich-heller Pixel in einer Lesezone darüber → rot
 };
 
 /** Bildmetriken über einen RGBA-Puffer (`ImageData.data`). */
@@ -109,6 +146,8 @@ export function assessQuality(
   if (m.glare > T.glareMax)        return { level: 'red', reason: 'Reflexion' };
   if (m.meanLum > T.veilLumMin && m.softGlare > T.veilSoftMin)
                                    return { level: 'red', reason: 'Reflexion' };
+  if (m.critGlare != null && m.critGlare > T.critGlareMax)
+                                   return { level: 'red', reason: 'Reflexion (Text)' };
   if (m.sharpness < T.sharpMin)    return { level: 'red', reason: 'Unscharf' };
   if (m.contrast < T.contrastMin)  return { level: 'yellow', reason: 'Mehr Kontrast' };
   if (!geom.boxSettled)            return { level: 'yellow', reason: 'Ruhig halten' };
