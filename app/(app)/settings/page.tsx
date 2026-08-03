@@ -34,8 +34,8 @@ export default function SettingsPage() {
   // Scanner-Debug-Modi (mehrstufig): Scannen / KI / Daten
   const scannerDebug = useScannerDebug();
 
-  // Build-Kennung + „neue Version verfügbar" (geteilter Hook, auch im Dashboard).
-  const { buildSha, buildTime, updateAvailable } = useUpdateAvailable();
+  // „Neue Version verfügbar" (geteilter Hook, auch im Dashboard).
+  const { updateAvailable } = useUpdateAvailable();
 
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncLoading, setSyncLoading] = useState(true);
@@ -298,9 +298,6 @@ export default function SettingsPage() {
               </span>
             )}
           </Button>
-          <p className="text-role-label text-glass-muted px-1 font-mono">
-            Build {buildSha}{buildTime ? ` · ${new Date(buildTime).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}` : ''}
-          </p>
         </section>
 
         {/* 2. Karten-Catalog — ein Panel: Status + Preis-Status + letzter Lauf + Aktionen */}

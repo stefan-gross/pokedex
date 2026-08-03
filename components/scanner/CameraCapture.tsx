@@ -213,6 +213,8 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
 
   // Geglättete Box für flüssiges Overlay-Rendering (Lerp zur ONNX-Zielbox bei 60fps)
   const lerpBoxRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  // Geglättete Ecken (Lerp bei 60fps) → flüssiges, schnelles Mitdrehen des Rahmens
+  const lerpCornersRef = useRef<[number, number][] | null>(null);
 
   // Live-Scanqualität (Ampel-Rahmen + Hinweis). Ref, weil drawOverlay im
   // 60fps-rAF-Loop liest; wird je Detection-Tick (150ms) aktualisiert.
@@ -320,14 +322,23 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
       ctx.shadowBlur  = 10;
 
       if (target.corners?.length === 4) {
-        // Ecken vorhanden → rotierten Rahmen zeichnen (dreht mit der Karte),
-        // auch während die Karte noch bewegt wird. Ecken sind median-geglättet.
-        const pts = target.corners.map(
-          ([x, y]) => [x * scale + ox, y * scale + oy] as [number, number]
-        );
+        // Ecken bei 60fps zur Zielposition lerpen → flüssiges, schnelles
+        // Mitdrehen des Rahmens (statt 7×/s zu springen).
+        const CORNER_LERP = 0.35;
+        const tc = target.corners;
+        const prevC = lerpCornersRef.current;
+        const lc: [number, number][] = (prevC && prevC.length === 4)
+          ? tc.map((c, i) => [
+              prevC[i][0] + (c[0] - prevC[i][0]) * CORNER_LERP,
+              prevC[i][1] + (c[1] - prevC[i][1]) * CORNER_LERP,
+            ] as [number, number])
+          : tc.map(c => [c[0], c[1]] as [number, number]);
+        lerpCornersRef.current = lc;
+        const pts = lc.map(([x, y]) => [x * scale + ox, y * scale + oy] as [number, number]);
         drawRoundedPolygon(ctx, pts, 14);
       } else {
         // Noch keine Ecken (erste Frames) → geglättete AABB (ruckelfrei dank Lerp)
+        lerpCornersRef.current = null;
         ctx.beginPath();
         ctx.roundRect(lb.x * scale + ox, lb.y * scale + oy, lb.w * scale, lb.h * scale, 14);
       }
@@ -364,6 +375,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
 
     // Kein Treffer → Lerp zurücksetzen + gestrichelter Hilfsrahmen
     lerpBoxRef.current = null;
+    lerpCornersRef.current = null;
     const guideW = Math.min(dispW * 0.62, dispH * 0.50);
     const guideH = guideW * 1.4;
     const gx = (dispW - guideW) / 2;
