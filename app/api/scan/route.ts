@@ -309,6 +309,22 @@ interface PreLookupResult {
 /** Versucht die Karte direkt per (number, nationalDexNumber) im Katalog zu finden,
  *  bevor der teure Symbolabgleich (Schritt 2) überhaupt in Betracht gezogen wird.
  *  Setzt bei eindeutigem Treffer `parsed.setCode`, wodurch Schritt 2 unten entfällt. */
+/** Levenshtein-Distanz (für OCR-tolerante Namensvergleiche). */
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
 async function tryDirectCatalogLookup(parsed: Record<string, unknown>): Promise<PreLookupResult> {
   if (parsed.setCode != null || parsed.error) return { attempted: false, matched: false };
   const number = typeof parsed.number === 'string' ? parsed.number : null;
@@ -378,13 +394,15 @@ async function tryDirectCatalogLookup(parsed: Record<string, unknown>): Promise<
           }
         }
         let hits = [...hitsById.values()];
-        // Namensfilter (wie Client-R2 nameOk): eine andere Karte mit gleicher
-        // Nummer in einem Set mit gleichem printedTotal fällt so raus.
+        // Namensfilter: eine andere Karte mit gleicher Nummer in einem Set mit
+        // gleichem printedTotal fällt so raus. FUZZY (Levenshtein-Toleranz),
+        // damit ein OCR-Tippfehler (z.B. „Mopeko" statt „Morpeko") die sonst
+        // eindeutige Zahlen-Auflösung nicht blockiert.
         if (nameLower) {
-          const byName = hits.filter(h => {
-            const d = h.data();
-            return d.nameLower === nameLower || d.nameDeLower === nameLower;
-          });
+          const tol = nameLower.length >= 6 ? 2 : nameLower.length >= 4 ? 1 : 0;
+          const nameClose = (cand: unknown) =>
+            typeof cand === 'string' && (cand === nameLower || levenshtein(cand, nameLower) <= tol);
+          const byName = hits.filter(h => nameClose(h.data().nameLower) || nameClose(h.data().nameDeLower));
           if (byName.length) hits = byName;
         }
         // Noch mehrdeutig (zwei Sets teilen printedTotal + Nummer)? Per dex nachfiltern.
