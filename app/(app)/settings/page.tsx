@@ -292,15 +292,16 @@ export default function SettingsPage() {
             onClick={handleAppUpdate} disabled={confirmedCurrent}
           >
             <span className="flex-1 text-left">App aktualisieren</span>
-            {updateAvailable && (
-              <span className="flex items-center gap-1 text-xs text-yellow-700 dark:text-yellow-300">
+            {updateAvailable ? (
+              <span className="flex items-center gap-1 text-xs text-yellow-700 dark:text-yellow-300 shrink-0">
                 <Clock size={12} /> Update verfügbar
+              </span>
+            ) : (
+              <span className="text-[11px] text-glass-muted font-mono shrink-0">
+                {buildSha}{buildTime ? ` · ${new Date(buildTime).toLocaleDateString('de-DE', { dateStyle: 'short' })}` : ''}
               </span>
             )}
           </Button>
-          <p className="text-role-label text-glass-muted px-1 font-mono">
-            Build {buildSha}{buildTime ? ` · ${new Date(buildTime).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}` : ''}
-          </p>
         </section>
 
         {/* 2. Karten-Catalog — ein Panel: Status + Preis-Status + letzter Lauf + Aktionen */}
