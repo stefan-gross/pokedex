@@ -44,14 +44,15 @@ function barColor(pct: number): string {
   return '#e53e3e';                                 // rot
 }
 
-/** Beschrifteter Fortschrittsbalken (Label · Anzahl · %) mit Ampel-Farbe. */
-function StatBar({ label, value, total }: { label: string; value: number; total: number }) {
+/** Beschrifteter Fortschrittsbalken. Konvention: LINKS die Anzahl (mit Label),
+ *  RECHTS der Prozentwert (ggf. Zusatzwerte in Klammern). Ampel-Farbe. */
+function StatBar({ label, value, total, extra }: { label: string; value: number; total: number; extra?: string }) {
   const pct = total > 0 ? Math.round((value / total) * 100) : 0;
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-role-label">
-        <span className="text-glass-muted">{label}</span>
-        <span className="text-glass tabular-nums">{value.toLocaleString('de-DE')} · {pct} %</span>
+        <span className="text-glass tabular-nums"><span className="text-glass-muted">{label} </span>{value.toLocaleString('de-DE')}</span>
+        <span className="text-glass tabular-nums">{pct} %{extra ? <span className="text-glass-muted"> {extra}</span> : null}</span>
       </div>
       <div className="h-1.5 rounded-full bg-[rgba(30,40,80,0.10)] dark:bg-white/25 overflow-hidden">
         <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: barColor(pct) }} />
@@ -62,18 +63,15 @@ function StatBar({ label, value, total }: { label: string; value: number; total:
 
 /** Geschichteter Balken: Basis = Karten mit IRGENDEINEM Bild (Ampel-Farbe),
  *  Overlay (höherer z-Index) = Karten mit deutschem Bild (blauer Akzent).
- *  Label: Anzahl · % (gesamt), in Klammern die Anzahl deutscher Bilder. */
+ *  LINKS Anzahl (irgendein Bild), RECHTS % + in Klammern die Anzahl DE-Bilder. */
 function StatBarImages({ any, de, total }: { any: number; de: number; total: number }) {
   const anyPct = total > 0 ? Math.round((any / total) * 100) : 0;
   const dePct  = total > 0 ? Math.round((de  / total) * 100) : 0;
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-role-label">
-        <span className="text-glass-muted">Bilder</span>
-        <span className="text-glass tabular-nums">
-          {any.toLocaleString('de-DE')} · {anyPct} %
-          <span className="text-glass-muted"> (DE: {de.toLocaleString('de-DE')})</span>
-        </span>
+        <span className="text-glass tabular-nums"><span className="text-glass-muted">Bilder </span>{any.toLocaleString('de-DE')}</span>
+        <span className="text-glass tabular-nums">{anyPct} %<span className="text-glass-muted"> (DE: {de.toLocaleString('de-DE')})</span></span>
       </div>
       <div className="relative h-1.5 rounded-full bg-[rgba(30,40,80,0.10)] dark:bg-white/25 overflow-hidden">
         {/* Basis: irgendein Bild */}
@@ -113,7 +111,7 @@ export default function SettingsPage() {
 
   // Zusammenfassung + Zeitpunkt des letzten „Daten aktualisieren"-Laufs,
   // in `localStorage` gehalten (der Lauf wird komplett clientseitig orchestriert).
-  const [lastDataRun, setLastDataRun] = useState<{ at: string; summary: string } | null>(null);
+  const [lastDataRun, setLastDataRun] = useState<{ at: string; summary: string; diff?: string } | null>(null);
 
   const LAST_RUN_KEY = 'pokedex-last-data-run';
 
@@ -126,17 +124,20 @@ export default function SettingsPage() {
     } catch { /* ignore */ }
   }, []);
 
-  async function loadSyncStatus() {
+  async function loadSyncStatus(): Promise<SyncStatus | null> {
     try {
       const res = await fetch('/api/admin/trigger-sync');
       if (res.ok) {
         const data = await res.json();
         // newCards kommt phantom-bereinigt vom Server — NICHT hier neu rechnen.
-        setSyncStatus({ ...data, newCards: data.newCards ?? 0 });
+        const next = { ...data, newCards: data.newCards ?? 0 } as SyncStatus;
+        setSyncStatus(next);
+        return next;
       }
     } catch { /* ignore */ } finally {
       setSyncLoading(false);
     }
+    return null;
   }
 
   async function runAllSteps() {
@@ -145,6 +146,9 @@ export default function SettingsPage() {
     setSyncResult(null);
     const step = (msg: string) => setAllProgress(msg);
     step('▶ Starte…');
+
+    // Vorher-Stand für die Diff-Anzeige (was hat der Lauf NETTO verändert?).
+    const before = await loadSyncStatus();
 
     // Über den GESAMTEN Lauf pollen → die Status-Balken (Bilder/DE/Preise/…)
     // füllen sich live mit, während die Schritte durchlaufen.
@@ -238,9 +242,16 @@ export default function SettingsPage() {
 
       const summary = `${setsData.synced ?? 0} Sets · ${addedTotal} neue Karten · ${deTotal} DE-Daten · ${evoTotal} Evo · ${speciesTotal} Artdaten · ${priceRefreshed} Preise · ${linked} verknüpft`;
       step(`✅ Fertig — ${summary}`);
+
+      // Nachher-Stand → NETTO-Diff (was hat sich am Katalog-Zustand geändert?).
+      const after = await loadSyncStatus();
+      const signed = (n: number) => (n > 0 ? `+${n.toLocaleString('de-DE')}` : n.toLocaleString('de-DE'));
+      const d = (k: keyof SyncStatus) => (after?.[k] as number ?? 0) - (before?.[k] as number ?? 0);
+      const diff = `Karten ${signed(d('totalCards'))} · DE-Bilder ${signed(d('withDeImage'))} · DE-Namen ${signed(d('withDeName'))} · Preise ${signed(d('withPrice'))}`;
+
       // Zusammenfassung dauerhaft merken (überlebt Reload), damit „Letzter
       // Daten-Lauf" auch später noch sichtbar ist.
-      const run = { at: new Date().toISOString(), summary };
+      const run = { at: new Date().toISOString(), summary, diff };
       setLastDataRun(run);
       try { localStorage.setItem(LAST_RUN_KEY, JSON.stringify(run)); } catch { /* ignore */ }
     } catch (e) {
@@ -312,14 +323,17 @@ export default function SettingsPage() {
     window.location.href = '/?updated=' + Date.now();
   }
 
-  const pct        = syncStatus ? Math.round(((syncStatus.syncedTotal ?? 0) / (syncStatus.currentTotal || 1)) * 100) : 0;
+  // EINE Gesamtzahl für ALLE Balken = tatsächliche Kartenanzahl im Katalog
+  // (inkl. der vorläufigen/manuell gepflegten Karten ohne Set). Alle Prozentwerte
+  // beziehen sich hierauf.
+  const catTotal   = syncStatus?.totalCards ?? syncStatus?.syncedTotal ?? 0;
   const hasNew     = (syncStatus?.newCards ?? 0) > 0;
-  // „Aktuell" = keine neuen Karten mehr offen (phantom-bereinigt), nicht pct===100.
+  // „Aktuell" = keine neuen Karten mehr offen (phantom-bereinigt).
   const isComplete = !hasNew && (syncStatus?.syncedTotal ?? 0) > 0;
+  // Katalog-Balken: Anteil der gecachten an der Gesamtzahl, gedeckelt auf 100 %
+  // (gecacht kann durch manuelle Karten nie ÜBER die Gesamtzahl liegen).
+  const pct        = catTotal > 0 ? Math.min(100, Math.round(((syncStatus?.syncedTotal ?? 0) / catTotal) * 100)) : 0;
   const busy       = runningAll || syncing;
-
-  // Abdeckungs-Kennzahlen (Basis = Gesamtzahl Katalogkarten).
-  const catTotal = syncStatus?.totalCards ?? syncStatus?.syncedTotal ?? 0;
 
   return (
     <div className="relative min-h-screen pb-16">
@@ -400,9 +414,9 @@ export default function SettingsPage() {
                       style={{ width: `${pct}%`, background: barColor(pct) }}
                     />
                   </div>
-                  <div className="flex justify-between text-role-label text-glass-muted">
-                    <span>{(syncStatus?.syncedTotal ?? 0).toLocaleString('de-DE')} gecacht</span>
-                    <span>{pct}% · {(syncStatus?.currentTotal ?? 0).toLocaleString('de-DE')} gesamt</span>
+                  <div className="flex justify-between text-role-label">
+                    <span className="text-glass tabular-nums"><span className="text-glass-muted">Karten </span>{catTotal.toLocaleString('de-DE')}</span>
+                    <span className="text-glass tabular-nums">{pct} %{hasNew ? <span className="text-glass-muted"> · {syncStatus!.newCards.toLocaleString('de-DE')} neu</span> : null}</span>
                   </div>
                   {/* Sets: reine Anzahl (keine Quote) */}
                   <div className="flex justify-between text-role-label pt-1">
@@ -440,6 +454,9 @@ export default function SettingsPage() {
               <div className="px-4 py-3 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]">
                 <p className="text-role-title text-glass mb-1">Letzter Daten-Lauf</p>
                 <p className="text-role-label text-glass-muted">{new Date(lastDataRun.at).toLocaleString('de-DE')}</p>
+                {lastDataRun.diff && (
+                  <p className="text-role-label text-glass font-mono mt-1">Änderung: {lastDataRun.diff}</p>
+                )}
                 <p className="text-role-label text-glass-muted font-mono mt-1">{lastDataRun.summary}</p>
               </div>
             )}
