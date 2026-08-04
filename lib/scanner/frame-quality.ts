@@ -15,7 +15,7 @@ export interface PixelMetrics {
   sharpness: number;
   /** Anteil (0..1) nahezu ausgebrannter Pixel (Luminanz ≥ 248) = harte Reflexion. */
   glare: number;
-  /** Anteil (0..1) weich-heller Pixel (Luminanz ≥ 210) — fängt milchig-
+  /** Anteil (0..1) weich-heller Pixel (Luminanz ≥ 230) — fängt milchig-
    *  schleierhafte Reflexion, die nicht ausbrennt, aber Text überlagert. */
   softGlare: number;
   /** Mittlere Luminanz 0..255. */
@@ -52,7 +52,7 @@ export function computeCriticalGlare(data: Uint8ClampedArray, w: number, h: numb
       for (let x = cx0; x < cx1; x++) {
         const o = (y * w + x) * 4;
         const l = (data[o] * 77 + data[o + 1] * 150 + data[o + 2] * 29) >> 8;
-        if (l >= 210) bright++;
+        if (l >= 230) bright++;
         else if (l <= 70) dark++;
         n++;
       }
@@ -61,7 +61,7 @@ export function computeCriticalGlare(data: Uint8ClampedArray, w: number, h: numb
     // Genug dunkler Text in der Zone → sie ist LESBAR (auch wenn insgesamt hell,
     // z.B. graue/silberne Metal-Karten). Nur eine echt weggespiegelte Zone hat
     // kaum dunkle Pixel. Verhindert Fehlalarm „Reflexion" bei hellen Karten.
-    if (dark / n >= 0.03) return 0;
+    if (dark / n >= 0.012) return 0;
     return bright / n;
   };
   return {
@@ -88,6 +88,9 @@ export const QUALITY_THRESHOLDS = {
   // aber normale mittlere Helligkeit). Startwerte, am Gerät justieren.
   veilLumMin: 118,    // mittlere Luminanz darüber = auffällig hell
   veilSoftMin: 0.16,  // Anteil weich-heller Pixel darüber = großflächiger Glanz
+  veilContrastMax: 120, // NUR Schleier, wenn Kontrast darunter — helle, aber gut
+                        // lesbare Karten (Silber/Weiß) haben hohen Kontrast und
+                        // sind KEINE Reflexion.
   // Reflexion in den Lesezonen (Name/Set-Code): dort wäscht Glanz Text weg,
   // während Reflexion im Artwork egal ist. Getrennte Schwellen (Set-Code kleiner
   // & wichtiger → strenger). Startwerte, am Gerät justieren.
@@ -110,7 +113,9 @@ export function computePixelMetrics(data: Uint8ClampedArray, w: number, h: numbe
     gray[i] = l;
     sum += l;
     if (l >= 248) glareCount++;
-    if (l >= 210) softGlareCount++;
+    if (l >= 230) softGlareCount++; // 230 statt 210: silbernes/helles Kartenmaterial
+                                    // (~200–215) zählt NICHT mehr als „Reflexion",
+                                    // nur echte Überstrahlung (240+).
     hist[l >> 3]++;
   }
   const meanLum = sum / N;
@@ -153,7 +158,7 @@ export function assessQuality(
   if (m.meanLum < T.lumMin)        return { level: 'red', reason: 'Zu dunkel' };
   if (m.meanLum > T.lumMax)        return { level: 'red', reason: 'Überbelichtet' };
   if (m.glare > T.glareMax)        return { level: 'red', reason: 'Reflexion' };
-  if (m.meanLum > T.veilLumMin && m.softGlare > T.veilSoftMin)
+  if (m.meanLum > T.veilLumMin && m.softGlare > T.veilSoftMin && m.contrast < T.veilContrastMax)
                                    return { level: 'red', reason: 'Reflexion' };
   if (m.nameGlare != null && m.nameGlare > T.nameGlareMax)
                                    return { level: 'red', reason: 'Reflexion (Name)' };
