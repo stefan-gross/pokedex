@@ -70,8 +70,13 @@ function StatBarImages({ any, de, total }: { any: number; de: number; total: num
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-role-label">
-        <span className="text-glass tabular-nums"><span className="text-glass-muted">Bilder </span>{any.toLocaleString('de-DE')}</span>
-        <span className="text-glass tabular-nums">{anyPct} %<span className="text-glass-muted"> (DE: {de.toLocaleString('de-DE')})</span></span>
+        <span className="text-glass tabular-nums">
+          <span className="text-glass-muted">Bilder </span>{any.toLocaleString('de-DE')}
+          <span className="text-glass-muted"> ({de.toLocaleString('de-DE')})</span>
+        </span>
+        <span className="text-glass tabular-nums">
+          {anyPct} %<span className="text-glass-muted"> ({dePct} %)</span>
+        </span>
       </div>
       <div className="relative h-1.5 rounded-full bg-[rgba(30,40,80,0.10)] dark:bg-white/25 overflow-hidden">
         {/* Basis: irgendein Bild */}
