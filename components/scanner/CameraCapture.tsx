@@ -10,6 +10,7 @@ import { useScannerDebug } from '@/lib/scanner/debug-flags';
 export interface CaptureMeta {
   trigger: 'auto' | 'manual';
   level: string;
+  reason?: string;
   boxDelta: number;
   sharpness: number;
   contrast: number;
@@ -804,6 +805,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     const meta: CaptureMeta | undefined = ds ? {
       trigger:   force ? 'manual' : 'auto',
       level:     ds.level,
+      reason:    ds.reason || undefined,
       boxDelta:  ds.boxDelta,
       sharpness: ds.sharpness,
       contrast:  ds.contrast,
@@ -894,8 +896,14 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
         const pm = computePixelMetrics(id.data, s.width, s.height);
         const cg = computeCriticalGlare(id.data, id.width, id.height);
         const cn = box?.corners?.length ?? 0;
+        // Ampel-Bewertung am Standbild (fill=1 → nur Belichtung/Reflexion/Schärfe
+        // zählen; Lage-Gates sind im Manuell-Modus irrelevant).
+        const qr = assessQuality(
+          { ...pm, fill: 1, nameGlare: cg.nameGlare, codeGlare: cg.codeGlare },
+          { boxSettled: true, boxFullyInside: true },
+        );
         meta = {
-          trigger: 'manual', level: 'manual', boxDelta: 0,
+          trigger: 'manual', level: qr.level, reason: qr.reason ?? undefined, boxDelta: 0,
           sharpness: pm.sharpness, contrast: pm.contrast, glare: pm.glare, softGlare: pm.softGlare,
           nameGlare: cg.nameGlare, codeGlare: cg.codeGlare, meanLum: pm.meanLum,
           fill: box ? (box.w * box.h) / (canvas.width * canvas.height) : 0,

@@ -124,10 +124,14 @@ export function BottomNav() {
 
   const isManual = isScanner && scanState.captureMode === 'manual';
 
-  // Klick-Handler für FAB. Manuell: Foto auslösen. Auto: Stream Pause/Resume.
+  // Klick-Handler für FAB.
+  //  - Manuell + Ergebnis sichtbar (pausiert): zurück in den Kamera-Modus (Resume).
+  //  - Manuell + Kamera läuft: Foto auslösen.
+  //  - Auto: Stream Pause/Resume wie bisher.
   const handleFabClick = () => {
     if (isScanner) {
-      window.dispatchEvent(new Event(isManual ? SCAN_SHUTTER_EVENT : SCAN_TOGGLE_EVENT));
+      if (isManual && !scanState.paused) window.dispatchEvent(new Event(SCAN_SHUTTER_EVENT));
+      else window.dispatchEvent(new Event(SCAN_TOGGLE_EVENT));
     }
     // Off-Scanner: Link-Navigation, kein Handler nötig (Next.js Link)
   };
@@ -215,7 +219,7 @@ export function BottomNav() {
               onClick={handleFabClick}
               className="flex items-center justify-center"
               style={scanCameraStyle}
-              aria-label={isManual ? 'Foto aufnehmen' : (scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren')}
+              aria-label={isManual ? (scanState.paused ? 'Weiter scannen' : 'Foto aufnehmen') : (scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren')}
             >
               <FabIcon size={30} color={fabIconColor} fill={!isManual && !scanState.paused ? '#fff' : 'none'} />
             </button>

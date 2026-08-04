@@ -151,6 +151,10 @@ interface ScanJob {
   flaggedManual?: boolean;
   // Bild-Verifikation per pHash (kommt mit Phase 5) — niedrig=match, hoch=mismatch
   pHashDistance?: number;
+  // Ampel-Bewertung des aufgenommenen Fotos (aus CaptureMeta) — färbt während der
+  // Verarbeitung den Rahmen (grün/gelb/rot) + Hinweis, v.a. im manuellen Modus.
+  captureLevel?: string;
+  captureReason?: string;
 }
 
 type BorderStatus = 'none' | 'manual-yellow' | 'auto-yellow' | 'auto-red' | 'error';
@@ -776,7 +780,7 @@ export default function ScannerPage() {
       const base = origin === 'recognize'
         ? prev.filter(j => j.origin !== 'recognize')
         : prev;
-      return [...base, { id, origin, status: 'processing', result: null, debug }];
+      return [...base, { id, origin, status: 'processing', result: null, debug, captureLevel: meta?.level, captureReason: meta?.reason }];
     });
     // Im Einzeln-Modus Stream SOFORT pausieren — verhindert Folge-Snaps während
     // Gemini noch arbeitet. User tippt Scan-FAB für nächste Karte.
@@ -3214,16 +3218,25 @@ function RecognizedCardLarge({
   // schnellen Durchscannen ohne Einzelprüfung dient (siehe ScannedCardTile).
   // Erst wenn nichts davon greift, zeigt der Rahmen stattdessen den
   // Besitz-Status an (grün = schon in der Sammlung, sonst keiner).
+  // Während der Verarbeitung (Foto liegt vor, Karte noch nicht erkannt): Rahmen
+  // nach Ampel-Bewertung des Fotos (grün = ok, gelb/rot = Reflexion/unscharf …).
+  // Danach greift wieder die normale Besitz-/Fake-Rahmenlogik.
+  const capColor: Record<string, string> = { green: '#48bb78', yellow: '#facc15', red: '#ef4444' };
+  const processingBorder = job.status === 'processing' && job.captureLevel && capColor[job.captureLevel]
+    ? `3px solid ${capColor[job.captureLevel]}`
+    : null;
   const statusFlagged = !!job.result?.fakeRisk;
-  const cardBorder = statusFlagged
+  const cardBorder = processingBorder ?? (statusFlagged
     ? borderStyleFor('none', job.result?.fakeRisk).border
-    : isOwned ? '1.5px solid #35d15a' : '2.5px solid transparent';
+    : isOwned ? '1.5px solid #35d15a' : '2.5px solid transparent');
   // Zusätzlicher Glow beim grünen Besitz-Rahmen — reiner Farbrand geht auf bunten
   // Kartenmotiven schnell unter, der Schein macht "schon vorhanden" unmissverständlich.
   // Farbe/Glow-Werte aus dem Glas-Handoff (design_handoff_scanner_glass, Match-Rahmen).
-  const cardGlow = !statusFlagged && isOwned
-    ? '0 0 0 1.5px rgba(255,255,255,0.2), 0 8px 24px rgba(53,209,90,0.35)'
-    : undefined;
+  const cardGlow = processingBorder
+    ? `0 0 26px ${capColor[job.captureLevel!]}55`
+    : !statusFlagged && isOwned
+      ? '0 0 0 1.5px rgba(255,255,255,0.2), 0 8px 24px rgba(53,209,90,0.35)'
+      : undefined;
 
   const setCode  = card?.setCode ?? card?.setId?.toUpperCase();
   const seriesDe = card?.series ? (SERIES_NAMES_DE[card.series] ?? card.series) : null;
@@ -3293,6 +3306,14 @@ function RecognizedCardLarge({
         }}
         onClick={card ? onCardTap : undefined}
       >
+        {processingBorder && job.captureLevel !== 'green' && job.captureReason && (
+          <div
+            className="absolute top-2 left-1/2 -translate-x-1/2 z-10 px-3 py-1 rounded-full text-xs font-semibold text-white"
+            style={{ background: `${capColor[job.captureLevel!]}e6` }}
+          >
+            {job.captureReason}
+          </div>
+        )}
         {img ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
