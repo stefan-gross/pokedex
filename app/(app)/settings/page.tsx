@@ -102,31 +102,50 @@ export default function SettingsPage() {
       const setsRes  = await fetch('/api/admin/sync-sets', { method: 'POST' });
       const setsData = await setsRes.json().catch(() => ({}));
 
-      // 2. Katalog (resumierbar) — bei "neu aufbauen" erst Cursor zurücksetzen,
-      //    dann wiederholt `auto`, bis der Import `done`/`complete` meldet.
+      // 2. Katalog. Ohne Reset: gezielter Delta-Sync (nur NEUE Karten nachziehen,
+      //    günstig). Mit Reset („neu aufbauen"): kompletter resumierbarer Re-Import.
+      const poller = setInterval(loadSyncStatus, 2000);
       if (withReset) {
         await fetch('/api/admin/trigger-sync?mode=reset', { method: 'POST' });
         await loadSyncStatus();
-      }
-      step('📥 (2/4) Katalog wird synchronisiert…');
-      const poller = setInterval(loadSyncStatus, 2000);
-      let retries = 0;
-      while (true) {
-        let res: Response, text: string;
-        try {
-          res  = await fetch('/api/admin/trigger-sync?mode=auto', { method: 'POST' });
-          text = await res.text();
-        } catch {
-          if (++retries > 5) break;
-          await new Promise(r => setTimeout(r, 2000));
-          continue;
+        step('📥 (2/4) Katalog wird komplett neu synchronisiert…');
+        let retries = 0;
+        while (true) {
+          let res: Response, text: string;
+          try {
+            res  = await fetch('/api/admin/trigger-sync?mode=auto', { method: 'POST' });
+            text = await res.text();
+          } catch {
+            if (++retries > 5) break;
+            await new Promise(r => setTimeout(r, 2000));
+            continue;
+          }
+          retries = 0;
+          let d: { done?: boolean; status?: string } = {};
+          try { d = JSON.parse(text); } catch { /* ignore */ }
+          if (d.done || d.status === 'complete' || d.status === 'up-to-date') break;
+          if (d.status === 'error') break;
+          await new Promise(r => setTimeout(r, 300));
         }
-        retries = 0;
-        let d: { done?: boolean; status?: string } = {};
-        try { d = JSON.parse(text); } catch { /* ignore */ }
-        if (d.done || d.status === 'complete' || d.status === 'up-to-date') break;
-        if (d.status === 'error') break;
-        await new Promise(r => setTimeout(r, 300));
+      } else {
+        step('📥 (2/4) Neue Karten werden geholt…');
+        let addedTotal = 0, retries = 0;
+        while (true) {
+          let d: { done?: boolean; status?: string; added?: number } = {};
+          try {
+            const res = await fetch('/api/admin/sync-new', { method: 'POST' });
+            d = await res.json();
+          } catch {
+            if (++retries > 5) break;
+            await new Promise(r => setTimeout(r, 2000));
+            continue;
+          }
+          retries = 0;
+          addedTotal += d.added ?? 0;
+          step(`📥 (2/4) Neue Karten: ${addedTotal}…`);
+          if (d.done || d.status === 'complete' || d.status === 'error') break;
+          await new Promise(r => setTimeout(r, 300));
+        }
       }
       clearInterval(poller);
       await loadSyncStatus();

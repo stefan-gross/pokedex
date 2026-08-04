@@ -1,7 +1,8 @@
 import { getAdminDb } from './firebase/admin';
 import { FieldPath } from 'firebase-admin/firestore';
 import type { CatalogCard, SyncMeta } from './firestore/catalog';
-import { CATEGORIES, PAGE_SIZE, fetchEnCardsPage, fetchDeNamesForSet, toCatalogCard } from './tcgdex-source';
+import { CATEGORIES, PAGE_SIZE, fetchEnCardsPage, fetchDeNamesForSet, toCatalogCard,
+         fetchSetCardIds, fetchEnCardsByIds } from './tcgdex-source';
 
 const MAX_PAGES_PER_REQUEST = 4;   // ~1000 Karten pro Aufruf — resumierbar via Meta-Cursor
 const COL = 'tcg_catalog';
@@ -140,6 +141,72 @@ export async function runSync(mode: 'auto' | 'update' | 'reset' = 'auto'): Promi
     syncedTotal,
     currentTotal,
     done,
+  };
+}
+
+// ── Delta-Sync: nur NEUE Karten holen ──────────────────────────────────────
+export interface SyncNewResult {
+  status: 'complete' | 'in-progress' | 'error';
+  added: number;
+  checkedSets: number;
+  deficientSets: number;
+  done: boolean;
+  message: string;
+}
+
+/** Gezieltes Nachziehen: pro Set lokale Kartenzahl vs. Set-`total` vergleichen,
+ *  für defizitäre Sets nur die tatsächlich FEHLENDEN Karten-IDs (Set-Endpunkt vs.
+ *  lokale IDs) mit vollen Feldern holen und upserten. Weitaus günstiger als der
+ *  komplette Re-Import. Kappt bei MAX_ADD Karten pro Aufruf (done:false → Button
+ *  ruft erneut). */
+export async function syncNewCards(): Promise<SyncNewResult> {
+  const nowIso = new Date().toISOString();
+  const db = getAdminDb();
+  const MAX_ADD = 800;
+
+  const setsSnap = await db.collection('tcg_sets').get();
+  // Parallel: lokale Kartenzahl je Set (count()-Aggregation, günstig).
+  const counts = await Promise.all(setsSnap.docs.map(async d => {
+    const c = await db.collection('tcg_catalog').where('setId', '==', d.id).count().get();
+    return { setId: d.id, total: (d.data().total as number) ?? 0, local: c.data().count };
+  }));
+  const deficient = counts.filter(x => x.local < x.total);
+
+  const setsMeta = await loadSetsMeta();
+  let added = 0;
+  let hitCap = false;
+
+  for (const { setId } of deficient) {
+    if (added >= MAX_ADD) { hitCap = true; break; }
+    const remoteIds = await fetchSetCardIds(setId);
+    if (remoteIds.length === 0) continue;
+    const localSnap = await db.collection('tcg_catalog').where('setId', '==', setId).select().get();
+    const localIds = new Set(localSnap.docs.map(d => d.id));
+    const missing = remoteIds.filter(id => !localIds.has(id)).slice(0, MAX_ADD - added);
+    if (missing.length === 0) continue; // Defizit ist „Phantom" (Set-total > gelistet)
+
+    const enCards = await fetchEnCardsByIds(missing);
+    const deNames = await fetchDeNamesForSet(setId);
+    const sm = setsMeta.get(setId);
+    const cards = enCards.map(en => toCatalogCard(en, deNames.get(en.localId), { series: sm?.series, setCode: sm?.setCode }));
+    await upsertBatch(cards);
+    added += cards.length;
+  }
+
+  // syncedTotal auf die echte Katalog-Anzahl setzen (eine count()-Aggregation)
+  // → „neue Karten verfügbar" spiegelt danach den realen Stand.
+  const realCount = (await db.collection('tcg_catalog').count().get()).data().count;
+  const currentTotal = await catalogTotalFromSets();
+  await setMeta({ syncedTotal: realCount, currentTotal, lastSynced: nowIso });
+
+  return {
+    status: hitCap ? 'in-progress' : 'complete',
+    added,
+    checkedSets: counts.length,
+    deficientSets: deficient.length,
+    done: !hitCap,
+    message: hitCap ? `📥 ${added} neue Karten (weitere folgen)…`
+      : added ? `✅ ${added} neue Karten geholt` : '✅ Keine neuen Karten',
   };
 }
 

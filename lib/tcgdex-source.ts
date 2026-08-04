@@ -107,6 +107,30 @@ export async function fetchDeNamesForSet(setId: string): Promise<Map<string, str
   return map;
 }
 
+/** Alle Karten-IDs EINES Sets (leichtgewichtig, REST /en/sets/{id} → Briefs). */
+export async function fetchSetCardIds(setId: string): Promise<string[]> {
+  try {
+    const res = await fetch(`${REST}/en/sets/${setId}`);
+    if (!res.ok) return [];
+    const data = await res.json() as { cards?: { id: string }[] };
+    return (data.cards ?? []).map(c => c.id).filter(Boolean);
+  } catch { return []; }
+}
+
+/** Volle EN-Daten für konkrete Karten-IDs — gebündelt (GraphQL-Aliasse, 50/Request).
+ *  Für den Delta-Sync: nur die tatsächlich fehlenden Karten holen. */
+export async function fetchEnCardsByIds(ids: string[]): Promise<TcgdexCardFull[]> {
+  const out: TcgdexCardFull[] = [];
+  const CHUNK = 50;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    const body = chunk.map((id, j) => `c${j}: card(id:${JSON.stringify(id)}) { ${CARD_FIELDS} }`).join('\n');
+    const data = await graphql<Record<string, TcgdexCardFull | null>>(`{ ${body} }`);
+    for (const v of Object.values(data)) if (v) out.push(v);
+  }
+  return out;
+}
+
 /** DE-Name je Karten-ID (REST-Briefs, paginiert; Briefs haben KEIN Bild). */
 export async function fetchDeNameMap(): Promise<Map<string, string>> {
   const map = new Map<string, string>();
