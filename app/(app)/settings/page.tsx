@@ -353,6 +353,11 @@ export default function SettingsPage() {
   const pct        = catTotal > 0 ? Math.min(100, Math.round(((syncStatus?.syncedTotal ?? 0) / catTotal) * 100)) : 0;
   const busy       = runningAll || syncing;
 
+  // „Letzter Lauf"-Diff: 0-Werte auch aus ALTEN localStorage-Einträgen entfernen
+  // (z.B. „Karten 0"), sodass nur echte Änderungen erscheinen.
+  const lastRunDiff = (lastDataRun?.diff ?? '')
+    .split(' · ').map(s => s.trim()).filter(p => p && !/ 0$/.test(p)).join(' · ');
+
   return (
     <div className="relative min-h-screen pb-16">
       {/* Header (nicht sticky, kein Panel) — Zurück „Dashboard" · Titel · Theme */}
@@ -483,9 +488,9 @@ export default function SettingsPage() {
             {/* Letzter Daten-Lauf: nur die tatsächlich geänderten Werte (ohne
                 Datum — das steht bei „Zuletzt geändert/geprüft"). Nichts geändert
                 → kein Block. */}
-            {!runningAll && lastDataRun?.diff && (
+            {!runningAll && lastRunDiff && (
               <div className="px-4 py-3 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]">
-                <p className="text-role-label text-glass"><span className="text-glass-muted">Letzter Lauf: </span>{lastDataRun.diff}</p>
+                <p className="text-role-label text-glass"><span className="text-glass-muted">Letzter Lauf: </span>{lastRunDiff}</p>
               </div>
             )}
 
