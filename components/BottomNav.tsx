@@ -23,10 +23,13 @@ const SCAN_MODE_TOGGLE_EVENT  = 'scanner-toggle-mode';
 const SCAN_STATE_EVENT        = 'scanner-state-changed';
 const SCAN_ADD_EVENT          = 'scanner-add-recognized';
 const SCAN_REMOVE_EVENT       = 'scanner-remove-recognized';
+const SCAN_CAPTURE_TOGGLE_EVENT = 'scanner-toggle-capture';  // Auto ⇄ Manuell
+const SCAN_SHUTTER_EVENT        = 'scanner-shutter';         // Manueller Auslöser (Foto)
 
 interface ScannerNavState {
   paused: boolean;        // Stream pausiert?
   scanMode: 'add' | 'recognize';
+  captureMode?: 'auto' | 'manual'; // Auslöse-Modus: Auto-Trigger vs. manuell (Foto per FAB)
   jobsCount: number;      // Anzahl Add-Jobs (für Grid-Badge)
   gridVisible: boolean;   // Grid-Button anzeigen?
   reviewMode?: boolean;   // Scanner ist im Review-Grid → BottomNav komplett ausblenden
@@ -39,6 +42,7 @@ export function BottomNav() {
   const [scanState, setScanState] = useState<ScannerNavState>({
     paused: false,
     scanMode: 'recognize',
+    captureMode: 'auto',
     jobsCount: 0,
     gridVisible: false,
     reviewMode: false,
@@ -118,18 +122,20 @@ export function BottomNav() {
     ? 'fixed bottom-0 left-0 right-0 z-50 grid items-end justify-items-center'
     : 'fixed bottom-0 left-0 right-0 z-50 grid items-end justify-items-center bg-card/95 backdrop-blur-xl';
 
-  // Klick-Handler für FAB
+  const isManual = isScanner && scanState.captureMode === 'manual';
+
+  // Klick-Handler für FAB. Manuell: Foto auslösen. Auto: Stream Pause/Resume.
   const handleFabClick = () => {
-    // Auf /scanner: Toggle Stream-Pause via Event
     if (isScanner) {
-      window.dispatchEvent(new Event(SCAN_TOGGLE_EVENT));
+      window.dispatchEvent(new Event(isManual ? SCAN_SHUTTER_EVENT : SCAN_TOGGLE_EVENT));
     }
     // Off-Scanner: Link-Navigation, kein Handler nötig (Next.js Link)
   };
 
   const fabIconColor = '#fff';
   // Off-Scanner: Kamera-Icon. Auf /scanner: Pause wenn laufend, Kamera wenn pausiert.
-  const FabIcon = !isScanner ? Camera : (scanState.paused ? Camera : Pause);
+  // Manuell → immer Kamera (Auslöser). Auto → Pause (läuft) / Kamera (pausiert).
+  const FabIcon = !isScanner ? Camera : (isManual ? Camera : (scanState.paused ? Camera : Pause));
 
   // ── Scanner-Modus: schwebende Glas-Leiste "12a" (Handoff
   // design_handoff_scanner_bar) — Footernav-Stil, 3 Spalten: −-Icon links,
@@ -290,9 +296,9 @@ export function BottomNav() {
                   onClick={handleFabClick}
                   className="flex items-center justify-center rounded-full shadow-xl"
                   style={fabStyle}
-                  aria-label={scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren'}
+                  aria-label={isManual ? 'Foto aufnehmen' : (scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren')}
                 >
-                  <FabIcon size={28} color={fabIconColor} fill={!scanState.paused && isScanner ? '#fff' : 'none'} />
+                  <FabIcon size={28} color={fabIconColor} fill={!isManual && !scanState.paused && isScanner ? '#fff' : 'none'} />
                 </button>
               ) : (
                 <Link
@@ -331,9 +337,35 @@ export function BottomNav() {
             </button>
           );
         }
-        if (isScanner && (i === 0 || i === 4)) {
-          // Auf /scanner: Home und Wunschliste ausblenden — nur Scanner-Controls sichtbar
+        if (isScanner && i === 0) {
+          // Home-Slot links: leer (nur Scanner-Controls sichtbar)
           return <div key={`scan-empty-${i}`} />;
+        }
+        if (isScanner && i === 4) {
+          // Rechter Slot: Auto ⇄ Manuell-Switch (Auslöse-Modus)
+          return (
+            <button
+              key={`scan-${i}`}
+              onClick={() => window.dispatchEvent(new CustomEvent(SCAN_CAPTURE_TOGGLE_EVENT, { detail: isManual ? 'auto' : 'manual' }))}
+              className="flex flex-col items-center gap-1"
+              role="switch"
+              aria-checked={isManual}
+              aria-label="Manueller Auslöser"
+            >
+              <span
+                className="relative rounded-full transition-colors"
+                style={{ width: 42, height: 25, background: isManual ? '#3182ce' : 'rgba(255,255,255,0.28)' }}
+              >
+                <span
+                  className="absolute rounded-full bg-white transition-all"
+                  style={{ width: 19, height: 19, top: 3, left: isManual ? 20 : 3 }}
+                />
+              </span>
+              <span className="text-[10px] font-medium" style={{ color: isManual ? '#fff' : 'rgba(255,255,255,0.7)' }}>
+                {isManual ? 'Manuell' : 'Auto'}
+              </span>
+            </button>
+          );
         }
         if (isScanner && i === 3) {
           // Mode-Switch [Einzeln | Mehrere]
@@ -387,9 +419,11 @@ export function BottomNav() {
 
 // Exportiert für Scanner-Page, um State zu posten
 export const SCANNER_NAV_EVENTS = {
-  TOGGLE_PAUSE: SCAN_TOGGLE_EVENT,
-  TOGGLE_GRID:  SCAN_GRID_TOGGLE_EVENT,
-  TOGGLE_MODE:  SCAN_MODE_TOGGLE_EVENT,
-  STATE:        SCAN_STATE_EVENT,
+  TOGGLE_PAUSE:   SCAN_TOGGLE_EVENT,
+  TOGGLE_GRID:    SCAN_GRID_TOGGLE_EVENT,
+  TOGGLE_MODE:    SCAN_MODE_TOGGLE_EVENT,
+  TOGGLE_CAPTURE: SCAN_CAPTURE_TOGGLE_EVENT,
+  SHUTTER:        SCAN_SHUTTER_EVENT,
+  STATE:          SCAN_STATE_EVENT,
 };
 export type { ScannerNavState };

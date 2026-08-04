@@ -443,6 +443,24 @@ export default function ScannerPage() {
   const scanModeRef = useRef(scanMode);
   useEffect(() => { scanModeRef.current = scanMode; }, [scanMode]);
 
+  // Auslöse-Modus: 'auto' (grün-gegatetes Auto-Auslösen, wie bisher) vs.
+  // 'manual' (kein Live-Erkennen/Ampel, nur Ziel-Rahmen; Foto per Footer-Scan-
+  // Button, Erkennung/Zuschnitt danach auf dem Standbild). In localStorage gemerkt.
+  const [captureMode, setCaptureMode] = useState<'auto' | 'manual'>('auto');
+  useEffect(() => {
+    try { const v = localStorage.getItem('scanner-capture-mode'); if (v === 'manual' || v === 'auto') setCaptureMode(v); } catch { /* ignore */ }
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem('scanner-capture-mode', captureMode); } catch { /* ignore */ }
+  }, [captureMode]);
+  // Manueller Auslöser: der Footer-Scan-Button erhöht diesen Zähler → CameraCapture
+  // reagiert per useEffect und macht das Standbild.
+  const [shutterSignal, setShutterSignal] = useState(0);
+  const switchCaptureMode = useCallback((m: 'auto' | 'manual') => {
+    setStreamPaused(false); // beim Moduswechsel Stream sicher laufen lassen
+    setCaptureMode(m);
+  }, []);
+
   // Quick-Add via +-Button: öffnet AddToCollectionModal direkt (kein
   // CardDetailSheet-Zwischenschritt). preVariant/preCondition aus dem Job.
   const [quickAddJobId, setQuickAddJobId] = useState<string | null>(null);
@@ -529,19 +547,28 @@ export default function ScannerPage() {
     const onRemoveRecognized = () => {
       if (recognizedJobId) setQuickDeleteJobId(recognizedJobId);
     };
+    const onToggleCapture = (e: Event) => {
+      const m = (e as CustomEvent<'auto' | 'manual'>).detail;
+      if (m === 'auto' || m === 'manual') switchCaptureMode(m);
+    };
+    const onShutter = () => setShutterSignal(s => s + 1);
     window.addEventListener('scanner-toggle-pause', onTogglePause);
     window.addEventListener('scanner-toggle-mode',  onToggleMode as EventListener);
     window.addEventListener('scanner-toggle-grid',  onToggleGrid);
     window.addEventListener('scanner-add-recognized', onAddRecognized);
     window.addEventListener('scanner-remove-recognized', onRemoveRecognized);
+    window.addEventListener('scanner-toggle-capture', onToggleCapture as EventListener);
+    window.addEventListener('scanner-shutter', onShutter);
     return () => {
       window.removeEventListener('scanner-toggle-pause', onTogglePause);
       window.removeEventListener('scanner-toggle-mode',  onToggleMode as EventListener);
       window.removeEventListener('scanner-toggle-grid',  onToggleGrid);
       window.removeEventListener('scanner-add-recognized', onAddRecognized);
       window.removeEventListener('scanner-remove-recognized', onRemoveRecognized);
+      window.removeEventListener('scanner-toggle-capture', onToggleCapture as EventListener);
+      window.removeEventListener('scanner-shutter', onShutter);
     };
-  }, [toggleStreamPaused, switchScanMode, toggleGridMode, recognizedJobId]);
+  }, [toggleStreamPaused, switchScanMode, toggleGridMode, switchCaptureMode, recognizedJobId]);
 
   // State an BottomNav schicken — paused/scanMode/jobsCount/gridVisible/reviewMode/canAdd
   const addJobsCount = jobs.filter(j => j.origin === 'add').length;
@@ -550,6 +577,7 @@ export default function ScannerPage() {
       detail: {
         paused: streamPaused,
         scanMode,
+        captureMode,
         jobsCount: addJobsCount,
         gridVisible: scanMode === 'add' && addJobsCount > 0,
         reviewMode: mode === 'review',
@@ -557,13 +585,13 @@ export default function ScannerPage() {
         canDelete: canDeleteRecognized,
       },
     }));
-  }, [streamPaused, scanMode, addJobsCount, mode, canAddRecognized, canDeleteRecognized]);
+  }, [streamPaused, scanMode, captureMode, addJobsCount, mode, canAddRecognized, canDeleteRecognized]);
 
   // Beim Unmount: Reset, damit andere Seiten nicht den Scan-Pause-FAB sehen
   useEffect(() => {
     return () => {
       window.dispatchEvent(new CustomEvent('scanner-state-changed', {
-        detail: { paused: false, scanMode: 'recognize', jobsCount: 0, gridVisible: false, reviewMode: false, canAdd: false, canDelete: false },
+        detail: { paused: false, scanMode: 'recognize', captureMode: 'auto', jobsCount: 0, gridVisible: false, reviewMode: false, canAdd: false, canDelete: false },
       }));
     };
   }, []);
@@ -1246,7 +1274,9 @@ export default function ScannerPage() {
             pendingCount={pendingCount}
             active={cameraActive}
             paused={streamPaused}
-            hideFrame={scanMode === 'recognize' && streamPaused}
+            autoDetect={captureMode === 'auto'}
+            shutterSignal={shutterSignal}
+            hideFrame={scanMode === 'recognize' && streamPaused && captureMode === 'auto'}
           />
         </div>
       )}

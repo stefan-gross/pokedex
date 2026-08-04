@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Zap, ZapOff, Camera } from 'lucide-react';
+import { Flashlight, FlashlightOff, Camera } from 'lucide-react';
 import { loadCardDetectorSession, detectCardInFrame, type CardBox } from '@/lib/scanner/card-detector-onnx';
 import { computePixelMetrics, assessQuality, computeCriticalGlare, type QualityResult } from '@/lib/scanner/frame-quality';
 import { useScannerDebug } from '@/lib/scanner/debug-flags';
@@ -33,6 +33,13 @@ interface Props {
   active: boolean;
   /** Detection-Rahmen-Overlay ausblenden — z. B. im Einzeln-Modus nach Snap. */
   hideFrame?: boolean;
+  /** Auslöse-Modus. true = Auto (Live-Erkennung + grün-gegateter Auto-Trigger, wie
+   *  bisher). false = Manuell: keine Live-Erkennung/Ampel, nur Ziel-Rahmen; Foto
+   *  wird per `shutterSignal` ausgelöst, Erkennung/Zuschnitt danach am Standbild. */
+  autoDetect?: boolean;
+  /** Monoton steigender Zähler — jede Erhöhung löst im Manuell-Modus ein Foto aus
+   *  (der Footer-Scan-Button erhöht ihn). */
+  shutterSignal?: number;
 }
 
 // ─── Modul-Level: Stream-Referenz für Visibility-Handler ─────────────────────
@@ -165,6 +172,19 @@ function encodeCropToJpeg(src: HTMLCanvasElement, sx: number, sy: number, sw: nu
   out.height = dh;
   out.getContext('2d')!.drawImage(src, sx, sy, sw, sh, 0, 0, dw, dh);
   return out.toDataURL('image/jpeg', JPEG_QUALITY).split(',')[1];
+}
+
+/** Fallback ohne erkannte Ecken: zentrierter Zuschnitt in Karten-Seitenverhältnis
+ *  (~5:7) — entspricht optisch dem Ziel-Rahmen und schneidet Nachbarkarten weg,
+ *  statt das ganze Bild (inkl. Umgebung) zu senden. */
+function encodeCenterCardCrop(src: HTMLCanvasElement): string {
+  const AR = 5 / 7; // Breite/Höhe einer TCG-Karte
+  let ch = Math.round(src.height * 0.86);
+  let cw = Math.round(ch * AR);
+  if (cw > src.width * 0.92) { cw = Math.round(src.width * 0.92); ch = Math.round(cw / AR); }
+  const cx = Math.round((src.width - cw) / 2);
+  const cy = Math.round((src.height - ch) / 2);
+  return encodeCropToJpeg(src, cx, cy, cw, ch);
 }
 
 /** Entzerrter Karten-Zuschnitt: die 4 Ecken [tl,tr,br,bl] werden auf ein
@@ -362,7 +382,7 @@ interface DebugInfo {
   angleDeg: number;      // Kartenwinkel aus den Ecken (0 = aufrecht)
 }
 
-export function CameraCapture({ onCapture, pendingCount = 0, paused = false, active, hideFrame = false }: Props) {
+export function CameraCapture({ onCapture, pendingCount = 0, paused = false, active, hideFrame = false, autoDetect = true, shutterSignal = 0 }: Props) {
   const videoRef   = useRef<HTMLVideoElement>(null);
   const canvasRef  = useRef<HTMLCanvasElement>(null);
   const sampleRef  = useRef<HTMLCanvasElement>(null);
@@ -373,6 +393,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   const stableRef    = useRef(0);
   const cooldownRef  = useRef(false);
   const onCaptureRef = useRef(onCapture);
+  // Auslöse-Modus als Ref (Detection-Tick liest ihn ohne Re-Setup).
+  const autoDetectRef = useRef(autoDetect);
+  useEffect(() => { autoDetectRef.current = autoDetect; }, [autoDetect]);
 
   // Letztes (geglättetes) ONNX-Ergebnis in Video-Koordinaten (Overlay + Snap-Crop)
   const onnxBoxRef    = useRef<CardBox | null>(null);
@@ -771,7 +794,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
       imageBase64 = encodeCropToJpeg(canvas, cx, cy, cw, ch);
       cropInfo    = `${cw}×${ch} (aabb)`;
     } else {
-      imageBase64 = encodeCropToJpeg(canvas, 0, 0, canvas.width, canvas.height);
+      // Keine Box → zentrierter Karten-Zuschnitt (statt Vollbild) → Nachbarkarten weg.
+      imageBase64 = encodeCenterCardCrop(canvas);
+      cropInfo    = `center-card`;
     }
 
     cropSizeRef.current = cropInfo;
@@ -829,11 +854,86 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     changeReadyAtRef.current = Date.now() + SNAP_COOLDOWN_MIN_MS;
   }, [paused]);
 
+  // ── Manueller Auslöser ─────────────────────────────────────────────────────
+  // Im Manuell-Modus: Standbild aufnehmen, DANN Ecken erkennen (mit Toleranz →
+  // Karte darf leicht aus dem Ziel-Rahmen ragen), entzerren/zuschneiden und
+  // Reflexions-/Schärfe-Metriken am Standbild messen (nur Hinweis, nicht-blockierend).
+  const doManualCapture = useCallback(async () => {
+    if (paused || scanDebugRef.current) return;
+    const video = videoRef.current, canvas = canvasRef.current;
+    if (!video || !canvas || video.readyState < 2) return;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d')!.drawImage(video, 0, 0);
+
+    let box: CardBox | null = null;
+    try { box = await detectCardInFrame(canvas, true); } catch { box = null; }
+
+    let imageBase64: string;
+    if (box?.corners?.length === 4) {
+      imageBase64 = perspectiveWarpToJpeg(canvas, box.corners);
+    } else if (box && box.w > 50 && box.h > 50) {
+      const padX = Math.max(CROP_PADDING, Math.round(box.w * 0.05));
+      const padY = Math.max(CROP_PADDING, Math.round(box.h * 0.08));
+      const cx = Math.max(0, Math.round(box.x - padX));
+      const cy = Math.max(0, Math.round(box.y - padY));
+      const cw = Math.min(canvas.width  - cx, Math.round(box.w + padX * 2));
+      const ch = Math.min(canvas.height - cy, Math.round(box.h + padY * 2));
+      imageBase64 = encodeCropToJpeg(canvas, cx, cy, cw, ch);
+    } else {
+      imageBase64 = encodeCenterCardCrop(canvas);
+    }
+
+    let meta: CaptureMeta | undefined;
+    try {
+      const s = sampleRef.current;
+      if (s) {
+        const sctx = s.getContext('2d')!;
+        sctx.drawImage(canvas, 0, 0, s.width, s.height);
+        const id = sctx.getImageData(0, 0, s.width, s.height);
+        const pm = computePixelMetrics(id.data, s.width, s.height);
+        const cg = computeCriticalGlare(id.data, id.width, id.height);
+        const cn = box?.corners?.length ?? 0;
+        meta = {
+          trigger: 'manual', level: 'manual', boxDelta: 0,
+          sharpness: pm.sharpness, contrast: pm.contrast, glare: pm.glare, softGlare: pm.softGlare,
+          nameGlare: cg.nameGlare, codeGlare: cg.codeGlare, meanLum: pm.meanLum,
+          fill: box ? (box.w * box.h) / (canvas.width * canvas.height) : 0,
+          cornersN: cn,
+          angleDeg: (cn === 4 && box?.corners)
+            ? Math.round(Math.atan2(box.corners[1][1] - box.corners[0][1], box.corners[1][0] - box.corners[0][0]) * 180 / Math.PI)
+            : 0,
+        };
+      }
+    } catch { meta = undefined; }
+
+    onCaptureRef.current(imageBase64, 'image/jpeg', meta);
+    setFlashing(true); setTimeout(() => setFlashing(false), 180);
+  }, [paused]);
+
+  // Footer-Scan-Button erhöht `shutterSignal` → hier auslösen (Mount überspringen).
+  const shutterSeenRef = useRef(shutterSignal);
+  useEffect(() => {
+    if (shutterSignal === shutterSeenRef.current) return;
+    shutterSeenRef.current = shutterSignal;
+    doManualCapture();
+  }, [shutterSignal, doManualCapture]);
+
+  // Wechsel in den Manuell-Modus: Live-Box/Progress zurücksetzen → Overlay zeigt
+  // sauber nur den Ziel-Rahmen.
+  useEffect(() => {
+    if (!autoDetect) { onnxBoxRef.current = null; setDetected(false); setProgress(0); stableRef.current = 0; }
+  }, [autoDetect]);
+
   // ── Detection-Loop ────────────────────────────────────────────────────────
   useEffect(() => {
     const delay = setTimeout(() => {
       timerRef.current = setInterval(() => {
         if (paused || scanDebugStoppedRef.current) return; // Scannen-Debug: nach Trigger-Messung gestoppt
+        // Manuell-Modus: KEINE Live-Erkennung/Ampel/Auto-Trigger. Box leeren →
+        // das rAF-Overlay zeigt nur den gestrichelten Ziel-Rahmen. Das Standbild
+        // wird erst beim Auslösen (doManualCapture) analysiert.
+        if (!autoDetectRef.current) { onnxBoxRef.current = null; return; }
         const tickStart = performance.now();
         const video = videoRef.current, sample = sampleRef.current;
         const prev = prevRef.current;
@@ -1112,7 +1212,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   return (
     <div
       className="relative w-full h-full bg-black overflow-hidden"
-      onClick={!paused && active ? () => doCapture(true) : undefined}
+      onClick={!paused && active && autoDetect ? () => doCapture(true) : undefined}
     >
       {/* Versteckte Canvases */}
       <canvas ref={canvasRef} className="hidden" />
@@ -1333,7 +1433,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
               onClick={toggleTorch}
               className="w-[46px] h-[46px] rounded-full flex items-center justify-center glass-overlay"
             >
-              {torch ? <Zap size={20} color="#facc15" /> : <ZapOff size={20} color="#fff" />}
+              {torch ? <Flashlight size={20} color="#facc15" /> : <FlashlightOff size={20} color="#fff" />}
             </button>
           </div>
         </>
