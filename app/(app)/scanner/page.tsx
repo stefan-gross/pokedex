@@ -180,6 +180,27 @@ function borderStyleFor(status: BorderStatus, fakeRisk?: string): { border: stri
   return { border: '2.5px solid rgba(255,255,255,0.15)' };
 }
 
+/** Karten-Name normalisieren für Gegenproben (klein, nur Buchstaben/Ziffern). */
+function normalizeCardName(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9äöü]/g, '');
+}
+
+/** Levenshtein-Distanz (für OCR-tolerante Namens-Gegenprobe). */
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
 function cardImgUrl(job: ScanJob): string | null {
   // Während Verarbeitung: aufgenommenes Bild als Vorschau zeigen
   // (Image base64 ist die einzige Quelle — kein Duplikat im State).
@@ -909,6 +930,26 @@ export default function ScannerPage() {
           if (setTotal && setTotal !== gemini.printedTotal) {
             debug.lookupSteps!.push(
               `verworfen: Set-Gesamtzahl passt nicht (Katalog=${setTotal}, Gemini=${gemini.printedTotal})`,
+            );
+            result = null;
+          }
+        }
+
+        // Namens-Gegenprobe: bei Promos fehlen Dex UND printedTotal → der Name ist
+        // dann die EINZIGE Kontrolle gegen ein falsches setCode-Ergebnis (z.B.
+        // Symbolabgleich "BKP" → Clefairy statt Mega-Quajutsu). Passt der von Gemini
+        // gelesene Name zu keinem Namensfeld der Karte (DE/EN, Teil-Übereinstimmung
+        // erlaubt), verwerfen.
+        if (result && gemini.name) {
+          const g = normalizeCardName(gemini.name);
+          const cand = [result.nameLower, result.nameDeLower, result.name, result.nameDe]
+            .filter((x): x is string => !!x)
+            .map(normalizeCardName);
+          const ok = g.length >= 3 && cand.some(c =>
+            c.length >= 3 && (c === g || c.includes(g) || g.includes(c) || levenshtein(c, g) <= 2));
+          if (!ok) {
+            debug.lookupSteps!.push(
+              `verworfen: Name passt nicht (Katalog="${result.nameDe ?? result.name}", Gemini="${gemini.name}")`,
             );
             result = null;
           }
