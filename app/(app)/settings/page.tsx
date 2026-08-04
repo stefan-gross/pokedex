@@ -259,7 +259,7 @@ export default function SettingsPage() {
       add('Preise', d('withPrice'));
       if (linked > 0) parts.push(`${linked} verknüpft`);
       const changed = parts.length > 0;
-      const diff = changed ? parts.join(' · ') : 'keine Änderungen';
+      const diff = parts.join(' · '); // leer, wenn nichts geändert → Block wird ausgeblendet
 
       // Lauf-Ende serverseitig stempeln: „Zuletzt geprüft" immer, „Zuletzt
       // geändert" nur bei echten Änderungen → Statuszeilen matchen den Lauf.
@@ -480,14 +480,12 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {/* Letzter Daten-Lauf: nur Datum + tatsächlich geänderte Werte */}
-            {!runningAll && lastDataRun && (
+            {/* Letzter Daten-Lauf: nur die tatsächlich geänderten Werte (ohne
+                Datum — das steht bei „Zuletzt geändert/geprüft"). Nichts geändert
+                → kein Block. */}
+            {!runningAll && lastDataRun?.diff && (
               <div className="px-4 py-3 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]">
-                <div className="flex items-baseline justify-between gap-3">
-                  <p className="text-role-title text-glass">Letzter Daten-Lauf</p>
-                  <p className="text-role-label text-glass-muted">{new Date(lastDataRun.at).toLocaleString('de-DE')}</p>
-                </div>
-                <p className="text-role-label text-glass mt-1">{lastDataRun.diff}</p>
+                <p className="text-role-label text-glass"><span className="text-glass-muted">Letzter Lauf: </span>{lastDataRun.diff}</p>
               </div>
             )}
 
