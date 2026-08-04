@@ -47,16 +47,22 @@ export function computeCriticalGlare(data: Uint8ClampedArray, w: number, h: numb
   const frac = (x0: number, y0: number, x1: number, y1: number) => {
     const cx0 = Math.max(0, Math.floor(x0 * w)), cx1 = Math.min(w, Math.ceil(x1 * w));
     const cy0 = Math.max(0, Math.floor(y0 * h)), cy1 = Math.min(h, Math.ceil(y1 * h));
-    let n = 0, bright = 0;
+    let n = 0, bright = 0, dark = 0;
     for (let y = cy0; y < cy1; y++) {
       for (let x = cx0; x < cx1; x++) {
         const o = (y * w + x) * 4;
         const l = (data[o] * 77 + data[o + 1] * 150 + data[o + 2] * 29) >> 8;
         if (l >= 210) bright++;
+        else if (l <= 70) dark++;
         n++;
       }
     }
-    return n ? bright / n : 0;
+    if (!n) return 0;
+    // Genug dunkler Text in der Zone → sie ist LESBAR (auch wenn insgesamt hell,
+    // z.B. graue/silberne Metal-Karten). Nur eine echt weggespiegelte Zone hat
+    // kaum dunkle Pixel. Verhindert Fehlalarm „Reflexion" bei hellen Karten.
+    if (dark / n >= 0.03) return 0;
+    return bright / n;
   };
   return {
     nameGlare: frac(0.08, 0.015, 0.92, 0.12), // oberes Namensband
