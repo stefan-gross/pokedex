@@ -113,10 +113,11 @@ export default function SettingsPage() {
   const [syncResult, setSyncResult]   = useState<string | null>(null);
   const [runningAll,  setRunningAll]  = useState(false);
   const [allProgress, setAllProgress] = useState<string | null>(null);
+  const [runPct,      setRunPct]      = useState(0);
 
   // Zusammenfassung + Zeitpunkt des letzten „Daten aktualisieren"-Laufs,
   // in `localStorage` gehalten (der Lauf wird komplett clientseitig orchestriert).
-  const [lastDataRun, setLastDataRun] = useState<{ at: string; summary: string; diff?: string } | null>(null);
+  const [lastDataRun, setLastDataRun] = useState<{ at: string; diff: string } | null>(null);
 
   const LAST_RUN_KEY = 'pokedex-last-data-run';
 
@@ -149,8 +150,9 @@ export default function SettingsPage() {
     setRunningAll(true);
     setSyncing(true);
     setSyncResult(null);
-    const step = (msg: string) => setAllProgress(msg);
-    step('▶ Starte…');
+    // step(msg, pct?): Text immer setzen; pct nur bei Phasenwechsel (Balken).
+    const step = (msg: string, pct?: number) => { setAllProgress(msg); if (pct != null) setRunPct(pct); };
+    step('▶ Starte…', 2);
 
     // Vorher-Stand für die Diff-Anzeige (was hat der Lauf NETTO verändert?).
     const before = await loadSyncStatus();
@@ -166,12 +168,12 @@ export default function SettingsPage() {
       // Karten nach.
 
       // 1. Sets
-      step('🗂️ (1/6) Sets werden synchronisiert…');
+      step('🗂️ (1/6) Sets werden synchronisiert…', 8);
       const setsRes  = await fetch('/api/admin/sync-sets', { method: 'POST' });
       const setsData = await setsRes.json().catch(() => ({}));
 
       // 2. Neue/fehlende Karten gezielt nachziehen (Delta-Sync, günstig).
-      step('📥 (2/6) Neue Karten werden geholt…');
+      step('📥 (2/6) Neue Karten werden geholt…', 22);
       let addedTotal = 0, retries = 0;
       while (true) {
         let d: { done?: boolean; status?: string; added?: number } = {};
@@ -192,7 +194,7 @@ export default function SettingsPage() {
       await loadSyncStatus();
 
       // 3. Deutsche Namen/Bilder für bestehende Karten nachtragen (set-weise).
-      step('🇩🇪 (3/6) Deutsche Namen & Bilder werden ergänzt…');
+      step('🇩🇪 (3/6) Deutsche Namen & Bilder werden ergänzt…', 42);
       let deTotal = 0;
       while (true) {
         let data: { status?: string; enriched?: number } = {};
@@ -206,7 +208,7 @@ export default function SettingsPage() {
       }
 
       // 4. Evolutionsdaten (PokéAPI)
-      step('🧬 (4/6) Evolutionsdaten werden angereichert…');
+      step('🧬 (4/6) Evolutionsdaten werden angereichert…', 60);
       let evoTotal = 0;
       while (true) {
         const res  = await fetch('/api/admin/enrich-evolution', { method: 'POST' });
@@ -217,7 +219,7 @@ export default function SettingsPage() {
       }
 
       // 5. Pokémon-Artdaten (PokéAPI)
-      step('📖 (5/6) Pokémon-Artdaten werden angereichert…');
+      step('📖 (5/6) Pokémon-Artdaten werden angereichert…', 74);
       let speciesTotal = 0;
       while (true) {
         const res  = await fetch('/api/admin/enrich-species', { method: 'POST' });
@@ -230,7 +232,7 @@ export default function SettingsPage() {
       // 6. Preise: Sammlung + rollierender Katalog-Preis-Sweep (zeitbudgetiert
       //    im Server). Ein Aufruf pro Lauf; die Erstbefüllung „mind. ein Preis
       //    pro Karte" läuft über mehrere Läufe / den nächtlichen Cron weiter.
-      step('💶 (6/6) Preise werden aktualisiert…');
+      step('💶 (6/6) Preise werden aktualisiert…', 88);
       let priceRefreshed = 0, sweptSets = 0;
       try {
         const res = await fetch('/api/admin/refresh-prices', { method: 'POST' });
@@ -242,21 +244,24 @@ export default function SettingsPage() {
 
       // Vorläufige (nicht katalogisierte) Karten gegen den frischen Katalog
       // prüfen und eindeutige Treffer verknüpfen.
-      step('🔗 Vorläufige Karten werden geprüft…');
+      step('🔗 Vorläufige Karten werden geprüft…', 96);
       const { linked } = await reconcilePendingCards().catch(() => ({ linked: 0, checked: 0 }));
 
-      const summary = `${setsData.synced ?? 0} Sets · ${addedTotal} neue Karten · ${deTotal} DE-Daten · ${evoTotal} Evo · ${speciesTotal} Artdaten · ${priceRefreshed} Preise · ${linked} verknüpft`;
-      step(`✅ Fertig — ${summary}`);
-
-      // Nachher-Stand → NETTO-Diff (was hat sich am Katalog-Zustand geändert?).
+      // Nachher-Stand → NETTO-Diff. Nur die TATSÄCHLICH geänderten Werte auflisten.
       const after = await loadSyncStatus();
-      const signed = (n: number) => (n > 0 ? `+${n.toLocaleString('de-DE')}` : n.toLocaleString('de-DE'));
       const d = (k: keyof SyncStatus) => (after?.[k] as number ?? 0) - (before?.[k] as number ?? 0);
-      const diff = `Karten ${signed(d('totalCards'))} · DE-Bilder ${signed(d('withDeImage'))} · DE-Namen ${signed(d('withDeName'))} · Preise ${signed(d('withPrice'))}`;
+      const parts: string[] = [];
+      const add = (label: string, n: number) => { if (n !== 0) parts.push(`${label} ${n > 0 ? '+' : ''}${n.toLocaleString('de-DE')}`); };
+      add('Karten', d('totalCards'));
+      add('Bilder', d('withImage'));
+      add('DE-Bilder', d('withDeImage'));
+      add('DE-Namen', d('withDeName'));
+      add('Preise', d('withPrice'));
+      if (linked > 0) parts.push(`${linked} verknüpft`);
+      const diff = parts.length ? parts.join(' · ') : 'keine Änderungen';
+      step('✅ Fertig', 100);
 
-      // Zusammenfassung dauerhaft merken (überlebt Reload), damit „Letzter
-      // Daten-Lauf" auch später noch sichtbar ist.
-      const run = { at: new Date().toISOString(), summary, diff };
+      const run = { at: new Date().toISOString(), diff };
       setLastDataRun(run);
       try { localStorage.setItem(LAST_RUN_KEY, JSON.stringify(run)); } catch { /* ignore */ }
     } catch (e) {
@@ -454,27 +459,24 @@ export default function SettingsPage() {
               )}
             </div>
 
-            {/* Letzter Daten-Lauf (überlebt Reload via localStorage) */}
-            {lastDataRun && (
-              <div className="px-4 py-3 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]">
-                <p className="text-role-title text-glass mb-1">Letzter Daten-Lauf</p>
-                <p className="text-role-label text-glass-muted">{new Date(lastDataRun.at).toLocaleString('de-DE')}</p>
-                {lastDataRun.diff && (
-                  <p className="text-role-label text-glass font-mono mt-1">Änderung: {lastDataRun.diff}</p>
-                )}
-                <p className="text-role-label text-glass-muted font-mono mt-1">{lastDataRun.summary}</p>
+            {/* Laufender Fortschritt: Balken + aktueller Schritt */}
+            {runningAll && (
+              <div className="px-4 py-3 space-y-2 bg-[rgba(30,40,80,0.06)] dark:bg-white/10 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]">
+                <div className="h-1.5 rounded-full bg-[rgba(30,40,80,0.10)] dark:bg-white/25 overflow-hidden">
+                  <div className="h-full rounded-full bg-[#3182ce] transition-all duration-500" style={{ width: `${runPct}%` }} />
+                </div>
+                <p className="text-xs font-medium text-glass">{allProgress}</p>
               </div>
             )}
 
-            {/* Laufender Fortschritt / letztes Ergebnis */}
-            {allProgress && (
-              <div className="px-4 py-2.5 text-xs font-medium text-glass bg-[rgba(30,40,80,0.06)] dark:bg-white/10 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]">
-                {allProgress}
-              </div>
-            )}
-            {syncResult && !runningAll && (
-              <div className="px-4 py-2.5 text-role-label text-glass-muted border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]">
-                {syncResult}
+            {/* Letzter Daten-Lauf: nur Datum + tatsächlich geänderte Werte */}
+            {!runningAll && lastDataRun && (
+              <div className="px-4 py-3 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="text-role-title text-glass">Letzter Daten-Lauf</p>
+                  <p className="text-role-label text-glass-muted">{new Date(lastDataRun.at).toLocaleString('de-DE')}</p>
+                </div>
+                <p className="text-role-label text-glass mt-1">{lastDataRun.diff}</p>
               </div>
             )}
 
