@@ -44,6 +44,9 @@ export interface SyncMeta {
   syncedTotal: number;   // wie viele Karten wir in Firestore haben
   currentTotal: number;  // Schätzung der Gesamtzahl (Summe tcg_sets.total)
   lastSynced: string;
+  /** Zeitpunkt der letzten Prüfung „gibt es neue Karten?" (auch wenn nichts nachgezogen
+   *  wurde). lastSynced = letzter Lauf, der tatsächlich Daten geschrieben hat. */
+  lastChecked?: string;
   /** Resumierbarer TCGdex-Import-Cursor: Kategorie-Index (0..2) + Seite darin. */
   catIndex?: number;
   page?: number;
@@ -53,6 +56,12 @@ export interface SyncMeta {
    *  verhindert Endlos-Resync, wenn Set-Totals „Phantom"-Karten enthalten
    *  (currentTotal bleibt dauerhaft > syncedTotal). */
   resyncedForTotal?: number;
+  /** Selbst-kalibrierter „Phantom"-Grundwert: Karten, die in den REST-Set-Listen
+   *  (`currentTotal`) genannt werden, aber über den GraphQL-Import nicht einlesbar
+   *  sind. Wird am Ende eines VOLLSTÄNDIGEN Delta-Laufs = `currentTotal − realCount`
+   *  gesetzt und in der „neue Karten"-Rechnung abgezogen, damit die Lücke, die kein
+   *  Sync je schließen kann, nicht als „neue Karten verfügbar" erscheint. */
+  phantomTotal?: number;
   // Legacy (pokemontcg-Seitencursor) — nicht mehr geschrieben, optional für Altdaten.
   lastPage?: number;
   totalPages?: number;

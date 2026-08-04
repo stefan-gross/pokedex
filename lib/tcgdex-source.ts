@@ -95,15 +95,33 @@ export async function fetchAllEnCards(
   return all;
 }
 
-/** DE-Namen der Karten EINES Sets (localId → dt. Name) via REST /de/sets/{id}. */
-export async function fetchDeNamesForSet(setId: string): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
+/** DE-Info EINER Karte: deutscher Name + (falls vorhanden) echtes DE-Bild. Das
+ *  `image`-Feld liefert der /de/sets-Endpunkt NUR, wenn TCGdex ein echtes deutsches
+ *  Bild hat (alte Sets ohne DE-Bild → kein `image`). */
+export interface DeCardInfo {
+  name: string;
+  image?: string;   // DE-Bild-Basis-URL (OHNE Endung), nur bei echtem DE-Bild
+}
+
+/** DE-Info der Karten EINES Sets (localId → {name, image?}) via REST /de/sets/{id}.
+ *  Rückgabe:
+ *   - `Map` (ggf. leer): Antwort war eindeutig (200 = DE-Set da; 404 = es gibt
+ *     kein DE-Set → leere Map, verlässlich „keine DE-Daten"). Für die Bereinigung
+ *     fabrizierter DE-Bilder auswertbar.
+ *   - `null`: TRANSIENTER Fehler (Netz/5xx) → Aufrufer soll das Set überspringen
+ *     und NICHT bereinigen (sonst würden gute Daten fälschlich gelöscht). */
+export async function fetchDeCardsForSet(setId: string): Promise<Map<string, DeCardInfo> | null> {
+  const map = new Map<string, DeCardInfo>();
   try {
     const res = await fetch(`${REST}/de/sets/${setId}`);
-    if (!res.ok) return map;
-    const data = await res.json() as { cards?: { localId: string; name: string }[] };
-    for (const c of data.cards ?? []) if (c.localId && c.name) map.set(c.localId, c.name);
-  } catch { /* kein DE-Set → leer */ }
+    if (res.status === 404) return map;           // eindeutig: kein DE-Set
+    if (!res.ok) return null;                       // 5xx o.ä. → transient
+    const data = await res.json() as { cards?: { localId: string; name?: string; image?: string }[] };
+    for (const c of data.cards ?? []) {
+      if (!c.localId || !c.name) continue;
+      map.set(c.localId, c.image ? { name: c.name, image: c.image } : { name: c.name });
+    }
+  } catch { return null; }                          // Netzwerkfehler → transient
   return map;
 }
 
@@ -195,14 +213,14 @@ export function mapSubtypes(stage: string | null, suffix: string | null): string
  */
 export function toCatalogCard(
   en: TcgdexCardFull,
-  deName: string | undefined,
+  de: DeCardInfo | undefined,
   opts?: { series?: string; setCode?: string },
 ): CatalogCard {
   return {
     id: en.id,
     name: en.name,
     nameLower: en.name.toLowerCase(),
-    ...(deName ? { nameDe: deName, nameDeLower: deName.toLowerCase() } : {}),
+    ...(de?.name ? { nameDe: de.name, nameDeLower: de.name.toLowerCase() } : {}),
     number: en.localId,
     setId: en.set?.id ?? '',
     setName: en.set?.name ?? '',
@@ -216,9 +234,9 @@ export function toCatalogCard(
     ...(en.dexId?.length ? { nationalDexNumber: en.dexId[0] } : {}),
     imgSmall: tcgdexImage(en.image, 'low'),
     imgLarge: tcgdexImage(en.image, 'high'),
-    // DE-Bild NICHT mehr hier speichern: es wird beim Lesen konstruiert
-    // (catalogCardToInfo → deImageUrl, /en/→/de/). So überschreibt ein Re-Sync
-    // keine selbst gehosteten deutschen Backfill-Bilder (imgLargeDe im Storage).
+    // Echtes DE-Bild NUR speichern, wenn der /de/sets-Endpunkt eine DE-Bild-Basis
+    // liefert (alte Sets ohne DE-Bild → kein Feld → Read-Time-Fallback zeigt EN).
+    ...(de?.image ? { imgSmallDe: tcgdexImage(de.image, 'low'), imgLargeDe: tcgdexImage(de.image, 'high') } : {}),
     variants: mapVariants(en.variants),
     ...(en.illustrator ? { artist: en.illustrator, artistTokens: en.illustrator.toLowerCase().split(/\s+/) } : {}),
   };

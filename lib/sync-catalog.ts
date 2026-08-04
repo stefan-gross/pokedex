@@ -1,8 +1,8 @@
 import { getAdminDb } from './firebase/admin';
-import { FieldPath } from 'firebase-admin/firestore';
+import { FieldPath, FieldValue } from 'firebase-admin/firestore';
 import type { CatalogCard, SyncMeta } from './firestore/catalog';
-import { CATEGORIES, PAGE_SIZE, fetchEnCardsPage, fetchDeNamesForSet, toCatalogCard,
-         fetchSetCardIds, fetchEnCardsByIds } from './tcgdex-source';
+import { CATEGORIES, PAGE_SIZE, fetchEnCardsPage, fetchDeCardsForSet, toCatalogCard,
+         fetchSetCardIds, fetchEnCardsByIds, tcgdexImage, type DeCardInfo } from './tcgdex-source';
 
 const MAX_PAGES_PER_REQUEST = 4;   // ~1000 Karten pro Aufruf — resumierbar via Meta-Cursor
 const COL = 'tcg_catalog';
@@ -106,7 +106,7 @@ export async function runSync(mode: 'auto' | 'update' | 'reset' = 'auto'): Promi
   }
 
   const setsMeta = await loadSetsMeta();
-  const deCache = new Map<string, Map<string, string>>(); // setId → localId→dt.Name (pro Aufruf)
+  const deCache = new Map<string, Map<string, DeCardInfo>>(); // setId → localId→DE-Info (pro Aufruf)
   let written = 0;
 
   for (let i = 0; i < MAX_PAGES_PER_REQUEST && catIndex < CATEGORIES.length; i++) {
@@ -117,10 +117,10 @@ export async function runSync(mode: 'auto' | 'update' | 'reset' = 'auto'): Promi
     const cards: CatalogCard[] = [];
     for (const en of enCards) {
       const setId = en.set?.id ?? '';
-      if (setId && !deCache.has(setId)) deCache.set(setId, await fetchDeNamesForSet(setId));
-      const deName = setId ? deCache.get(setId)?.get(en.localId) : undefined;
+      if (setId && !deCache.has(setId)) deCache.set(setId, (await fetchDeCardsForSet(setId)) ?? new Map());
+      const de = setId ? deCache.get(setId)?.get(en.localId) : undefined;
       const sm = setsMeta.get(setId);
-      cards.push(toCatalogCard(en, deName, { series: sm?.series, setCode: sm?.setCode }));
+      cards.push(toCatalogCard(en, de, { series: sm?.series, setCode: sm?.setCode }));
     }
     await upsertBatch(cards);
     written += cards.length;
@@ -186,9 +186,9 @@ export async function syncNewCards(): Promise<SyncNewResult> {
     if (missing.length === 0) continue; // Defizit ist „Phantom" (Set-total > gelistet)
 
     const enCards = await fetchEnCardsByIds(missing);
-    const deNames = await fetchDeNamesForSet(setId);
+    const deCards = (await fetchDeCardsForSet(setId)) ?? new Map();
     const sm = setsMeta.get(setId);
-    const cards = enCards.map(en => toCatalogCard(en, deNames.get(en.localId), { series: sm?.series, setCode: sm?.setCode }));
+    const cards = enCards.map(en => toCatalogCard(en, deCards.get(en.localId), { series: sm?.series, setCode: sm?.setCode }));
     await upsertBatch(cards);
     added += cards.length;
   }
@@ -197,7 +197,13 @@ export async function syncNewCards(): Promise<SyncNewResult> {
   // → „neue Karten verfügbar" spiegelt danach den realen Stand.
   const realCount = (await db.collection('tcg_catalog').count().get()).data().count;
   const currentTotal = await catalogTotalFromSets();
-  await setMeta({ syncedTotal: realCount, currentTotal, lastSynced: nowIso });
+  // Bei einem VOLLSTÄNDIGEN Lauf (nicht gekappt) ist alles Einlesbare drin — die
+  // verbleibende Lücke ist per Definition Phantom (in Set-Listen genannt, aber
+  // via GraphQL nicht holbar). Als Grundwert merken, damit sie nicht als „neue
+  // Karten" erscheint; ein gekappter Lauf lässt den Wert unangetastet.
+  const metaUpdate: Partial<SyncMeta> = { syncedTotal: realCount, currentTotal, lastSynced: nowIso, lastChecked: nowIso };
+  if (!hitCap) metaUpdate.phantomTotal = Math.max(0, currentTotal - realCount);
+  await setMeta(metaUpdate);
 
   return {
     status: hitCap ? 'in-progress' : 'complete',
@@ -542,14 +548,139 @@ export async function enrichSpeciesData(batchSize = 500): Promise<EnrichSpeciesR
   };
 }
 
+/**
+ * Reconcile der deutschen Daten für BESTEHENDE Katalogkarten gegen die echte
+ * Quelle `/de/sets/{id}`:
+ *  - fehlenden `nameDe` ergänzen,
+ *  - echtes DE-Bild setzen/aktualisieren (`imgLargeDe`/`imgSmallDe`),
+ *  - **fabrizierte DE-Bilder BEREINIGEN**: Alt-Daten haben `imgLargeDe` per
+ *    `/en/`→`/de/`-URL-Tausch erzeugt, obwohl es gar kein deutsches Bild gibt
+ *    (z. B. `base4`). Hat `/de/sets` für die Karte kein Bild, wird das Feld
+ *    gelöscht → der Read-Time-Fallback zeigt korrekt das EN-Bild.
+ * Set-weise (ein `/de/sets/{id}` pro Set), Cursor über Set-IDs, gekappt. Bei
+ * transientem Fehler (fetch → null) wird das Set übersprungen (nicht bereinigt).
+ */
+export async function enrichDeData(setsPerCall = 12): Promise<EnrichSpeciesResult> {
+  const db = getAdminDb();
+
+  const cursorRef = db.doc('tcg_catalog_meta/de_cursor');
+  const cursorSnap = await cursorRef.get();
+  const lastSetId: string = cursorSnap.exists ? (cursorSnap.data()?.lastSetId ?? '') : '';
+
+  let q = db.collection('tcg_sets').orderBy(FieldPath.documentId()).limit(setsPerCall + 1);
+  if (lastSetId) {
+    const lastDoc = await db.doc(`tcg_sets/${lastSetId}`).get();
+    if (lastDoc.exists) q = q.startAfter(lastDoc) as typeof q;
+  }
+  const setsSnap = await q.get();
+
+  if (setsSnap.empty) {
+    await cursorRef.delete();
+    return { status: 'complete', message: '✅ Deutsche Namen/Bilder vollständig', enriched: 0, remaining: 0 };
+  }
+
+  const hasMore = setsSnap.docs.length > setsPerCall;
+  const setDocs = setsSnap.docs.slice(0, setsPerCall);
+  let enriched = 0;
+
+  for (const setDoc of setDocs) {
+    const setId = setDoc.id;
+
+    // Echte DE-Quelle. null = transienter Fehler → Set überspringen (nicht bereinigen).
+    const deCards = await fetchDeCardsForSet(setId);
+    if (deCards === null) continue;
+
+    const cardsSnap = await db.collection(COL).where('setId', '==', setId).get();
+
+    const batch = db.batch();
+    let inBatch = 0;
+    for (const doc of cardsSnap.docs) {
+      const c = doc.data();
+      const de = deCards.get(c.number as string);
+      const update: Record<string, unknown> = {};
+
+      // Name ergänzen (nie entfernen).
+      if (de?.name && !c.nameDe) { update.nameDe = de.name; update.nameDeLower = de.name.toLowerCase(); }
+
+      // Bild reconcilen: echtes DE-Bild setzen/aktualisieren ODER fabriziertes löschen.
+      if (de?.image) {
+        const large = tcgdexImage(de.image, 'high');
+        if (c.imgLargeDe !== large) {
+          update.imgSmallDe = tcgdexImage(de.image, 'low');
+          update.imgLargeDe = large;
+        }
+      } else if (c.imgLargeDe || c.imgSmallDe) {
+        // Kein echtes DE-Bild, aber Feld vorhanden → Alt-/Fake-Wert entfernen.
+        update.imgLargeDe = FieldValue.delete();
+        update.imgSmallDe = FieldValue.delete();
+      }
+
+      if (Object.keys(update).length === 0) continue;
+      batch.update(doc.ref, update);
+      enriched++;
+      if (++inBatch >= 450) break; // Firestore-Batch-Grenze; Rest holt der nächste Lauf
+    }
+    if (inBatch > 0) await batch.commit();
+  }
+
+  const lastSet = setDocs[setDocs.length - 1];
+  if (hasMore) await cursorRef.set({ lastSetId: lastSet.id });
+  else await cursorRef.delete();
+
+  return {
+    status: hasMore ? 'in-progress' : 'complete',
+    message: hasMore
+      ? `📥 ${enriched} Karten DE-Daten aktualisiert/bereinigt — weitere Sets folgen`
+      : `✅ Deutsche Daten abgeglichen (${enriched} Karten aktualisiert/bereinigt)`,
+    enriched,
+    remaining: hasMore ? -1 : 0,
+  };
+}
+
 export async function getSyncStatus() {
   const meta = await getMeta();
   const currentTotal = await catalogTotalFromSets();
   const syncedTotal = meta?.syncedTotal ?? 0;
+
+  // Abdeckungs-Kennzahlen via count()-Aggregation. Einzeln in try/catch, damit
+  // ein fehlender Index (z.B. für prices.provider) die Statusabfrage nicht kippt.
+  const db = getAdminDb();
+  const safeCount = async (build: () => FirebaseFirestore.Query | FirebaseFirestore.CollectionReference): Promise<number> => {
+    try { return (await build().count().get()).data().count; } catch { return 0; }
+  };
+  const cat = () => db.collection('tcg_catalog');
+  const [totalCards, totalSets, withImage, withDeImage, withDeName, withPrice, deNoEn] = await Promise.all([
+    safeCount(() => cat()),
+    safeCount(() => db.collection('tcg_sets')),
+    safeCount(() => cat().where('imgLarge', '>', '')),
+    safeCount(() => cat().where('imgLargeDe', '>', '')),
+    safeCount(() => cat().where('nameDeLower', '>', '')),
+    safeCount(() => cat().where('prices.provider', 'in', ['cardmarket', 'tcgplayer'])),
+    // Karten mit DE-Bild, aber OHNE EN-Bild (imgLarge==''). Braucht den
+    // Composite-Index (imgLarge, imgLargeDe); fehlt er → safeCount liefert 0,
+    // dann fällt withAnyImage auf withImage zurück (leichte Unterzählung).
+    safeCount(() => cat().where('imgLarge', '==', '').where('imgLargeDe', '>', '')),
+  ]);
+  // Karten mit IRGENDEINEM Bild (EN oder DE) = EN-Bilder + DE-ohne-EN.
+  // Sicherheitsnetz: „irgendein Bild" ist per Definition ≥ EN-Bilder UND ≥ DE-Bilder
+  // (beide sind Teilmengen). Fehlt der Composite-Index (deNoEn → 0), verhindert das
+  // max(), dass die Zahl fälschlich UNTER die DE-Zahl fällt.
+  const withAnyImage = Math.max(withImage + deNoEn, withImage, withDeImage);
+
   return {
     ...(meta ?? { lastPage: 0, totalPages: 0, lastSynced: null, bootstrapped: false }),
     syncedTotal,
     currentTotal,
-    newCards: Math.max(0, currentTotal - syncedTotal),
+    // „Neue Karten" = Lücke abzüglich des kalibrierten Phantom-Grundwerts
+    // (nicht einlesbare, aber gelistete Karten). Erst ein echtes Katalog-Wachstum
+    // hebt die Zahl wieder über 0.
+    newCards: Math.max(0, currentTotal - syncedTotal - (meta?.phantomTotal ?? 0)),
+    totalCards,
+    totalSets,
+    withImage,
+    withAnyImage,
+    withDeImage,
+    withDeName,
+    withPrice,
   };
 }

@@ -41,13 +41,25 @@ export function toResult(c: CachedPrices): PriceResult | null {
   };
 }
 
-/** Refresht alle besessenen Karten + alle „leeren"/„TCGplayer-Fallback"-Einträge.
- *  Wird sowohl vom täglichen Cron als auch vom manuellen Settings-Button genutzt.
- *  `upgraded` zählt Cache-Einträge, die von TCGplayer auf Cardmarket gewechselt haben. */
+/** Refresht alle besessenen Karten + alle „leeren"/„TCGplayer-Fallback"-Einträge
+ *  und arbeitet danach im verbleibenden Zeitbudget einen ROLLIERENDEN Katalog-
+ *  Preis-Sweep ab: die Sets mit ältestem/fehlendem `pricesSyncedAt` zuerst. So
+ *  bekommt über mehrere nächtliche Läufe jede Katalogkarte „mind. einen Preis",
+ *  danach rotiert der Sweep die Aktualisierung gleichmäßig durch alle Sets.
+ *  Wird vom täglichen Cron und vom manuellen Settings-Button genutzt.
+ *  `upgraded` zählt Cache-Einträge, die von TCGplayer auf Cardmarket gewechselt haben.
+ *
+ *  Hinweis zum `updated`-Vergleich: bewusst KEIN Skip-Write bei gleichem
+ *  `pricing.*.updated`. Ohne aktualisiertes `cachedAt` bliebe die Karte dauerhaft
+ *  „stale" (`isFresh` false) und würde bei JEDEM Sweep erneut geholt — das Gegenteil
+ *  des gewünschten Effekts. Wir schreiben daher immer und bumpen `cachedAt`; die
+ *  7-Tage-TTL verhindert die eigentliche Wiederholung. */
 export async function refreshAllOwnedAndStale(): Promise<{
-  refreshed: number; upgraded: number; errored: number; total: number;
+  refreshed: number; upgraded: number; errored: number; total: number; sweptSets: number;
 }> {
   const db = getAdminDb();
+  const start = Date.now();
+  const BUDGET_MS = 50_000; // Endpunkt hat maxDuration=60 → vorher sauber abbrechen
   const tcgIds = new Set<string>();
   const previousProvider = new Map<string, PriceProvider | undefined>();
 
@@ -81,6 +93,7 @@ export async function refreshAllOwnedAndStale(): Promise<{
 
   let refreshed = 0, upgraded = 0, errored = 0;
   for (const tcgId of tcgIds) {
+    if (Date.now() - start > BUDGET_MS) break;
     try {
       const result = await refreshAndCache(tcgId);
       refreshed++;
@@ -91,7 +104,37 @@ export async function refreshAllOwnedAndStale(): Promise<{
       errored++;
     }
   }
-  return { refreshed, upgraded, errored, total: tcgIds.size };
+
+  // Rollierender Katalog-Sweep: Sets mit ältestem/fehlendem pricesSyncedAt zuerst.
+  let sweptSets = 0;
+  if (Date.now() - start < BUDGET_MS) {
+    try {
+      const setsSnap = await db.collection('tcg_sets').get();
+      const setsByAge = setsSnap.docs
+        .map(d => ({ id: d.id, syncedAt: (d.data().pricesSyncedAt as Timestamp | undefined)?.toMillis() ?? 0 }))
+        .sort((a, b) => a.syncedAt - b.syncedAt);
+
+      for (const { id: setId } of setsByAge) {
+        if (Date.now() - start > BUDGET_MS) break;
+        const idsSnap = await db.collection('tcg_catalog').where('setId', '==', setId).select().get();
+        const ids = idsSnap.docs.map(d => d.id);
+        if (ids.length === 0) { continue; }
+        try {
+          await refreshAndCacheSet(setId, ids);
+          refreshed += ids.length;
+        } catch (e) {
+          console.warn('[refresh-prices] sweep set failed', setId, e);
+          errored += ids.length;
+        }
+        await db.collection('tcg_sets').doc(setId).set({ pricesSyncedAt: Timestamp.now() }, { merge: true });
+        sweptSets++;
+      }
+    } catch (e) {
+      console.warn('[refresh-prices] catalog sweep failed', e);
+    }
+  }
+
+  return { refreshed, upgraded, errored, total: tcgIds.size, sweptSets };
 }
 
 /** Manueller Settings-Button „Preise jetzt aktualisieren" — refresht NUR die

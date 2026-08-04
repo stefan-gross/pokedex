@@ -7,8 +7,9 @@ import { ChevronLeft, BookOpen, Plus } from 'lucide-react';
 import { getCards } from '@/lib/firestore/cards';
 import { getCardsBySetId } from '@/lib/firestore/catalog';
 import { getBinders } from '@/lib/firestore/binders';
-import { fetchPricesBatch } from '@/lib/prices/fetch-batch';
+import { fetchPricesBatch, fetchPricesCache, fetchPricesRefresh, chunkIds } from '@/lib/prices/fetch-batch';
 import { pickTrendPrice } from '@/lib/prices/value-tier';
+import type { PriceResult } from '@/lib/prices/types';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Button } from '@/components/ui/button';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
@@ -138,21 +139,21 @@ function SetDetailContent() {
     load();
   }, [setId]);
 
-  // Preise beim Öffnen des Sets laden — die Wert-Kennzahlen („Wert (besessen)"
-  // + „bis komplett") und die Preis-Sortierung brauchen sie ohnehin. Aufwand
-  // begrenzt: `fetchPricesBatch` liest cache-first (7-Tage-TTL) über den
-  // gebündelten Set-Pfad (`setId`), nur fehlende/veraltete Preise werden live
-  // nachgeholt (keine 60er-Kappung bei gesetztem setId).
+  // Preise beim Öffnen des Sets laden — zweiphasig & nicht-blockierend, damit
+  // sich die Liste OHNE erneutes Öffnen füllt: Phase 1 merged sofort den
+  // Cache-Stand in die `priceMap` (Wert-Kennzahlen + Preis-Sortierung greifen
+  // direkt), Phase 2 holt fehlende/veraltete IDs im Hintergrund in kleinen
+  // Chunks über den gebündelten Set-Pfad (`setId`) nach und merged jeden Chunk
+  // live (kein Zeitbudget-/Kappungs-Verlust mehr).
   useEffect(() => {
     if (rawCards.length === 0) return;
     priceLoadedRef.current = true;
-    // Nur Karten anfragen, die noch keinen Preis in der Map haben — ein
-    // erneuter Lauf holt die beim ersten Mal (Zeitbudget der Batch-Route) noch
-    // nicht gelieferten Preise nach, statt es bei einem Einmal-Abruf zu belassen.
     const ids = rawCards.map(c => c.id).filter(id => !priceMap.has(id));
     if (ids.length === 0) return;
+
+    let alive = true;
     setPricesLoading(true);
-    fetchPricesBatch(ids, setId).then(prices => {
+    const mergePrices = (prices: Map<string, PriceResult | null>) => {
       setPriceMap(prev => {
         const map = new Map(prev);
         prices.forEach((data, id) => {
@@ -161,7 +162,22 @@ function SetDetailContent() {
         });
         return map;
       });
-    }).catch(() => {}).finally(() => setPricesLoading(false));
+    };
+
+    (async () => {
+      const { prices, stale } = await fetchPricesCache(ids, setId);
+      if (!alive) return;
+      mergePrices(prices);
+      if (stale.length === 0) { setPricesLoading(false); return; }
+      for (const chunk of chunkIds(stale, 12)) {
+        const refreshed = await fetchPricesRefresh(chunk, setId);
+        if (!alive) return;
+        mergePrices(refreshed);
+      }
+      if (alive) setPricesLoading(false);
+    })().catch(() => { if (alive) setPricesLoading(false); });
+
+    return () => { alive = false; };
     // priceMap bewusst NICHT in den Deps (sonst Endlosschleife).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawCards, setId]);
