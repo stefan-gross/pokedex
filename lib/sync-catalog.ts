@@ -88,8 +88,20 @@ export async function runSync(mode: 'auto' | 'update' | 'reset' = 'auto'): Promi
   const currentTotal = await catalogTotalFromSets();
 
   if (catIndex >= CATEGORIES.length) {
-    await setMeta({ bootstrapped: true, lastSynced: nowIso });
-    return { status: 'up-to-date', message: `Alle ${syncedTotal.toLocaleString()} Karten aktuell`, syncedTotal, currentTotal, done: true };
+    // Cursor am Ende: normalerweise fertig. Sind laut Set-Definitionen aber mehr
+    // Karten verfügbar als importiert (neue Sets/Karten bei TCGdex) UND für diesen
+    // Gesamtstand wurde noch kein Nachzieh-Resync gestartet → Cursor zurücksetzen
+    // und komplett neu durchlaufen (upsert idempotent). `resyncedForTotal` merkt
+    // sich den Stand, sodass ein dauerhafter Phantom-Rest (currentTotal bleibt
+    // > syncedTotal) KEINEN Endlos-Resync auslöst — nur ein weiteres Wachstum tut es.
+    if (currentTotal > syncedTotal && (meta?.resyncedForTotal ?? 0) !== currentTotal) {
+      catIndex = 0; page = 1; syncedTotal = 0;
+      await setMeta({ catIndex, page, syncedTotal, resyncedForTotal: currentTotal, lastSynced: nowIso });
+      // fällt durch zum Import-Loop unten
+    } else {
+      await setMeta({ bootstrapped: true, lastSynced: nowIso });
+      return { status: 'up-to-date', message: `Alle ${syncedTotal.toLocaleString()} Karten aktuell`, syncedTotal, currentTotal, done: true };
+    }
   }
 
   const setsMeta = await loadSetsMeta();

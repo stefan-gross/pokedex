@@ -49,6 +49,10 @@ export interface SyncMeta {
   page?: number;
   /** Ist der Voll-Import jemals durchgelaufen? */
   bootstrapped?: boolean;
+  /** currentTotal, für den zuletzt ein Auto-Nachzieh-Resync gestartet wurde —
+   *  verhindert Endlos-Resync, wenn Set-Totals „Phantom"-Karten enthalten
+   *  (currentTotal bleibt dauerhaft > syncedTotal). */
+  resyncedForTotal?: number;
   // Legacy (pokemontcg-Seitencursor) — nicht mehr geschrieben, optional für Altdaten.
   lastPage?: number;
   totalPages?: number;
