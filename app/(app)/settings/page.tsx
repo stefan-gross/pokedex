@@ -452,7 +452,10 @@ export default function SettingsPage() {
                       Zuletzt geändert: {new Date(syncStatus.lastSynced).toLocaleString('de-DE')}
                     </p>
                   )}
-                  {syncStatus?.lastChecked && (
+                  {/* „Zuletzt geprüft" nur, wenn es sich von „Zuletzt geändert"
+                      unterscheidet (letzte Prüfung ergab keine Änderung). Sind sie
+                      gleich, wäre die Zeile redundant. */}
+                  {syncStatus?.lastChecked && syncStatus.lastChecked !== syncStatus.lastSynced && (
                     <p className="text-role-label text-glass-muted">
                       Zuletzt geprüft: {new Date(syncStatus.lastChecked).toLocaleString('de-DE')}
                     </p>
