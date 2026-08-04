@@ -165,6 +165,22 @@ export function BottomNav() {
           </button>
         )}
 
+        {/* Auto ⇄ Manuell-Switch — schwebender Glas-Chip rechts über der Leiste
+            (Daumenzone). Manuell = FAB wird zum Foto-Auslöser. */}
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent(SCAN_CAPTURE_TOGGLE_EVENT, { detail: isManual ? 'auto' : 'manual' }))}
+          className="fixed z-50 flex items-center gap-2 rounded-full glass-overlay"
+          role="switch"
+          aria-checked={isManual}
+          aria-label="Manueller Auslöser"
+          style={{ bottom: 90, right: 14, height: 44, paddingLeft: 12, paddingRight: 14 }}
+        >
+          <span className="relative rounded-full transition-colors" style={{ width: 40, height: 24, background: isManual ? '#3182ce' : 'rgba(255,255,255,0.28)' }}>
+            <span className="absolute rounded-full bg-white transition-all" style={{ width: 18, height: 18, top: 3, left: isManual ? 19 : 3 }} />
+          </span>
+          <span className="text-xs font-semibold" style={{ color: '#fff' }}>{isManual ? 'Manuell' : 'Auto'}</span>
+        </button>
+
         <nav
           className="fixed z-50 grid items-center"
           style={{
@@ -199,9 +215,9 @@ export function BottomNav() {
               onClick={handleFabClick}
               className="flex items-center justify-center"
               style={scanCameraStyle}
-              aria-label={scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren'}
+              aria-label={isManual ? 'Foto aufnehmen' : (scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren')}
             >
-              <FabIcon size={30} color={fabIconColor} fill={!scanState.paused ? '#fff' : 'none'} />
+              <FabIcon size={30} color={fabIconColor} fill={!isManual && !scanState.paused ? '#fff' : 'none'} />
             </button>
           </div>
 
