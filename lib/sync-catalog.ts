@@ -201,7 +201,9 @@ export async function syncNewCards(): Promise<SyncNewResult> {
   // verbleibende Lücke ist per Definition Phantom (in Set-Listen genannt, aber
   // via GraphQL nicht holbar). Als Grundwert merken, damit sie nicht als „neue
   // Karten" erscheint; ein gekappter Lauf lässt den Wert unangetastet.
-  const metaUpdate: Partial<SyncMeta> = { syncedTotal: realCount, currentTotal, lastSynced: nowIso, lastChecked: nowIso };
+  // lastChecked = jede Prüfung; lastSynced NUR, wenn wirklich Karten dazukamen.
+  const metaUpdate: Partial<SyncMeta> = { syncedTotal: realCount, currentTotal, lastChecked: nowIso };
+  if (added > 0) metaUpdate.lastSynced = nowIso;
   if (!hitCap) metaUpdate.phantomTotal = Math.max(0, currentTotal - realCount);
   await setMeta(metaUpdate);
 
@@ -630,6 +632,15 @@ export async function enrichDeData(setsPerCall = 12): Promise<EnrichSpeciesResul
     enriched,
     remaining: hasMore ? -1 : 0,
   };
+}
+
+/** Stempelt das ENDE eines „Daten aktualisieren"-Laufs: `lastChecked` = jetzt
+ *  (immer), `lastSynced` = jetzt NUR wenn im Lauf tatsächlich etwas geändert wurde.
+ *  So spiegelt „Zuletzt geprüft"/„Zuletzt geändert" den ganzen Lauf, nicht nur den
+ *  Karten-Sync-Zwischenschritt. */
+export async function touchSyncMeta(changed: boolean): Promise<void> {
+  const nowIso = new Date().toISOString();
+  await setMeta(changed ? { lastChecked: nowIso, lastSynced: nowIso } : { lastChecked: nowIso });
 }
 
 export async function getSyncStatus() {

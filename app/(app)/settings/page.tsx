@@ -258,7 +258,15 @@ export default function SettingsPage() {
       add('DE-Namen', d('withDeName'));
       add('Preise', d('withPrice'));
       if (linked > 0) parts.push(`${linked} verknüpft`);
-      const diff = parts.length ? parts.join(' · ') : 'keine Änderungen';
+      const changed = parts.length > 0;
+      const diff = changed ? parts.join(' · ') : 'keine Änderungen';
+
+      // Lauf-Ende serverseitig stempeln: „Zuletzt geprüft" immer, „Zuletzt
+      // geändert" nur bei echten Änderungen → Statuszeilen matchen den Lauf.
+      await fetch('/api/admin/touch-meta', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ changed }),
+      }).catch(() => {});
       step('✅ Fertig', 100);
 
       const run = { at: new Date().toISOString(), diff };
@@ -441,12 +449,12 @@ export default function SettingsPage() {
 
                   {syncStatus?.lastSynced && (
                     <p className="text-role-label text-glass-muted pt-1">
-                      Letzte Aktualisierung: {new Date(syncStatus.lastSynced).toLocaleString('de-DE')}
+                      Zuletzt geändert: {new Date(syncStatus.lastSynced).toLocaleString('de-DE')}
                     </p>
                   )}
                   {syncStatus?.lastChecked && (
                     <p className="text-role-label text-glass-muted">
-                      Letzte Prüfung: {new Date(syncStatus.lastChecked).toLocaleString('de-DE')}
+                      Zuletzt geprüft: {new Date(syncStatus.lastChecked).toLocaleString('de-DE')}
                     </p>
                   )}
                   {hasNew && (
