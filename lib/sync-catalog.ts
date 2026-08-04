@@ -338,6 +338,7 @@ interface TcgdexFullSet {
   abbreviation?: { official?: string } | null;
   tcgOnline?: string | null;
   cardCount?: { official?: number; total?: number };
+  cards?: { id: string }[];   // vom /en/sets/{id}-Endpunkt: tatsächlich gelistete Karten
   logo?: string;
   symbol?: string;
 }
@@ -391,7 +392,11 @@ export async function syncSets(): Promise<SyncSetsResult> {
       name: s.name,
       ...(de?.name ? { nameDe: de.name } : {}),
       series: s.serie?.name ?? '',
-      total: s.cardCount?.total ?? 0,
+      // total = tatsächlich von TCGdex GELISTETE Karten (cards.length), NICHT
+      // cardCount.total: letzteres zählt Secret-Rare-Slots mit, zu denen TCGdex
+      // gar keine Karte liefert (~302 Phantom app-weit) → sonst zeigt „neue Karten
+      // verfügbar" dauerhaft eine Zahl, die kein Sync je schließen kann.
+      total: s.cards?.length ?? s.cardCount?.total ?? 0,
       printedTotal: s.cardCount?.official ?? 0,
       ...(code ? { ptcgoCode: code } : {}),
       logoUrl: withExt(de?.logo ?? s.logo) ?? '',
