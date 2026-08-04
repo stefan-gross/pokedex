@@ -234,9 +234,10 @@ export function toCatalogCard(
     ...(en.dexId?.length ? { nationalDexNumber: en.dexId[0] } : {}),
     imgSmall: tcgdexImage(en.image, 'low'),
     imgLarge: tcgdexImage(en.image, 'high'),
-    // Echtes DE-Bild NUR speichern, wenn der /de/sets-Endpunkt eine DE-Bild-Basis
-    // liefert (alte Sets ohne DE-Bild → kein Feld → Read-Time-Fallback zeigt EN).
-    ...(de?.image ? { imgSmallDe: tcgdexImage(de.image, 'low'), imgLargeDe: tcgdexImage(de.image, 'high') } : {}),
+    // DE-Bild wird bewusst NICHT gespeichert: die DE-URL wird beim LESEN aus der
+    // EN-URL abgeleitet (`deImageUrl`, /en/→/de/), und selbst gehostete Backfill-
+    // Bilder (pokewiki, Storage-URL in `imgLargeDe`) haben Vorrang und dürfen von
+    // einem Re-Sync NIE überschrieben werden. Siehe Projekt-Memory tcgdex_golive.
     variants: mapVariants(en.variants),
     ...(en.illustrator ? { artist: en.illustrator, artistTokens: en.illustrator.toLowerCase().split(/\s+/) } : {}),
   };

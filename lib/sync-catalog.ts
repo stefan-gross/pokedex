@@ -1,5 +1,5 @@
 import { getAdminDb } from './firebase/admin';
-import { FieldPath, FieldValue } from 'firebase-admin/firestore';
+import { FieldPath } from 'firebase-admin/firestore';
 import type { CatalogCard, SyncMeta } from './firestore/catalog';
 import { CATEGORIES, PAGE_SIZE, fetchEnCardsPage, fetchDeCardsForSet, toCatalogCard,
          fetchSetCardIds, fetchEnCardsByIds, tcgdexImage, type DeCardInfo } from './tcgdex-source';
@@ -552,13 +552,16 @@ export async function enrichSpeciesData(batchSize = 500): Promise<EnrichSpeciesR
  * Reconcile der deutschen Daten für BESTEHENDE Katalogkarten gegen die echte
  * Quelle `/de/sets/{id}`:
  *  - fehlenden `nameDe` ergänzen,
- *  - echtes DE-Bild setzen/aktualisieren (`imgLargeDe`/`imgSmallDe`),
- *  - **fabrizierte DE-Bilder BEREINIGEN**: Alt-Daten haben `imgLargeDe` per
- *    `/en/`→`/de/`-URL-Tausch erzeugt, obwohl es gar kein deutsches Bild gibt
- *    (z. B. `base4`). Hat `/de/sets` für die Karte kein Bild, wird das Feld
- *    gelöscht → der Read-Time-Fallback zeigt korrekt das EN-Bild.
- * Set-weise (ein `/de/sets/{id}` pro Set), Cursor über Set-IDs, gekappt. Bei
- * transientem Fehler (fetch → null) wird das Set übersprungen (nicht bereinigt).
+ *  - `hasDeImage` (Bool) setzen = „ein deutsches Bild ist verfügbar": entweder
+ *    selbst gehostet (`deImageSource` gesetzt, z. B. pokewiki) ODER TCGdex hat
+ *    ein echtes DE-Bild (`/de/sets` liefert `image`; wird beim Lesen abgeleitet).
+ *
+ * WICHTIG: `imgLargeDe`/`imgSmallDe` werden NIE geschrieben oder gelöscht — diese
+ * Felder halten ausschließlich selbst gehostete Backfill-URLs (pokewiki, Storage),
+ * die laut Design (Projekt-Memory) von keinem Sync überschrieben werden dürfen.
+ * Die TCGdex-DE-URL wird beim LESEN abgeleitet (`deImageUrl`, /en/→/de/).
+ * Set-weise, Cursor über Set-IDs, gekappt. Transienter Fehler (fetch → null) →
+ * Set überspringen.
  */
 export async function enrichDeData(setsPerCall = 12): Promise<EnrichSpeciesResult> {
   const db = getAdminDb();
@@ -602,18 +605,10 @@ export async function enrichDeData(setsPerCall = 12): Promise<EnrichSpeciesResul
       // Name ergänzen (nie entfernen).
       if (de?.name && !c.nameDe) { update.nameDe = de.name; update.nameDeLower = de.name.toLowerCase(); }
 
-      // Bild reconcilen: echtes DE-Bild setzen/aktualisieren ODER fabriziertes löschen.
-      if (de?.image) {
-        const large = tcgdexImage(de.image, 'high');
-        if (c.imgLargeDe !== large) {
-          update.imgSmallDe = tcgdexImage(de.image, 'low');
-          update.imgLargeDe = large;
-        }
-      } else if (c.imgLargeDe || c.imgSmallDe) {
-        // Kein echtes DE-Bild, aber Feld vorhanden → Alt-/Fake-Wert entfernen.
-        update.imgLargeDe = FieldValue.delete();
-        update.imgSmallDe = FieldValue.delete();
-      }
+      // DE-Bild-Verfügbarkeit als Bool ableiten (Bilder-FELDER NICHT anfassen!):
+      // selbst gehostet (deImageSource) ODER TCGdex hat ein echtes DE-Bild.
+      const hasDe = !!c.deImageSource || !!de?.image;
+      if (c.hasDeImage !== hasDe) update.hasDeImage = hasDe;
 
       if (Object.keys(update).length === 0) continue;
       batch.update(doc.ref, update);
@@ -649,23 +644,27 @@ export async function getSyncStatus() {
     try { return (await build().count().get()).data().count; } catch { return 0; }
   };
   const cat = () => db.collection('tcg_catalog');
-  const [totalCards, totalSets, withImage, withDeImage, withDeName, withPrice, deNoEn] = await Promise.all([
+  const [totalCards, totalSets, withImage, selfHostedDe, hasDeFlag, withDeName, withPrice, deNoEn] = await Promise.all([
     safeCount(() => cat()),
     safeCount(() => db.collection('tcg_sets')),
     safeCount(() => cat().where('imgLarge', '>', '')),
+    // Selbst gehostete DE-Bilder (Backfill-URL in imgLargeDe, z.B. pokewiki).
     safeCount(() => cat().where('imgLargeDe', '>', '')),
+    // Abgeleitete DE-Verfügbarkeit (self-hosted ODER TCGdex-DE) — erst nach enrichDeData.
+    safeCount(() => cat().where('hasDeImage', '==', true)),
     safeCount(() => cat().where('nameDeLower', '>', '')),
     safeCount(() => cat().where('prices.provider', 'in', ['cardmarket', 'tcgplayer'])),
     // Karten mit DE-Bild, aber OHNE EN-Bild (imgLarge==''). Braucht den
-    // Composite-Index (imgLarge, imgLargeDe); fehlt er → safeCount liefert 0,
-    // dann fällt withAnyImage auf withImage zurück (leichte Unterzählung).
+    // Composite-Index (imgLarge, imgLargeDe); fehlt er → safeCount liefert 0.
     safeCount(() => cat().where('imgLarge', '==', '').where('imgLargeDe', '>', '')),
   ]);
-  // Karten mit IRGENDEINEM Bild (EN oder DE) = EN-Bilder + DE-ohne-EN.
-  // Sicherheitsnetz: „irgendein Bild" ist per Definition ≥ EN-Bilder UND ≥ DE-Bilder
-  // (beide sind Teilmengen). Fehlt der Composite-Index (deNoEn → 0), verhindert das
-  // max(), dass die Zahl fälschlich UNTER die DE-Zahl fällt.
-  const withAnyImage = Math.max(withImage + deNoEn, withImage, withDeImage);
+  // „Deutsche Bilder" = abgeleitete Verfügbarkeit (hasDeImage). Bis der erste
+  // enrichDeData-Lauf lief, ist hasDeImage leer → Fallback auf die selbst
+  // gehosteten (imgLargeDe), damit die Zahl nicht fälschlich 0 zeigt.
+  const withDeImage = Math.max(hasDeFlag, selfHostedDe);
+  // Karten mit IRGENDEINEM Bild (EN oder selbst gehostetes DE) = EN + DE-ohne-EN.
+  // max() als Sicherheitsnetz (irgendein Bild ≥ EN und ≥ self-hosted DE).
+  const withAnyImage = Math.max(withImage + deNoEn, withImage, selfHostedDe);
 
   return {
     ...(meta ?? { lastPage: 0, totalPages: 0, lastSynced: null, bootstrapped: false }),

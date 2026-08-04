@@ -27,8 +27,10 @@ export interface CatalogCard {
   evolutionFamily?: number[];  // Alle Pokédex-Nummern der Evolutionslinie, z.B. [4,5,6] für Glumanda-Linie
   imgSmall: string;
   imgLarge: string;
-  imgSmallDe?: string;         // DE-Kartenbild klein von TCGdex (einmalig via enrichDeImages gespeichert)
-  imgLargeDe?: string;         // DE-Kartenbild groß von TCGdex
+  imgSmallDe?: string;         // Selbst gehostetes DE-Kartenbild klein (Backfill, z.B. pokewiki/Storage). NICHT vom Sync überschreiben.
+  imgLargeDe?: string;         // Selbst gehostetes DE-Kartenbild groß (Backfill). TCGdex-DE-URL wird sonst beim Lesen abgeleitet (/en/→/de/).
+  deImageSource?: string;      // Herkunft des selbst gehosteten DE-Bilds, z.B. 'pokewiki' | 'limitless'
+  hasDeImage?: boolean;        // Abgeleitet (enrichDeData): ein deutsches Bild ist verfügbar (selbst gehostet ODER TCGdex-DE-Scan)
   // Pokémon-Artdaten (nur Pokémon-Karten, via PokéAPI-Enrichment)
   genusDe?: string;            // z.B. "Maus-Pokémon"
   flavorTextDe?: string;       // Beschreibungstext auf Deutsch
