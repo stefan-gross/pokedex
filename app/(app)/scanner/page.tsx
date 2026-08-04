@@ -274,14 +274,19 @@ function classifyJobError(job: ScanJob): ErrorClass {
       attackText: 'Halte die Karte deutlicher in den Rahmen.',
     };
   }
-  if (!gp?.setCode && !gp?.number && !gp?.nationalDexNumber) {
+  if (!gp?.number) {
+    // Mindestanforderung für JEDEN Katalog-Lookup ist die Sammelnummer (R1/R2/R3
+    // und der Vorab-Lookup brauchen sie alle). Fehlt sie, konnte die Karte nicht
+    // richtig erkannt werden — das ist KEIN „nicht im Katalog", sondern ein
+    // unvollständiger Scan → näher/schärfer neu scannen. (Name/Set-Kürzel/Dex
+    // allein genügen nicht.)
     return {
       kind: 'gemini-thin',
       Icon: AlertTriangle,
       iconColor: '#fb923c',
       cardName: 'Enigmon',
-      attackTitle: 'Set & Nummer unlesbar',
-      attackText: 'Set-Kürzel und Nummer nicht erkannt. Rücke näher heran und entferne Hülle/Reflexion, damit die untere Karten-Ecke scharf ist.',
+      attackTitle: 'Karte nicht vollständig erkannt',
+      attackText: 'Setnummer und Set-Kürzel unten an der Karte wurden nicht gelesen. Rücke näher heran und entferne Hülle/Reflexion, damit die untere Karten-Ecke scharf ist.',
     };
   }
   if (isNonWestern) {
@@ -1094,7 +1099,11 @@ export default function ScannerPage() {
       // sinnvoller „nicht im Katalog"-Fall, sondern ein zu dünner Scan: als
       // Fehler behandeln (classifyJobError → 'gemini-thin' „Set & Nummer
       // unlesbar"), damit der Nutzer näher/ohne Reflexion neu scannt.
-      const hasIdentifier = !!(gemini.setCode || rawNumber || gemini.number || gemini.nationalDexNumber);
+      // Pending-Karte nur, wenn die Sammelnummer gelesen wurde — sie ist die
+      // Mindestanforderung jedes Lookups und der einzige Schlüssel, mit dem sich
+      // die Pending-Karte später rekonziliieren lässt. Ohne Nummer (nur Name/
+      // Set-Kürzel/Dex) ist es „nicht vollständig erkannt", nicht „nicht im Katalog".
+      const hasIdentifier = !!(rawNumber || gemini.number);
       const pendingCard: CardInfo | null = (!catalogCard && hasIdentifier) ? {
         id: `pending-${id}`,
         name: gemini.name ?? 'Unbekannte Karte',
