@@ -245,6 +245,14 @@ function cardImgUrlsLarge(job: ScanJob): string[] {
   const candidates = lang === 'de'
     ? [card.imgLargeDe, card.imgLarge, card.imgSmallDe, card.imgSmall]
     : [card.imgLarge, card.imgSmall, card.imgLargeDe, card.imgSmallDe];
+  // Fallback: selbst gehostete Storage-Bilder (Ersatz für Karten OHNE TCGdex-Bild,
+  // z.B. McDonald's-Sets) als LETZTE Kandidaten. Greifen nur, wenn kein Katalog-
+  // Bild lädt; existiert kein Storage-Bild → 404 → onError springt weiter.
+  const bucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+  if (bucket) {
+    const base = `https://storage.googleapis.com/${bucket}/catalog-images/${card.id}`;
+    candidates.push(`${base}_de.png`, `${base}_de.jpg`, `${base}.png`);
+  }
   return candidates.filter((u): u is string => !!u);
 }
 
