@@ -469,9 +469,13 @@ export default function ScannerPage() {
   // reagiert per useEffect und macht das Standbild.
   const [shutterSignal, setShutterSignal] = useState(0);
   const switchCaptureMode = useCallback((m: 'auto' | 'manual') => {
-    setStreamPaused(false); // beim Moduswechsel Stream sicher laufen lassen
     setCaptureMode(m);
-  }, []);
+    // Stream nur „aufwecken", wenn gerade KEINE erkannte Karte gezeigt wird —
+    // sonst würde ein A|M-Wechsel die Ergebnis-Anzeige wegblenden (Stream lief
+    // wieder an → live Kamera). Bei sichtbarer erkannter Karte bleibt alles
+    // stehen; der Moduswechsel greift erst beim nächsten Scan.
+    if (!recognizedJobId) setStreamPaused(false);
+  }, [recognizedJobId]);
 
   // Quick-Add via +-Button: öffnet AddToCollectionModal direkt (kein
   // CardDetailSheet-Zwischenschritt). preVariant/preCondition aus dem Job.
@@ -1288,7 +1292,8 @@ export default function ScannerPage() {
             paused={streamPaused}
             autoDetect={captureMode === 'auto'}
             shutterSignal={shutterSignal}
-            hideFrame={scanMode === 'recognize' && streamPaused && captureMode === 'auto'}
+            recognized={recognizedJobId != null}
+            hideFrame={scanMode === 'recognize' && streamPaused && (captureMode === 'auto' || recognizedJobId != null)}
           />
         </div>
       )}

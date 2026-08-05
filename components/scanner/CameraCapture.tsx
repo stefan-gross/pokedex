@@ -41,6 +41,10 @@ interface Props {
   /** Monoton steigender Zähler — jede Erhöhung löst im Manuell-Modus ein Foto aus
    *  (der Footer-Scan-Button erhöht ihn). */
   shutterSignal?: number;
+  /** true, sobald die erkannte Karte (Seiten-Overlay) angezeigt wird. Beendet im
+   *  Manuell-Modus den eingefrorenen Foto-Freeze → dahinter erscheint die
+   *  abgedunkelte (pausierte) Kamera, genau wie im Auto-Modus. */
+  recognized?: boolean;
 }
 
 // ─── Modul-Level: Stream-Referenz für Visibility-Handler ─────────────────────
@@ -383,7 +387,7 @@ interface DebugInfo {
   angleDeg: number;      // Kartenwinkel aus den Ecken (0 = aufrecht)
 }
 
-export function CameraCapture({ onCapture, pendingCount = 0, paused = false, active, hideFrame = false, autoDetect = true, shutterSignal = 0 }: Props) {
+export function CameraCapture({ onCapture, pendingCount = 0, paused = false, active, hideFrame = false, autoDetect = true, shutterSignal = 0, recognized = false }: Props) {
   const videoRef   = useRef<HTMLVideoElement>(null);
   const canvasRef  = useRef<HTMLCanvasElement>(null);
   const sampleRef  = useRef<HTMLCanvasElement>(null);
@@ -973,18 +977,20 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     onCaptureRef.current(imageBase64, 'image/jpeg', meta);
   }, [paused]);
 
-  // Freeze aufheben, sobald der Stream wieder läuft (Nutzer tippt für die
-  // nächste Karte → Seite setzt paused=false). Solange pausiert (Verarbeitung +
-  // erkannte Karte), bleibt das eingefrorene Foto mit Ampel-Rahmen hinter dem
-  // Ergebnis-Overlay stehen.
+  // Freeze aufheben, sobald (a) die erkannte Karte erscheint → dahinter wird
+  // die abgedunkelte (pausierte) Kamera sichtbar, genau wie im Auto-Modus; oder
+  // (b) der Stream wieder läuft (Nutzer tippt für die nächste Karte). Während
+  // der Verarbeitung (paused, noch nicht erkannt) bleibt das eingefrorene Foto
+  // mit Ampel-Rahmen stehen — die Effekt-Deps [paused, recognized] ändern sich
+  // dabei nicht, der Effekt läuft also nicht vorzeitig.
   useEffect(() => {
-    if (!paused && frozenStill) {
+    if ((recognized || !paused) && frozenStill) {
       manualHoldRef.current = false;
       onnxBoxRef.current = null;
       setFrozenStill(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paused]);
+  }, [paused, recognized]);
 
   // Footer-Scan-Button erhöht `shutterSignal` → hier auslösen (Mount überspringen).
   const shutterSeenRef = useRef(shutterSignal);
