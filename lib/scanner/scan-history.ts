@@ -1,88 +1,68 @@
 'use client';
 
+import {
+  collection, addDoc, getDocs, deleteDoc, query, orderBy, limit,
+  getCountFromServer,
+} from 'firebase/firestore';
+import { db } from '../firebase/client';
+
 /**
- * Lokale Scan-Historie (IndexedDB): speichert die zuletzt an Gemini gesendeten
- * Bilder samt Ergebnis. Zweck: eine falsch/gar nicht erkannte Karte lässt sich
- * im Testmodus mit EXAKT demselben Bild erneut durch die Pipeline schicken —
- * auch am iPhone (pokedex.smartfamilyzone.de), ohne die Karte erneut vor die
- * Kamera halten zu müssen.
+ * Scan-Historie in FIRESTORE (Collection `scan_history`): die zuletzt an Gemini
+ * gesendeten Bilder samt Ergebnis. Bewusst geteilter Backend-Speicher statt
+ * lokaler IndexedDB — so sind auf dem iPhone (Live-App) gescannte Bilder auch
+ * am Entwicklungs-`localhost:3000` verfügbar (dieselbe Firestore-Instanz).
  *
- * Bewusst IndexedDB statt localStorage: Base64-JPEGs sind zu groß für die
- * ~5 MB-Grenze von localStorage; IDB liegt auf Disk (kein RAM-Druck → kein
- * iOS-PWA-Crash-Risiko wie bei In-Memory-Bildern).
+ * Auf Vercel fehlen die Admin-Env-Vars → nur das Client-SDK funktioniert dort;
+ * deshalb Firestore-Client (nicht Admin/Storage). Das Bild liegt inline als
+ * base64 im Dokument (zugeschnittenes Sendebild ~150–350 KB < 1 MB Doc-Limit).
+ * Gedeckelt auf die letzten MAX_ENTRIES.
  */
 
 export interface ScanHistoryEntry {
-  id: number;          // Zeitstempel (ms) = Schlüssel, monoton
+  id: string;          // Firestore-Doc-ID
   imageBase64: string; // exakt das an Gemini gesendete Bild (ohne data:-Präfix)
   mimeType: string;
   label: string;       // Kartenname, „Kein Treffer", „Fehler" …
   ok: boolean;         // true = Karte erkannt
   cardId?: string;
-  ts: number;
+  ts: number;          // Zeitstempel (ms)
 }
 
-const DB_NAME = 'pokedex-scanner';
-const STORE = 'scan-history';
+const COL = 'scan_history';
 const MAX_ENTRIES = 20;
 
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    if (typeof indexedDB === 'undefined') { reject(new Error('IndexedDB nicht verfügbar')); return; }
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: 'id' });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
 /** Neuen Scan speichern und auf die letzten MAX_ENTRIES kürzen. Fehler werden
- *  geschluckt (Historie ist rein optionaler Komfort, nie geschäftskritisch). */
+ *  geschluckt (Historie ist reiner Test-Komfort, nie geschäftskritisch). */
 export async function saveScan(entry: Omit<ScanHistoryEntry, 'id' | 'ts'> & { ts?: number }): Promise<void> {
   try {
-    const db = await openDb();
     const ts = entry.ts ?? Date.now();
-    const record: ScanHistoryEntry = { ...entry, id: ts, ts };
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).put(record);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+    await addDoc(collection(db, COL), {
+      imageBase64: entry.imageBase64,
+      mimeType: entry.mimeType,
+      label: entry.label,
+      ok: entry.ok,
+      cardId: entry.cardId,
+      ts,
     });
-    // Kürzen: alle IDs holen, älteste über der Grenze löschen.
-    await new Promise<void>((resolve) => {
-      const tx = db.transaction(STORE, 'readwrite');
-      const store = tx.objectStore(STORE);
-      const keysReq = store.getAllKeys();
-      keysReq.onsuccess = () => {
-        const keys = (keysReq.result as number[]).sort((a, b) => a - b); // aufsteigend = älteste zuerst
-        const excess = keys.length - MAX_ENTRIES;
-        for (let i = 0; i < excess; i++) store.delete(keys[i]);
-      };
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
-    });
-    db.close();
+    // Kürzen: Anzahl serverseitig zählen (billig, ohne Bilder zu laden), dann die
+    // ältesten Überzähligen löschen.
+    const cntSnap = await getCountFromServer(collection(db, COL));
+    const excess = cntSnap.data().count - MAX_ENTRIES;
+    if (excess > 0) {
+      const oldest = await getDocs(query(collection(db, COL), orderBy('ts', 'asc'), limit(excess)));
+      await Promise.all(oldest.docs.map(d => deleteDoc(d.ref)));
+    }
   } catch { /* Historie ist optional */ }
 }
 
-/** Alle Einträge, neueste zuerst. */
+/** Letzte MAX_ENTRIES, neueste zuerst. */
 export async function listScans(): Promise<ScanHistoryEntry[]> {
   try {
-    const db = await openDb();
-    const all = await new Promise<ScanHistoryEntry[]>((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readonly');
-      const req = tx.objectStore(STORE).getAll();
-      req.onsuccess = () => resolve(req.result as ScanHistoryEntry[]);
-      req.onerror = () => reject(req.error);
+    const snap = await getDocs(query(collection(db, COL), orderBy('ts', 'desc'), limit(MAX_ENTRIES)));
+    return snap.docs.map(d => {
+      const data = d.data() as Omit<ScanHistoryEntry, 'id'>;
+      return { id: d.id, ...data };
     });
-    db.close();
-    return all.sort((a, b) => b.ts - a.ts);
   } catch {
     return [];
   }
@@ -90,13 +70,7 @@ export async function listScans(): Promise<ScanHistoryEntry[]> {
 
 export async function clearScans(): Promise<void> {
   try {
-    const db = await openDb();
-    await new Promise<void>((resolve) => {
-      const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).clear();
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
-    });
-    db.close();
+    const snap = await getDocs(collection(db, COL));
+    await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
   } catch { /* egal */ }
 }
