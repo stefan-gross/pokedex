@@ -236,6 +236,7 @@ export function BottomNav() {
             <ButtonGroup
               iconOnly
               size="sm"
+              toggle
               value={scanState.captureMode ?? 'auto'}
               onChange={(v) => window.dispatchEvent(new CustomEvent(SCAN_CAPTURE_TOGGLE_EVENT, { detail: v }))}
               options={[

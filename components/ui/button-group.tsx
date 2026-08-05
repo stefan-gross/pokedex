@@ -62,6 +62,10 @@ interface ButtonGroupProps<T extends string> {
    *  Entwurf; ohne diesen Override hätten die "Hintergrund-Deckkraft
    *  (inaktiv)"-Regler auf der Testseite keine sichtbare Wirkung. */
   trackStyle?: React.CSSProperties;
+  /** Nur bei GENAU zwei Optionen: die gesamte Fläche wird klickbar und schaltet
+   *  zwischen beiden Werten um — egal, wo getippt wird. Für sehr kompakte
+   *  Toggles (`size="sm"`), deren Einzelzellen als Treffer zu klein sind. */
+  toggle?: boolean;
 }
 
 export function ButtonGroup<T extends string>({
@@ -74,10 +78,18 @@ export function ButtonGroup<T extends string>({
   size = 'md',
   activeStyle,
   trackStyle,
+  toggle = false,
 }: ButtonGroupProps<T>) {
   // Zellgröße der iconOnly-Variante — steuert Indikator-Mathematik UND
   // Button-Kantenlänge, damit beide zusammenpassen.
   const iconCell = size === 'sm' ? ICON_ONLY_CELL_SM : ICON_ONLY_CELL;
+  // Toggle-Modus: nur sinnvoll bei genau zwei Optionen. Die ganze Fläche
+  // schaltet dann auf die jeweils ANDERE Option um.
+  const isToggle = toggle && options.length === 2;
+  const toggleToOther = () => {
+    const other = options.find(o => o.value !== value);
+    if (other && !other.disabled) onChange(other.value);
+  };
   // Abonniert den geteilten Glas-Theme-Store nur für Reaktivität (siehe
   // `Button`) — das aktive Segment liest `theme.buttonGroupText`/
   // `theme.buttonGroupIcon` unten (getrennte Themes).
@@ -139,8 +151,19 @@ export function ButtonGroup<T extends string>({
               WebkitBackdropFilter: 'blur(14px) saturate(1.3)',
             }),
         ...trackStyle,
+        ...(isToggle ? { cursor: 'pointer' } : null),
       }}
-      role="group"
+      // Toggle-Modus: der ganze Track ist EIN Bedienelement (die Einzelzellen
+      // sind unten auf pointer-events-none gesetzt) → Klick/Tastatur schaltet
+      // um, egal wo getippt wird.
+      role={isToggle ? 'button' : 'group'}
+      tabIndex={isToggle ? 0 : undefined}
+      aria-pressed={isToggle ? value === options[1].value : undefined}
+      aria-label={isToggle ? (options.find(o => o.value === value)?.ariaLabel) : undefined}
+      onClick={isToggle ? toggleToOther : undefined}
+      onKeyDown={isToggle ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleToOther(); }
+      } : undefined}
     >
       {iconOnly && activeIndex >= 0 && (
         // Äußere Schicht: reine Positionierung (CSS-Transition auf
@@ -240,17 +263,21 @@ export function ButtonGroup<T extends string>({
               if (el) btnRefs.current.set(String(opt.value), el);
               else btnRefs.current.delete(String(opt.value));
             }}
-            onClick={() => !isDisabled && onChange(opt.value)}
+            // Toggle-Modus: der Track übernimmt Klick/Tastatur → Einzel-Buttons
+            // sind reine Optik (pointer-events-none, tabIndex -1).
+            onClick={isToggle ? undefined : () => !isDisabled && onChange(opt.value)}
             disabled={isDisabled}
-            aria-label={opt.ariaLabel}
+            tabIndex={isToggle ? -1 : undefined}
+            aria-hidden={isToggle ? true : undefined}
+            aria-label={isToggle ? undefined : opt.ariaLabel}
             // `relative z-10` in BEIDEN Varianten — hebt den Text/das Icon
             // über den gleitenden Indikator (liegt als vorheriges
             // Geschwister-Element im DOM, ohne z-index wäre die
             // Stapelreihenfolge sonst von der Dokumentreihenfolge abhängig).
             className={
               iconOnly
-                ? `relative z-10 rounded-full flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'text-glass-muted'}`
-                : `relative z-10 flex-1 min-h-11 px-2 py-1.5 text-xs font-medium transition-colors whitespace-nowrap flex items-center justify-center gap-1 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'text-glass-muted'}`
+                ? `relative z-10 rounded-full flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${isToggle ? 'pointer-events-none' : ''} ${active ? '' : 'text-glass-muted'}`
+                : `relative z-10 flex-1 min-h-11 px-2 py-1.5 text-xs font-medium transition-colors whitespace-nowrap flex items-center justify-center gap-1 disabled:opacity-30 disabled:cursor-not-allowed ${isToggle ? 'pointer-events-none' : ''} ${active ? '' : 'text-glass-muted'}`
             }
             // Die Füllung kommt jetzt für BEIDE Varianten aus dem
             // gleitenden Indikator (oben) — der Button selbst bekommt nur
