@@ -91,6 +91,30 @@ async function assessImage(img: HTMLImageElement): Promise<AssessResult> {
   return { box, meta };
 }
 
+// ── A/B-Test: Auflösung vs. Gemini-Latenz/Erkennung ────────────────────────
+const AB_RESOLUTIONS: (number | null)[] = [null, 1100, 900, 700]; // null = Original
+
+function base64ToBytes(b64: string) {
+  const s = atob(b64);
+  const a = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i);
+  return a;
+}
+
+/** Bild auf lange Kante `longEdge` herunterskalieren → JPEG q0.82 base64 (ohne Präfix). */
+function downscaleToBase64(img: HTMLImageElement, longEdge: number): string {
+  const long = Math.max(img.naturalWidth, img.naturalHeight);
+  const scale = long > longEdge ? longEdge / long : 1;
+  const w = Math.round(img.naturalWidth * scale);
+  const h = Math.round(img.naturalHeight * scale);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d')!.drawImage(img, 0, 0, w, h);
+  return c.toDataURL('image/jpeg', 0.82).split(',')[1];
+}
+
+interface ABCell { res: string; geminiMs: number | null; cardId: string | null; number: string; sizeKb: number; }
+interface ABRow { label: string; expectedId?: string; cells: ABCell[]; }
+
 /** Bild + Ampel-Kontur in ein Canvas (native Auflösung) zeichnen — CSS skaliert
  *  es später deckungsgleich herunter. */
 function drawPreview(cv: HTMLCanvasElement, img: HTMLImageElement, box: CardBox | null, level: string) {
@@ -124,6 +148,7 @@ export function ScanTestPanel({ onClose, onRecognize }: Props) {
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<{ entry: ScanHistoryEntry; meta: CaptureMeta } | null>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [ab, setAb] = useState<{ running: boolean; rows: ABRow[]; done: number; total: number } | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -131,6 +156,37 @@ export function ScanTestPanel({ onClose, onRecognize }: Props) {
     setLoading(false);
   }, []);
   useEffect(() => { void refresh(); }, [refresh]);
+
+  // A/B: jedes Bild bei mehreren Auflösungen durch /api/scan → Gemini-Latenz +
+  // erkannte Karte (per Server-Vorabtreffer bzw. Nummer) vergleichen.
+  const runAB = useCallback(async () => {
+    const list = await listScans();
+    const total = list.length * AB_RESOLUTIONS.length;
+    setAb({ running: true, rows: [], done: 0, total });
+    const rows: ABRow[] = [];
+    let done = 0;
+    for (const e of list) {
+      const img = await loadImage(`data:${e.mimeType};base64,${e.imageBase64}`);
+      const cells: ABCell[] = [];
+      for (const res of AB_RESOLUTIONS) {
+        const b64 = res ? downscaleToBase64(img, res) : e.imageBase64;
+        let geminiMs: number | null = null, cardId: string | null = null, number = '—';
+        try {
+          const r = await fetch('/api/scan', { method: 'POST', headers: { 'Content-Type': e.mimeType }, body: base64ToBytes(b64) });
+          const j = await r.json();
+          geminiMs = j?._debug?.ms ?? null;
+          cardId = j?._preLookup?.cardId ?? null;
+          number = typeof j?.number === 'string' ? j.number : '—';
+        } catch { /* Fehler = Miss */ }
+        cells.push({ res: res ? `${res}px` : 'orig', geminiMs, cardId, number, sizeKb: Math.round(b64.length * 3 / 4 / 1024) });
+        done++;
+        setAb(prev => prev ? { ...prev, done } : prev);
+      }
+      rows.push({ label: e.label, expectedId: e.cardId, cells });
+      setAb(prev => prev ? { ...prev, rows: [...rows] } : prev);
+    }
+    setAb({ running: false, rows, done: total, total });
+  }, []);
 
   const runEntry = useCallback(async (entry: ScanHistoryEntry) => {
     if (mode === 'full') {
@@ -169,7 +225,9 @@ export function ScanTestPanel({ onClose, onRecognize }: Props) {
         </button>
       </div>
 
-      {preview ? (
+      {ab ? (
+        <ABResults ab={ab} onBack={() => setAb(null)} />
+      ) : preview ? (
         // ── Ampel-Vorschau eines Bildes ─────────────────────────────────────
         <div className="flex-1 min-h-0 flex flex-col items-center gap-3 px-4 overflow-y-auto pb-6">
           <div className="w-full flex items-center justify-center" style={{ maxHeight: '55vh' }}>
@@ -218,14 +276,23 @@ export function ScanTestPanel({ onClose, onRecognize }: Props) {
               className="flex-1 max-w-[240px]"
             />
             {entries.length > 0 && (
-              <button
-                onClick={async () => { await clearScans(); void refresh(); }}
-                className="w-9 h-9 rounded-full flex items-center justify-center"
-                style={{ background: 'rgba(255,255,255,0.1)' }}
-                aria-label="Historie leeren"
-              >
-                <Trash2 size={16} color="#ff8a8a" />
-              </button>
+              <>
+                <button
+                  onClick={() => { void runAB(); }}
+                  className="h-9 px-3 rounded-full flex items-center justify-center text-xs font-semibold text-white whitespace-nowrap"
+                  style={{ background: 'rgba(255,255,255,0.14)' }}
+                >
+                  A/B
+                </button>
+                <button
+                  onClick={async () => { await clearScans(); void refresh(); }}
+                  className="w-9 h-9 rounded-full flex items-center justify-center"
+                  style={{ background: 'rgba(255,255,255,0.1)' }}
+                  aria-label="Historie leeren"
+                >
+                  <Trash2 size={16} color="#ff8a8a" />
+                </button>
+              </>
             )}
           </div>
 
@@ -264,6 +331,59 @@ export function ScanTestPanel({ onClose, onRecognize }: Props) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Ergebnis-Ansicht des Auflösungs-A/B: Ø-Latenz je Auflösung + pro Karte
+ *  Latenz/Größe/Treffer. Treffer = gleiche cardId wie Erwartung (bzw. wie der
+ *  Original-Lauf), sonst „≠" bzw. die reine Nummer, wenn kein Server-Treffer. */
+function ABResults({ ab, onBack }: { ab: { running: boolean; rows: ABRow[]; done: number; total: number }; onBack: () => void }) {
+  const resLabels = AB_RESOLUTIONS.map(r => (r ? `${r}px` : 'orig'));
+  const avg = resLabels.map(label => {
+    const vals = ab.rows.map(r => r.cells.find(c => c.res === label)?.geminiMs).filter((v): v is number => typeof v === 'number');
+    return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+  });
+  return (
+    <div className="flex-1 min-h-0 flex flex-col px-4 overflow-y-auto pb-6">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-white text-sm font-semibold">
+          A/B · Auflösung {ab.running ? `(${ab.done}/${ab.total})` : '· fertig'}
+        </span>
+        <button onClick={onBack} className="h-9 px-4 rounded-full text-xs font-semibold text-white" style={{ background: 'rgba(255,255,255,0.12)' }}>
+          Zurück
+        </button>
+      </div>
+
+      <div className="rounded-xl p-3 mb-3 font-mono text-[11px] text-white/90" style={{ background: 'rgba(255,255,255,0.06)' }}>
+        <div className="font-bold mb-1 text-white">Ø Gemini-Latenz je Auflösung</div>
+        <div className="flex gap-3 flex-wrap">
+          {resLabels.map((l, i) => <span key={l}>{l}: <span className="text-blue-300">{avg[i] ?? '—'} ms</span></span>)}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {ab.rows.map((row, ri) => {
+          const baseId = row.expectedId ?? row.cells.find(c => c.res === 'orig')?.cardId ?? null;
+          return (
+            <div key={ri} className="rounded-xl p-2 font-mono text-[10px] text-white/85" style={{ background: 'rgba(255,255,255,0.05)' }}>
+              <div className="text-white text-[11px] font-semibold mb-1 truncate">{row.label}{row.expectedId ? ` · ${row.expectedId}` : ''}</div>
+              <div className="grid grid-cols-4 gap-1">
+                {row.cells.map((c, ci) => {
+                  const match = baseId ? c.cardId === baseId : true;
+                  return (
+                    <div key={ci} className="rounded p-1" style={{ background: 'rgba(0,0,0,0.35)' }}>
+                      <div className="text-white/70">{c.res} · {c.sizeKb}KB</div>
+                      <div className="text-blue-300">{c.geminiMs ?? '—'} ms</div>
+                      <div style={{ color: match ? '#8ff0b0' : '#ff8a8a' }}>{c.cardId ? (match ? '✓' : '≠') : `#${c.number}`}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
