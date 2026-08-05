@@ -279,11 +279,19 @@ async function generateWithFallback(
     try {
       const model = genAI.getGenerativeModel({
         model: modelName,
+        // temperature 0: reine Extraktion (deterministisch, minimal schneller).
+        // thinkingConfig.thinkingBudget 0: „Thinking" abschalten — die Aufgabe
+        // braucht kein Reasoning; spart v.a. beim Fallback auf gemini-2.5-flash
+        // (Thinking dort standardmäßig AN) mehrere hundert ms. Das Feld ist in der
+        // (veralteten) SDK nicht typisiert, wird aber unverändert an die REST-API
+        // durchgereicht (siehe SDK: generationConfig wird 1:1 in den Body gelegt).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         generationConfig: {
           responseMimeType: 'application/json',
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          responseSchema: schema as any,
-        },
+          temperature: 0,
+          thinkingConfig: { thinkingBudget: 0 },
+          responseSchema: schema,
+        } as any,
       });
       const result = await model.generateContent(parts);
       const ms = Date.now() - t0;
