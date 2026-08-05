@@ -475,6 +475,15 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   const [detected,   setDetected]   = useState(false);
   const [inCooldown, setInCooldown] = useState(false);
   const [flashing,   setFlashing]   = useState(false);
+  // Manueller Modus: eingefrorenes Standbild direkt nach dem Auslöser — der
+  // Ampel-Rahmen (grün/gelb/rot) wird über diesem Foto gezeichnet (drawOverlay
+  // liest onnxBoxRef/qualityRef), BEVOR die Karte an Gemini geht. Erst danach
+  // übernimmt die große erkannte Karte (Seiten-Overlay).
+  const [frozenStill, setFrozenStill] = useState(false);
+  const freezeRef      = useRef<HTMLCanvasElement>(null);
+  // Während des Freezes darf der Detection-Tick onnxBoxRef NICHT leeren
+  // (sonst verschwände die Ampel-Kontur sofort wieder).
+  const manualHoldRef  = useRef(false);
   const [snapAnim,   setSnapAnim]   = useState<{
     left: number; top: number; width: number; height: number; phase: 'burst' | 'fade';
   } | null>(null);
@@ -891,6 +900,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     }
 
     let meta: CaptureMeta | undefined;
+    let qResult: QualityResult | null = null;
     try {
       const s = sampleRef.current;
       if (s) {
@@ -916,6 +926,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
           { ...pm, fill: 1, nameGlare: cg.nameGlare, codeGlare: cg.codeGlare },
           { boxSettled: true, boxFullyInside: true },
         );
+        qResult = qr;
         meta = {
           trigger: 'manual', level: qr.level, reason: qr.reason ?? undefined, boxDelta: 0,
           sharpness: pm.sharpness, contrast: pm.contrast, glare: pm.glare, softGlare: pm.softGlare,
@@ -929,10 +940,45 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
       }
     } catch { meta = undefined; }
 
-    onCaptureRef.current(imageBase64, 'image/jpeg', meta);
-    // Haptik beim manuellen Foto (nur Android; iOS Safari kennt es nicht).
+    // ── Standbild einfrieren + Ampel-Rahmen darüber zeichnen ──────────────────
+    // Dieselben Prüfungen wie im Auto-Modus (Reflexion/Schärfe/Kanten) sind oben
+    // schon am Foto gelaufen. Jetzt das Foto einfrieren und die farbige Kontur
+    // (grün/gelb/rot, drawOverlay liest onnxBoxRef + qualityRef) direkt um die
+    // Karte legen — BEVOR sie an Gemini geht. Erst nach kurzer Haltezeit wird
+    // ausgelöst; die Seite pausiert dann den Stream und zeigt die erkannte Karte.
+    const fr = freezeRef.current;
+    if (fr) {
+      fr.width = canvas.width; fr.height = canvas.height;
+      fr.getContext('2d')!.drawImage(canvas, 0, 0);
+    }
+    lerpBoxRef.current = null;      // Kontur ohne Einflug-Animation direkt setzen
+    lerpCornersRef.current = null;
+    qualityRef.current = qResult ?? { level: 'neutral', reason: null };
+    onnxBoxRef.current = box;       // → drawOverlay zeichnet die Ampel-Kontur
+    manualHoldRef.current = true;   // Tick darf onnxBoxRef jetzt nicht leeren
+    setFrozenStill(true);
+
+    // Haptik + Blitz beim Auslösen (nur Android; iOS Safari kennt vibrate nicht).
     try { navigator.vibrate?.(35); } catch { /* nicht unterstützt */ }
     setFlashing(true); setTimeout(() => setFlashing(false), 180);
+
+    // Kurz halten, damit der Nutzer den Ampel-Rahmen am Foto wahrnimmt, DANN
+    // erst erkennen lassen.
+    await new Promise(r => setTimeout(r, 850));
+    onCaptureRef.current(imageBase64, 'image/jpeg', meta);
+  }, [paused]);
+
+  // Freeze aufheben, sobald der Stream wieder läuft (Nutzer tippt für die
+  // nächste Karte → Seite setzt paused=false). Solange pausiert (Verarbeitung +
+  // erkannte Karte), bleibt das eingefrorene Foto mit Ampel-Rahmen hinter dem
+  // Ergebnis-Overlay stehen.
+  useEffect(() => {
+    if (!paused && frozenStill) {
+      manualHoldRef.current = false;
+      onnxBoxRef.current = null;
+      setFrozenStill(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paused]);
 
   // Footer-Scan-Button erhöht `shutterSignal` → hier auslösen (Mount überspringen).
@@ -957,7 +1003,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
         // Manuell-Modus: KEINE Live-Erkennung/Ampel/Auto-Trigger. Box leeren →
         // das rAF-Overlay zeigt nur den gestrichelten Ziel-Rahmen. Das Standbild
         // wird erst beim Auslösen (doManualCapture) analysiert.
-        if (!autoDetectRef.current) { onnxBoxRef.current = null; return; }
+        if (!autoDetectRef.current) { if (!manualHoldRef.current) onnxBoxRef.current = null; return; }
         const tickStart = performance.now();
         const video = videoRef.current, sample = sampleRef.current;
         const prev = prevRef.current;
@@ -1317,6 +1363,16 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
             className="absolute inset-0 w-full h-full object-cover"
           />
 
+          {/* Eingefrorenes Standbild (Manuell-Modus, direkt nach dem Auslöser) —
+              deckt das Live-Video, object-cover deckungsgleich mit ihm, sodass die
+              Ampel-Kontur im Overlay (gleiche object-cover-Mathematik) exakt auf
+              der Karte im Foto sitzt. Liegt UNTER dem Overlay (zIndex 1 < 2). */}
+          <canvas
+            ref={freezeRef}
+            className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+            style={{ zIndex: 1, opacity: frozenStill ? 1 : 0, transition: 'opacity 80ms ease-out' }}
+          />
+
           {/* Erkennungs-Overlay — ausgeblendet wenn hideFrame (Einzeln nach Snap) */}
           <canvas
             ref={overlayRef}
@@ -1435,8 +1491,10 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
             />
           )}
 
-          {/* Pause-Overlay */}
-          {paused && (
+          {/* Pause-Overlay — NICHT während eines manuellen Freeze (Seite pausiert
+              den Stream zur Erkennung, aber das eingefrorene Foto mit Ampel-
+              Rahmen soll sichtbar bleiben, nicht abgedunkelt werden). */}
+          {paused && !frozenStill && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center pointer-events-none" style={{ zIndex: 3 }}>
               <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center">
                 <div className="w-4 h-10 flex gap-1.5">
