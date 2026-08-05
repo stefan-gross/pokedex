@@ -93,6 +93,8 @@ async function assessImage(img: HTMLImageElement): Promise<AssessResult> {
 
 // ── A/B-Test: Auflösung vs. Gemini-Latenz/Erkennung ────────────────────────
 const AB_RESOLUTIONS: (number | null)[] = [null, 1100, 900, 700]; // null = Original
+// Prompt-Varianten (server-seitige Allowlist, Auswahl per x-prompt-variant).
+const PROMPT_AB_VARIANTS = ['default', 'kurz'];
 
 function base64ToBytes(b64: string) {
   const s = atob(b64);
@@ -179,6 +181,40 @@ export function ScanTestPanel({ onClose, onRecognize }: Props) {
           number = typeof j?.number === 'string' ? j.number : '—';
         } catch { /* Fehler = Miss */ }
         cells.push({ res: res ? `${res}px` : 'orig', geminiMs, cardId, number, sizeKb: Math.round(b64.length * 3 / 4 / 1024) });
+        done++;
+        setAb(prev => prev ? { ...prev, done } : prev);
+      }
+      rows.push({ label: e.label, expectedId: e.cardId, cells });
+      setAb(prev => prev ? { ...prev, rows: [...rows] } : prev);
+    }
+    setAb({ running: false, rows, done: total, total });
+  }, []);
+
+  // A/B: jedes Bild bei mehreren PROMPT-Varianten (Originalauflösung) durch
+  // /api/scan → Gemini-Latenz + Erkennung je Variante vergleichen.
+  const runABPrompt = useCallback(async () => {
+    const list = await listScans();
+    const total = list.length * PROMPT_AB_VARIANTS.length;
+    setAb({ running: true, rows: [], done: 0, total });
+    const rows: ABRow[] = [];
+    let done = 0;
+    for (const e of list) {
+      const sizeKb = Math.round(e.imageBase64.length * 3 / 4 / 1024);
+      const cells: ABCell[] = [];
+      for (const variant of PROMPT_AB_VARIANTS) {
+        let geminiMs: number | null = null, cardId: string | null = null, number = '—';
+        try {
+          const r = await fetch('/api/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': e.mimeType, 'x-prompt-variant': variant },
+            body: base64ToBytes(e.imageBase64),
+          });
+          const j = await r.json();
+          geminiMs = j?._debug?.ms ?? null;
+          cardId = j?._preLookup?.cardId ?? null;
+          number = typeof j?.number === 'string' ? j.number : '—';
+        } catch { /* Fehler = Miss */ }
+        cells.push({ res: variant, geminiMs, cardId, number, sizeKb });
         done++;
         setAb(prev => prev ? { ...prev, done } : prev);
       }
@@ -282,7 +318,14 @@ export function ScanTestPanel({ onClose, onRecognize }: Props) {
                   className="h-9 px-3 rounded-full flex items-center justify-center text-xs font-semibold text-white whitespace-nowrap"
                   style={{ background: 'rgba(255,255,255,0.14)' }}
                 >
-                  A/B
+                  A/B px
+                </button>
+                <button
+                  onClick={() => { void runABPrompt(); }}
+                  className="h-9 px-3 rounded-full flex items-center justify-center text-xs font-semibold text-white whitespace-nowrap"
+                  style={{ background: 'rgba(255,255,255,0.14)' }}
+                >
+                  A/B Prompt
                 </button>
                 <button
                   onClick={async () => { await clearScans(); void refresh(); }}
@@ -339,7 +382,9 @@ export function ScanTestPanel({ onClose, onRecognize }: Props) {
  *  Latenz/Größe/Treffer. Treffer = gleiche cardId wie Erwartung (bzw. wie der
  *  Original-Lauf), sonst „≠" bzw. die reine Nummer, wenn kein Server-Treffer. */
 function ABResults({ ab, onBack }: { ab: { running: boolean; rows: ABRow[]; done: number; total: number }; onBack: () => void }) {
-  const resLabels = AB_RESOLUTIONS.map(r => (r ? `${r}px` : 'orig'));
+  // Spalten-Labels aus den tatsächlichen Zellen ableiten → funktioniert für den
+  // Auflösungs- UND den Prompt-A/B.
+  const resLabels = ab.rows[0]?.cells.map(c => c.res) ?? [];
   const avg = resLabels.map(label => {
     const vals = ab.rows.map(r => r.cells.find(c => c.res === label)?.geminiMs).filter((v): v is number => typeof v === 'number');
     return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
