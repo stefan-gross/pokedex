@@ -1350,6 +1350,7 @@ export default function ScannerPage() {
             autoDetect={captureMode === 'auto'}
             shutterSignal={shutterSignal}
             recognized={recognizedJobId != null}
+            batchMode={scanMode === 'add'}
             hideFrame={scanMode === 'recognize' && streamPaused && (captureMode === 'auto' || recognizedJobId != null)}
           />
         </div>

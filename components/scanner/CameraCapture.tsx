@@ -45,6 +45,10 @@ interface Props {
    *  Manuell-Modus den eingefrorenen Foto-Freeze → dahinter erscheint die
    *  abgedunkelte (pausierte) Kamera, genau wie im Auto-Modus. */
   recognized?: boolean;
+  /** Mehrfach-Modus (scanMode==='add'): die Seite pausiert NICHT und zeigt keine
+   *  große erkannte Karte. Der manuelle Freeze löst sich deshalb nach kurzer
+   *  grüner Bestätigung selbst → sofort weiterscannen. */
+  batchMode?: boolean;
 }
 
 // ─── Modul-Level: Stream-Referenz für Visibility-Handler ─────────────────────
@@ -390,7 +394,7 @@ interface DebugInfo {
   angleDeg: number;      // Kartenwinkel aus den Ecken (0 = aufrecht)
 }
 
-export function CameraCapture({ onCapture, pendingCount = 0, paused = false, active, hideFrame = false, autoDetect = true, shutterSignal = 0, recognized = false }: Props) {
+export function CameraCapture({ onCapture, pendingCount = 0, paused = false, active, hideFrame = false, autoDetect = true, shutterSignal = 0, recognized = false, batchMode = false }: Props) {
   const videoRef   = useRef<HTMLVideoElement>(null);
   const canvasRef  = useRef<HTMLCanvasElement>(null);
   const sampleRef  = useRef<HTMLCanvasElement>(null);
@@ -404,6 +408,8 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   // Auslöse-Modus als Ref (Detection-Tick liest ihn ohne Re-Setup).
   const autoDetectRef = useRef(autoDetect);
   useEffect(() => { autoDetectRef.current = autoDetect; }, [autoDetect]);
+  const batchModeRef = useRef(batchMode);
+  useEffect(() => { batchModeRef.current = batchMode; }, [batchMode]);
 
   // Letztes (geglättetes) ONNX-Ergebnis in Video-Koordinaten (Overlay + Snap-Crop)
   const onnxBoxRef    = useRef<CardBox | null>(null);
@@ -1022,6 +1028,17 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     // Grün: kurz halten (Nutzer nimmt den grünen Rahmen wahr), DANN erkennen.
     await new Promise(r => setTimeout(r, 700));
     onCaptureRef.current(imageBase64, 'image/jpeg', meta);
+
+    // Mehrfach-Modus: die Seite pausiert NICHT und zeigt keine große erkannte
+    // Karte → der Freeze würde sonst hängen bleiben. Kurz die grüne Bestätigung
+    // zeigen, dann selbst lösen → sofort weiterscannen. (Einzel-Modus: Freeze
+    // bleibt, bis die Seite pausiert / die erkannte Karte übernimmt.)
+    if (batchModeRef.current) {
+      await new Promise(r => setTimeout(r, 450));
+      manualHoldRef.current = false;
+      onnxBoxRef.current = null;
+      setFrozenStill(false);
+    }
   }, [paused]);
 
   // Freeze aufheben, sobald (a) die erkannte Karte erscheint → dahinter wird
