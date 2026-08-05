@@ -40,13 +40,14 @@ export function playClickSound(): void {
     const osc = c.createOscillator();
     const gain = c.createGain();
     osc.type = 'sine';
-    osc.frequency.value = 880; // knackig, aber unaufdringlich
-    // Schneller Attack (~2 ms), kurzer Ausklang (~28 ms) → „Klick" statt „Piep".
+    osc.frequency.value = 1000; // knackig
+    // Schneller Attack (~2 ms), kurzer Ausklang (~45 ms) → „Klick" statt „Piep".
+    // Peak deutlich hörbar (0.35), damit es auf dem Handy-Lautsprecher ankommt.
     gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(0.06, t + 0.002);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.35, t + 0.002);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
     osc.connect(gain).connect(c.destination);
     osc.start(t);
-    osc.stop(t + 0.04);
+    osc.stop(t + 0.06);
   } catch { /* egal */ }
 }
