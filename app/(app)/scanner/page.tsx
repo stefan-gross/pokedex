@@ -2084,15 +2084,19 @@ export default function ScannerPage() {
           (zwischen Blitz-Button links und Schließen rechts) der Einzeln/
           Mehrere-Umschalter — drei flex-1-Zonen garantieren echte
           Zentrierung unabhängig von der Breite der Rand-Elemente. */}
+      {/* pointer-events-none auf der Leiste, damit die leeren flex-1-Zonen KEINE
+          Taps abfangen (sonst blockiert die transparente linke Zone den darunter
+          liegenden Taschenlampen-Button in CameraCapture). Nur die echten
+          Bedienelemente bekommen pointer-events-auto. */}
       <div
-        className="absolute top-0 left-0 right-0 z-20 flex items-center px-4 pb-3"
+        className="absolute top-0 left-0 right-0 z-20 flex items-center px-4 pb-3 pointer-events-none"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
       >
         <div className="flex-1 flex justify-start">
           {mode === 'review' && (
             <button
               onClick={() => setMode('scanning')}
-              className="flex items-center gap-1 h-9 px-3 rounded-full bg-white/10 backdrop-blur-sm text-white text-sm font-medium"
+              className="pointer-events-auto flex items-center gap-1 h-9 px-3 rounded-full bg-white/10 backdrop-blur-sm text-white text-sm font-medium"
               aria-label="Zurück zum Scannen"
             >
               <ChevronLeft size={18} color="#fff" />
@@ -2102,7 +2106,7 @@ export default function ScannerPage() {
         </div>
         <div className="flex-1 flex justify-center">
           {mode === 'scanning' && (
-            <div className="flex p-1 rounded-full glass-overlay">
+            <div className="pointer-events-auto flex p-1 rounded-full glass-overlay">
               {(['recognize', 'add'] as const).map(m => (
                 <button
                   key={m}
@@ -2124,7 +2128,7 @@ export default function ScannerPage() {
           {mode === 'scanning' && (
             <button
               onClick={handleClose}
-              className="w-[46px] h-[46px] flex items-center justify-center rounded-full glass-overlay"
+              className="pointer-events-auto w-[46px] h-[46px] flex items-center justify-center rounded-full glass-overlay"
               aria-label="Scanner schließen"
             >
               <X size={20} color="#fff" />
