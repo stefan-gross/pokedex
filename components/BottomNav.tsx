@@ -217,7 +217,7 @@ export function BottomNav() {
           <div className="flex items-center justify-center">
             <button
               onClick={handleFabClick}
-              className="flex items-center justify-center"
+              className="flex items-center justify-center transition-transform duration-150 active:scale-90"
               style={scanCameraStyle}
               aria-label={isManual ? (scanState.paused ? 'Weiter scannen' : 'Foto aufnehmen') : (scanState.paused ? 'Stream fortsetzen' : 'Stream pausieren')}
             >
