@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, BookOpen, Heart, Camera, Pause, LayoutGrid, Plus, Minus } from 'lucide-react';
+import { Home, Search, BookOpen, Heart, Camera, Pause, LayoutGrid, Plus, Minus, Square, Layers } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ButtonGroup } from '@/components/ui/button-group';
 
@@ -197,6 +197,23 @@ export function BottomNav() {
             <button onClick={() => window.dispatchEvent(new Event(SCAN_REMOVE_EVENT))} aria-label="Aus Sammlung entfernen">
               <Minus size={27} color="#ff8a8a" strokeWidth={3} />
             </button>
+          </div>
+
+          {/* Einzeln/Mehrere als Design-System-ButtonGroup (iconOnly size="sm",
+              spiegelbildlich zum A|M rechts) — linksbündig in der Leiste. Einzeln
+              = ein Kartensymbol, Mehrere = Stapel. */}
+          <div className="absolute" style={{ left: 8, top: '50%', transform: 'translateY(-50%)' }}>
+            <ButtonGroup
+              iconOnly
+              size="sm"
+              toggle
+              value={scanState.scanMode}
+              onChange={(v) => window.dispatchEvent(new CustomEvent(SCAN_MODE_TOGGLE_EVENT, { detail: v }))}
+              options={[
+                { value: 'recognize', label: <Square size={15} />, ariaLabel: 'Einzelscan' },
+                { value: 'add',       label: <Layers size={15} />, ariaLabel: 'Mehrfachscan' },
+              ]}
+            />
           </div>
 
           {/* Slot Mitte — Kamera, überstehender FAB (lila Glas) */}

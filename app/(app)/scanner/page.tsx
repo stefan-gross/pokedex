@@ -2104,26 +2104,10 @@ export default function ScannerPage() {
             </button>
           )}
         </div>
-        <div className="flex-1 flex justify-center">
-          {mode === 'scanning' && (
-            <div className="pointer-events-auto flex p-1 rounded-full glass-overlay">
-              {(['recognize', 'add'] as const).map(m => (
-                <button
-                  key={m}
-                  onClick={() => { if (m !== scanMode) switchScanMode(m); }}
-                  className="px-[18px] py-2 rounded-full text-sm font-semibold transition-colors"
-                  style={{
-                    background: scanMode === m ? 'rgba(229,62,62,0.85)' : 'transparent',
-                    color:      scanMode === m ? '#fff' : 'rgba(255,255,255,0.75)',
-                    boxShadow:  scanMode === m ? 'inset 0 1px 1px rgba(255,255,255,0.5), 0 2px 8px rgba(220,38,38,0.4)' : undefined,
-                  }}
-                >
-                  {m === 'add' ? 'Mehrere' : 'Einzeln'}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Einzeln/Mehrere-Umschalter ist in die Footer-Leiste gewandert
+            (links neben dem Scan-Button) — Header-Mitte bleibt leer für die
+            Zentrierung des Schließen-Buttons. */}
+        <div className="flex-1" />
         <div className="flex-1 flex justify-end">
           {mode === 'scanning' && (
             <button
