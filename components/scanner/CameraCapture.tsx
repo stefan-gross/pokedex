@@ -477,12 +477,10 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   // Front/Rück-Switch entfernt — Stream nutzt immer environment (Rückkamera).
   const facingMode = 'environment' as const;
   const [torch,      setTorch]      = useState(false);
-  // Taschenlampe: Button bleibt IMMER sichtbar und versucht den Toggle wirklich
-  // (WebKit meldet `torch` evtl. nicht in getCapabilities, unterstützt es aber
-  // via applyConstraints). `torchDiag` zeigt nach dem Tippen kurz, was passiert
-  // ist — zur Diagnose direkt am Gerät.
+  // Taschenlampe: funktioniert per applyConstraints (iOS 26.x/WebKit + Android).
+  // Button immer sichtbar; `torchHint` zeigt kurz einen Hinweis, falls ein Gerät
+  // es doch nicht schaltet.
   const [torchHint, setTorchHint] = useState(false);
-  const [torchDiag, setTorchDiag] = useState<string | null>(null);
   const [error,      setError]      = useState<string | null>(null);
   const [progress,   setProgress]   = useState(0);
   const [detected,   setDetected]   = useState(false);
@@ -1341,39 +1339,31 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   // (advanced-Form, dann Top-Level-Fallback) und zeigen das Ergebnis als Diagnose.
   const toggleTorch = async () => {
     const track = streamRef.current?.getVideoTracks()[0];
-    if (!track) { setTorchDiag('Kein Kamera-Track aktiv'); setTorchHint(true); setTimeout(() => setTorchHint(false), 3500); return; }
+    if (!track) return;
     const next = !torch;
-
-    const caps = track.getCapabilities?.() as (MediaTrackCapabilities & { torch?: boolean }) | undefined;
-    const capsTorch = caps ? ('torch' in caps ? String((caps as { torch?: unknown }).torch) : 'fehlt') : 'keine caps';
-
     let applied = false;
-    let via = '';
-    let errMsg = '';
-    // 1) Standard-Form (advanced)
+    // 1) Standard-Form (advanced) — funktioniert auf iOS/WebKit + Android.
     try {
       await track.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] });
-      applied = true; via = 'advanced';
-    } catch (e) { errMsg = e instanceof Error ? e.message : String(e); }
-    // 2) Fallback: Top-Level-Constraint (manche Implementierungen brauchen das)
+      applied = true;
+    } catch { /* nächster Versuch */ }
+    // 2) Fallback: Top-Level-Constraint (falls eine Implementierung das braucht).
     if (!applied) {
       try {
         await track.applyConstraints({ torch: next } as unknown as MediaTrackConstraints);
-        applied = true; via = 'top-level';
-      } catch (e) { errMsg = e instanceof Error ? e.message : String(e); }
+        applied = true;
+      } catch { /* nicht unterstützt */ }
     }
-
+    // Verifizieren: hat die Kamera den Zustand wirklich übernommen? (undefined =
+    // nicht meldbar → annehmen, dass es griff.)
     const settings = track.getSettings?.() as { torch?: boolean } | undefined;
-    const settingsTorch = settings && 'torch' in settings ? String(settings.torch) : 'fehlt';
-
-    if (applied) setTorch(next);
-    const diag = `caps.torch=${capsTorch} · applied=${applied}${via ? ` (${via})` : ''}${errMsg ? ` · err=${errMsg}` : ''} · settings.torch=${settingsTorch}`;
-    setTorchDiag(diag);
-    setTorchHint(true);
-    setTimeout(() => setTorchHint(false), 6000);
-    // Unmissverständliche Diagnose (blockierend) — der Versions-Marker bestätigt
-    // zugleich, dass der NEUE Code läuft (nicht ein gecachter alter Stand).
-    try { window.alert(`[Taschenlampe v2]\n${diag}`); } catch { /* ignore */ }
+    const reflected = settings && typeof settings.torch === 'boolean' ? settings.torch === next : true;
+    if (applied && reflected) {
+      setTorch(next);
+    } else {
+      setTorchHint(true);
+      setTimeout(() => setTorchHint(false), 2400);
+    }
   };
 
   return (
@@ -1620,11 +1610,10 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
             </div>
           )}
 
-          {/* Taschenlampen-Switch oben links — Glas-Kreis (Handoff design_handoff_scanner_glass).
-              Immer sichtbar; nach dem Tippen zeigt ein Chip kurz die Diagnose. */}
+          {/* Taschenlampen-Switch oben links — Glas-Kreis (Handoff design_handoff_scanner_glass). */}
           <div
             className="absolute left-4 flex flex-col items-start gap-2 pointer-events-auto"
-            style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)', zIndex: 4, maxWidth: 'calc(100vw - 96px)' }}
+            style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)', zIndex: 4 }}
             onClick={e => e.stopPropagation()}
           >
             <button
@@ -1634,9 +1623,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
             >
               {torch ? <Flashlight size={20} color="#facc15" /> : <FlashlightOff size={20} color="#fff" />}
             </button>
-            {torchHint && torchDiag && (
-              <div className="px-3 py-1.5 rounded-xl text-[11px] font-mono leading-snug text-white break-words" style={{ background: 'rgba(0,0,0,0.8)' }}>
-                {torchDiag}
+            {torchHint && (
+              <div className="px-3 py-1.5 rounded-full text-[11px] font-medium text-white whitespace-nowrap" style={{ background: 'rgba(0,0,0,0.72)' }}>
+                Auf diesem Gerät nicht verfügbar
               </div>
             )}
           </div>
