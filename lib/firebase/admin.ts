@@ -26,6 +26,14 @@ function getAdminApp(): App {
 export function getAdminDb(): Firestore {
   if (!adminDb) {
     adminDb = getFirestore(getAdminApp());
+    // REST statt gRPC: der gRPC-Verbindungsaufbau hängt beim ERSTEN Firestore-
+    // Aufruf je Prozess/Instanz gern zehner­sekundenlang (Coldstart / bestimmte
+    // Netze/IPv6), bevor er durchkommt — das war die Ursache für ~30 s „lookup"
+    // im Scanner. REST (HTTP/1.1) verbindet sofort. `settings()` muss VOR der
+    // ersten Nutzung laufen; try/catch für HMR-Reuse (Instanz evtl. schon genutzt).
+    try {
+      adminDb.settings({ preferRest: true });
+    } catch { /* bereits initialisiert/genutzt — ignorieren */ }
   }
   return adminDb;
 }
