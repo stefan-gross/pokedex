@@ -75,6 +75,9 @@ interface GeminiResponse {
     via?: string;
     cardId?: string;
     candidateCount?: number;
+    /** Fertig aufgelöstes Katalog-Dokument — wenn vorhanden, überspringt der
+     *  Client seine eigene (zweite) Firestore-Katalogsuche komplett. */
+    card?: CatalogCard;
   };
   // Kandidaten aus dem Symbolabgleich (Schritt 2), ORDER nach Wahrscheinlichkeit —
   // der Client probiert sie der Reihe nach durch und verifiziert per Dex-Nr./
@@ -904,10 +907,20 @@ export default function ScannerPage() {
         return setTotalCache.get(setId) ?? null;
       };
 
+      // ── Schnellpfad: Server hat die Karte bereits aufgelöst (number+dex etc.)
+      //    und mitgeschickt → die komplette zweite Firestore-Suche (Regel-Leiter
+      //    + Fallback-Kette) überspringen. Spart einen Client-Firestore-Roundtrip
+      //    und umgeht das Client-WebChannel-Coldstart-Risiko für den Normalfall. ──
+      if (gemini._preLookup?.card) {
+        catalogCard = gemini._preLookup.card;
+        debug.lookupSteps!.push(`Server-Vorabtreffer (${gemini._preLookup.via}): ${gemini._preLookup.cardId}`);
+      }
+
       // ── Primär: zentrale Regel-Leiter (lib/scan/resolve-card.ts) ──────────
       // R1 setCode+number · R2 printedTotal+number · R3 name+number · R4 dex+number,
       // jeweils mit Eindeutigkeits-Gate. Symbolabgleich-Kandidaten
       // (candidateSetCodes) bewusst NICHT hier — die sind unten die letzte Not-Option.
+      if (!catalogCard) {
       const resolved = await resolveScannedCard(
         {
           setCode: gemini.setCode,
@@ -935,6 +948,7 @@ export default function ScannerPage() {
         catalogCard = ambiguousCandidates[0];
         debug.lookupSteps!.push(`mehrdeutig (${resolved.matchedBy}): ${ambiguousCandidates.length} Kandidaten`);
       }
+      } // Ende Schnellpfad-Guard: nur suchen, wenn der Server nichts mitschickte
 
       // ── Fallback (nur wenn die Regel-Leiter NICHTS fand): alte Lookups +
       //    Symbolabgleich-Kandidaten als letzte Not-Option ────────────────────

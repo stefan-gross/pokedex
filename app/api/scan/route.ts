@@ -320,6 +320,14 @@ interface PreLookupResult {
   via?: 'number+dex' | 'number+dex+printedTotal' | 'printedTotal+number' | 'printedTotal+number+dex';
   cardId?: string;
   candidateCount?: number;
+  /** Fertig aufgelöstes Katalog-Dokument ({ id, ...data }) — reicht der Client
+   *  durch, um `resolveScannedCard` (zweite Firestore-Suche) zu überspringen. */
+  card?: Record<string, unknown>;
+}
+
+/** Snapshot → JSON-fähiges Karten-Objekt für die Client-Antwort. */
+function snapToCard(d: QueryDocumentSnapshot): Record<string, unknown> {
+  return { id: d.id, ...d.data() };
 }
 
 /** Versucht die Karte direkt per (number, nationalDexNumber) im Katalog zu finden,
@@ -372,7 +380,7 @@ async function tryDirectCatalogLookup(parsed: Record<string, unknown>): Promise<
         const setCode = candidates[0].data().setCode;
         if (typeof setCode === 'string') {
           parsed.setCode = setCode;
-          return { attempted: true, matched: true, via: 'number+dex', cardId: candidates[0].id };
+          return { attempted: true, matched: true, via: 'number+dex', cardId: candidates[0].id, card: snapToCard(candidates[0]) };
         }
       } else if (candidates.length > 1 && printedTotal != null) {
         for (const c of candidates) {
@@ -383,7 +391,7 @@ async function tryDirectCatalogLookup(parsed: Record<string, unknown>): Promise<
             const setCode = c.data().setCode;
             if (typeof setCode === 'string') {
               parsed.setCode = setCode;
-              return { attempted: true, matched: true, via: 'number+dex+printedTotal', cardId: c.id, candidateCount: candidates.length };
+              return { attempted: true, matched: true, via: 'number+dex+printedTotal', cardId: c.id, candidateCount: candidates.length, card: snapToCard(c) };
             }
           }
         }
@@ -428,7 +436,7 @@ async function tryDirectCatalogLookup(parsed: Record<string, unknown>): Promise<
             const setCode = byDex[0].data().setCode;
             if (typeof setCode === 'string') {
               parsed.setCode = setCode;
-              return { attempted: true, matched: true, via: 'printedTotal+number+dex', cardId: byDex[0].id, candidateCount: hits.length };
+              return { attempted: true, matched: true, via: 'printedTotal+number+dex', cardId: byDex[0].id, candidateCount: hits.length, card: snapToCard(byDex[0]) };
             }
           }
           if (byDex.length >= 1) hits = byDex; // zumindest eingegrenzt
@@ -437,7 +445,7 @@ async function tryDirectCatalogLookup(parsed: Record<string, unknown>): Promise<
           const setCode = hits[0].data().setCode;
           if (typeof setCode === 'string') {
             parsed.setCode = setCode;
-            return { attempted: true, matched: true, via: 'printedTotal+number', cardId: hits[0].id };
+            return { attempted: true, matched: true, via: 'printedTotal+number', cardId: hits[0].id, card: snapToCard(hits[0]) };
           }
         }
         if (hits.length > 1) return { attempted: true, matched: false, via: 'printedTotal+number', candidateCount: hits.length };
