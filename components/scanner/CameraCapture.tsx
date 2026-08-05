@@ -1353,26 +1353,24 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     const track = streamRef.current?.getVideoTracks()[0];
     if (!track) return;
     const next = !torch;
+    // Icon SOFORT (optimistisch) kippen → der Tap fühlt sich immer an. KEINE
+    // getSettings()-Verifikation: iOS meldet den neuen torch-Zustand verzögert,
+    // dadurch wurden Taps früher „verschluckt". Nur bei echtem Fehler (beide
+    // applyConstraints-Formen werfen) zurücksetzen.
+    setTorch(next);
     let applied = false;
-    // 1) Standard-Form (advanced) — funktioniert auf iOS/WebKit + Android.
     try {
       await track.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] });
       applied = true;
     } catch { /* nächster Versuch */ }
-    // 2) Fallback: Top-Level-Constraint (falls eine Implementierung das braucht).
     if (!applied) {
       try {
         await track.applyConstraints({ torch: next } as unknown as MediaTrackConstraints);
         applied = true;
       } catch { /* nicht unterstützt */ }
     }
-    // Verifizieren: hat die Kamera den Zustand wirklich übernommen? (undefined =
-    // nicht meldbar → annehmen, dass es griff.)
-    const settings = track.getSettings?.() as { torch?: boolean } | undefined;
-    const reflected = settings && typeof settings.torch === 'boolean' ? settings.torch === next : true;
-    if (applied && reflected) {
-      setTorch(next);
-    } else {
+    if (!applied) {
+      setTorch(!next); // zurück, es hat nicht geschaltet
       setTorchHint(true);
       setTimeout(() => setTorchHint(false), 2400);
     }
