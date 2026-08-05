@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Flashlight, FlashlightOff, Camera, RefreshCw } from 'lucide-react';
 import { loadCardDetectorSession, detectCardInFrame, type CardBox } from '@/lib/scanner/card-detector-onnx';
 import { computePixelMetrics, assessQuality, computeCriticalGlare, type QualityResult } from '@/lib/scanner/frame-quality';
-import { playClickSound, unlockClickSound } from '@/lib/scanner/click-sound';
 import { useScannerDebug } from '@/lib/scanner/debug-flags';
 
 /** Momentaufnahme der Auslöse-Metriken (für KI-Debug-Vorschau). */
@@ -411,13 +410,6 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   useEffect(() => { autoDetectRef.current = autoDetect; }, [autoDetect]);
   const batchModeRef = useRef(batchMode);
   useEffect(() => { batchModeRef.current = batchMode; }, [batchMode]);
-  // Klick-Ton (Haptik-Ersatz) bei der ersten Nutzer-Geste entsperren — danach
-  // klickt auch der automatische Trigger (iOS erlaubt Audio erst nach Geste).
-  useEffect(() => {
-    const unlock = () => { unlockClickSound(); window.removeEventListener('pointerdown', unlock); };
-    window.addEventListener('pointerdown', unlock);
-    return () => window.removeEventListener('pointerdown', unlock);
-  }, []);
 
   // Letztes (geglättetes) ONNX-Ergebnis in Video-Koordinaten (Overlay + Snap-Crop)
   const onnxBoxRef    = useRef<CardBox | null>(null);
@@ -872,7 +864,6 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     // Haptik: Auto-Trigger = Doppelpuls („für dich ausgelöst"), manueller Tap =
     // kurzer Einzelpuls. Nur Android — iOS Safari kennt navigator.vibrate nicht.
     try { navigator.vibrate?.(force ? 35 : [0, 30, 60, 30]); } catch { /* nicht unterstützt */ }
-    playClickSound(); // Klick-Ton als Haptik-Ersatz (v.a. iOS)
 
     // Weißer Blitz
     setFlashing(true); setTimeout(() => setFlashing(false), 180);
@@ -1018,7 +1009,6 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     setFrozenStill(true);
 
     setFlashing(true); setTimeout(() => setFlashing(false), 180);
-    playClickSound(); // Klick-Ton als Haptik-Ersatz (v.a. iOS)
 
     // Ampel-Ergebnis: nur bei grün (oder wenn keine Bewertung möglich war) wird
     // erkannt. Bei gelb/rot NICHT — Foto + Rahmen + Hinweis bleiben stehen, der
