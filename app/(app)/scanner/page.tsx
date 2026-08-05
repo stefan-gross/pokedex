@@ -2120,26 +2120,6 @@ export default function ScannerPage() {
         </div>
       )}
 
-      {/* ── Erkennen-Modus: Processing-Spinner während Gemini lädt ──────
-          Zeigt sich sofort nach dem Snap (Stream ist pausiert, Karte wird
-          noch erkannt). Verschwindet, sobald `recognizedJobId` gesetzt ist
-          und die große Karten-Anzeige übernimmt. */}
-      {mode === 'scanning' && scanMode === 'recognize' && !recognizedJobId && (() => {
-        const processing = jobs.find(j => j.origin === 'recognize' && j.status === 'processing');
-        if (!processing) return null;
-        return (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 pointer-events-none">
-            <div
-              className="flex flex-col items-center gap-3 px-6 py-5 rounded-2xl"
-              style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
-            >
-              <Loader2 size={36} color="#fff" className="animate-spin" />
-              <p className="text-white text-sm font-medium">Karte wird erkannt …</p>
-            </div>
-          </div>
-        );
-      })()}
-
       {/* ── Erkennen-Modus: Fehler-Anzeige mit differenzierter Diagnose ────
           Drei Fälle:
           - Gemini sah keine Karte (error="No card detected")
@@ -2262,20 +2242,31 @@ export default function ScannerPage() {
       {/* ── Erkennen-Modus: zentrale große Karten-Anzeige ──────────────
           Zeigt nur den zuletzt erfolgreich gescannten Job. Neuer Scan
           überschreibt visuell, aber alle Scans bleiben in `jobs`. */}
-      {mode === 'scanning' && scanMode === 'recognize' && recognizedJobId && (() => {
-        const recognized = jobs.find(j => j.id === recognizedJobId) ?? null;
-        if (!recognized?.result?.card) return null;
+      {mode === 'scanning' && scanMode === 'recognize' && (() => {
+        // Anzeige-Job: bevorzugt der erkannte Job (nach Gemini), sonst der gerade
+        // verarbeitete (direkt nach dem Foto). So erscheint sofort nach dem
+        // manuellen Auslösen das Standbild mit Ampel-Rahmen (grün/gelb/rot) —
+        // dieselbe Qualitätsbewertung wie im Auto-Modus — noch bevor Gemini
+        // antwortet; danach wird nahtlos die erkannte Karte eingeblendet
+        // (gleiche Job-ID → kein Remount).
+        const recognized = recognizedJobId ? jobs.find(j => j.id === recognizedJobId) ?? null : null;
+        const displayJob = recognized
+          ?? jobs.find(j => j.origin === 'recognize' && j.status === 'processing')
+          ?? null;
+        if (!displayJob) return null;
+        // Erkannt braucht eine Karte; in Verarbeitung reicht das Standbild.
+        if (displayJob.status !== 'processing' && !displayJob.result?.card) return null;
         return (
           <RecognizedCardLarge
-            key={recognized.id}
-            job={recognized}
-            onCardTap={() => setActiveJobId(recognized.id)}
-            onDebugTap={() => setDebugJobId(recognized.id)}
+            key={displayJob.id}
+            job={displayJob}
+            onCardTap={() => setActiveJobId(displayJob.id)}
+            onDebugTap={() => setDebugJobId(displayJob.id)}
             onPickCandidate={picked => {
-              setJobs(prev => prev.map(j => j.id === recognized.id && j.result
+              setJobs(prev => prev.map(j => j.id === displayJob.id && j.result
                 ? { ...j, result: { ...j.result, card: picked }, editedVariant: picked.variants?.[0] ?? 'standard' }
                 : j));
-              refreshOwnedCount(recognized.id, picked.id);
+              refreshOwnedCount(displayJob.id, picked.id);
             }}
           />
         );
@@ -3320,6 +3311,17 @@ function RecognizedCardLarge({
             style={{ background: `${capColor[job.captureLevel!]}e6` }}
           >
             {job.captureReason}
+          </div>
+        )}
+        {/* Verarbeitung: dezenter Hinweis unten, während Gemini die schon mit
+            Ampel-Rahmen sichtbare Karte erkennt. */}
+        {job.status === 'processing' && (
+          <div
+            className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1 rounded-full"
+            style={{ background: 'rgba(0,0,0,0.7)' }}
+          >
+            <Loader2 size={13} color="#fff" className="animate-spin" />
+            <span className="text-white text-[11px] font-medium">wird erkannt …</span>
           </div>
         )}
         {img ? (
