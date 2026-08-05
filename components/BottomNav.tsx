@@ -169,21 +169,25 @@ export function BottomNav() {
           </button>
         )}
 
-        {/* Auto ⇄ Manuell-Switch — schwebender Glas-Chip rechts über der Leiste
-            (Daumenzone). Manuell = FAB wird zum Foto-Auslöser. */}
-        <button
-          onClick={() => window.dispatchEvent(new CustomEvent(SCAN_CAPTURE_TOGGLE_EVENT, { detail: isManual ? 'auto' : 'manual' }))}
-          className="fixed z-50 flex items-center gap-2 rounded-full glass-overlay"
-          role="switch"
-          aria-checked={isManual}
-          aria-label="Manueller Auslöser"
-          style={{ bottom: 90, right: 14, height: 44, paddingLeft: 12, paddingRight: 14 }}
-        >
-          <span className="relative rounded-full transition-colors" style={{ width: 40, height: 24, background: isManual ? '#3182ce' : 'rgba(255,255,255,0.28)' }}>
-            <span className="absolute rounded-full bg-white transition-all" style={{ width: 18, height: 18, top: 3, left: isManual ? 19 : 3 }} />
-          </span>
-          <span className="text-xs font-semibold" style={{ color: '#fff' }}>{isManual ? 'Manuell' : 'Auto'}</span>
-        </button>
+        {/* Auto/Manuell als ButtonGroup [A|M] — schwebender Glas-Chip rechts über
+            der Leiste (Daumenzone). Manuell = FAB wird zum Foto-Auslöser. */}
+        <div className="fixed z-50 flex rounded-full glass-overlay p-1" style={{ bottom: 90, right: 14 }}>
+          {([['auto', 'A', 'Automatisch'], ['manual', 'M', 'Manuell']] as const).map(([v, label, aria]) => {
+            const on = (scanState.captureMode ?? 'auto') === v;
+            return (
+              <button
+                key={v}
+                onClick={() => { if (!on) window.dispatchEvent(new CustomEvent(SCAN_CAPTURE_TOGGLE_EVENT, { detail: v })); }}
+                className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-transform active:scale-90"
+                style={{ background: on ? '#3182ce' : 'transparent', color: on ? '#fff' : 'rgba(255,255,255,0.7)' }}
+                aria-label={aria}
+                aria-pressed={on}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
 
         <nav
           className="fixed z-50 grid items-center"

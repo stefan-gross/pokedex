@@ -898,7 +898,17 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
         sctx.drawImage(canvas, 0, 0, s.width, s.height);
         const id = sctx.getImageData(0, 0, s.width, s.height);
         const pm = computePixelMetrics(id.data, s.width, s.height);
-        const cg = computeCriticalGlare(id.data, id.width, id.height);
+        // Reflexion in den Lesezonen (Name/Set-Code) auf der ENTZERRTEN Karte
+        // messen — genau wie der Auto-Modus. Auf dem ganzen Standbild lägen die
+        // Zonen falsch (Karte off-center/rotiert) → fälschlich rot/gelb.
+        let cg = { nameGlare: 0, codeGlare: 0 };
+        if (box?.corners?.length === 4) {
+          if (!critCanvasRef.current) critCanvasRef.current = document.createElement('canvas');
+          const cardData = deskewCornersToImageData(canvas, box.corners, critCanvasRef.current);
+          cg = cardData ? computeCriticalGlare(cardData.data, cardData.width, cardData.height) : cg;
+        } else {
+          cg = computeCriticalGlare(id.data, id.width, id.height);
+        }
         const cn = box?.corners?.length ?? 0;
         // Ampel-Bewertung am Standbild (fill=1 → nur Belichtung/Reflexion/Schärfe
         // zählen; Lage-Gates sind im Manuell-Modus irrelevant).
