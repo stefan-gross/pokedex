@@ -13,6 +13,10 @@ import { useGlassTheme } from '@/lib/ui/glass-theme';
 // (Label + optionale Zähler-Zahl) — dessen Indikator wird per DOM-Messung
 // positioniert (`useLayoutEffect` unten), nicht per fixer Zellgröße.
 const ICON_ONLY_CELL = 44;
+// Kompakte Variante (`size="sm"`) — z.B. für die Scanner-Footer-Leiste, wo die
+// volle 44px-Zelle zu breit ist und mit den +/−-Icons kollidieren würde.
+// Bewusst unter dem 44px-Touch-Target-Richtwert, da hier Platz vor Größe geht.
+const ICON_ONLY_CELL_SM = 30;
 const ICON_ONLY_TRACK_PADDING = 2;
 // Dauer der Gleit-Animation (Position + Stauch-Keyframe in app/globals.css,
 // `.goo-squish`) — muss mit der `goo-squish`-Keyframe-Dauer dort
@@ -45,6 +49,9 @@ interface ButtonGroupProps<T extends string> {
    *  Variante. Eigenes Theme (`theme.buttonGroupIcon`), unabhängig vom
    *  Text-Segment (`theme.buttonGroupText`). */
   iconOnly?: boolean;
+  /** Zellgröße der `iconOnly`-Variante. `md` (Default) = 44px Touch-Target;
+   *  `sm` = 30px kompakt, für enge Kontexte wie die Scanner-Footer-Leiste. */
+  size?: 'sm' | 'md';
   /** Nur für die Design-System-Testseite: überschreibt testweise den Stil
    *  des aktiven Segments/Indikators (Entwurf), ohne das gespeicherte Theme
    *  zu ändern — wird nach dem intern berechneten Stil gemerged. */
@@ -64,9 +71,13 @@ export function ButtonGroup<T extends string>({
   className = '',
   accentColor = '#3182ce', // var(--pokedex-blue), gleiche Default-Akzentfarbe wie Button variant="primary"
   iconOnly = false,
+  size = 'md',
   activeStyle,
   trackStyle,
 }: ButtonGroupProps<T>) {
+  // Zellgröße der iconOnly-Variante — steuert Indikator-Mathematik UND
+  // Button-Kantenlänge, damit beide zusammenpassen.
+  const iconCell = size === 'sm' ? ICON_ONLY_CELL_SM : ICON_ONLY_CELL;
   // Abonniert den geteilten Glas-Theme-Store nur für Reaktivität (siehe
   // `Button`) — das aktive Segment liest `theme.buttonGroupText`/
   // `theme.buttonGroupIcon` unten (getrennte Themes).
@@ -146,9 +157,9 @@ export function ButtonGroup<T extends string>({
           aria-hidden
           className="absolute pointer-events-none"
           style={{
-            width: ICON_ONLY_CELL, height: ICON_ONLY_CELL,
+            width: iconCell, height: iconCell,
             top: ICON_ONLY_TRACK_PADDING, left: ICON_ONLY_TRACK_PADDING,
-            transform: `translateX(${activeIndex * ICON_ONLY_CELL}px)`,
+            transform: `translateX(${activeIndex * iconCell}px)`,
             transition: `transform ${GOO_DURATION_MS}ms cubic-bezier(.34,1.56,.64,1)`,
           }}
         >
@@ -238,7 +249,7 @@ export function ButtonGroup<T extends string>({
             // Stapelreihenfolge sonst von der Dokumentreihenfolge abhängig).
             className={
               iconOnly
-                ? `relative z-10 w-11 h-11 rounded-full flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'text-glass-muted'}`
+                ? `relative z-10 rounded-full flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'text-glass-muted'}`
                 : `relative z-10 flex-1 min-h-11 px-2 py-1.5 text-xs font-medium transition-colors whitespace-nowrap flex items-center justify-center gap-1 disabled:opacity-30 disabled:cursor-not-allowed ${active ? '' : 'text-glass-muted'}`
             }
             // Die Füllung kommt jetzt für BEIDE Varianten aus dem
@@ -247,11 +258,15 @@ export function ButtonGroup<T extends string>({
             // `readableTextColor`: kontrastiert gegen die tatsächlich
             // sichtbare (mit Deckkraft gemischte) Fläche, nicht die
             // volldeckende Rohfarbe (derselbe Fix wie bei `secondary`,
-            // siehe tinted-glass.ts).
+            // siehe tinted-glass.ts). iconOnly bekommt zusätzlich die feste
+            // Zellgröße (px, aus `iconCell`) statt der bisherigen w-11/h-11-
+            // Klasse — so wirkt `size="sm"`.
             style={
-              !iconOnly && active
-                ? { color: readableTextColorBlended(accentColor, theme.buttonGroupText.alpha) }
-                : undefined
+              iconOnly
+                ? { width: iconCell, height: iconCell }
+                : active
+                  ? { color: readableTextColorBlended(accentColor, theme.buttonGroupText.alpha) }
+                  : undefined
             }
           >
             {opt.label}

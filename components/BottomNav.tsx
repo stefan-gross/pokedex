@@ -211,11 +211,12 @@ export function BottomNav() {
             </button>
           </div>
 
-          {/* Slot rechts — Hinzufügen, nur Icon (kein Kreis), nur sichtbar wenn Karte erkannt. */}
+          {/* Slot rechts — Hinzufügen, nur Icon (kein Kreis), nur sichtbar wenn Karte erkannt.
+              Etwas nach links gerückt, damit die kompakte A|M-Gruppe rechts Platz hat. */}
           <div
             className="flex justify-start"
             style={{
-              paddingLeft: 22,
+              paddingLeft: 10,
               opacity: scanState.canAdd ? 1 : 0,
               pointerEvents: scanState.canAdd ? 'auto' : 'none',
               transition: 'opacity 200ms ease',
@@ -226,26 +227,23 @@ export function BottomNav() {
             </button>
           </div>
 
-          {/* Auto/Manuell als Design-System-ButtonGroup (iconOnly, Gooey-Indikator
-              wie der Set-Ansicht-Umschalter im Dashboard) — rechtsbündig
-              innerhalb der Leiste, vertikal zentriert. Manuell = FAB wird zum
-              Foto-Auslöser. Nur im Live-Kamera-Zustand sichtbar (kein +/−
-              offen): Auto/Manuell wählt man VOR dem Scannen, nicht während
-              man ein erkanntes Ergebnis betrachtet — so kollidiert die
-              ~92px breite Gruppe nie mit dem +/−-Button. */}
-          {!scanState.canAdd && !scanState.canDelete && (
-            <div className="absolute" style={{ right: 6, top: '50%', transform: 'translateY(-50%)' }}>
-              <ButtonGroup
-                iconOnly
-                value={scanState.captureMode ?? 'auto'}
-                onChange={(v) => window.dispatchEvent(new CustomEvent(SCAN_CAPTURE_TOGGLE_EVENT, { detail: v }))}
-                options={[
-                  { value: 'auto',   label: <span className="text-sm font-bold">A</span>, ariaLabel: 'Automatisch' },
-                  { value: 'manual', label: <span className="text-sm font-bold">M</span>, ariaLabel: 'Manuell' },
-                ]}
-              />
-            </div>
-          )}
+          {/* Auto/Manuell als Design-System-ButtonGroup (iconOnly size="sm",
+              Gooey-Indikator wie der Set-Ansicht-Umschalter im Dashboard) —
+              rechtsbündig innerhalb der Leiste, vertikal zentriert. Manuell =
+              FAB wird zum Foto-Auslöser. Kompakte 30px-Zellen, damit die Gruppe
+              dauerhaft neben dem leicht nach links gerückten +-Button Platz hat. */}
+          <div className="absolute" style={{ right: 8, top: '50%', transform: 'translateY(-50%)' }}>
+            <ButtonGroup
+              iconOnly
+              size="sm"
+              value={scanState.captureMode ?? 'auto'}
+              onChange={(v) => window.dispatchEvent(new CustomEvent(SCAN_CAPTURE_TOGGLE_EVENT, { detail: v }))}
+              options={[
+                { value: 'auto',   label: <span className="text-xs font-bold">A</span>, ariaLabel: 'Automatisch' },
+                { value: 'manual', label: <span className="text-xs font-bold">M</span>, ariaLabel: 'Manuell' },
+              ]}
+            />
+          </div>
         </nav>
       </>
     );
