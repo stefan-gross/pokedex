@@ -276,7 +276,7 @@ interface ErrorClass {
 function classifyJobError(job: ScanJob): ErrorClass {
   const gp = job.debug?.geminiParsed as
     | { error?: string; setCode?: string | null; number?: string | null;
-        language?: string; nationalDexNumber?: number | null }
+        language?: string; nationalDexNumber?: number | null; printedTotal?: number | null }
     | undefined;
   const lang = gp?.language;
   const isNonWestern = lang && !['de', 'en', 'fr', 'es', 'it', 'pt'].includes(lang);
@@ -291,19 +291,22 @@ function classifyJobError(job: ScanJob): ErrorClass {
       attackText: 'Halte die Karte deutlicher in den Rahmen.',
     };
   }
-  if (!gp?.number) {
-    // Mindestanforderung für JEDEN Katalog-Lookup ist die Sammelnummer (R1/R2/R3
-    // und der Vorab-Lookup brauchen sie alle). Fehlt sie, konnte die Karte nicht
-    // richtig erkannt werden — das ist KEIN „nicht im Katalog", sondern ein
-    // unvollständiger Scan → näher/schärfer neu scannen. (Name/Set-Kürzel/Dex
-    // allein genügen nicht.)
+  // „Nicht vollständig erkannt" gilt in ZWEI Fällen:
+  //  a) keine Sammelnummer (Mindestanforderung jedes Lookups), ODER
+  //  b) Sammelnummer da, aber KEIN set-unterscheidendes Signal (Set-Kürzel,
+  //     Gesamtzahl „/TTT" oder Pokédex-Nr.). Die Nummer allein („081") wiederholt
+  //     sich in fast jedem Set → daraus lässt sich weder ein Treffer erzwingen
+  //     noch ein „nicht im Katalog" ehrlich behaupten. Beides ist ein zu dünner
+  //     Scan → näher/ohne Reflexion neu scannen, nicht „nicht im Katalog".
+  const hasStrongId = !!(gp?.setCode || gp?.printedTotal != null || gp?.nationalDexNumber != null);
+  if (!gp?.number || !hasStrongId) {
     return {
       kind: 'gemini-thin',
       Icon: AlertTriangle,
       iconColor: '#fb923c',
       cardName: 'Enigmon',
       attackTitle: 'Karte nicht vollständig erkannt',
-      attackText: 'Setnummer und Set-Kürzel unten an der Karte wurden nicht gelesen. Rücke näher heran und entferne Hülle/Reflexion, damit die untere Karten-Ecke scharf ist.',
+      attackText: 'Set-Kürzel und Gesamtzahl (die „…/…"-Zahl) unten an der Karte wurden nicht gelesen — dann ist keine sichere Zuordnung möglich. Rücke näher heran und entferne Hülle/Reflexion, damit die untere Karten-Ecke scharf ist.',
     };
   }
   if (isNonWestern) {
@@ -1181,8 +1184,15 @@ export default function ScannerPage() {
       // Mindestanforderung jedes Lookups und der einzige Schlüssel, mit dem sich
       // die Pending-Karte später rekonziliieren lässt. Ohne Nummer (nur Name/
       // Set-Kürzel/Dex) ist es „nicht vollständig erkannt", nicht „nicht im Katalog".
+      // Pending „nicht im Katalog" NUR, wenn außer der Sammelnummer auch ein
+      // set-unterscheidendes Signal gelesen wurde (Set-Kürzel, Gesamtzahl oder
+      // Pokédex-Nr.). Nummer allein wiederholt sich in fast jedem Set → weder ein
+      // ehrliches „fehlt im Katalog" noch eine spätere eindeutige Verknüpfung
+      // (Reconcile) möglich. Fehlt jedes Set-Signal → zu dünner Scan (oben als
+      // Fehler „nicht vollständig erkannt" klassifiziert), keine Pending-Karte.
       const hasIdentifier = !!(rawNumber || gemini.number);
-      const pendingCard: CardInfo | null = (!catalogCard && hasIdentifier) ? {
+      const hasStrongId = !!(gemini.setCode || gemini.printedTotal != null || gemini.nationalDexNumber != null);
+      const pendingCard: CardInfo | null = (!catalogCard && hasIdentifier && hasStrongId) ? {
         id: `pending-${id}`,
         name: gemini.name ?? 'Unbekannte Karte',
         number: rawNumber || gemini.number || '',
