@@ -470,6 +470,11 @@ export default function ScannerPage() {
   useEffect(() => {
     try { localStorage.setItem('scanner-capture-mode', captureMode); } catch { /* ignore */ }
   }, [captureMode]);
+  // Warmup (#2): beim Öffnen des Scanners die /api/scan-Route vorwärmen (Admin-SDK,
+  // Referenzblätter, Serverless-Coldstart) → der erste echte Scan zahlt das nicht.
+  useEffect(() => {
+    fetch('/api/scan', { method: 'GET' }).catch(() => { /* best-effort */ });
+  }, []);
   // Manueller Auslöser: der Footer-Scan-Button erhöht diesen Zähler → CameraCapture
   // reagiert per useEffect und macht das Standbild.
   const [shutterSignal, setShutterSignal] = useState(0);
@@ -822,10 +827,16 @@ export default function ScannerPage() {
         const ac = new AbortController();
         const to = setTimeout(() => ac.abort(), 90_000);
         try {
+          // Binär statt base64-JSON: spart ~25 % Transfer + den großen String-
+          // Parse serverseitig. Der MIME-Typ steckt im Content-Type-Header; der
+          // Server liest die Bytes und base64-kodiert selbst für Gemini.
+          const binStr = atob(imageBase64);
+          const bytes = new Uint8Array(binStr.length);
+          for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
           return await fetch('/api/scan', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64, mimeType }),
+            headers: { 'Content-Type': mimeType },
+            body: bytes,
             signal: ac.signal,
           });
         } finally {

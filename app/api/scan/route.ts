@@ -459,9 +459,34 @@ async function tryDirectCatalogLookup(parsed: Record<string, unknown>): Promise<
   }
 }
 
+// Warmup (#2): der Scanner pingt beim Öffnen GET /api/scan an → Admin-SDK,
+// Gemini-Client-Init und Referenzblätter-Bau laufen VOR dem ersten echten Scan
+// (Serverless-Coldstart wird so aus dem kritischen Pfad genommen).
+export async function GET() {
+  try {
+    getAdminDb();                    // Admin-SDK (REST) initialisieren
+    getReferenceSheets().catch(() => {}); // Referenzblätter im Hintergrund cachen
+  } catch { /* Warmup ist best-effort */ }
+  return NextResponse.json({ warm: true });
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { imageBase64, mimeType = 'image/jpeg' } = await req.json();
+    // Body binär ODER JSON: der Scanner sendet die rohen JPEG-Bytes (Content-Type
+    // image/*) → ~25 % weniger Transfer + kein großer base64-String-Parse. JSON
+    // bleibt als Rückfall für Altpfade/Tools erhalten.
+    const ctype = req.headers.get('content-type') || '';
+    let imageBase64: string;
+    let mimeType = 'image/jpeg';
+    if (ctype.startsWith('image/')) {
+      const buf = Buffer.from(await req.arrayBuffer());
+      imageBase64 = buf.toString('base64');
+      mimeType = ctype;
+    } else {
+      const body = await req.json();
+      imageBase64 = body.imageBase64;
+      mimeType = body.mimeType ?? 'image/jpeg';
+    }
     if (!imageBase64) return NextResponse.json({ error: 'No image provided' }, { status: 400 });
 
     // Referenzblätter für den Symbolabgleich (Schritt 2) schon JETZT anstoßen,
