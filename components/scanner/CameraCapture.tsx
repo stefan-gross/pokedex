@@ -470,6 +470,11 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   // Front/Rück-Switch entfernt — Stream nutzt immer environment (Rückkamera).
   const facingMode = 'environment' as const;
   const [torch,      setTorch]      = useState(false);
+  // Taschenlampe: viele Geräte/Browser (v.a. iOS Safari/PWA) unterstützen den
+  // `torch`-Constraint gar nicht → Button muss das ehrlich zeigen statt still
+  // nichts zu tun. null = noch nicht geprüft.
+  const [torchSupported, setTorchSupported] = useState<boolean | null>(null);
+  const [torchHint,      setTorchHint]      = useState(false);
   const [error,      setError]      = useState<string | null>(null);
   const [progress,   setProgress]   = useState(0);
   const [detected,   setDetected]   = useState(false);
@@ -1272,11 +1277,37 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   }, [doCapture, paused]);
 
   // ── Taschenlampe ─────────────────────────────────────────────────────────
+  // Fähigkeit ermitteln, sobald der Stream bereit ist. iOS Safari/PWA meldet
+  // hier kein `torch` → Button zeigt sich als „nicht verfügbar".
+  useEffect(() => {
+    if (!streamReady) { setTorchSupported(null); return; }
+    const track = streamRef.current?.getVideoTracks()[0];
+    const caps = track?.getCapabilities?.() as (MediaTrackCapabilities & { torch?: boolean }) | undefined;
+    setTorchSupported(!!caps?.torch);
+  }, [streamReady]);
+
+  const showTorchHint = () => {
+    setTorchHint(true);
+    setTimeout(() => setTorchHint(false), 2400);
+  };
+
   const toggleTorch = async () => {
     const track = streamRef.current?.getVideoTracks()[0];
-    if (!track) return;
-    try { await track.applyConstraints({ advanced: [{ torch: !torch } as MediaTrackConstraintSet] }); setTorch(t => !t); }
-    catch { /* nicht unterstützt */ }
+    if (!track) { showTorchHint(); return; }
+    const caps = track.getCapabilities?.() as (MediaTrackCapabilities & { torch?: boolean }) | undefined;
+    if (!caps?.torch) {
+      // Nicht unterstützt (z.B. iOS) → ehrlicher Hinweis statt stillem No-Op.
+      setTorchSupported(false);
+      showTorchHint();
+      return;
+    }
+    try {
+      await track.applyConstraints({ advanced: [{ torch: !torch } as MediaTrackConstraintSet] });
+      setTorch(t => !t);
+    } catch {
+      setTorchSupported(false);
+      showTorchHint();
+    }
   };
 
   return (
@@ -1505,18 +1536,26 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
             </div>
           )}
 
-          {/* Taschenlampen-Switch oben links — Glas-Kreis (Handoff design_handoff_scanner_glass) */}
+          {/* Taschenlampen-Switch oben links — Glas-Kreis (Handoff design_handoff_scanner_glass).
+              Gedimmt, wenn das Gerät die Web-Taschenlampe nicht unterstützt (iOS). */}
           <div
-            className="absolute left-4 flex flex-col gap-2 pointer-events-auto"
+            className="absolute left-4 flex flex-col items-start gap-2 pointer-events-auto"
             style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)', zIndex: 4 }}
             onClick={e => e.stopPropagation()}
           >
             <button
               onClick={toggleTorch}
-              className="w-[46px] h-[46px] rounded-full flex items-center justify-center glass-overlay"
+              className="w-[46px] h-[46px] rounded-full flex items-center justify-center glass-overlay transition-opacity"
+              style={{ opacity: torchSupported === false ? 0.4 : 1 }}
+              aria-label={torch ? 'Taschenlampe aus' : 'Taschenlampe an'}
             >
               {torch ? <Flashlight size={20} color="#facc15" /> : <FlashlightOff size={20} color="#fff" />}
             </button>
+            {torchHint && (
+              <div className="px-3 py-1.5 rounded-full text-[11px] font-medium text-white whitespace-nowrap" style={{ background: 'rgba(0,0,0,0.72)' }}>
+                Auf diesem Gerät nicht verfügbar
+              </div>
+            )}
           </div>
         </>
       )}
