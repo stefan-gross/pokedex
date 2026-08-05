@@ -1367,10 +1367,13 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     const settingsTorch = settings && 'torch' in settings ? String(settings.torch) : 'fehlt';
 
     if (applied) setTorch(next);
-    // Diagnose (verschwindet nach ein paar Sekunden) — sag mir, was hier steht.
-    setTorchDiag(`caps.torch=${capsTorch} · applied=${applied}${via ? ` (${via})` : ''}${errMsg ? ` · err=${errMsg}` : ''} · settings.torch=${settingsTorch}`);
+    const diag = `caps.torch=${capsTorch} · applied=${applied}${via ? ` (${via})` : ''}${errMsg ? ` · err=${errMsg}` : ''} · settings.torch=${settingsTorch}`;
+    setTorchDiag(diag);
     setTorchHint(true);
-    setTimeout(() => setTorchHint(false), 5000);
+    setTimeout(() => setTorchHint(false), 6000);
+    // Unmissverständliche Diagnose (blockierend) — der Versions-Marker bestätigt
+    // zugleich, dass der NEUE Code läuft (nicht ein gecachter alter Stand).
+    try { window.alert(`[Taschenlampe v2]\n${diag}`); } catch { /* ignore */ }
   };
 
   return (
