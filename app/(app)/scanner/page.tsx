@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Loader2, AlertCircle, Check, Plus, Minus, ChevronLeft, AlertTriangle, EyeOff, SearchX, LayoutGrid, Square, Flag, Bug } from 'lucide-react';
+import { X, Loader2, AlertCircle, Check, Plus, Minus, ChevronLeft, AlertTriangle, EyeOff, SearchX, LayoutGrid, Square, Flag, Bug, ScanLine } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
@@ -28,6 +28,7 @@ import { CardNameLabel } from '@/components/card/CardNameLabel';
 import { getSetById, getSetIdsByPrintedTotal } from '@/lib/firestore/sets';
 import { useScannerDebug } from '@/lib/scanner/debug-flags';
 import { saveScan } from '@/lib/scanner/scan-history';
+import { ScanTestPanel } from '@/components/scanner/ScanTestPanel';
 import type { CaptureMeta } from '@/components/scanner/CameraCapture';
 
 // Gemini liefert Condition in Kurzform (lowercase). Für Persistence wird in
@@ -469,6 +470,8 @@ export default function ScannerPage() {
   // Manueller Auslöser: der Footer-Scan-Button erhöht diesen Zähler → CameraCapture
   // reagiert per useEffect und macht das Standbild.
   const [shutterSignal, setShutterSignal] = useState(0);
+  // Testmodus-Panel (Debug-Schalter „Testmodus")
+  const [testPanelOpen, setTestPanelOpen] = useState(false);
   const switchCaptureMode = useCallback((m: 'auto' | 'manual') => {
     setCaptureMode(m);
     // Stream nur „aufwecken", wenn gerade KEINE erkannte Karte gezeigt wird —
@@ -1315,6 +1318,22 @@ export default function ScannerPage() {
             hideFrame={scanMode === 'recognize' && streamPaused && (captureMode === 'auto' || recognizedJobId != null)}
           />
         </div>
+      )}
+
+      {/* Testmodus-Launcher (nur wenn Debug-Schalter „Testmodus" an) — öffnet das
+          Testbild-Panel: gespeicherte Scans erneut durch die Pipeline schicken. */}
+      {scannerDebugFlags.test && mode === 'scanning' && !testPanelOpen && (
+        <button
+          onClick={() => setTestPanelOpen(true)}
+          className="absolute z-40 flex items-center gap-1.5 px-3 h-9 rounded-full glass-overlay text-white text-xs font-semibold"
+          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)', right: 14 }}
+        >
+          <ScanLine size={15} /> Testbild
+        </button>
+      )}
+
+      {testPanelOpen && (
+        <ScanTestPanel onClose={() => setTestPanelOpen(false)} onRecognize={handleCapture} />
       )}
 
       {/* ── Review-Modus: schwarzer Hintergrund, scrollbar ──────── */}

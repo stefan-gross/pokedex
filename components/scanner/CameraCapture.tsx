@@ -91,9 +91,11 @@ function drawRoundedPolygon(
   ctx.closePath();
 }
 
-// Motion-Sample-Canvas (klein, nur für Bewegungsmessung)
-const SAMPLE_W = 190;
-const SAMPLE_H = 266;
+// Motion-Sample-Canvas (klein, nur für Bewegungsmessung). Exportiert, damit der
+// Testmodus (ScanTestPanel) die Qualitäts-Metriken auf DERSELBEN Fenstergröße
+// misst → identische Ampel-Schwellen.
+export const SAMPLE_W = 190;
+export const SAMPLE_H = 266;
 
 const CHECK_MS               = 150;   // ONNX-Inferenz ~80ms → etwas mehr Budget
 const MOTION_RESET_THRESHOLD = 1200;  // grobe Bewegung → stable zurücksetzen
@@ -337,8 +339,9 @@ function unsharpMask(data: Uint8ClampedArray, w: number, h: number, amount: numb
 }
 
 /** Karte aufrecht entzerrt in ein kleines Canvas rendern und als ImageData
- *  zurückgeben — für die Zonen-Reflexionsmessung je Tick (billig, ~120×168). */
-function deskewCornersToImageData(
+ *  zurückgeben — für die Zonen-Reflexionsmessung je Tick (billig, ~120×168).
+ *  Exportiert für den Testmodus (identische Zonen-Reflexionsmessung). */
+export function deskewCornersToImageData(
   src: CanvasImageSource, corners: [number, number][], out: HTMLCanvasElement, targetLong = 168,
 ): ImageData | null {
   const [tl, tr, , bl] = corners;
