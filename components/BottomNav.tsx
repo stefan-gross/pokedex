@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, Search, BookOpen, Heart, Camera, Pause, LayoutGrid, Plus, Minus } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { ButtonGroup } from '@/components/ui/button-group';
 
 const FAB_SIZE = 72;
 
@@ -210,12 +211,11 @@ export function BottomNav() {
             </button>
           </div>
 
-          {/* Slot rechts — Hinzufügen, nur Icon (kein Kreis), nur sichtbar wenn Karte erkannt.
-              Etwas nach links gerückt, damit die A|M-Gruppe rechts Platz hat. */}
+          {/* Slot rechts — Hinzufügen, nur Icon (kein Kreis), nur sichtbar wenn Karte erkannt. */}
           <div
             className="flex justify-start"
             style={{
-              paddingLeft: 10,
+              paddingLeft: 22,
               opacity: scanState.canAdd ? 1 : 0,
               pointerEvents: scanState.canAdd ? 'auto' : 'none',
               transition: 'opacity 200ms ease',
@@ -226,32 +226,26 @@ export function BottomNav() {
             </button>
           </div>
 
-          {/* Auto/Manuell als ButtonGroup [A|M] — rechtsbündig innerhalb der Leiste,
-              vertikal zentriert. Manuell = FAB wird zum Foto-Auslöser. */}
-          <div
-            className="absolute flex rounded-full p-0.5"
-            style={{
-              right: 8, top: '50%', transform: 'translateY(-50%)',
-              background: 'rgba(0,0,0,0.22)',
-              border: '1px solid rgba(255,255,255,0.14)',
-            }}
-          >
-            {([['auto', 'A', 'Automatisch'], ['manual', 'M', 'Manuell']] as const).map(([v, label, aria]) => {
-              const on = (scanState.captureMode ?? 'auto') === v;
-              return (
-                <button
-                  key={v}
-                  onClick={() => { if (!on) window.dispatchEvent(new CustomEvent(SCAN_CAPTURE_TOGGLE_EVENT, { detail: v })); }}
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-transform active:scale-90"
-                  style={{ background: on ? '#3182ce' : 'transparent', color: on ? '#fff' : 'rgba(255,255,255,0.7)' }}
-                  aria-label={aria}
-                  aria-pressed={on}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+          {/* Auto/Manuell als Design-System-ButtonGroup (iconOnly, Gooey-Indikator
+              wie der Set-Ansicht-Umschalter im Dashboard) — rechtsbündig
+              innerhalb der Leiste, vertikal zentriert. Manuell = FAB wird zum
+              Foto-Auslöser. Nur im Live-Kamera-Zustand sichtbar (kein +/−
+              offen): Auto/Manuell wählt man VOR dem Scannen, nicht während
+              man ein erkanntes Ergebnis betrachtet — so kollidiert die
+              ~92px breite Gruppe nie mit dem +/−-Button. */}
+          {!scanState.canAdd && !scanState.canDelete && (
+            <div className="absolute" style={{ right: 6, top: '50%', transform: 'translateY(-50%)' }}>
+              <ButtonGroup
+                iconOnly
+                value={scanState.captureMode ?? 'auto'}
+                onChange={(v) => window.dispatchEvent(new CustomEvent(SCAN_CAPTURE_TOGGLE_EVENT, { detail: v }))}
+                options={[
+                  { value: 'auto',   label: <span className="text-sm font-bold">A</span>, ariaLabel: 'Automatisch' },
+                  { value: 'manual', label: <span className="text-sm font-bold">M</span>, ariaLabel: 'Manuell' },
+                ]}
+              />
+            </div>
+          )}
         </nav>
       </>
     );
