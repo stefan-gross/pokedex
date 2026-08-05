@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, Search, BookOpen, Heart, Camera, Pause, LayoutGrid, Plus, Minus } from 'lucide-react';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 
 const FAB_SIZE = 72;
 
@@ -48,16 +48,6 @@ export function BottomNav() {
     reviewMode: false,
     canAdd: false,
   });
-
-  // iOS-Haptik-Trick: ein verstecktes <input type="checkbox" switch> gibt beim
-  // Umschalten (innerhalb einer echten Tap-Geste) auf iOS 17.4+ ein „Tack".
-  // Nur so bekommt eine Web-PWA auf iPhone haptisches Feedback.
-  const hapticRef = useRef<HTMLLabelElement>(null);
-  useEffect(() => {
-    const input = hapticRef.current?.querySelector('input');
-    input?.setAttribute('switch', '');
-  }, [pathname]);
-  const fireHaptic = () => { try { hapticRef.current?.click(); } catch { /* nicht unterstützt */ } };
 
   const isScanner = pathname === '/scanner';
   // Glas-Tab-Bar auf allen Screens mit buntem Verlaufs-Hintergrund — das ist
@@ -140,12 +130,8 @@ export function BottomNav() {
   //  - Auto: Stream Pause/Resume wie bisher.
   const handleFabClick = () => {
     if (isScanner) {
-      if (isManual && !scanState.paused) {
-        fireHaptic(); // iOS-Haptik im echten Tap-Kontext (Android: navigator.vibrate im Scanner)
-        window.dispatchEvent(new Event(SCAN_SHUTTER_EVENT));
-      } else {
-        window.dispatchEvent(new Event(SCAN_TOGGLE_EVENT));
-      }
+      if (isManual && !scanState.paused) window.dispatchEvent(new Event(SCAN_SHUTTER_EVENT));
+      else window.dispatchEvent(new Event(SCAN_TOGGLE_EVENT));
     }
     // Off-Scanner: Link-Navigation, kein Handler nötig (Next.js Link)
   };
@@ -164,11 +150,6 @@ export function BottomNav() {
   if (isScanner) {
     return (
       <>
-        {/* Verstecktes iOS-Haptik-Element (per fireHaptic() im Tap getoggelt). */}
-        <label ref={hapticRef} aria-hidden="true" style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none', overflow: 'hidden' }}>
-          <input type="checkbox" tabIndex={-1} />
-        </label>
-
         {scanState.gridVisible && (
           <button
             onClick={() => window.dispatchEvent(new Event(SCAN_GRID_TOGGLE_EVENT))}
