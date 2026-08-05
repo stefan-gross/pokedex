@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Flashlight, FlashlightOff, Camera } from 'lucide-react';
+import { Flashlight, FlashlightOff, Camera, RefreshCw } from 'lucide-react';
 import { loadCardDetectorSession, detectCardInFrame, type CardBox } from '@/lib/scanner/card-detector-onnx';
 import { computePixelMetrics, assessQuality, computeCriticalGlare, type QualityResult } from '@/lib/scanner/frame-quality';
 import { useScannerDebug } from '@/lib/scanner/debug-flags';
@@ -493,6 +493,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   // Während des Freezes darf der Detection-Tick onnxBoxRef NICHT leeren
   // (sonst verschwände die Ampel-Kontur sofort wieder).
   const manualHoldRef  = useRef(false);
+  // Manuell-Modus: Auslöser ergab gelb/rot → NICHT erkennen, Foto + Ampel-Rahmen
+  // + Hinweis stehen lassen, Nutzer kann direkt erneut auslösen.
+  const [manualRetry, setManualRetry] = useState(false);
   const [snapAnim,   setSnapAnim]   = useState<{
     left: number; top: number; width: number; height: number; phase: 'burst' | 'fade';
   } | null>(null);
@@ -884,6 +887,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   // Reflexions-/Schärfe-Metriken am Standbild messen (nur Hinweis, nicht-blockierend).
   const doManualCapture = useCallback(async () => {
     if (paused || scanDebugRef.current) return;
+    setManualRetry(false); // neuer Versuch → alten Retry-Hinweis weg
     const video = videoRef.current, canvas = canvasRef.current;
     if (!video || !canvas || video.readyState < 2) return;
     canvas.width = video.videoWidth;
@@ -984,13 +988,25 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     manualHoldRef.current = true;   // Tick darf onnxBoxRef jetzt nicht leeren
     setFrozenStill(true);
 
-    // Haptik + Blitz beim Auslösen (nur Android; iOS Safari kennt vibrate nicht).
-    try { navigator.vibrate?.(35); } catch { /* nicht unterstützt */ }
     setFlashing(true); setTimeout(() => setFlashing(false), 180);
 
-    // Kurz halten, damit der Nutzer den Ampel-Rahmen am Foto wahrnimmt, DANN
-    // erst erkennen lassen.
-    await new Promise(r => setTimeout(r, 850));
+    // Ampel-Ergebnis: nur bei grün (oder wenn keine Bewertung möglich war) wird
+    // erkannt. Bei gelb/rot NICHT — Foto + Rahmen + Hinweis bleiben stehen, der
+    // Nutzer kann direkt erneut auslösen (Stream läuft weiter, FAB = Foto).
+    const level = qResult?.level;
+    const blocked = level === 'yellow' || level === 'red';
+
+    // Haptik (nur Android): grün = kurzer Einzelpuls, gelb/rot = Doppelpuls
+    // „nochmal versuchen".
+    try { navigator.vibrate?.(blocked ? [0, 40, 70, 40] : 35); } catch { /* nicht unterstützt */ }
+
+    if (blocked) {
+      setManualRetry(true); // zeigt „nochmal auslösen"-Hinweis, KEINE Erkennung
+      return;
+    }
+
+    // Grün: kurz halten (Nutzer nimmt den grünen Rahmen wahr), DANN erkennen.
+    await new Promise(r => setTimeout(r, 700));
     onCaptureRef.current(imageBase64, 'image/jpeg', meta);
   }, [paused]);
 
@@ -1005,6 +1021,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
       manualHoldRef.current = false;
       onnxBoxRef.current = null;
       setFrozenStill(false);
+      setManualRetry(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paused, recognized]);
@@ -1017,9 +1034,13 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     doManualCapture();
   }, [shutterSignal, doManualCapture]);
 
-  // Wechsel in den Manuell-Modus: Live-Box/Progress zurücksetzen → Overlay zeigt
-  // sauber nur den Ziel-Rahmen.
+  // Moduswechsel (Auto⇄Manuell): Live-Box/Progress zurücksetzen UND einen evtl.
+  // offenen Manuell-Freeze/Retry aufheben → Overlay zeigt sauber nur den
+  // Ziel-Rahmen bzw. die Live-Erkennung.
   useEffect(() => {
+    manualHoldRef.current = false;
+    setFrozenStill(false);
+    setManualRetry(false);
     if (!autoDetect) { onnxBoxRef.current = null; setDetected(false); setProgress(0); stableRef.current = 0; }
   }, [autoDetect]);
 
@@ -1543,6 +1564,24 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
                 zIndex: 5,
               }}
             />
+          )}
+
+          {/* Manuell-Modus: gelb/rot → keine Erkennung. Hinweis unten, dass man
+              direkt erneut auslösen kann (der Ampel-Grund steht bereits am
+              Rahmen selbst, gezeichnet von drawOverlay). */}
+          {manualRetry && (
+            <div
+              className="absolute inset-x-0 flex justify-center pointer-events-none"
+              style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 104px)', zIndex: 6 }}
+            >
+              <div
+                className="flex items-center gap-2 px-4 py-2 rounded-full"
+                style={{ background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+              >
+                <RefreshCw size={15} color="#facc15" />
+                <span className="text-white text-xs font-medium">Nicht optimal — tippe erneut zum Auslösen</span>
+              </div>
+            </div>
           )}
 
           {/* Pause-Overlay — NICHT während eines manuellen Freeze (Seite pausiert
