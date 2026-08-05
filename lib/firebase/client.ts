@@ -15,7 +15,12 @@ const app   = isNew ? initializeApp(firebaseConfig) : getApps()[0]
 
 export const auth = getAuth(app)
 // ignoreUndefinedProperties: Felder mit Wert undefined werden stillschweigend weggelassen
+// experimentalAutoDetectLongPolling: der Firestore-Client nutzt sonst WebChannel-
+// Streaming; wird das vom Netz/Proxy (z.B. Mobilfunk, iOS-PWA) blockiert, HÄNGT
+// die ERSTE Abfrage je Session ~30s, bevor sie auf Long-Polling zurückfällt —
+// das war die Ursache für ~30s „lookup" beim ersten Scan. Auto-Detect erkennt
+// das sofort und wählt gleich den funktionierenden Transport.
 export const db = isNew
-  ? initializeFirestore(app, { ignoreUndefinedProperties: true })
+  ? initializeFirestore(app, { ignoreUndefinedProperties: true, experimentalAutoDetectLongPolling: true })
   : getFirestore(app)
 export default app
