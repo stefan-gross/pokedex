@@ -477,11 +477,12 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   // Front/Rück-Switch entfernt — Stream nutzt immer environment (Rückkamera).
   const facingMode = 'environment' as const;
   const [torch,      setTorch]      = useState(false);
-  // Taschenlampe: viele Geräte/Browser (v.a. iOS Safari/PWA) unterstützen den
-  // `torch`-Constraint gar nicht → Button muss das ehrlich zeigen statt still
-  // nichts zu tun. null = noch nicht geprüft.
-  const [torchSupported, setTorchSupported] = useState<boolean | null>(null);
-  const [torchHint,      setTorchHint]      = useState(false);
+  // Taschenlampe: Button bleibt IMMER sichtbar und versucht den Toggle wirklich
+  // (WebKit meldet `torch` evtl. nicht in getCapabilities, unterstützt es aber
+  // via applyConstraints). `torchDiag` zeigt nach dem Tippen kurz, was passiert
+  // ist — zur Diagnose direkt am Gerät.
+  const [torchHint, setTorchHint] = useState(false);
+  const [torchDiag, setTorchDiag] = useState<string | null>(null);
   const [error,      setError]      = useState<string | null>(null);
   const [progress,   setProgress]   = useState(0);
   const [detected,   setDetected]   = useState(false);
@@ -1335,37 +1336,41 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   }, [doCapture, paused]);
 
   // ── Taschenlampe ─────────────────────────────────────────────────────────
-  // Fähigkeit ermitteln, sobald der Stream bereit ist. iOS Safari/PWA meldet
-  // hier kein `torch` → Button zeigt sich als „nicht verfügbar".
-  useEffect(() => {
-    if (!streamReady) { setTorchSupported(null); return; }
-    const track = streamRef.current?.getVideoTracks()[0];
-    const caps = track?.getCapabilities?.() as (MediaTrackCapabilities & { torch?: boolean }) | undefined;
-    setTorchSupported(!!caps?.torch);
-  }, [streamReady]);
-
-  const showTorchHint = () => {
-    setTorchHint(true);
-    setTimeout(() => setTorchHint(false), 2400);
-  };
-
+  // KEINE getCapabilities-Vorabprüfung mehr: WebKit meldet `torch` dort evtl.
+  // nicht, unterstützt es aber via applyConstraints. Wir VERSUCHEN es direkt
+  // (advanced-Form, dann Top-Level-Fallback) und zeigen das Ergebnis als Diagnose.
   const toggleTorch = async () => {
     const track = streamRef.current?.getVideoTracks()[0];
-    if (!track) { showTorchHint(); return; }
+    if (!track) { setTorchDiag('Kein Kamera-Track aktiv'); setTorchHint(true); setTimeout(() => setTorchHint(false), 3500); return; }
+    const next = !torch;
+
     const caps = track.getCapabilities?.() as (MediaTrackCapabilities & { torch?: boolean }) | undefined;
-    if (!caps?.torch) {
-      // Nicht unterstützt (z.B. iOS) → ehrlicher Hinweis statt stillem No-Op.
-      setTorchSupported(false);
-      showTorchHint();
-      return;
-    }
+    const capsTorch = caps ? ('torch' in caps ? String((caps as { torch?: unknown }).torch) : 'fehlt') : 'keine caps';
+
+    let applied = false;
+    let via = '';
+    let errMsg = '';
+    // 1) Standard-Form (advanced)
     try {
-      await track.applyConstraints({ advanced: [{ torch: !torch } as MediaTrackConstraintSet] });
-      setTorch(t => !t);
-    } catch {
-      setTorchSupported(false);
-      showTorchHint();
+      await track.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] });
+      applied = true; via = 'advanced';
+    } catch (e) { errMsg = e instanceof Error ? e.message : String(e); }
+    // 2) Fallback: Top-Level-Constraint (manche Implementierungen brauchen das)
+    if (!applied) {
+      try {
+        await track.applyConstraints({ torch: next } as unknown as MediaTrackConstraints);
+        applied = true; via = 'top-level';
+      } catch (e) { errMsg = e instanceof Error ? e.message : String(e); }
     }
+
+    const settings = track.getSettings?.() as { torch?: boolean } | undefined;
+    const settingsTorch = settings && 'torch' in settings ? String(settings.torch) : 'fehlt';
+
+    if (applied) setTorch(next);
+    // Diagnose (verschwindet nach ein paar Sekunden) — sag mir, was hier steht.
+    setTorchDiag(`caps.torch=${capsTorch} · applied=${applied}${via ? ` (${via})` : ''}${errMsg ? ` · err=${errMsg}` : ''} · settings.torch=${settingsTorch}`);
+    setTorchHint(true);
+    setTimeout(() => setTorchHint(false), 5000);
   };
 
   return (
@@ -1613,23 +1618,22 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
           )}
 
           {/* Taschenlampen-Switch oben links — Glas-Kreis (Handoff design_handoff_scanner_glass).
-              Gedimmt, wenn das Gerät die Web-Taschenlampe nicht unterstützt (iOS). */}
+              Immer sichtbar; nach dem Tippen zeigt ein Chip kurz die Diagnose. */}
           <div
             className="absolute left-4 flex flex-col items-start gap-2 pointer-events-auto"
-            style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)', zIndex: 4 }}
+            style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)', zIndex: 4, maxWidth: 'calc(100vw - 96px)' }}
             onClick={e => e.stopPropagation()}
           >
             <button
               onClick={toggleTorch}
-              className="w-[46px] h-[46px] rounded-full flex items-center justify-center glass-overlay transition-opacity"
-              style={{ opacity: torchSupported === false ? 0.4 : 1 }}
+              className="w-[46px] h-[46px] rounded-full flex items-center justify-center glass-overlay"
               aria-label={torch ? 'Taschenlampe aus' : 'Taschenlampe an'}
             >
               {torch ? <Flashlight size={20} color="#facc15" /> : <FlashlightOff size={20} color="#fff" />}
             </button>
-            {torchHint && (
-              <div className="px-3 py-1.5 rounded-full text-[11px] font-medium text-white whitespace-nowrap" style={{ background: 'rgba(0,0,0,0.72)' }}>
-                Auf diesem Gerät nicht verfügbar
+            {torchHint && torchDiag && (
+              <div className="px-3 py-1.5 rounded-xl text-[11px] font-mono leading-snug text-white break-words" style={{ background: 'rgba(0,0,0,0.8)' }}>
+                {torchDiag}
               </div>
             )}
           </div>
