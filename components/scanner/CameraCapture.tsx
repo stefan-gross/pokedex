@@ -1034,6 +1034,17 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   useEffect(() => {
     if (shutterSignal === shutterSeenRef.current) return;
     shutterSeenRef.current = shutterSignal;
+    // Steht gerade ein eingefrorenes Foto (gelb/rot-Retry)? Dann bringt der erste
+    // Tap ERST die Live-Ansicht zurück (Freeze weg) — NICHT sofort ein neues Foto.
+    // Erst der nächste Tap löst wieder aus. (Beim grünen Ergebnis ist der Stream
+    // pausiert → der FAB sendet dann ohnehin Pause/Resume statt Shutter.)
+    if (manualHoldRef.current) {
+      manualHoldRef.current = false;
+      onnxBoxRef.current = null;
+      setFrozenStill(false);
+      setManualRetry(false);
+      return;
+    }
     doManualCapture();
   }, [shutterSignal, doManualCapture]);
 
@@ -1582,7 +1593,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
                 style={{ background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
               >
                 <RefreshCw size={15} color="#facc15" />
-                <span className="text-white text-xs font-medium">Nicht optimal — tippe erneut zum Auslösen</span>
+                <span className="text-white text-xs font-medium">Nicht optimal — tippe für Live-Ansicht, dann neu auslösen</span>
               </div>
             </div>
           )}
