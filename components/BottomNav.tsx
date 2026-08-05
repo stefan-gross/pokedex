@@ -171,11 +171,10 @@ export function BottomNav() {
         )}
 
         <nav
-          className="fixed z-50 grid items-center"
+          className="fixed z-50 flex items-center justify-center"
           style={{
             bottom: 14, left: 14, right: 14, height: 64,
             borderRadius: 26,
-            gridTemplateColumns: '1fr 1fr 1fr',
             background: 'rgba(255,255,255,0.12)',
             backdropFilter: 'blur(28px) saturate(1.6)',
             WebkitBackdropFilter: 'blur(28px) saturate(1.6)',
@@ -183,22 +182,6 @@ export function BottomNav() {
             boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.3), 0 8px 26px rgba(0,0,0,0.42)',
           }}
         >
-          {/* Slot links — Entfernen, nur Icon (kein Kreis), nur sichtbar wenn im Besitz.
-              Etwas nach rechts gerückt, damit die A|M-Gruppe rechts Platz hat. */}
-          <div
-            className="flex justify-end"
-            style={{
-              paddingRight: 10,
-              opacity: scanState.canDelete ? 1 : 0,
-              pointerEvents: scanState.canDelete ? 'auto' : 'none',
-              transition: 'opacity 200ms ease',
-            }}
-          >
-            <button onClick={() => window.dispatchEvent(new Event(SCAN_REMOVE_EVENT))} aria-label="Aus Sammlung entfernen">
-              <Minus size={27} color="#ff8a8a" strokeWidth={3} />
-            </button>
-          </div>
-
           {/* Einzeln/Mehrere als Design-System-ButtonGroup (iconOnly size="sm",
               spiegelbildlich zum A|M rechts) — linksbündig in der Leiste. Einzeln
               = ein Kartensymbol, Mehrere = Stapel. */}
@@ -216,8 +199,20 @@ export function BottomNav() {
             />
           </div>
 
-          {/* Slot Mitte — Kamera, überstehender FAB (lila Glas) */}
-          <div className="flex items-center justify-center">
+          {/* Mittiger Cluster: Entfernen · Scan-FAB · Hinzufügen — dicht beieinander.
+              +/− sind runde Glas-Nav-Buttons (wie Taschenlampe/Schließen), nur
+              sichtbar wenn löschbar/hinzufügbar; belegen sonst unsichtbar den
+              Platz, damit der FAB zentriert bleibt. */}
+          <div className="flex items-center" style={{ gap: 14 }}>
+            <button
+              onClick={() => window.dispatchEvent(new Event(SCAN_REMOVE_EVENT))}
+              aria-label="Aus Sammlung entfernen"
+              className="w-11 h-11 rounded-full flex items-center justify-center glass-overlay transition-all duration-150 active:scale-90"
+              style={{ opacity: scanState.canDelete ? 1 : 0, pointerEvents: scanState.canDelete ? 'auto' : 'none' }}
+            >
+              <Minus size={24} color="#ff8a8a" strokeWidth={3} />
+            </button>
+
             <button
               onClick={handleFabClick}
               className="flex items-center justify-center transition-transform duration-150 active:scale-90"
@@ -226,29 +221,21 @@ export function BottomNav() {
             >
               <FabIcon size={30} color={fabIconColor} fill={!isManual && !scanState.paused ? '#fff' : 'none'} />
             </button>
-          </div>
 
-          {/* Slot rechts — Hinzufügen, nur Icon (kein Kreis), nur sichtbar wenn Karte erkannt.
-              Etwas nach links gerückt, damit die kompakte A|M-Gruppe rechts Platz hat. */}
-          <div
-            className="flex justify-start"
-            style={{
-              paddingLeft: 10,
-              opacity: scanState.canAdd ? 1 : 0,
-              pointerEvents: scanState.canAdd ? 'auto' : 'none',
-              transition: 'opacity 200ms ease',
-            }}
-          >
-            <button onClick={() => window.dispatchEvent(new Event(SCAN_ADD_EVENT))} aria-label="Zur Sammlung hinzufügen">
-              <Plus size={27} color="#8ff0b0" strokeWidth={3} />
+            <button
+              onClick={() => window.dispatchEvent(new Event(SCAN_ADD_EVENT))}
+              aria-label="Zur Sammlung hinzufügen"
+              className="w-11 h-11 rounded-full flex items-center justify-center glass-overlay transition-all duration-150 active:scale-90"
+              style={{ opacity: scanState.canAdd ? 1 : 0, pointerEvents: scanState.canAdd ? 'auto' : 'none' }}
+            >
+              <Plus size={24} color="#8ff0b0" strokeWidth={3} />
             </button>
           </div>
 
           {/* Auto/Manuell als Design-System-ButtonGroup (iconOnly size="sm",
               Gooey-Indikator wie der Set-Ansicht-Umschalter im Dashboard) —
               rechtsbündig innerhalb der Leiste, vertikal zentriert. Manuell =
-              FAB wird zum Foto-Auslöser. Kompakte 30px-Zellen, damit die Gruppe
-              dauerhaft neben dem leicht nach links gerückten +-Button Platz hat. */}
+              FAB wird zum Foto-Auslöser. */}
           <div className="absolute" style={{ right: 8, top: '50%', transform: 'translateY(-50%)' }}>
             <ButtonGroup
               iconOnly
