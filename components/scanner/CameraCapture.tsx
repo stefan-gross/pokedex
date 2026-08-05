@@ -703,13 +703,25 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     setError(null); stableRef.current = 0; setProgress(0); setDetected(false);
     startingRef.current = true; // Visibility-Handler blockiert ab hier
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        // Full HD: die Karte füllt oft nur ~25% des Bildes, bei 1280×720 blieben
-        // dem winzigen Set-Kürzel/-Nummer zu wenig native Pixel (unscharf nach
-        // Deskew-Upscaling). 1920×1080 gibt ~50% mehr lineare Auflösung → lesbarer.
-        // Detection läuft ohnehin auf 640px-Downscale, kostet also nicht mehr.
-        video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
-      });
+      // Full HD: die Karte füllt oft nur ~25% des Bildes, bei 1280×720 blieben
+      // dem winzigen Set-Kürzel/-Nummer zu wenig native Pixel (unscharf nach
+      // Deskew-Upscaling). 1920×1080 gibt ~50% mehr lineare Auflösung → lesbarer.
+      // Detection läuft ohnehin auf 640px-Downscale, kostet also nicht mehr.
+      const resolution = { width: { ideal: 1920 }, height: { ideal: 1080 } };
+      // facingMode EXACT bevorzugen: bindet an die echte Rückkamera — auf iOS
+      // zündet die Taschenlampe (torch) nur mit dem korrekten physischen Device
+      // zuverlässig. Fällt auf die weiche Präferenz zurück (Desktop / Geräte ohne
+      // striktes „environment", sonst OverconstrainedError).
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: 'environment' }, ...resolution },
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode, ...resolution },
+        });
+      }
       _kameraStream = stream;
       streamRef.current = stream;
       stream.getVideoTracks()[0]?.addEventListener('ended', () => {
