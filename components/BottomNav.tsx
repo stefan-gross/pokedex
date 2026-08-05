@@ -169,26 +169,6 @@ export function BottomNav() {
           </button>
         )}
 
-        {/* Auto/Manuell als ButtonGroup [A|M] — schwebender Glas-Chip rechts über
-            der Leiste (Daumenzone). Manuell = FAB wird zum Foto-Auslöser. */}
-        <div className="fixed z-50 flex rounded-full glass-overlay p-1" style={{ bottom: 90, right: 14 }}>
-          {([['auto', 'A', 'Automatisch'], ['manual', 'M', 'Manuell']] as const).map(([v, label, aria]) => {
-            const on = (scanState.captureMode ?? 'auto') === v;
-            return (
-              <button
-                key={v}
-                onClick={() => { if (!on) window.dispatchEvent(new CustomEvent(SCAN_CAPTURE_TOGGLE_EVENT, { detail: v })); }}
-                className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-transform active:scale-90"
-                style={{ background: on ? '#3182ce' : 'transparent', color: on ? '#fff' : 'rgba(255,255,255,0.7)' }}
-                aria-label={aria}
-                aria-pressed={on}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-
         <nav
           className="fixed z-50 grid items-center"
           style={{
@@ -202,11 +182,12 @@ export function BottomNav() {
             boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.3), 0 8px 26px rgba(0,0,0,0.42)',
           }}
         >
-          {/* Slot links — Entfernen, nur Icon (kein Kreis), nur sichtbar wenn im Besitz */}
+          {/* Slot links — Entfernen, nur Icon (kein Kreis), nur sichtbar wenn im Besitz.
+              Etwas nach rechts gerückt, damit die A|M-Gruppe rechts Platz hat. */}
           <div
             className="flex justify-end"
             style={{
-              paddingRight: 22,
+              paddingRight: 10,
               opacity: scanState.canDelete ? 1 : 0,
               pointerEvents: scanState.canDelete ? 'auto' : 'none',
               transition: 'opacity 200ms ease',
@@ -229,11 +210,12 @@ export function BottomNav() {
             </button>
           </div>
 
-          {/* Slot rechts — Hinzufügen, nur Icon (kein Kreis), nur sichtbar wenn Karte erkannt */}
+          {/* Slot rechts — Hinzufügen, nur Icon (kein Kreis), nur sichtbar wenn Karte erkannt.
+              Etwas nach links gerückt, damit die A|M-Gruppe rechts Platz hat. */}
           <div
             className="flex justify-start"
             style={{
-              paddingLeft: 22,
+              paddingLeft: 10,
               opacity: scanState.canAdd ? 1 : 0,
               pointerEvents: scanState.canAdd ? 'auto' : 'none',
               transition: 'opacity 200ms ease',
@@ -242,6 +224,33 @@ export function BottomNav() {
             <button onClick={() => window.dispatchEvent(new Event(SCAN_ADD_EVENT))} aria-label="Zur Sammlung hinzufügen">
               <Plus size={27} color="#8ff0b0" strokeWidth={3} />
             </button>
+          </div>
+
+          {/* Auto/Manuell als ButtonGroup [A|M] — rechtsbündig innerhalb der Leiste,
+              vertikal zentriert. Manuell = FAB wird zum Foto-Auslöser. */}
+          <div
+            className="absolute flex rounded-full p-0.5"
+            style={{
+              right: 8, top: '50%', transform: 'translateY(-50%)',
+              background: 'rgba(0,0,0,0.22)',
+              border: '1px solid rgba(255,255,255,0.14)',
+            }}
+          >
+            {([['auto', 'A', 'Automatisch'], ['manual', 'M', 'Manuell']] as const).map(([v, label, aria]) => {
+              const on = (scanState.captureMode ?? 'auto') === v;
+              return (
+                <button
+                  key={v}
+                  onClick={() => { if (!on) window.dispatchEvent(new CustomEvent(SCAN_CAPTURE_TOGGLE_EVENT, { detail: v })); }}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-transform active:scale-90"
+                  style={{ background: on ? '#3182ce' : 'transparent', color: on ? '#fff' : 'rgba(255,255,255,0.7)' }}
+                  aria-label={aria}
+                  aria-pressed={on}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
         </nav>
       </>
