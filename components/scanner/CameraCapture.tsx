@@ -820,6 +820,10 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     } : undefined;
     onCaptureRef.current(imageBase64, 'image/jpeg', meta);
 
+    // Haptik: Auto-Trigger = Doppelpuls („für dich ausgelöst"), manueller Tap =
+    // kurzer Einzelpuls. Nur Android — iOS Safari kennt navigator.vibrate nicht.
+    try { navigator.vibrate?.(force ? 35 : [0, 30, 60, 30]); } catch { /* nicht unterstützt */ }
+
     // Weißer Blitz
     setFlashing(true); setTimeout(() => setFlashing(false), 180);
 
@@ -916,6 +920,8 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     } catch { meta = undefined; }
 
     onCaptureRef.current(imageBase64, 'image/jpeg', meta);
+    // Haptik beim manuellen Foto (nur Android; iOS Safari kennt es nicht).
+    try { navigator.vibrate?.(35); } catch { /* nicht unterstützt */ }
     setFlashing(true); setTimeout(() => setFlashing(false), 180);
   }, [paused]);
 
