@@ -8,7 +8,7 @@ import { useScannerDebug } from '@/lib/scanner/debug-flags';
 
 /** Momentaufnahme der Auslöse-Metriken (für KI-Debug-Vorschau). */
 export interface CaptureMeta {
-  trigger: 'auto' | 'manual';
+  trigger: 'auto' | 'manual' | 'test';
   level: string;
   reason?: string;
   boxDelta: number;

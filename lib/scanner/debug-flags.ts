@@ -10,26 +10,28 @@
 
 import { useEffect, useState } from 'react';
 
-export type ScannerDebugStage = 'scan' | 'ai';
+export type ScannerDebugStage = 'scan' | 'ai' | 'test';
 
 export interface ScannerDebugFlags {
   scan: boolean;
   ai: boolean;
+  test: boolean;
 }
 
 const KEYS: Record<ScannerDebugStage, string> = {
   scan: 'scanner-debug-scan',
   ai: 'scanner-debug-ai',
+  test: 'scanner-debug-test',
 };
 
 const CHANGE_EVENT = 'scanner-debug-changed';
 
 function readFlags(): ScannerDebugFlags {
-  if (typeof window === 'undefined') return { scan: false, ai: false };
+  if (typeof window === 'undefined') return { scan: false, ai: false, test: false };
   const g = (s: ScannerDebugStage) => {
     try { return localStorage.getItem(KEYS[s]) === '1'; } catch { return false; }
   };
-  return { scan: g('scan'), ai: g('ai') };
+  return { scan: g('scan'), ai: g('ai'), test: g('test') };
 }
 
 export function getScannerDebug(): ScannerDebugFlags {
@@ -45,7 +47,7 @@ export function setScannerDebug(stage: ScannerDebugStage, on: boolean): void {
 /** Reaktiver Hook. Startet mit `false` (SSR-sicher, keine Hydration-Mismatch),
  *  liest die echten Werte erst nach dem Mount. */
 export function useScannerDebug(): ScannerDebugFlags {
-  const [flags, setFlags] = useState<ScannerDebugFlags>({ scan: false, ai: false });
+  const [flags, setFlags] = useState<ScannerDebugFlags>({ scan: false, ai: false, test: false });
   useEffect(() => {
     const update = () => setFlags(readFlags());
     update();

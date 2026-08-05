@@ -27,6 +27,7 @@ import { useSetMeta } from '@/lib/hooks/use-set-meta';
 import { CardNameLabel } from '@/components/card/CardNameLabel';
 import { getSetById, getSetIdsByPrintedTotal } from '@/lib/firestore/sets';
 import { useScannerDebug } from '@/lib/scanner/debug-flags';
+import { saveScan } from '@/lib/scanner/scan-history';
 import type { CaptureMeta } from '@/components/scanner/CameraCapture';
 
 // Gemini liefert Condition in Kurzform (lowercase). Für Persistence wird in
@@ -775,7 +776,11 @@ export default function ScannerPage() {
     // KI-Debug: erst NUR das entzerrte Bild + Auslöse-Metriken zeigen — kein
     // Gemini/Lookup. Der Vorschau-Button „An Gemini senden" ruft handleCapture
     // mit skipPreview=true erneut auf und lässt dann den echten Flow laufen.
-    if (aiFlagRef.current && !skipPreview) {
+    // Testmodus-Läufe (trigger==='test') überspringen die KI-Vorschau und werden
+    // NICHT erneut in die Historie geschrieben (wir spielen ja ein historisches
+    // Bild ab).
+    const fromTest = meta?.trigger === 'test';
+    if (aiFlagRef.current && !skipPreview && !fromTest) {
       setPreviewImage({ src: `data:${mimeType};base64,${imageBase64}`, sizeKb: imageSizeKb, base64: imageBase64, mimeType, meta });
       setStreamPaused(true);
       return;
@@ -870,6 +875,7 @@ export default function ScannerPage() {
         setJobs(prev => prev.map(j => j.id === id
           ? { ...j, status: 'error', result: { card: null, language: (gemini.language ?? 'de') as CardLanguage }, debugInfo: geminiSummary, debug: errDebug }
           : j));
+        if (!fromTest) void saveScan({ imageBase64, mimeType, label: gemini.error ? 'Keine Karte erkannt' : 'Kein lesbarer Text', ok: false });
         scheduleImageCleanup(id);
         return;
       }
@@ -1187,6 +1193,18 @@ export default function ScannerPage() {
         },
       } : j));
 
+      // Scan-Historie (Testmodus): das gesendete Bild + Ergebnis lokal ablegen,
+      // damit sich falsch/nicht erkannte Karten später mit demselben Bild
+      // nachstellen lassen. Nicht bei Testmodus-Läufen selbst.
+      if (!fromTest) {
+        void saveScan({
+          imageBase64, mimeType,
+          label: finalCard ? finalCard.name : 'Kein Treffer',
+          ok: !!finalCard,
+          cardId: finalCard?.id,
+        });
+      }
+
       // Erkennen-Modus: nach erfolgreicher Erkennung Job zentral anzeigen —
       // auch für vorläufige (nicht katalogisierte) Karten.
       if (finalCard && scanModeRef.current === 'recognize') {
@@ -1272,6 +1290,7 @@ export default function ScannerPage() {
       setJobs(prev => prev.map(j => j.id === id
         ? { ...j, status: 'error', result: { card: null, language: 'de' }, debugInfo: `Netzwerkfehler: ${msg}`, debug: errDebug }
         : j));
+      if (!fromTest) void saveScan({ imageBase64, mimeType, label: 'Netzwerkfehler', ok: false });
       scheduleImageCleanup(id);
     }
   }, [scheduleImageCleanup]);
