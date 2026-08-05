@@ -913,10 +913,27 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     try {
       const s = sampleRef.current;
       if (s) {
+        // Metriken (Reflexion/Schärfe/Belichtung/Kontrast) auf einem NATIV
+        // aufgelösten 190×266-Fenster messen — 1:1, GENAU wie der Auto-Tick
+        // (`drawImage(video, sx,sy,sw,sh, 0,0,sw,sh)`). Zentriert auf die Karte
+        // (Box-Mitte), sonst Bildmitte. Vorher wurde das GANZE 1920×1080-
+        // Standbild auf 190×266 heruntergerechnet → eine Reflexion (kleiner
+        // Fleck) und Unschärfe gingen im herunterskalierten Hintergrund unter,
+        // die Ampel blieb fälschlich grün. Nativer Ausschnitt = gleiche Metrik-
+        // Skala wie Auto → dieselben Schwellen greifen (`sharpMin`, `glareMax`…).
+        const sw = Math.min(SAMPLE_W, canvas.width);
+        const sh = Math.min(SAMPLE_H, canvas.height);
+        let rx = Math.max(0, Math.round((canvas.width - sw) / 2));
+        let ry = Math.max(0, Math.round((canvas.height - sh) / 2));
+        if (box && box.w > 0 && box.h > 0) {
+          rx = Math.max(0, Math.min(canvas.width  - sw, Math.round(box.x + box.w / 2 - sw / 2)));
+          ry = Math.max(0, Math.min(canvas.height - sh, Math.round(box.y + box.h / 2 - sh / 2)));
+        }
         const sctx = s.getContext('2d')!;
-        sctx.drawImage(canvas, 0, 0, s.width, s.height);
-        const id = sctx.getImageData(0, 0, s.width, s.height);
-        const pm = computePixelMetrics(id.data, s.width, s.height);
+        sctx.clearRect(0, 0, s.width, s.height);
+        sctx.drawImage(canvas, rx, ry, sw, sh, 0, 0, sw, sh);
+        const id = sctx.getImageData(0, 0, sw, sh);
+        const pm = computePixelMetrics(id.data, sw, sh);
         // Reflexion in den Lesezonen (Name/Set-Code) auf der ENTZERRTEN Karte
         // messen — genau wie der Auto-Modus. Auf dem ganzen Standbild lägen die
         // Zonen falsch (Karte off-center/rotiert) → fälschlich rot/gelb.
@@ -926,7 +943,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
           const cardData = deskewCornersToImageData(canvas, box.corners, critCanvasRef.current);
           cg = cardData ? computeCriticalGlare(cardData.data, cardData.width, cardData.height) : cg;
         } else {
-          cg = computeCriticalGlare(id.data, id.width, id.height);
+          cg = computeCriticalGlare(id.data, sw, sh);
         }
         const cn = box?.corners?.length ?? 0;
         // Ampel-Bewertung am Standbild (fill=1 → nur Belichtung/Reflexion/Schärfe
