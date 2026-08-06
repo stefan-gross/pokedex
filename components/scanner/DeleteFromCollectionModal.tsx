@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Minus } from 'lucide-react';
 import type { CardInfo } from '@/lib/card-info';
-import type { CardDoc, BinderDoc } from '@/types';
+import type { CardDoc, BinderDoc, CardVariant, CardCondition, CardLanguage } from '@/types';
 import { deleteCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { getBinders, removeCardFromBinderAndCleanup } from '@/lib/firestore/binders';
 import { matchTemplateBinders } from '@/lib/template-binders/match-hint';
@@ -25,6 +25,11 @@ interface Props {
   /** Scanner liegt immer über dem Kamerabild — Drawer dort unabhängig vom
    *  App-Theme immer dunkel darstellen (via erzwungener `.dark`-Klasse). */
   fromScanner?: boolean;
+  /** Beim Scan erkannte Attribute — das dazu passende Exemplar wird
+   *  hervorgehoben und nach oben sortiert („passt zum Scan"). */
+  matchVariant?: CardVariant;
+  matchCondition?: CardCondition;
+  matchLanguage?: CardLanguage;
   onClose: () => void;
   onDeleted: () => void;
 }
@@ -33,7 +38,17 @@ interface Props {
  *  Liquid-Glass-Design. Zeigt eine Zeile pro Exemplar (Sammlung + Zustand/
  *  Sprache/Variante) mit eigenem Löschen-Button, plus einen Button, um die
  *  Karte komplett aus allen Sammlungen zu entfernen. */
-export function DeleteFromCollectionModal({ card, fromScanner = false, onClose, onDeleted }: Props) {
+export function DeleteFromCollectionModal({
+  card, fromScanner = false, matchVariant, matchCondition, matchLanguage, onClose, onDeleted,
+}: Props) {
+  // Passt ein Exemplar zu den beim Scan erkannten Attributen? (nur werten, wenn
+  // mindestens ein Match-Kriterium übergeben wurde). Solche Exemplare stehen
+  // oben und werden grün markiert — meist will man genau dieses entfernen.
+  const isMatch = (copy: CardDoc) =>
+    (matchVariant != null || matchCondition != null || matchLanguage != null) &&
+    (matchVariant == null   || copy.variant === matchVariant) &&
+    (matchCondition == null || copy.condition === matchCondition) &&
+    (matchLanguage == null  || copy.language === matchLanguage);
   const [allBinders, setAllBinders] = useState<BinderDoc[]>([]);
   const [ownedCopies, setOwnedCopies] = useState<CardDoc[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -142,18 +157,21 @@ export function DeleteFromCollectionModal({ card, fromScanner = false, onClose, 
             ) : ownedCopies.length === 0 ? (
               <p className="text-[13px] text-muted-foreground py-3">Nicht in der Sammlung</p>
             ) : (
-              ownedCopies.map(copy => {
+              [...ownedCopies].sort((a, b) => Number(isMatch(b)) - Number(isMatch(a))).map(copy => {
                 const binder = allBinders.find(b => b.cardIds.includes(copy.id));
                 const binderName = binder?.name ?? 'Unsortiert';
                 const binderColor = binder?.color ?? 'var(--muted-foreground)';
                 const condColor = CONDITION_COLOR[copy.condition] ?? 'var(--muted-foreground)';
                 const isConfirm = confirmId === copy.id;
                 const isDeleting = deletingId === copy.id;
+                const matched = isMatch(copy);
                 return (
                   <div
                     key={copy.id}
                     className="glass-inner flex items-center gap-2.5 rounded-xl px-3 py-2"
-                    style={{ background: `color-mix(in srgb, ${binderColor} 16%, transparent)` }}
+                    style={matched
+                      ? { background: 'rgba(53,209,90,0.16)', boxShadow: 'inset 0 0 0 1px rgba(53,209,90,0.4)' }
+                      : { background: `color-mix(in srgb, ${binderColor} 16%, transparent)` }}
                   >
                     <div
                       className="w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0"
@@ -162,7 +180,14 @@ export function DeleteFromCollectionModal({ card, fromScanner = false, onClose, 
                       <BinderIcon name={binder?.icon ?? 'folder'} size={18} style={{ color: binderColor }} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-semibold truncate">{binderName}</div>
+                      <div className="text-[13px] font-semibold truncate flex items-center gap-1.5">
+                        {binderName}
+                        {matched && (
+                          <span className="text-[10px] font-bold px-1.5 py-px rounded" style={{ color: '#8ff0b0', background: 'rgba(53,209,90,0.2)' }}>
+                            passt zum Scan
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[12px] text-muted-foreground truncate">
                         <span style={{ color: condColor, fontWeight: 600 }}>{CONDITIONS.find(c => c.value === copy.condition)?.label ?? copy.condition}</span>
                         {' · '}{copy.language.toUpperCase()}{' · '}{VARIANT_LABELS[copy.variant]}

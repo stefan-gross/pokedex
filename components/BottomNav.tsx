@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, BookOpen, Heart, Camera, Pause, LayoutGrid, Plus, Minus, Square, Layers } from 'lucide-react';
+import { Home, Search, BookOpen, Heart, Camera, Pause, LayoutGrid, Square, Layers } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ButtonGroup } from '@/components/ui/button-group';
 
@@ -22,8 +22,6 @@ const SCAN_TOGGLE_EVENT       = 'scanner-toggle-pause';
 const SCAN_GRID_TOGGLE_EVENT  = 'scanner-toggle-grid';
 const SCAN_MODE_TOGGLE_EVENT  = 'scanner-toggle-mode';
 const SCAN_STATE_EVENT        = 'scanner-state-changed';
-const SCAN_ADD_EVENT          = 'scanner-add-recognized';
-const SCAN_REMOVE_EVENT       = 'scanner-remove-recognized';
 const SCAN_CAPTURE_TOGGLE_EVENT = 'scanner-toggle-capture';  // Auto ⇄ Manuell
 const SCAN_SHUTTER_EVENT        = 'scanner-shutter';         // Manueller Auslöser (Foto)
 
@@ -188,31 +186,21 @@ export function BottomNav() {
           <div className="absolute" style={{ left: 8, top: '50%', transform: 'translateY(-50%)' }}>
             <ButtonGroup
               iconOnly
-              size="sm"
+              size="md"
               toggle
               value={scanState.scanMode}
               onChange={(v) => window.dispatchEvent(new CustomEvent(SCAN_MODE_TOGGLE_EVENT, { detail: v }))}
               options={[
-                { value: 'recognize', label: <Square size={15} />, ariaLabel: 'Einzelscan' },
-                { value: 'add',       label: <Layers size={15} />, ariaLabel: 'Mehrfachscan' },
+                { value: 'recognize', label: <Square size={17} />, ariaLabel: 'Einzelscan' },
+                { value: 'add',       label: <Layers size={17} />, ariaLabel: 'Mehrfachscan' },
               ]}
             />
           </div>
 
-          {/* Mittiger Cluster: Entfernen · Scan-FAB · Hinzufügen — dicht beieinander.
-              +/− sind runde Glas-Nav-Buttons (wie Taschenlampe/Schließen), nur
-              sichtbar wenn löschbar/hinzufügbar; belegen sonst unsichtbar den
-              Platz, damit der FAB zentriert bleibt. */}
-          <div className="flex items-center" style={{ gap: 14 }}>
-            <button
-              onClick={() => window.dispatchEvent(new Event(SCAN_REMOVE_EVENT))}
-              aria-label="Aus Sammlung entfernen"
-              className="w-11 h-11 rounded-full flex items-center justify-center glass-overlay transition-all duration-150 active:scale-90"
-              style={{ opacity: scanState.canDelete ? 1 : 0, pointerEvents: scanState.canDelete ? 'auto' : 'none' }}
-            >
-              <Minus size={24} color="#ff8a8a" strokeWidth={3} />
-            </button>
-
+          {/* Mittig: nur der Scan-FAB. Karten-Aktionen (Hinzufügen/Entfernen)
+              leben jetzt im Kartenblatt (RecognizedAddBar) — der Footer ist rein
+              zum Scannen/Navigieren. Auto = Pause/Weiter, Manuell = Auslöser. */}
+          <div className="flex items-center">
             <button
               onClick={handleFabClick}
               className="flex items-center justify-center transition-transform duration-150 active:scale-90"
@@ -221,31 +209,22 @@ export function BottomNav() {
             >
               <FabIcon size={30} color={fabIconColor} fill={!isManual && !scanState.paused ? '#fff' : 'none'} />
             </button>
-
-            <button
-              onClick={() => window.dispatchEvent(new Event(SCAN_ADD_EVENT))}
-              aria-label="Zur Sammlung hinzufügen"
-              className="w-11 h-11 rounded-full flex items-center justify-center glass-overlay transition-all duration-150 active:scale-90"
-              style={{ opacity: scanState.canAdd ? 1 : 0, pointerEvents: scanState.canAdd ? 'auto' : 'none' }}
-            >
-              <Plus size={24} color="#8ff0b0" strokeWidth={3} />
-            </button>
           </div>
 
-          {/* Auto/Manuell als Design-System-ButtonGroup (iconOnly size="sm",
+          {/* Auto/Manuell als Design-System-ButtonGroup (iconOnly size="md",
               Gooey-Indikator wie der Set-Ansicht-Umschalter im Dashboard) —
               rechtsbündig innerhalb der Leiste, vertikal zentriert. Manuell =
               FAB wird zum Foto-Auslöser. */}
           <div className="absolute" style={{ right: 8, top: '50%', transform: 'translateY(-50%)' }}>
             <ButtonGroup
               iconOnly
-              size="sm"
+              size="md"
               toggle
               value={scanState.captureMode ?? 'auto'}
               onChange={(v) => window.dispatchEvent(new CustomEvent(SCAN_CAPTURE_TOGGLE_EVENT, { detail: v }))}
               options={[
-                { value: 'auto',   label: <span className="text-xs font-bold">A</span>, ariaLabel: 'Automatisch' },
-                { value: 'manual', label: <span className="text-xs font-bold">M</span>, ariaLabel: 'Manuell' },
+                { value: 'auto',   label: <span className="text-sm font-bold">A</span>, ariaLabel: 'Automatisch' },
+                { value: 'manual', label: <span className="text-sm font-bold">M</span>, ariaLabel: 'Manuell' },
               ]}
             />
           </div>

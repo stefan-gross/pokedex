@@ -7,6 +7,7 @@ import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { DeleteFromCollectionModal } from '@/components/scanner/DeleteFromCollectionModal';
+import { RecognizedAddBar } from '@/components/scanner/RecognizedAddBar';
 import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
          getCardBySetAndNumberRest    as getCardBySetAndNumber,
          getCardsByDexNumberRest      as getCardsByDexNumber,
@@ -2350,6 +2351,11 @@ export default function ScannerPage() {
                 : j));
               refreshOwnedCount(recognized.id, picked.id);
             }}
+            onSaved={() => {
+              markAdded(recognized.id);
+              if (recognized.result?.card) refreshOwnedCount(recognized.id, recognized.result.card.id);
+            }}
+            onManage={() => setQuickDeleteJobId(recognized.id)}
           />
         );
       })()}
@@ -2914,6 +2920,9 @@ export default function ScannerPage() {
         <DeleteFromCollectionModal
           card={quickDeleteJob.result.card}
           fromScanner
+          matchVariant={quickDeleteJob.editedVariant ?? quickDeleteJob.result.variant}
+          matchCondition={quickDeleteJob.editedCondition}
+          matchLanguage={quickDeleteJob.result.language}
           onClose={() => setQuickDeleteJobId(null)}
           onDeleted={() => {
             const tcgId = quickDeleteJob.result!.card!.id;
@@ -3224,10 +3233,14 @@ interface RecognizedCardLargeProps {
   onDebugTap: () => void;
   /** Nutzer wählt bei mehrdeutiger Erkennung eine der Kandidaten-Karten. */
   onPickCandidate: (card: CardInfo) => void;
+  /** Nach Hinzufügen über die Inline-Leiste: ownedCount/added aktualisieren. */
+  onSaved: () => void;
+  /** Öffnet den Exemplar-Verwalten/Löschen-Drawer. */
+  onManage: () => void;
 }
 
 function RecognizedCardLarge({
-  job, onCardTap, onDebugTap, onPickCandidate,
+  job, onCardTap, onDebugTap, onPickCandidate, onSaved, onManage,
 }: RecognizedCardLargeProps) {
   const card      = job.result?.card;
   // Bild-Kandidaten in Prioritätsreihenfolge — bei 404/Ladefehler eines
@@ -3537,6 +3550,19 @@ function RecognizedCardLarge({
               className="[text-shadow:0_2px_12px_rgba(0,0,0,.25)] ml-auto"
             />
           </div>
+
+          {/* Inline-Hinzufügen: vorbelegte Attribute + Ziel-Sammlung + breiter
+              „Hinzufügen"-Button. Ersetzt den früheren +-Button im Footer und
+              den AddToCollectionModal-Zwischenschritt für den Normalfall. */}
+          <RecognizedAddBar
+            card={card}
+            preVariant={job.editedVariant ?? job.result?.variant}
+            preCondition={job.editedCondition}
+            preLanguage={job.result?.language}
+            ownedCount={ownedCount ?? 0}
+            onSaved={onSaved}
+            onManage={onManage}
+          />
         </div>
       )}
 
@@ -3577,19 +3603,6 @@ function RecognizedCardLarge({
         </div>
       )}
 
-      {/* Hinzufügen passiert jetzt über den grünen +-Button, der animiert über
-          der Scanner-FAB erscheint (BottomNav, gesteuert über canAddRecognized/
-          scanner-add-recognized-Event) — kein Button mehr direkt auf dieser
-          Ansicht nötig. Besitz-Status zeigt weiterhin der grüne Kartenrahmen an. */}
-      {card && job.added && (
-        <div
-          className="rounded-full text-white font-semibold flex items-center justify-center gap-2 mt-auto h-12 px-8"
-          style={{ background: 'rgba(34,197,94,0.85)' }}
-        >
-          <Check size={20} strokeWidth={3} />
-          Hinzugefügt
-        </div>
-      )}
     </div>
   );
 }
