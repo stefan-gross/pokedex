@@ -3486,6 +3486,12 @@ function RecognizedCardLarge({
       {card && (
         <div
           className="w-full flex flex-col items-start gap-2 px-4 py-4 rounded-[24px] glass-overlay"
+          // Dunkle Basis (überschreibt die helle .glass-overlay-Tönung) mit
+          // Verlauf — oben am kräftigsten, da dort die großen Texte (Set/Name/
+          // Preis) über der Karte liegen. Sonst scheinen helle Karten (z.B.
+          // gelbe Elektro-Commons) durchs Glas und der weiße Text wird
+          // unlesbar. Blur/Border/Schatten kommen weiter aus .glass-overlay.
+          style={{ background: 'linear-gradient(to bottom, rgba(10,12,18,0.86) 0%, rgba(10,12,18,0.64) 48%, rgba(10,12,18,0.56) 100%)' }}
         >
           {/* Logo + Zyklus/Setname als ein Block — Logo links, rechts daneben
               Zyklus- und Setname linksbündig in zwei Zeilen übereinander,
@@ -3583,7 +3589,7 @@ function RecognizedCardLarge({
           Name+Nummer in zwei Sets). Statt still den ersten zu nehmen, die
           Kandidaten zur Auswahl zeigen — Tippen setzt die aktive Karte. */}
       {card && (job.result?.candidates?.length ?? 0) > 1 && (
-        <div className="w-full flex flex-col gap-2 px-4 py-3 rounded-[24px] glass-overlay">
+        <div className="w-full flex flex-col gap-2 px-4 py-3 rounded-[24px] glass-overlay" style={{ background: 'rgba(10,12,18,0.72)' }}>
           <div className="flex items-center gap-2 text-white/90 text-sm font-semibold">
             <AlertTriangle size={15} color="#fbbf24" />
             Mehrdeutig — welche Karte?
