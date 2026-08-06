@@ -28,8 +28,9 @@ interface Props {
   onSaved: () => void;
   /** Öffnet den Exemplar-Verwalten/Löschen-Drawer (DeleteFromCollectionModal). */
   onManage: () => void;
-  /** Eingeklappt: Attribut-/Sammlungs-Dropdowns ausblenden (mehr Karte sichtbar),
-   *  Hinzufügen-Button + Verwalten-Link bleiben. Gesteuert vom Griff im Panel. */
+  /** Eingeklappt: die komplette Add-Sektion (Zustand/Variante/Sprache +
+   *  Sammlung + Hinzufügen-Button + Verwalten-Link) ausblenden, damit mehr von
+   *  der Karte sichtbar wird. Gesteuert vom Griff im Panel. */
   collapsed?: boolean;
 }
 
@@ -103,13 +104,13 @@ export function RecognizedAddBar({
       {/* Klick-Fänger: schließt ein offenes Popover beim Tippen daneben. */}
       {open && <div className="fixed inset-0 z-40" onClick={() => setOpen(null)} />}
 
-      {/* Einklappbare Dropdown-Sektion — der Griff im Panel blendet Zustand/
-          Variante/Sprache + Sammlung aus, damit mehr von der Karte sichtbar
-          wird. Hinzufügen-Button + Verwalten-Link bleiben stehen. */}
+      {/* Einklappbare Add-Sektion — der Griff im Panel blendet Zustand/Variante/
+          Sprache + Sammlung + Hinzufügen-Button + Verwalten-Link aus, damit mehr
+          von der Karte sichtbar wird. */}
       <div
         className="w-full overflow-hidden"
         style={{
-          maxHeight: collapsed ? 0 : 260,
+          maxHeight: collapsed ? 0 : 360,
           opacity: collapsed ? 0 : 1,
           pointerEvents: collapsed ? 'none' : 'auto',
           transition: 'max-height 300ms ease, opacity 200ms ease',
@@ -215,9 +216,6 @@ export function RecognizedAddBar({
         )}
       </div>
 
-      </div>
-      </div>
-
       {/* Breiter Hinzufügen-Button — Design-System-Button (variant primary,
           grüner Akzent wie im AddToCollectionModal). */}
       <Button
@@ -245,6 +243,8 @@ export function RecognizedAddBar({
           {ownedCount} {ownedCount === 1 ? 'Exemplar' : 'Exemplare'} verwalten …
         </button>
       )}
+      </div>
+      </div>
     </div>
   );
 }
