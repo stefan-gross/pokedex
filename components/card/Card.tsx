@@ -143,6 +143,14 @@ export function Card({
   const totalOwned    = ownedCards.reduce((s, c) => s + c.quantity, 0);
   const isOwned       = totalOwned > 0;
   const needsReview   = ownedCards.some(c => c.needsReview);
+  // Sprach-Marker: der Nutzer sammelt auf Deutsch. Besitzt er eine Karte NUR in
+  // anderen Sprachen (kein einziges deutsches Exemplar), wird sie mit einem
+  // amber Sprach-Badge markiert = „noch auf Deutsch zu ersetzen". Deutsche
+  // Karten (oder gemischter Besitz mit mind. einem DE-Exemplar) bleiben
+  // unmarkiert. `de` als Sprache fehlend behandeln wir wie Nicht-Deutsch.
+  const ownedLanguages   = Array.from(new Set(ownedCards.map(c => c.language)));
+  const ownedForeignOnly = isOwned && !ownedLanguages.includes('de');
+  const foreignLangCode  = ownedForeignOnly ? (ownedLanguages[0] ?? '').toUpperCase() : '';
 
   return (
     <div className="relative flex flex-col">
@@ -228,6 +236,20 @@ export function Card({
             ariaLabel="Ungeprüft" title="Ungeprüft"
           >
             <ExclamationMark size={preset.badgeIconSize} strokeWidth={3} className="text-white" />
+          </CardBadge>
+        )}
+
+        {/* Sprach-Badge — amber, oben links (gleiche Ecke wie „Prüfen", per
+            !needsReview kollisionsfrei). Nur wenn die Karte ausschließlich in
+            einer anderen Sprache als Deutsch besessen wird → Signal „noch auf
+            Deutsch besorgen/ersetzen". */}
+        {ownedForeignOnly && !needsReview && (
+          <CardBadge
+            size={preset.badgeSize} shape="pill" color="#f59e0b" textColor="#422006" corner="tl" cornerRadius={badgeCornerRadius}
+            style={{ top: layout.reviewBadge.top, left: layout.reviewBadge.left }}
+            ariaLabel={`Nur in ${foreignLangCode} vorhanden — noch nicht auf Deutsch`} title="Nicht auf Deutsch"
+          >
+            {foreignLangCode}
           </CardBadge>
         )}
 
