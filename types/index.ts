@@ -1,7 +1,7 @@
 import { Timestamp } from 'firebase/firestore';
 
 export type CardCondition = 'NM' | 'LP' | 'MP' | 'HP' | 'Poor';
-export type CardLanguage = 'de' | 'en' | 'jp' | 'fr';
+export type CardLanguage = 'de' | 'en' | 'jp' | 'fr' | 'es';
 export type CardVariant = 'standard' | 'holo' | 'reverse' | 'alt-art' | '1st-ed' | 'promo';
 
 export interface CardDoc {

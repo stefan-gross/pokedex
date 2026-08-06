@@ -4,6 +4,7 @@ export const LANGUAGES: { value: CardLanguage; label: string }[] = [
   { value: 'de', label: 'Deutsch' },
   { value: 'en', label: 'Englisch' },
   { value: 'fr', label: 'Französisch' },
+  { value: 'es', label: 'Spanisch' },
   { value: 'jp', label: 'Japanisch' },
 ];
 

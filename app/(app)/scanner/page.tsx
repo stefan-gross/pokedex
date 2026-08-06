@@ -3290,9 +3290,14 @@ function RecognizedCardLarge({
   const fittedSize = (() => {
     if (!slotSize || slotSize.w <= 0 || slotSize.h <= 0) return null;
     const slotRatio = slotSize.w / slotSize.h;
-    return slotRatio > cardRatio
-      ? { w: Math.round(slotSize.h * cardRatio), h: slotSize.h }
-      : { w: slotSize.w, h: Math.round(slotSize.w / cardRatio) };
+    // Karte bewusst auf 80 % des verfügbaren Slots (nicht full-contain) — die
+    // Karte wird groß gezeigt, aber das Glas-Overlay unten verdeckt sonst zu
+    // viel; kleinere Karte lässt oben/unten Luft.
+    const CARD_SCALE = 0.8;
+    const base = slotRatio > cardRatio
+      ? { w: slotSize.h * cardRatio, h: slotSize.h }
+      : { w: slotSize.w, h: slotSize.w / cardRatio };
+    return { w: Math.round(base.w * CARD_SCALE), h: Math.round(base.h * CARD_SCALE) };
   })();
 
   // Gerenderte Kartenbreite — Basis für Logo-/Text-Größen und Ecken-Radius,
@@ -3354,11 +3359,11 @@ function RecognizedCardLarge({
       className="absolute inset-x-0 z-10 flex flex-col items-center px-4 gap-3"
       style={{
         top: 'calc(env(safe-area-inset-top, 0px) + 64px)',
-        // Löschen/Hinzufügen erscheinen inzwischen LINKS/RECHTS neben der
-        // Kamera (nicht mehr darüber gestapelt) — der große Abstand von
-        // früher wird nicht mehr gebraucht, nur noch Platz für die FAB-
-        // Kapsel selbst (ragt per marginTop:-20 über die Toolbar hinaus).
-        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 96px)',
+        // Overlay-Panel dockt unten an; näher an die Footer-Leiste gerückt
+        // (nutzt den freien Platz über dem Scan-FAB). Nur so viel Abstand, dass
+        // das Panel knapp über der schwebenden Glas-Toolbar (bottom 14 + 64)
+        // endet.
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)',
       }}
     >
       {/* Debug-Zugang — oben rechts über allem, unabhängig vom Namen (der jetzt
