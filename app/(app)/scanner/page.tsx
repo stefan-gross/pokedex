@@ -676,12 +676,15 @@ export default function ScannerPage() {
     setActiveJobId(prev => (prev === id ? null : prev));
   }, []);
 
-  const markAdded = useCallback((id: string) => {
+  const markAdded = useCallback((id: string, opts?: { keepJob?: boolean }) => {
     setJobs(prev => prev.map(j => j.id === id ? { ...j, added: true } : j));
     setActiveJobId(null);
-    // Memory-Cleanup: 3s nach dem Hinzufügen wird das Job-Tile aus dem In-Memory-
-    // State entfernt. Die Karte selbst ist persistent in Firestore — nur das Slider/
-    // Review-Thumbnail verschwindet. Verhindert Heap-Anstieg in langen Sessions.
+    // `keepJob` (Einzelscan): Job NICHT automatisch entfernen — die erkannte
+    // Karte soll mit ihren Daten stehen bleiben, bis der Nutzer den Bildschirm
+    // schließt oder den Scan-Button drückt (Resume räumt selbst auf). Sonst
+    // (Mehrfach-Slider/Review-Tiles): Memory-Cleanup 3s nach dem Hinzufügen —
+    // das Tile verschwindet, die Karte selbst bleibt persistent in Firestore.
+    if (opts?.keepJob) return;
     setTimeout(() => {
       setJobs(prev => prev.filter(j => j.id !== id));
     }, 3000);
@@ -2353,7 +2356,10 @@ export default function ScannerPage() {
               refreshOwnedCount(recognized.id, picked.id);
             }}
             onSaved={() => {
-              markAdded(recognized.id);
+              // keepJob: Einzelscan bleibt auf der erkannten Karte stehen (kein
+              // Auto-Zurück in die Live-Ansicht) — erst Schließen/Scan-Button
+              // (Resume) räumt auf.
+              markAdded(recognized.id, { keepJob: true });
               if (recognized.result?.card) refreshOwnedCount(recognized.id, recognized.result.card.id);
             }}
             onManage={() => setQuickDeleteJobId(recognized.id)}
