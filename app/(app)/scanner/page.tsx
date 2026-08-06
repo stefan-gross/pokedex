@@ -3366,7 +3366,7 @@ function RecognizedCardLarge({
           design_handoff_scanner_glass, "Bug"-Chip 38px). */}
       <button
         onClick={onDebugTap}
-        className="absolute top-0 right-0 w-[38px] h-[38px] flex items-center justify-center rounded-full glass-overlay"
+        className="absolute top-0 right-0 z-20 w-[38px] h-[38px] flex items-center justify-center rounded-full glass-overlay"
         aria-label="Debug-Infos anzeigen"
       >
         <Bug size={17} color="#fff" />
@@ -3381,7 +3381,7 @@ function RecognizedCardLarge({
           *Bildes* auf Inhaltsgröße schrumpfen ließ — brach zusammen, wenn das
           Bild nicht lud). Varianten-/Zustand-Auswahl passiert nicht mehr hier,
           sondern beim Hinzufügen im AddToCollectionModal. */}
-      <div ref={slotRef} className="w-full flex-1 min-h-0 flex items-center justify-center">
+      <div ref={slotRef} className="absolute inset-0 z-0 flex items-center justify-center">
       <div
         ref={containerRef}
         className="relative overflow-hidden"
@@ -3462,14 +3462,12 @@ function RecognizedCardLarge({
       </div>
       </div>
 
-      {/* Unterhalb der Karte: Glas-Info-Sheet mit Set-Zeile, Pokémon-Name,
-          Nummer/Dex und Preis — Aufbau unverändert, nur die Chrome wird zu
-          getöntem Glas (Handoff design_handoff_scanner_glass, "Info-Sheet").
-          Feste rgba()-Werte identisch zur Dark-Variante der globalen .glass-
-          Klasse (app/globals.css) — der Scanner liegt immer über dem
-          (dunklen) Kamerabild, unabhängig vom Light/Dark-Theme der
-          restlichen App, daher immer die Dark-Werte statt der Theme-
-          abhängigen .glass-Klasse. */}
+      {/* Info-/Add-Overlay: liegt als getöntes Glas ÜBER der groß angezeigten
+          Karte (unten angedockt), statt darunter im Fluss. Die Karte füllt
+          dahinter die ganze Fläche (Slot absolute inset-0). Feste rgba()-Werte
+          identisch zur Dark-Variante der globalen .glass-Klasse — der Scanner
+          liegt immer über dem (dunklen) Kamerabild. */}
+      <div className="absolute inset-x-0 bottom-0 z-10 px-4 flex flex-col gap-3">
       {card && (
         <div
           className="w-full flex flex-col items-start gap-2 px-4 py-4 rounded-[24px] glass-overlay"
@@ -3602,6 +3600,7 @@ function RecognizedCardLarge({
           </div>
         </div>
       )}
+      </div>
 
     </div>
   );

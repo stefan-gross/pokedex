@@ -8,6 +8,7 @@ import { addCard } from '@/lib/firestore/cards';
 import { getBinders, addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
 import { LANGUAGES, CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
 import { BinderIcon } from '@/lib/binder-icons';
+import { Button } from '@/components/ui/button';
 
 const CONDITION_COLOR: Record<string, string> = {
   NM: '#48bb78', LP: '#facc15', MP: '#fb923c', HP: '#f87171', Poor: '#9ca3af',
@@ -195,21 +196,19 @@ export function RecognizedAddBar({
         )}
       </div>
 
-      {/* Breiter Hinzufügen-Button */}
-      <button
-        onClick={save}
+      {/* Breiter Hinzufügen-Button — Design-System-Button (variant primary,
+          grüner Akzent wie im AddToCollectionModal). */}
+      <Button
+        variant="primary"
+        accentColor="#2f855a"
+        size="lg"
+        className="w-full"
         disabled={saving}
-        className="w-full h-[50px] rounded-2xl flex items-center justify-center gap-2 font-extrabold text-[16px] transition-transform active:scale-[0.98] disabled:opacity-70"
-        style={{
-          color: '#06301a',
-          background: 'linear-gradient(#7ff0ab,#39d06e)',
-          boxShadow: '0 6px 18px rgba(53,209,90,0.4), inset 0 1px 1px rgba(255,255,255,0.6)',
-        }}
+        icon={justSaved ? <Check strokeWidth={3} /> : <Plus strokeWidth={3} />}
+        onClick={save}
       >
-        {justSaved
-          ? (<><Check size={20} strokeWidth={3} /> Hinzugefügt</>)
-          : (<><Plus size={20} strokeWidth={3} /> {saving ? 'Wird gespeichert …' : 'Hinzufügen'}</>)}
-      </button>
+        {justSaved ? 'Hinzugefügt' : saving ? 'Wird gespeichert …' : 'Hinzufügen'}
+      </Button>
 
       {/* Verwalten/Entfernen — nur wenn schon Exemplare existieren. Öffnet den
           Exemplar-Drawer; dort wird das konkrete Exemplar (Sammlung + Zustand +
