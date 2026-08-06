@@ -81,6 +81,11 @@ export function useGrabberCollapse(opts: GrabberCollapseOptions): GrabberCollaps
   const stageRef = useRef(0);
   const panelTopRef = useRef(0);
   const panelExpandedHRef = useRef(0);
+  // rAF-Koaleszenz der Drag-Updates: pointermove feuert pro Frame mehrfach —
+  // ein setState je Event ruckelt. Wir merken den letzten Wert und schreiben
+  // ihn max. einmal pro Frame.
+  const rafRef = useRef<number | null>(null);
+  const pendingRef = useRef<number | null>(null);
 
   const registerRegion = useCallback(
     (i: number) => (el: HTMLDivElement | null) => { regionEls.current[i] = el; },
@@ -197,12 +202,34 @@ export function useGrabberCollapse(opts: GrabberCollapseOptions): GrabberCollaps
     // ziehen = mehr Einklappen (Griff oben an einem Bottom-Panel) — so folgt der
     // Griff dem Finger.
     const delta = invertDrag ? dy : -dy;
-    setDragCollapse(Math.max(0, Math.min(totalH, g.start + delta)));
+    pendingRef.current = Math.max(0, Math.min(totalH, g.start + delta));
+    if (rafRef.current == null) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        if (pendingRef.current != null) setDragCollapse(pendingRef.current);
+      });
+    }
   }, [totalH, invertDrag]);
 
   const onPointerUp = useCallback(() => {
     const g = grabRef.current;
     grabRef.current = null;
+    // Ausstehenden Drag-Frame verwerfen, sonst überschreibt er gleich den Snap.
+    if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    pendingRef.current = null;
+    // Nach einem ECHTEN Zug den unmittelbar folgenden Click einmalig schlucken:
+    // beim Einklappen rutschen die Karten unter den Finger, sonst löst das
+    // Loslassen einen Klick auf der Karte aus (öffnet ungewollt das Detail).
+    // Reiner Tap (kein `moved`) bleibt unberührt → Griff-Toggle funktioniert.
+    if (g && g.moved) {
+      const swallow = (ev: Event) => {
+        ev.stopPropagation();
+        (ev as MouseEvent).preventDefault?.();
+        window.removeEventListener('click', swallow, true);
+      };
+      window.addEventListener('click', swallow, true);
+      setTimeout(() => window.removeEventListener('click', swallow, true), 400);
+    }
     setDragCollapse(c => {
       if (g && g.moved && c !== null) {
         // Snap: Stufe = Anzahl Regionen, deren Halbhöhen-Grenze überschritten ist.
