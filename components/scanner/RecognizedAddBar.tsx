@@ -6,6 +6,8 @@ import { cardInfoToAddInput, type CardInfo } from '@/lib/card-info';
 import type { CardCondition, CardLanguage, CardVariant, BinderDoc } from '@/types';
 import { addCard } from '@/lib/firestore/cards';
 import { getBinders, addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
+import { matchTemplateBinders } from '@/lib/template-binders/match-hint';
+import { syncTemplateBinders } from '@/lib/template-binders/sync';
 import { LANGUAGES, CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
 import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
@@ -65,6 +67,25 @@ export function RecognizedAddBar({
   const selectable = binders
     .filter(b => !b.template)
     .sort((a, b) => a.sortOrder - b.sortOrder);
+  // Empfehlungen: passende Vorlagen-Sammlungen (Master-Set/Pokédex/Pokémon/
+  // Illustrator) — wie die „Vorschläge" im Kartendetail-Drawer. Werden oben im
+  // Sammlung-Dropdown angezeigt (Icon/Logo + Name + Hinweis „Empfohlen").
+  const recommended = matchTemplateBinders(card, binders.filter(b => b.template));
+
+  // Sammlung-Optionen: Empfehlungen zuerst, dann Unsortiert + manuelle Sammlungen.
+  const collectionOptions = [
+    ...recommended.map(b => ({
+      value: b.id,
+      label: b.name,
+      hint: 'Empfohlen',
+      icon: <BinderIcon name={b.icon ?? 'cards'} size={15} style={{ color: b.color ?? '#cbd5e1' }} />,
+    })),
+    ...selectable.map(b => ({
+      value: b.id,
+      label: b.name,
+      icon: <BinderIcon name={b.icon ?? 'folder'} size={15} style={{ color: b.color ?? '#cbd5e1' }} />,
+    })),
+  ];
 
   useEffect(() => {
     getBinders().then(list => {
@@ -82,8 +103,17 @@ export function RecognizedAddBar({
       const cardId = await addCard(
         cardInfoToAddInput(card, { variant, condition, language, needsReview: true }),
       );
-      const dest = targetId ?? await ensureDefaultBinder();
-      await addCardToBinder(dest, cardId);
+      const chosen = binders.find(b => b.id === targetId);
+      if (chosen?.template) {
+        // Vorlagen-Sammlungen sind auto-verwaltet — nicht direkt bebuchen,
+        // sondern nach „Unsortiert" legen und die passende Vorlage syncen (die
+        // holt sich die Karte dann selbst rein, exklusiv wie beim Auto-Flow).
+        const unsortedId = await ensureDefaultBinder();
+        await addCardToBinder(unsortedId, cardId);
+        await syncTemplateBinders({ binderIds: [chosen.id] });
+      } else {
+        await addCardToBinder(targetId ?? await ensureDefaultBinder(), cardId);
+      }
       onSaved();
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 1600);
@@ -116,7 +146,8 @@ export function RecognizedAddBar({
               onChange={(v) => setCondition(v)}
               options={CONDITIONS.map(c => ({
                 value: c.value,
-                label: c.value,
+                label: c.value,          // Trigger: nur Kürzel (NM/LP/…)
+                hint: c.label,           // Panel: zusätzlich Langform (Near Mint …)
                 icon: <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: CONDITION_COLOR[c.value] }} />,
               }))}
             />
@@ -134,7 +165,11 @@ export function RecognizedAddBar({
               fullWidth height="sm" aria-label="Sprache"
               value={language}
               onChange={(v) => setLanguage(v)}
-              options={LANGUAGES.map(l => ({ value: l.value, label: l.value.toUpperCase() }))}
+              options={LANGUAGES.map(l => ({
+                value: l.value,
+                label: l.value.toUpperCase(), // Trigger: Kürzel (DE/EN/…)
+                hint: l.label,                // Panel: Langform (Deutsch …)
+              }))}
             />
           </Field>
         </div>
@@ -146,11 +181,7 @@ export function RecognizedAddBar({
             value={targetId}
             placeholder="Unsortiert"
             onChange={(v) => setTargetId(v)}
-            options={selectable.map(b => ({
-              value: b.id,
-              label: b.name,
-              icon: <BinderIcon name={b.icon ?? 'folder'} size={15} style={{ color: b.color ?? '#cbd5e1' }} />,
-            }))}
+            options={collectionOptions}
           />
         </Field>
 

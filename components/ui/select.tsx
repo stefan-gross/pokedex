@@ -106,6 +106,10 @@ export interface CustomSelectOption<T extends string> {
   icon?: React.ReactNode;
   /** Gedämpfte Zahl rechts (z.B. Treffer-Count). */
   count?: number;
+  /** Gedämpfter Zusatztext rechts im PANEL — NICHT im Trigger (dort steht nur
+   *  `label`). Z.B. Langform zum Kürzel („Near Mint" neben „NM") oder ein
+   *  Status wie „Empfohlen". */
+  hint?: string;
   /** Ausgegraut + nicht wählbar (z.B. 0 Treffer). */
   disabled?: boolean;
 }
@@ -260,8 +264,11 @@ export function CustomSelect<T extends string>({
               >
                 {o.icon}
                 <span className="truncate">{o.label}</span>
+                {o.hint && (
+                  <span className="ml-auto shrink-0 text-glass-muted text-role-label">{o.hint}</span>
+                )}
                 {o.count != null && (
-                  <span className="ml-auto shrink-0 text-glass-muted text-role-label">{o.count.toLocaleString('de')}</span>
+                  <span className={`shrink-0 text-glass-muted text-role-label ${o.hint ? 'ml-1.5' : 'ml-auto'}`}>{o.count.toLocaleString('de')}</span>
                 )}
               </button>
             ))}
