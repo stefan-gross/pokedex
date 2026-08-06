@@ -29,12 +29,33 @@ export const FIRESTORE_REST_BASE = `https://firestore.googleapis.com/v1/projects
 // Leere (leerer Auth-Header → 403 trotz gültiger Session). Der erste
 // `onAuthStateChanged`-Callback markiert zuverlässig, sobald die Wiederher-
 // stellung abgeschlossen ist (Wert dann `User` oder wirklich `null`).
+// Auf einen ECHTEN (nicht-null) User warten: `onAuthStateChanged` feuert beim
+// App-Start oft zuerst mit `null` (Session-Restore aus IndexedDB läuft noch)
+// und danach mit dem User. Früher wurde dieses erste `null` dauerhaft gecacht
+// → alle privaten Reads blieben für die ganze Seiten-Session token-los (Firestore
+// verweigert → „alles leer", obwohl eingeloggt). Jetzt: `null`-Events ignorieren
+// und bis zu `AUTH_WAIT_MS` auf den User warten; danach (wirklich ausgeloggt)
+// mit `null` auflösen. Ein `null`-Ergebnis wird NICHT gecacht, damit ein späterer
+// Read einen inzwischen wiederhergestellten Login noch aufgreift.
+const AUTH_WAIT_MS = 5000;
 let authReadyPromise: Promise<User | null> | null = null;
 function waitForAuthUser(): Promise<User | null> {
+  if (auth.currentUser) return Promise.resolve(auth.currentUser);
   if (!authReadyPromise) {
-    authReadyPromise = new Promise(resolve => {
-      const unsubscribe = onAuthStateChanged(auth, user => { unsubscribe(); resolve(user); });
+    authReadyPromise = new Promise<User | null>(resolve => {
+      let settled = false;
+      const finish = (u: User | null) => {
+        if (settled) return;
+        settled = true;
+        unsubscribe();
+        resolve(u);
+      };
+      const unsubscribe = onAuthStateChanged(auth, user => { if (user) finish(user); });
+      setTimeout(() => finish(auth.currentUser), AUTH_WAIT_MS);
     });
+    // Nur einen erfolgreichen (User-)Restore dauerhaft behalten; ein `null`
+    // (Timeout ohne Login) verwerfen, damit ein späterer Aufruf neu wartet.
+    authReadyPromise.then(u => { if (!u) authReadyPromise = null; });
   }
   return authReadyPromise;
 }
@@ -97,14 +118,26 @@ interface RunQueryResponseEntry {
   readTime?: string;
 }
 
-/** Führt eine strukturierte Firestore-Query per REST aus. */
+/** Führt eine strukturierte Firestore-Query per REST aus.
+ *  Ein 401/403 (fehlendes/abgelaufenes Token, oft die Auth-Restore-Race beim
+ *  App-Start) wird EINMAL wiederholt — dann steht das Token i.d.R. bereit
+ *  (`getAuthHeader` wartet über `waitForAuthUser` auf den User). So bleibt die
+ *  private Sammlung nicht wegen eines token-losen ersten Reads leer. */
 export async function runFirestoreQuery<T>(structuredQuery: Record<string, unknown>): Promise<T[]> {
-  const authHeader = await getAuthHeader();
-  const res = await fetch(`${FIRESTORE_REST_BASE}:runQuery?key=${API_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeader },
-    body: JSON.stringify({ structuredQuery }),
-  });
+  const attempt = async (): Promise<Response> => {
+    const authHeader = await getAuthHeader();
+    return fetch(`${FIRESTORE_REST_BASE}:runQuery?key=${API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeader },
+      body: JSON.stringify({ structuredQuery }),
+    });
+  };
+  let res = await attempt();
+  if ((res.status === 401 || res.status === 403) && auth.currentUser) {
+    // Frisches Token erzwingen und genau einmal erneut versuchen.
+    try { await auth.currentUser.getIdToken(true); } catch { /* fällt in den Fehler unten */ }
+    res = await attempt();
+  }
   if (!res.ok) {
     throw new Error(`Firestore REST ${res.status}: ${await res.text()}`);
   }
