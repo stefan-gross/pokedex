@@ -3362,27 +3362,38 @@ function RecognizedCardLarge({
   const sizeBasePx = fittedSize?.w ?? null;
   const logoHeight = sizeBasePx != null ? `${sizeBasePx * 0.15}px` : '40px';
 
-  // Griff: Info-/Add-Panel einklappen (Dropdowns aus → mehr von der Karte
-  // sichtbar). Tippen = ganz auf/zu, Ziehen nach unten = zu / nach oben = auf.
+  // Griff: Info-/Add-Panel einklappen (Add-Sektion aus → mehr von der Karte
+  // sichtbar). Entscheidung erst beim LOSLASSEN (nicht live im Move), sonst gibt
+  // es auf Touch eine tote Zone: schon leichtes Finger-Wackeln zählt als
+  // „bewegt" (blockt den Tap-Toggle), erreicht aber die Zieh-Schwelle nicht →
+  // nichts passiert. Jetzt: klarer Zug (>24px) klappt gezielt auf/zu, alles
+  // Kleinere (Tap oder Mini-Drag) togglet einfach.
   const [panelCollapsed, setPanelCollapsed] = useState(false);
   const grabStartRef = useRef<number | null>(null);
-  const grabMovedRef = useRef(false);
+  const grabDyRef = useRef(0);
+  const settle = () => {
+    if (grabStartRef.current == null) return;
+    grabStartRef.current = null;
+    const dy = grabDyRef.current;
+    if (dy > 24) setPanelCollapsed(true);
+    else if (dy < -24) setPanelCollapsed(false);
+    else setPanelCollapsed(c => !c);
+  };
   const grabberProps = {
     onPointerDown: (e: React.PointerEvent) => {
       grabStartRef.current = e.clientY;
-      grabMovedRef.current = false;
+      grabDyRef.current = 0;
       try { (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); } catch { /* egal */ }
     },
     onPointerMove: (e: React.PointerEvent) => {
       if (grabStartRef.current == null) return;
-      const dy = e.clientY - grabStartRef.current;
-      if (Math.abs(dy) > 6) grabMovedRef.current = true;
-      if (dy > 22) setPanelCollapsed(true);
-      else if (dy < -22) setPanelCollapsed(false);
+      grabDyRef.current = e.clientY - grabStartRef.current;
     },
-    onPointerUp: () => { grabStartRef.current = null; },
+    onPointerUp: settle,
     onPointerCancel: () => { grabStartRef.current = null; },
-    onClick: () => { if (grabMovedRef.current) return; setPanelCollapsed(c => !c); },
+    // Kein zusätzliches Toggle im Click — settle() (onPointerUp) erledigt Tap
+    // UND Drag; ein Click würde sonst direkt wieder zurückschalten.
+    onClick: () => {},
   };
 
   return (
