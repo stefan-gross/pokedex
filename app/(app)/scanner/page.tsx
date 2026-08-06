@@ -3370,7 +3370,6 @@ function RecognizedCardLarge({
   const { stage, registerRegion, regionStyle, grabberProps } = useGrabberCollapse({
     regionCount: 1, ready: true, scrollTrigger: false, invertDrag: true,
   });
-  const panelCollapsed = stage > 0;
 
   return (
     <div
@@ -3603,7 +3602,6 @@ function RecognizedCardLarge({
             onManage={onManage}
             regionStyle={regionStyle(0)}
             regionRef={registerRegion(0)}
-            collapsed={panelCollapsed}
           />
         </div>
       )}

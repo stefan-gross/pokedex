@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Check, ChevronDown } from 'lucide-react';
+import { Plus, Check } from 'lucide-react';
 import { cardInfoToAddInput, type CardInfo } from '@/lib/card-info';
 import type { CardCondition, CardLanguage, CardVariant, BinderDoc } from '@/types';
 import { addCard } from '@/lib/firestore/cards';
@@ -9,12 +9,11 @@ import { getBinders, addCardToBinder, ensureDefaultBinder } from '@/lib/firestor
 import { LANGUAGES, CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
 import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
+import { CustomSelect } from '@/components/ui/select';
 
 const CONDITION_COLOR: Record<string, string> = {
   NM: '#48bb78', LP: '#facc15', MP: '#fb923c', HP: '#f87171', Poor: '#9ca3af',
 };
-
-type Field = 'condition' | 'variant' | 'language' | 'collection';
 
 interface Props {
   card: CardInfo;
@@ -34,20 +33,19 @@ interface Props {
   regionStyle?: React.CSSProperties;
   /** Callback-Ref für die Höhenmessung der Region (registerRegion(0)). */
   regionRef?: (el: HTMLDivElement | null) => void;
-  /** true, sobald (teilweise) eingeklappt — schließt offene Popover. */
-  collapsed?: boolean;
 }
 
-/** Inline-Hinzufügen-Leiste unter der erkannten Karte (Einzelscan): zeigt
- *  Zustand/Variante/Sprache als vorbelegte Chips (Tap → Popover) plus die
- *  Ziel-Sammlung, darunter einen breiten „Hinzufügen"-Button. So landet eine
- *  erkannte Karte mit genau einem Klick in der Sammlung, ohne Zwischen-Drawer.
+/** Inline-Hinzufügen-Leiste unter der erkannten Karte (Einzelscan): Zustand,
+ *  Variante, Sprache und Ziel-Sammlung als Design-System-Dropdowns
+ *  (`CustomSelect`, Portal-Panel → wird nicht von der Einklapp-Hülle
+ *  abgeschnitten), darunter ein breiter „Hinzufügen"-Button. So landet eine
+ *  erkannte Karte mit wenigen Klicks in der Sammlung, ohne Zwischen-Drawer.
  *  Löschen läuft bewusst NICHT hier, sondern über den Exemplar-Drawer
  *  (`onManage`) — ein Exemplar ist erst durch Sammlung + Zustand + Variante +
- *  Sprache eindeutig, die Sammlungswahl allein reicht dafür nicht. */
+ *  Sprache eindeutig. */
 export function RecognizedAddBar({
   card, preVariant, preCondition, preLanguage, ownedCount, onSaved, onManage,
-  regionStyle, regionRef, collapsed = false,
+  regionStyle, regionRef,
 }: Props) {
   const variantOptions: CardVariant[] =
     (card.variants && card.variants.length > 0 ? card.variants : ['standard']) as CardVariant[];
@@ -59,7 +57,6 @@ export function RecognizedAddBar({
   const [binders, setBinders] = useState<BinderDoc[]>([]);
   const [targetId, setTargetId] = useState<string | null>(null);
 
-  const [open, setOpen] = useState<Field | null>(null);
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
 
@@ -68,8 +65,6 @@ export function RecognizedAddBar({
   const selectable = binders
     .filter(b => !b.template)
     .sort((a, b) => a.sortOrder - b.sortOrder);
-  const target = selectable.find(b => b.id === targetId) ?? null;
-  const targetName = target?.name ?? 'Unsortiert';
 
   useEffect(() => {
     getBinders().then(list => {
@@ -79,11 +74,6 @@ export function RecognizedAddBar({
       if (def) setTargetId(def.id);
     }).catch(() => {});
   }, []);
-
-  const toggle = (f: Field) => setOpen(o => (o === f ? null : f));
-
-  // Beim Einklappen ein offenes Popover mit schließen.
-  useEffect(() => { if (collapsed) setOpen(null); }, [collapsed]);
 
   const save = async () => {
     if (saving) return;
@@ -105,211 +95,103 @@ export function RecognizedAddBar({
   };
 
   return (
-    <div className="w-full flex flex-col gap-2.5">
-      {/* Klick-Fänger: schließt ein offenes Popover beim Tippen daneben. */}
-      {open && <div className="fixed inset-0 z-40" onClick={() => setOpen(null)} />}
-
-      {/* Einklappbare Add-Sektion — der Griff im Panel blendet Zustand/Variante/
-          Sprache + Sammlung + Hinzufügen-Button + Verwalten-Link aus, damit mehr
-          von der Karte sichtbar wird. Kollaps-Hülle (maxHeight/Transition) kommt
-          aus useGrabberCollapse (regionStyle) → Griff folgt dem Finger + Snap. */}
+    // `dark` erzwingt die Dark-Optik der Design-System-Selects (text-glass etc.),
+    // da der Scanner immer über dem dunklen Kamerabild liegt — unabhängig vom
+    // App-Theme (analog zum forceDark der Scanner-Drawer).
+    <div className="dark w-full flex flex-col gap-2.5">
+      {/* Einklappbare Add-Sektion — der Griff im Panel blendet die Dropdowns +
+          Hinzufügen-Button + Verwalten-Link aus (mehr Karte sichtbar). Die
+          Dropdown-Panels selbst hängen per Portal an <body>, werden also NICHT
+          vom overflow-hidden hier abgeschnitten. */}
       <div className="w-full overflow-hidden" style={regionStyle}>
       <div ref={regionRef} className="flex flex-col gap-2.5">
-      <div className="h-px w-full bg-white/15" />
+        <div className="h-px w-full bg-white/15" />
 
-      {/* Attribut-Chips: Zustand · Variante · Sprache */}
-      <div className="grid grid-cols-3 gap-2">
-        <Chip label="Zustand" open={open === 'condition'} onToggle={() => toggle('condition')} align="left">
-          <ChipValue>
-            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: CONDITION_COLOR[condition] }} />
-            {condition}
-          </ChipValue>
-          {open === 'condition' && (
-            <Popover align="left">
-              {CONDITIONS.map(c => (
-                <Row key={c.value} selected={c.value === condition} onClick={() => { setCondition(c.value); setOpen(null); }}>
-                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: CONDITION_COLOR[c.value] }} />
-                  {c.value}<span className="text-white/45 font-normal text-xs">{c.label}</span>
-                </Row>
-              ))}
-            </Popover>
-          )}
-        </Chip>
-
-        <Chip label="Variante" open={open === 'variant'} onToggle={() => toggle('variant')} align="center">
-          <ChipValue><span className="truncate">{VARIANT_LABELS[variant]}</span></ChipValue>
-          {open === 'variant' && (
-            <Popover align="center">
-              {variantOptions.map(v => (
-                <Row key={v} selected={v === variant} onClick={() => { setVariant(v); setOpen(null); }}>
-                  {VARIANT_LABELS[v]}
-                </Row>
-              ))}
-            </Popover>
-          )}
-        </Chip>
-
-        <Chip label="Sprache" open={open === 'language'} onToggle={() => toggle('language')} align="right">
-          <ChipValue>{language.toUpperCase()}</ChipValue>
-          {open === 'language' && (
-            <Popover align="right">
-              {LANGUAGES.map(l => (
-                <Row key={l.value} selected={l.value === language} onClick={() => { setLanguage(l.value); setOpen(null); }}>
-                  {l.value.toUpperCase()}<span className="text-white/45 font-normal text-xs">{l.label}</span>
-                </Row>
-              ))}
-            </Popover>
-          )}
-        </Chip>
-      </div>
-
-      {/* Ziel-Sammlung */}
-      <div className="relative">
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => toggle('collection')}
-          className="flex items-center gap-2.5 px-3 py-2.5 rounded-2xl cursor-pointer"
-          style={{ background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.16)' }}
-        >
-          <span
-            className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center shrink-0"
-            style={{ background: `color-mix(in srgb, ${target?.color ?? '#8898b0'} 26%, transparent)` }}
-          >
-            <BinderIcon name={target?.icon ?? 'folder'} size={17} style={{ color: target?.color ?? '#cbd5e1' }} />
-          </span>
-          <span className="flex flex-col min-w-0">
-            <span className="text-[9px] font-bold uppercase tracking-wide text-white/50">Sammlung</span>
-            <span className="text-white text-[15px] font-bold truncate">{targetName}</span>
-          </span>
-          <ChevronDown size={17} className="ml-auto text-white/55 shrink-0" />
+        {/* Zustand · Variante · Sprache */}
+        <div className="grid grid-cols-3 gap-2">
+          <Field label="Zustand">
+            <CustomSelect
+              fullWidth height="sm" aria-label="Zustand"
+              value={condition}
+              onChange={(v) => setCondition(v)}
+              options={CONDITIONS.map(c => ({
+                value: c.value,
+                label: c.value,
+                icon: <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: CONDITION_COLOR[c.value] }} />,
+              }))}
+            />
+          </Field>
+          <Field label="Variante">
+            <CustomSelect
+              fullWidth height="sm" aria-label="Variante"
+              value={variant}
+              onChange={(v) => setVariant(v)}
+              options={variantOptions.map(v => ({ value: v, label: VARIANT_LABELS[v] }))}
+            />
+          </Field>
+          <Field label="Sprache">
+            <CustomSelect
+              fullWidth height="sm" aria-label="Sprache"
+              value={language}
+              onChange={(v) => setLanguage(v)}
+              options={LANGUAGES.map(l => ({ value: l.value, label: l.value.toUpperCase() }))}
+            />
+          </Field>
         </div>
-        {open === 'collection' && (
-          <div
-            className="absolute z-50 left-0 right-0 bottom-[calc(100%+8px)] p-1.5 rounded-2xl max-h-[240px] overflow-y-auto"
-            style={{
-              background: 'rgba(28,29,36,0.94)',
-              backdropFilter: 'blur(24px) saturate(1.5)', WebkitBackdropFilter: 'blur(24px) saturate(1.5)',
-              border: '1px solid rgba(255,255,255,0.16)', boxShadow: '0 12px 34px rgba(0,0,0,0.5)',
-            }}
+
+        {/* Ziel-Sammlung */}
+        <Field label="Sammlung">
+          <CustomSelect
+            fullWidth aria-label="Sammlung"
+            value={targetId}
+            placeholder="Unsortiert"
+            onChange={(v) => setTargetId(v)}
+            options={selectable.map(b => ({
+              value: b.id,
+              label: b.name,
+              icon: <BinderIcon name={b.icon ?? 'folder'} size={15} style={{ color: b.color ?? '#cbd5e1' }} />,
+            }))}
+          />
+        </Field>
+
+        {/* Breiter Hinzufügen-Button — Design-System-Button (variant primary). */}
+        <Button
+          variant="primary"
+          accentColor="#2f855a"
+          size="lg"
+          className="w-full"
+          disabled={saving}
+          icon={justSaved ? <Check strokeWidth={3} /> : <Plus strokeWidth={3} />}
+          onClick={save}
+        >
+          {justSaved ? 'Hinzugefügt' : saving ? 'Wird gespeichert …' : 'Hinzufügen'}
+        </Button>
+
+        {/* Verwalten/Entfernen — nur wenn schon Exemplare existieren. Öffnet den
+            Exemplar-Drawer; dort wird das konkrete Exemplar (Sammlung + Zustand +
+            Variante + Sprache) zum Löschen gewählt. */}
+        {ownedCount > 0 && (
+          <button
+            onClick={onManage}
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[13px] font-semibold"
+            style={{ color: 'rgba(255,138,138,0.9)' }}
           >
-            {selectable.map(b => (
-              <button
-                key={b.id}
-                onClick={() => { setTargetId(b.id); setOpen(null); }}
-                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left"
-                style={b.id === targetId ? { background: 'rgba(255,255,255,0.14)' } : undefined}
-              >
-                <span
-                  className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-                  style={{ background: `color-mix(in srgb, ${b.color ?? '#8898b0'} 24%, transparent)` }}
-                >
-                  <BinderIcon name={b.icon ?? 'folder'} size={15} style={{ color: b.color ?? '#cbd5e1' }} />
-                </span>
-                <span className="text-white text-sm font-semibold truncate flex-1">{b.name}</span>
-                {b.id === targetId && <Check size={15} className="text-[#8ff0b0] shrink-0" />}
-              </button>
-            ))}
-          </div>
+            <span className="w-3.5 h-0.5 rounded-full bg-current inline-block" />
+            {ownedCount} {ownedCount === 1 ? 'Exemplar' : 'Exemplare'} verwalten …
+          </button>
         )}
       </div>
-
-      {/* Breiter Hinzufügen-Button — Design-System-Button (variant primary,
-          grüner Akzent wie im AddToCollectionModal). */}
-      <Button
-        variant="primary"
-        accentColor="#2f855a"
-        size="lg"
-        className="w-full"
-        disabled={saving}
-        icon={justSaved ? <Check strokeWidth={3} /> : <Plus strokeWidth={3} />}
-        onClick={save}
-      >
-        {justSaved ? 'Hinzugefügt' : saving ? 'Wird gespeichert …' : 'Hinzufügen'}
-      </Button>
-
-      {/* Verwalten/Entfernen — nur wenn schon Exemplare existieren. Öffnet den
-          Exemplar-Drawer; dort wird das konkrete Exemplar (Sammlung + Zustand +
-          Variante + Sprache) zum Löschen gewählt. */}
-      {ownedCount > 0 && (
-        <button
-          onClick={onManage}
-          className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[13px] font-semibold"
-          style={{ color: 'rgba(255,138,138,0.9)' }}
-        >
-          <span className="w-3.5 h-0.5 rounded-full bg-current inline-block" />
-          {ownedCount} {ownedCount === 1 ? 'Exemplar' : 'Exemplare'} verwalten …
-        </button>
-      )}
-      </div>
       </div>
     </div>
   );
 }
 
-/** Ein Attribut-Chip (Zustand/Variante/Sprache) mit Label + Wert + Caret. */
-function Chip({
-  label, open, onToggle, align, children,
-}: {
-  label: string; open: boolean; onToggle: () => void;
-  align: 'left' | 'center' | 'right'; children: React.ReactNode;
-}) {
+/** Label über einem Dropdown (Zustand/Variante/Sprache/Sammlung). */
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="relative">
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={onToggle}
-        className="flex flex-col gap-0.5 px-2.5 py-2 rounded-2xl cursor-pointer"
-        style={{
-          background: open ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.10)',
-          border: `1px solid ${open ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.16)'}`,
-        }}
-      >
-        <span className="text-[9px] font-bold uppercase tracking-wide text-white/50">{label}</span>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function ChipValue({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="flex items-center gap-1.5 text-white text-sm font-bold min-w-0">
+    <label className="flex flex-col gap-1 min-w-0">
+      <span className="text-[10px] font-bold uppercase tracking-wide text-white/50 px-0.5">{label}</span>
       {children}
-      <ChevronDown size={13} className="ml-auto text-white/50 shrink-0" />
-    </span>
-  );
-}
-
-function Popover({ align, children }: { align: 'left' | 'center' | 'right'; children: React.ReactNode }) {
-  const pos =
-    align === 'left' ? 'left-0'
-    : align === 'right' ? 'right-0'
-    : 'left-1/2 -translate-x-1/2';
-  return (
-    <div
-      className={`absolute z-50 ${pos} bottom-[calc(100%+8px)] w-[180px] p-1.5 rounded-2xl`}
-      style={{
-        background: 'rgba(28,29,36,0.94)',
-        backdropFilter: 'blur(24px) saturate(1.5)', WebkitBackdropFilter: 'blur(24px) saturate(1.5)',
-        border: '1px solid rgba(255,255,255,0.16)', boxShadow: '0 12px 34px rgba(0,0,0,0.5)',
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function Row({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left text-white text-sm font-semibold"
-      style={selected ? { background: 'rgba(255,255,255,0.14)' } : undefined}
-    >
-      {children}
-      {selected && <Check size={15} className="ml-auto text-[#8ff0b0] shrink-0" />}
-    </button>
+    </label>
   );
 }
