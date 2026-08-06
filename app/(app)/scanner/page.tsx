@@ -3508,7 +3508,8 @@ function RecognizedCardLarge({
           <Grabber
             expanded={stage === 0}
             barClassName="bg-white/40"
-            className="w-full -mt-2"
+            padClassName="py-[13px] -my-1"
+            className="w-full -mt-1"
             {...grabberProps}
           />
 

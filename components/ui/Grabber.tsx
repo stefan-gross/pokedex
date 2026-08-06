@@ -16,6 +16,7 @@ export function Grabber({
   onClick,
   className = '',
   barClassName = 'bg-[rgba(46,46,50,0.2)] dark:bg-white/30',
+  padClassName = 'pt-3 -mb-1',
 }: {
   /** true = mindestens eine Region offen → Aktion „einklappen". */
   expanded: boolean;
@@ -28,6 +29,10 @@ export function Grabber({
   /** Farbe des Griff-Pills überschreibbar — z.B. auf dem immer-dunklen
    *  Scanner-Overlay, wo der Light-Default unsichtbar wäre. */
   barClassName?: string;
+  /** Innenabstand = Größe des Tap-/Zieh-Trefferbereichs (der sichtbare Pill
+   *  bleibt gleich). Default `pt-3 -mb-1` (~18px). Für ein leichter greifbares
+   *  Ziel z.B. `py-[13px] -my-1` (~32px). */
+  padClassName?: string;
 }) {
   return (
     <div
@@ -38,7 +43,7 @@ export function Grabber({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       onClick={onClick}
-      className={`flex justify-center pt-3 -mb-1 cursor-grab active:cursor-grabbing touch-none select-none ${className}`}
+      className={`flex justify-center cursor-grab active:cursor-grabbing touch-none select-none ${padClassName} ${className}`}
     >
       <div className={`w-10 h-1.5 rounded-full ${barClassName}`} />
     </div>
