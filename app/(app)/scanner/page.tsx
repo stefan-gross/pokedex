@@ -9,6 +9,7 @@ import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal'
 import { DeleteFromCollectionModal } from '@/components/scanner/DeleteFromCollectionModal';
 import { RecognizedAddBar } from '@/components/scanner/RecognizedAddBar';
 import { Grabber } from '@/components/ui/Grabber';
+import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
          getCardBySetAndNumberRest    as getCardBySetAndNumber,
          getCardsByDexNumberRest      as getCardsByDexNumber,
@@ -3362,39 +3363,14 @@ function RecognizedCardLarge({
   const sizeBasePx = fittedSize?.w ?? null;
   const logoHeight = sizeBasePx != null ? `${sizeBasePx * 0.15}px` : '40px';
 
-  // Griff: Info-/Add-Panel einklappen (Add-Sektion aus → mehr von der Karte
-  // sichtbar). Entscheidung erst beim LOSLASSEN (nicht live im Move), sonst gibt
-  // es auf Touch eine tote Zone: schon leichtes Finger-Wackeln zählt als
-  // „bewegt" (blockt den Tap-Toggle), erreicht aber die Zieh-Schwelle nicht →
-  // nichts passiert. Jetzt: klarer Zug (>24px) klappt gezielt auf/zu, alles
-  // Kleinere (Tap oder Mini-Drag) togglet einfach.
-  const [panelCollapsed, setPanelCollapsed] = useState(false);
-  const grabStartRef = useRef<number | null>(null);
-  const grabDyRef = useRef(0);
-  const settle = () => {
-    if (grabStartRef.current == null) return;
-    grabStartRef.current = null;
-    const dy = grabDyRef.current;
-    if (dy > 24) setPanelCollapsed(true);
-    else if (dy < -24) setPanelCollapsed(false);
-    else setPanelCollapsed(c => !c);
-  };
-  const grabberProps = {
-    onPointerDown: (e: React.PointerEvent) => {
-      grabStartRef.current = e.clientY;
-      grabDyRef.current = 0;
-      try { (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); } catch { /* egal */ }
-    },
-    onPointerMove: (e: React.PointerEvent) => {
-      if (grabStartRef.current == null) return;
-      grabDyRef.current = e.clientY - grabStartRef.current;
-    },
-    onPointerUp: settle,
-    onPointerCancel: () => { grabStartRef.current = null; },
-    // Kein zusätzliches Toggle im Click — settle() (onPointerUp) erledigt Tap
-    // UND Drag; ein Click würde sonst direkt wieder zurückschalten.
-    onClick: () => {},
-  };
+  // Griff: Info-/Add-Panel einklappen — dieselbe Mechanik wie die Filter-Panels
+  // (useGrabberCollapse): der Griff folgt dem Finger und snappt beim Loslassen.
+  // Eine Region (die Add-Sektion), ohne Scroll-Trigger (fixes Overlay), mit
+  // invertierter Zieh-Richtung (Griff oben an einem Bottom-Panel → runter = zu).
+  const { stage, registerRegion, regionStyle, grabberProps } = useGrabberCollapse({
+    regionCount: 1, ready: true, scrollTrigger: false, invertDrag: true,
+  });
+  const panelCollapsed = stage > 0;
 
   return (
     <div
@@ -3530,7 +3506,7 @@ function RecognizedCardLarge({
         >
           {/* Griff: Panel einklappen (Dropdowns aus → mehr Karte sichtbar). */}
           <Grabber
-            expanded={!panelCollapsed}
+            expanded={stage === 0}
             barClassName="bg-white/40"
             className="w-full -mt-2"
             {...grabberProps}
@@ -3624,6 +3600,8 @@ function RecognizedCardLarge({
             ownedCount={ownedCount ?? 0}
             onSaved={onSaved}
             onManage={onManage}
+            regionStyle={regionStyle(0)}
+            regionRef={registerRegion(0)}
             collapsed={panelCollapsed}
           />
         </div>

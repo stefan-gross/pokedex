@@ -28,9 +28,13 @@ interface Props {
   onSaved: () => void;
   /** Öffnet den Exemplar-Verwalten/Löschen-Drawer (DeleteFromCollectionModal). */
   onManage: () => void;
-  /** Eingeklappt: die komplette Add-Sektion (Zustand/Variante/Sprache +
-   *  Sammlung + Hinzufügen-Button + Verwalten-Link) ausblenden, damit mehr von
-   *  der Karte sichtbar wird. Gesteuert vom Griff im Panel. */
+  /** Kollaps-Hülle der Add-Sektion — Style (maxHeight/Transition) kommt aus
+   *  `useGrabberCollapse` (regionStyle(0)) im Panel; so folgt der Griff dem
+   *  Finger + Snap, identisch zu den Filter-Panels. */
+  regionStyle?: React.CSSProperties;
+  /** Callback-Ref für die Höhenmessung der Region (registerRegion(0)). */
+  regionRef?: (el: HTMLDivElement | null) => void;
+  /** true, sobald (teilweise) eingeklappt — schließt offene Popover. */
   collapsed?: boolean;
 }
 
@@ -42,7 +46,8 @@ interface Props {
  *  (`onManage`) — ein Exemplar ist erst durch Sammlung + Zustand + Variante +
  *  Sprache eindeutig, die Sammlungswahl allein reicht dafür nicht. */
 export function RecognizedAddBar({
-  card, preVariant, preCondition, preLanguage, ownedCount, onSaved, onManage, collapsed = false,
+  card, preVariant, preCondition, preLanguage, ownedCount, onSaved, onManage,
+  regionStyle, regionRef, collapsed = false,
 }: Props) {
   const variantOptions: CardVariant[] =
     (card.variants && card.variants.length > 0 ? card.variants : ['standard']) as CardVariant[];
@@ -106,17 +111,10 @@ export function RecognizedAddBar({
 
       {/* Einklappbare Add-Sektion — der Griff im Panel blendet Zustand/Variante/
           Sprache + Sammlung + Hinzufügen-Button + Verwalten-Link aus, damit mehr
-          von der Karte sichtbar wird. */}
-      <div
-        className="w-full overflow-hidden"
-        style={{
-          maxHeight: collapsed ? 0 : 360,
-          opacity: collapsed ? 0 : 1,
-          pointerEvents: collapsed ? 'none' : 'auto',
-          transition: 'max-height 300ms ease, opacity 200ms ease',
-        }}
-      >
-      <div className="flex flex-col gap-2.5">
+          von der Karte sichtbar wird. Kollaps-Hülle (maxHeight/Transition) kommt
+          aus useGrabberCollapse (regionStyle) → Griff folgt dem Finger + Snap. */}
+      <div className="w-full overflow-hidden" style={regionStyle}>
+      <div ref={regionRef} className="flex flex-col gap-2.5">
       <div className="h-px w-full bg-white/15" />
 
       {/* Attribut-Chips: Zustand · Variante · Sprache */}

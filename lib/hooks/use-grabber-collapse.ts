@@ -27,14 +27,25 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 export interface GrabberCollapseOptions {
   /** Anzahl Kollaps-Regionen (Reihenfolge = Kollaps-Reihenfolge, Index 0 zuerst). */
   regionCount: number;
-  /** Das sticky Glas-Panel (für Oberkante + ausgeklappte Höhe als Referenzlinie). */
-  panelRef: React.RefObject<HTMLElement | null>;
-  /** Der Karten-Grid-Wrapper (für den Kartenposition-Scroll-Trigger). */
-  gridWrapRef: React.RefObject<HTMLElement | null>;
+  /** Das sticky Glas-Panel (für Oberkante + ausgeklappte Höhe als Referenzlinie).
+   *  Nur für den Scroll-Trigger nötig — bei `scrollTrigger: false` weglassbar. */
+  panelRef?: React.RefObject<HTMLElement | null>;
+  /** Der Karten-Grid-Wrapper (für den Kartenposition-Scroll-Trigger).
+   *  Nur für den Scroll-Trigger nötig — bei `scrollTrigger: false` weglassbar. */
+  gridWrapRef?: React.RefObject<HTMLElement | null>;
   /** Erst messen/aktiv, wenn true (z.B. `!loading`). */
   ready?: boolean;
   /** Neu messen, wenn sich ein Wert ändert (z.B. Datenlänge). */
   measureDeps?: unknown[];
+  /** Scroll-basiertes Ein-/Ausklappen (Kartenposition-Trigger). Default `true`
+   *  für scrollende Filterseiten; auf `false` für fixe Overlays/Drawer (z.B.
+   *  Scanner-Panel), die nur per Griff geklappt werden — dann sind
+   *  `panelRef`/`gridWrapRef` unnötig. */
+  scrollTrigger?: boolean;
+  /** Zieh-Richtung umkehren: Default (unten sitzender Griff, Filterseiten) =
+   *  hoch ziehen klappt ein. `true` (oben sitzender Griff eines Bottom-Panels,
+   *  z.B. Scanner) = runter ziehen klappt ein — der Griff folgt dann dem Finger. */
+  invertDrag?: boolean;
 }
 
 export interface GrabberCollapseResult {
@@ -58,7 +69,7 @@ export interface GrabberCollapseResult {
 const HYST = 56;
 
 export function useGrabberCollapse(opts: GrabberCollapseOptions): GrabberCollapseResult {
-  const { regionCount: n, panelRef, gridWrapRef, ready = true, measureDeps = [] } = opts;
+  const { regionCount: n, panelRef, gridWrapRef, ready = true, measureDeps = [], scrollTrigger = true, invertDrag = false } = opts;
 
   const [stage, setStage] = useState(0);
   const [dragCollapse, setDragCollapse] = useState<number | null>(null);
@@ -110,8 +121,9 @@ export function useGrabberCollapse(opts: GrabberCollapseOptions): GrabberCollaps
         return changed ? next : prev;
       });
       // Panel-Referenzlinie nur im voll ausgeklappten Zustand aktualisieren
-      // (grabRef ist nur während eines aktiven Ziehens gesetzt).
-      if (panelRef.current && stageRef.current === 0 && !grabRef.current) {
+      // (grabRef ist nur während eines aktiven Ziehens gesetzt). Nur relevant
+      // mit Scroll-Trigger — sonst kein panelRef nötig.
+      if (scrollTrigger && panelRef?.current && stageRef.current === 0 && !grabRef.current) {
         panelExpandedHRef.current = panelRef.current.offsetHeight;
         panelTopRef.current = panelRef.current.getBoundingClientRect().top;
       }
@@ -135,11 +147,11 @@ export function useGrabberCollapse(opts: GrabberCollapseOptions): GrabberCollaps
   // Scroll-Trigger (Kartenposition + Hysterese). Referenzlinie = Panel-Oberkante
   // + AUSGEKLAPPTE Panel-Höhe → selbst-stabilisierend. Beim Ziehen ignoriert.
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !scrollTrigger) return;
     const onScroll = () => {
       if (grabRef.current) return;
       if (window.scrollY <= 8) { setStage(0); return; }
-      const gw = gridWrapRef.current;
+      const gw = gridWrapRef?.current;
       const line = panelTopRef.current + panelExpandedHRef.current;
       if (!gw || line <= 0) return;
       const cols = gw.clientWidth >= 640 ? 3 : 2;
@@ -179,10 +191,14 @@ export function useGrabberCollapse(opts: GrabberCollapseOptions): GrabberCollaps
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     const g = grabRef.current;
     if (!g) return;
-    const dy = e.clientY - g.y;              // hoch = negativ → mehr Einklappen
+    const dy = e.clientY - g.y;              // hoch = negativ
     if (Math.abs(dy) > 4) { g.moved = true; movedRef.current = true; }
-    setDragCollapse(Math.max(0, Math.min(totalH, g.start - dy)));
-  }, [totalH]);
+    // Default: hoch ziehen = mehr Einklappen (Griff unten). invertDrag: runter
+    // ziehen = mehr Einklappen (Griff oben an einem Bottom-Panel) — so folgt der
+    // Griff dem Finger.
+    const delta = invertDrag ? dy : -dy;
+    setDragCollapse(Math.max(0, Math.min(totalH, g.start + delta)));
+  }, [totalH, invertDrag]);
 
   const onPointerUp = useCallback(() => {
     const g = grabRef.current;
