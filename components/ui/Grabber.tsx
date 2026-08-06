@@ -15,6 +15,7 @@ export function Grabber({
   onPointerCancel,
   onClick,
   className = '',
+  barClassName = 'bg-[rgba(46,46,50,0.2)] dark:bg-white/30',
 }: {
   /** true = mindestens eine Region offen → Aktion „einklappen". */
   expanded: boolean;
@@ -24,6 +25,9 @@ export function Grabber({
   onPointerCancel: () => void;
   onClick: () => void;
   className?: string;
+  /** Farbe des Griff-Pills überschreibbar — z.B. auf dem immer-dunklen
+   *  Scanner-Overlay, wo der Light-Default unsichtbar wäre. */
+  barClassName?: string;
 }) {
   return (
     <div
@@ -36,7 +40,7 @@ export function Grabber({
       onClick={onClick}
       className={`flex justify-center pt-3 -mb-1 cursor-grab active:cursor-grabbing touch-none select-none ${className}`}
     >
-      <div className="w-10 h-1.5 rounded-full bg-[rgba(46,46,50,0.2)] dark:bg-white/30" />
+      <div className={`w-10 h-1.5 rounded-full ${barClassName}`} />
     </div>
   );
 }

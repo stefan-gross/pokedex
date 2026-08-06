@@ -28,6 +28,9 @@ interface Props {
   onSaved: () => void;
   /** Öffnet den Exemplar-Verwalten/Löschen-Drawer (DeleteFromCollectionModal). */
   onManage: () => void;
+  /** Eingeklappt: Attribut-/Sammlungs-Dropdowns ausblenden (mehr Karte sichtbar),
+   *  Hinzufügen-Button + Verwalten-Link bleiben. Gesteuert vom Griff im Panel. */
+  collapsed?: boolean;
 }
 
 /** Inline-Hinzufügen-Leiste unter der erkannten Karte (Einzelscan): zeigt
@@ -38,7 +41,7 @@ interface Props {
  *  (`onManage`) — ein Exemplar ist erst durch Sammlung + Zustand + Variante +
  *  Sprache eindeutig, die Sammlungswahl allein reicht dafür nicht. */
 export function RecognizedAddBar({
-  card, preVariant, preCondition, preLanguage, ownedCount, onSaved, onManage,
+  card, preVariant, preCondition, preLanguage, ownedCount, onSaved, onManage, collapsed = false,
 }: Props) {
   const variantOptions: CardVariant[] =
     (card.variants && card.variants.length > 0 ? card.variants : ['standard']) as CardVariant[];
@@ -73,6 +76,9 @@ export function RecognizedAddBar({
 
   const toggle = (f: Field) => setOpen(o => (o === f ? null : f));
 
+  // Beim Einklappen ein offenes Popover mit schließen.
+  useEffect(() => { if (collapsed) setOpen(null); }, [collapsed]);
+
   const save = async () => {
     if (saving) return;
     setSaving(true);
@@ -97,6 +103,19 @@ export function RecognizedAddBar({
       {/* Klick-Fänger: schließt ein offenes Popover beim Tippen daneben. */}
       {open && <div className="fixed inset-0 z-40" onClick={() => setOpen(null)} />}
 
+      {/* Einklappbare Dropdown-Sektion — der Griff im Panel blendet Zustand/
+          Variante/Sprache + Sammlung aus, damit mehr von der Karte sichtbar
+          wird. Hinzufügen-Button + Verwalten-Link bleiben stehen. */}
+      <div
+        className="w-full overflow-hidden"
+        style={{
+          maxHeight: collapsed ? 0 : 260,
+          opacity: collapsed ? 0 : 1,
+          pointerEvents: collapsed ? 'none' : 'auto',
+          transition: 'max-height 300ms ease, opacity 200ms ease',
+        }}
+      >
+      <div className="flex flex-col gap-2.5">
       <div className="h-px w-full bg-white/15" />
 
       {/* Attribut-Chips: Zustand · Variante · Sprache */}
@@ -194,6 +213,9 @@ export function RecognizedAddBar({
             ))}
           </div>
         )}
+      </div>
+
+      </div>
       </div>
 
       {/* Breiter Hinzufügen-Button — Design-System-Button (variant primary,

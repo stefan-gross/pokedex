@@ -8,6 +8,7 @@ import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { DeleteFromCollectionModal } from '@/components/scanner/DeleteFromCollectionModal';
 import { RecognizedAddBar } from '@/components/scanner/RecognizedAddBar';
+import { Grabber } from '@/components/ui/Grabber';
 import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
          getCardBySetAndNumberRest    as getCardBySetAndNumber,
          getCardsByDexNumberRest      as getCardsByDexNumber,
@@ -3361,6 +3362,29 @@ function RecognizedCardLarge({
   const sizeBasePx = fittedSize?.w ?? null;
   const logoHeight = sizeBasePx != null ? `${sizeBasePx * 0.15}px` : '40px';
 
+  // Griff: Info-/Add-Panel einklappen (Dropdowns aus → mehr von der Karte
+  // sichtbar). Tippen = ganz auf/zu, Ziehen nach unten = zu / nach oben = auf.
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const grabStartRef = useRef<number | null>(null);
+  const grabMovedRef = useRef(false);
+  const grabberProps = {
+    onPointerDown: (e: React.PointerEvent) => {
+      grabStartRef.current = e.clientY;
+      grabMovedRef.current = false;
+      try { (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); } catch { /* egal */ }
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      if (grabStartRef.current == null) return;
+      const dy = e.clientY - grabStartRef.current;
+      if (Math.abs(dy) > 6) grabMovedRef.current = true;
+      if (dy > 22) setPanelCollapsed(true);
+      else if (dy < -22) setPanelCollapsed(false);
+    },
+    onPointerUp: () => { grabStartRef.current = null; },
+    onPointerCancel: () => { grabStartRef.current = null; },
+    onClick: () => { if (grabMovedRef.current) return; setPanelCollapsed(c => !c); },
+  };
+
   return (
     <div
       className="absolute inset-x-0 z-10 flex flex-col items-center px-4 gap-3"
@@ -3493,6 +3517,14 @@ function RecognizedCardLarge({
           // unlesbar. Blur/Border/Schatten kommen weiter aus .glass-overlay.
           style={{ background: 'linear-gradient(to bottom, rgba(10,12,18,0.86) 0%, rgba(10,12,18,0.64) 48%, rgba(10,12,18,0.56) 100%)' }}
         >
+          {/* Griff: Panel einklappen (Dropdowns aus → mehr Karte sichtbar). */}
+          <Grabber
+            expanded={!panelCollapsed}
+            barClassName="bg-white/40"
+            className="w-full -mt-2"
+            {...grabberProps}
+          />
+
           {/* Logo + Zyklus/Setname als ein Block — Logo links, rechts daneben
               Zyklus- und Setname linksbündig in zwei Zeilen übereinander,
               beide zusammen so hoch wie das Logo. */}
@@ -3581,6 +3613,7 @@ function RecognizedCardLarge({
             ownedCount={ownedCount ?? 0}
             onSaved={onSaved}
             onManage={onManage}
+            collapsed={panelCollapsed}
           />
         </div>
       )}
