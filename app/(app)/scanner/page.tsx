@@ -19,6 +19,7 @@ import { addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
 import { BulkAddToCollectionModal } from '@/components/scanner/BulkAddToCollectionModal';
 import { ValueBadge } from '@/components/card/ValueBadge';
 import { CardPrice } from '@/components/card/CardPrice';
+import { CardBadge } from '@/components/card/CardBadge';
 import { CardPlaceholder } from '@/components/card/CardPlaceholder';
 import { catalogCardToInfo, cardInfoToAddInput } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
@@ -3386,7 +3387,7 @@ function RecognizedCardLarge({
           *Bildes* auf Inhaltsgröße schrumpfen ließ — brach zusammen, wenn das
           Bild nicht lud). Varianten-/Zustand-Auswahl passiert nicht mehr hier,
           sondern beim Hinzufügen im AddToCollectionModal. */}
-      <div ref={slotRef} className="absolute inset-0 z-0 flex items-center justify-center">
+      <div ref={slotRef} className="absolute inset-0 z-0 flex items-start justify-center">
       <div
         ref={containerRef}
         className="relative overflow-hidden"
@@ -3452,17 +3453,20 @@ function RecognizedCardLarge({
 
         {/* ×N-Hinweis, sobald die Karte schon vorhanden ist — auch bei genau
             einem Exemplar, da der grüne Rahmen allein auf bunten Kartenmotiven
-            nicht immer auffällt. */}
+            nicht immer auffällt. Nutzt die App-Badge-Komponente (CardBadge,
+            Ecken-Variante) — bündig oben rechts wie auf den Sammlungs-Kacheln. */}
         {isOwned && ownedCount && (
-          <div
-            className="absolute -top-2 -right-2 flex items-center justify-center min-w-[64px] h-[64px] px-2.5 rounded-full text-[22px] font-bold"
-            style={{
-              background: '#22c55e', color: '#fff',
-              boxShadow: '0 4px 14px rgba(34,197,94,0.5), 0 0 0 4px rgba(0,0,0,0.12)',
-            }}
+          <CardBadge
+            size={Math.max(40, Math.round((sizeBasePx ?? 220) * 0.2))}
+            shape="pill"
+            color="rgba(53,209,90,.95)"
+            corner="tr"
+            cornerRadius={sizeBasePx != null ? sizeBasePx * 0.07 : 12}
+            style={{ top: 0, right: 0 }}
+            ariaLabel={`${ownedCount}× in Sammlung`}
           >
             ×{ownedCount}
-          </div>
+          </CardBadge>
         )}
       </div>
       </div>
