@@ -84,11 +84,22 @@ export function RecognizedAddBar({
   useEffect(() => {
     getBinders().then(list => {
       setBinders(list);
-      // Default = „Unsortiert"/Eingang (isDefault), sonst erster auswählbarer.
-      const def = list.find(b => b.isDefault && !b.template) ?? list.find(b => !b.template);
+      // Vorauswahl der Ziel-Sammlung:
+      //  1. die zur Karte PASSENDE automatische Sammlung (Vorlage matcht per
+      //     Set/Pokémon/Illustrator) — „die passende Sammlung",
+      //  2. sonst die EINZIGE automatische Sammlung (egal wie viele manuelle),
+      //  3. sonst „Unsortiert" (isDefault) bzw. der erste auswählbare Binder.
+      const templates = list.filter(b => b.template);
+      const matched   = matchTemplateBinders(card, templates);
+      const def =
+        matched[0]
+        ?? (templates.length === 1 ? templates[0] : undefined)
+        ?? list.find(b => b.isDefault && !b.template)
+        ?? list.find(b => !b.template);
       if (def) setTargetId(def.id);
     }).catch(() => {});
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card.id]);
 
   // Gewählte Variante nach oben melden (initial + bei jeder Änderung) → große
   // Karte zeigt den passenden Holo-/Reverse-Glanz.
