@@ -598,14 +598,24 @@ function MiniPageGrid({
               <div className="absolute inset-0 bg-[#c9c9c9] dark:bg-[#5b5d63]" />
             )}
             {card && (
-              <CardImage
-                srcDe={undefined}
-                src={card.tcgImageUrl ?? ""}
-                alt=""
-                width={245}
-                height={342}
-                className="relative w-full h-full object-cover"
-              />
+              <>
+                <CardImage
+                  srcDe={undefined}
+                  src={card.tcgImageUrl ?? ""}
+                  alt=""
+                  width={245}
+                  height={342}
+                  className="relative w-full h-full object-cover"
+                />
+                {/* Holo-/Reverse-Glanz nach erfasster Variante des Exemplars
+                    (Holo=Artwork, Reverse=Rahmen) — wie auf den großen Slots. */}
+                {(card.variant === 'holo' || card.variant === 'reverse') && (
+                  <div
+                    className={`absolute inset-0 card-holo-shimmer ${card.variant === 'holo' ? 'is-artwork' : 'is-frame'}`}
+                    aria-hidden="true"
+                  />
+                )}
+              </>
             )}
             {!card && missing && (
               <CardImage
