@@ -305,6 +305,9 @@ export interface BrowseFilter {
    *  damit seltene Raritäten nicht client-seitig durch den ganzen Katalog
    *  gepaginiert werden müssen. Einzelner `in`-Filter ohne orderBy → kein Index. */
   rarityKeys?: string[];
+  /** Sonderform-Mechaniken (Subtypes wie 'EX'/'V'/'GX') als OR — array-contains-any.
+   *  Server-seitig, damit der ~9%-Filter nicht seitenweise nachladen muss. */
+  specialMechanics?: string[];
 }
 
 export interface BrowsePage {
@@ -324,6 +327,8 @@ export async function getBrowseCount(filter: BrowseFilter = {}): Promise<number>
     constraints.push(where('types', 'array-contains', filter.type));
   } else if (filter.rarityKeys?.length) {
     constraints.push(where('rarity', 'in', filter.rarityKeys.slice(0, 30)));
+  } else if (filter.specialMechanics?.length) {
+    constraints.push(where('subtypes', 'array-contains-any', filter.specialMechanics.slice(0, 30)));
   } else if (filter.evolutionStage) {
     constraints.push(where('subtypes', 'array-contains', filter.evolutionStage));
   } else if (filter.supertype) {
@@ -359,6 +364,9 @@ export async function browseCatalog(
     constraints.push(where('types', 'array-contains', filter.type));
   } else if (filter.rarityKeys?.length) {
     constraints.push(where('rarity', 'in', filter.rarityKeys.slice(0, 30)));
+  } else if (filter.specialMechanics?.length) {
+    // Sonderformen (ex/V/GX …) als OR über subtypes — array-contains-any.
+    constraints.push(where('subtypes', 'array-contains-any', filter.specialMechanics.slice(0, 30)));
   } else if (filter.evolutionStage) {
     constraints.push(where('subtypes', 'array-contains', filter.evolutionStage));
   } else if (filter.supertype) {

@@ -71,7 +71,7 @@ function applyClientFilters(cards: CatalogCard[], f: CardBrowserFilter): Catalog
   return r;
 }
 
-/** Server-Filter-Priorität: setId > types[0] > rarity > evolutionStages[0] > supertype */
+/** Server-Filter-Priorität: setId > types > rarity > specialMechanics > evolutionStages[0] > supertype */
 function makeBrowseFilter(f: CardBrowserFilter): BrowseFilter {
   // Set zuerst: hoch selektiv (~100-300 Karten) → macht alle weiteren Filter
   // (client-seitig über die kleine Set-Menge) ohnehin billig.
@@ -88,6 +88,11 @@ function makeBrowseFilter(f: CardBrowserFilter): BrowseFilter {
   if (f.rarity) {
     const rarityKeys = rarityMatchValues(f.rarity);
     if (rarityKeys.length) return { rarityKeys };
+  }
+  if (f.specialMechanics?.length) {
+    // Sonderformen server-seitig (OR über subtypes) — sonst müsste der ~9%-Filter
+    // seitenweise nachladen.
+    return { specialMechanics: f.specialMechanics };
   }
   if (f.evolutionStages?.length === 1) {
     // Einzelne Stufe server-seitig; mehrere = client-seitig OR

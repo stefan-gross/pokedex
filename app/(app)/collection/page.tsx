@@ -203,14 +203,16 @@ function CollectionContent() {
         ? { types: [...activeTypes] }
         : activeRarity
           ? { rarityKeys: rarityMatchValues(activeRarity) }
-          : activeEvolutions.size === 1
-            ? { evolutionStage: [...activeEvolutions][0] }
-            : activeSupertype !== 'all'
-              ? { supertype: activeSupertype }
-              : {};
+          : activeSpecialMechanics.size > 0
+            ? { specialMechanics: [...activeSpecialMechanics] }
+            : activeEvolutions.size === 1
+              ? { evolutionStage: [...activeEvolutions][0] }
+              : activeSupertype !== 'all'
+                ? { supertype: activeSupertype }
+                : {};
     getBrowseCount(browseFilter).then(n => setBrowseTotal(n >= 0 ? n : null)).catch(() => setBrowseTotal(null));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterSet, activeTypesKey, activeSupertype, activeEvolutionsKey, activeRarity, ownedFilter, hasActiveFilterForCount]);
+  }, [filterSet, activeTypesKey, activeSupertype, activeEvolutionsKey, activeRarity, activeSpecialMechanics, ownedFilter, hasActiveFilterForCount]);
 
   // ── Derived ───────────────────────────────────────────────────
   const ownedMap = useMemo(() => {
