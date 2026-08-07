@@ -1130,7 +1130,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
       {/* ── Zoom-Overlay ──────────────────────────────────────── */}
       {zoomed && (
         <div
-          className="fixed inset-0 z-[70] bg-black/95 flex items-center justify-center"
+          className="fixed inset-0 z-[70] bg-black flex items-center justify-center"
           onClick={() => setZoomed(false)}
         >
           {(imgSrcDe || card.imgLarge || card.imgSmall) ? (

@@ -7,6 +7,13 @@ import { ENERGY_META, type EnergyType } from '@/components/ui/EnergyIcon';
 // Server (SSR) auf useEffect ausweichen, um die React-Warnung zu vermeiden.
 const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
+// Energietypen, für die ein `/no-card-image-<typ>.png` in `public/` existiert.
+// Für andere (z.B. Fee/Farblos) gibt es kein Asset → direkt `no-card-image.png`
+// nutzen, statt einen 404-Request auszulösen. Neue Assets hier ergänzen.
+const TYPE_BG_ASSETS = new Set([
+  'darkness', 'dragon', 'fighting', 'fire', 'grass', 'lightning', 'metal', 'psychic', 'water',
+]);
+
 /**
  * Platzhalter für Karten ohne Bild. Legt die vorhandenen Werte (Name dt., KP,
  * Set-Kürzel, Set-Nummer, Pokédex-Nr.) als Overlay auf eine fertige Karten-
@@ -76,12 +83,16 @@ export function CardPlaceholder({
 
   // Beide Vorlagen haben denselben Kartenrahmen → identische Overlay-Positionen.
   // Für „kein Bild" (katalogisiert) kann es ein Platzhalterbild JE ENERGIETYP
-  // geben (`/no-card-image-<typ>.png`, z.B. `/no-card-image-grass.png`). Fehlt
-  // eins (noch), fällt es automatisch (onError) auf das generische Bild zurück.
-  // Pending-Karten haben meist keinen bekannten Typ → immer generisches Template.
+  // geben (`/no-card-image-<typ>.png`, z.B. `/no-card-image-grass.png`). Nur für
+  // Typen mit tatsächlich vorhandenem Asset (siehe `TYPE_BG_ASSETS`) wird die
+  // Typ-Variante genutzt — sonst direkt das generische Bild, damit kein
+  // 404-Request entsteht (z.B. Fee/Farblos, für die es kein Asset gibt). Der
+  // onError-Fallback bleibt zusätzlich als Sicherheitsnetz. Pending-Karten haben
+  // meist keinen bekannten Typ → immer generisches Template.
   const NO_IMAGE_GENERIC = '/no-card-image.png';
   const t0 = types?.[0];
-  const typeKey = (!pending && t0 && t0 in ENERGY_META) ? (t0 as EnergyType).toLowerCase() : null;
+  const rawTypeKey = (!pending && t0 && t0 in ENERGY_META) ? (t0 as EnergyType).toLowerCase() : null;
+  const typeKey = rawTypeKey && TYPE_BG_ASSETS.has(rawTypeKey) ? rawTypeKey : null;
   const preferredBg = pending
     ? '/pending-card-template.png'
     : (typeKey ? `/no-card-image-${typeKey}.png` : NO_IMAGE_GENERIC);
