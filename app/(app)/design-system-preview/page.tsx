@@ -484,7 +484,7 @@ export default function DesignSystemPreviewPage() {
   const [showPriceBadge, setShowPriceBadge] = useState(false);
   // Holo-Effekt-Regler (nur Testseite) — überschreiben die CSS-Defaults von
   // `.card-holo-shimmer` live per inline-Style zum Optimieren.
-  const HOLO_DEFAULTS = { opacity: 1, speed: 3, alpha: 0.55, angle: 115, blend: 'overlay', artTop: 11.5, artSide: 7, artBottom: 47 };
+  const HOLO_DEFAULTS = { opacity: 1, speed: 4.5, alpha: 0.55, angle: 115, blend: 'overlay', artTop: 11.5, artSide: 7, artBottom: 47 };
   const [holo, setHolo] = useState(HOLO_DEFAULTS);
   const setHoloVal = (k: keyof typeof HOLO_DEFAULTS, v: number | string) => setHolo(prev => ({ ...prev, [k]: v }));
   const holoVars = {

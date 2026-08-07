@@ -636,8 +636,9 @@
 
 /* Holo-Glanz für BESESSENE Holo-/Reverse-Holo-Karten. Werte übernommen vom
    „fehlt"-Hologramm (`.missing-card-hologram` oben): voller Glanz (Deckkraft 1),
-   kräftiges Band (Alpha .55, Stops 15–65%), Tempo 3s — nur der Bereich ist
-   getrennt (Holo=Artwork, Reverse=Rahmen, siehe Clips unten), statt ganze Karte.
+   kräftiges Band (Alpha .55, Stops 15–65%); Tempo 4.5s (etwas ruhiger als die
+   3s des „fehlt"-Effekts) — nur der Bereich ist getrennt (Holo=Artwork,
+   Reverse=Rahmen, siehe Clips unten), statt ganze Karte.
    Liegt als eigene, nicht klickbare Ebene über dem Bild (im gerundeten
    `overflow-hidden`-Wrapper der Karte). */
 .card-holo-shimmer {
@@ -645,7 +646,7 @@
      Design-System-Testseite überschreibt sie live per inline-Style zum
      Optimieren; die App nutzt die Defaults. */
   --holo-opacity: 1;
-  --holo-speed: 3s;
+  --holo-speed: 4.5s;
   --holo-alpha: .55;      /* Farbintensität des Regenbogen-Bands */
   --holo-angle: 115deg;
   --holo-blend: overlay;
