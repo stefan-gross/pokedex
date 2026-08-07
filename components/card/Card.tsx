@@ -143,6 +143,10 @@ export function Card({
   const totalOwned    = ownedCards.reduce((s, c) => s + c.quantity, 0);
   const isOwned       = totalOwned > 0;
   const needsReview   = ownedCards.some(c => c.needsReview);
+  // Holo-Glanz: sobald ein besessenes Exemplar holo oder reverse-holo ist, legt
+  // sich ein dezenter Regenbogen-Sweep übers Kartenbild (nur bei Besitz — der
+  // „fehlt"-Look hat einen eigenen Hologramm-Effekt).
+  const isHoloOwned   = ownedCards.some(c => c.variant === 'holo' || c.variant === 'reverse');
   // Sprach-Marker: der Nutzer sammelt auf Deutsch. Besitzt er eine Karte NUR in
   // anderen Sprachen (kein einziges deutsches Exemplar), wird sie mit einem
   // amber Sprach-Badge markiert = „noch auf Deutsch zu ersetzen". Deutsche
@@ -200,6 +204,11 @@ export function Card({
               über `.missing-card-hologram` (globals.css). */}
           {!isOwned && missingStyle.effect === 'hologram' && (
             <div className="absolute inset-0 missing-card-hologram" aria-hidden="true" />
+          )}
+          {/* Holo-Glanz für besessene Holo-/Reverse-Holo-Karten (dezenter
+              Regenbogen-Sweep, siehe `.card-holo-shimmer` in globals.css). */}
+          {isOwned && isHoloOwned && (
+            <div className="absolute inset-0 card-holo-shimmer" aria-hidden="true" />
           )}
         </div>
         {/* Silhouette — zusätzlicher gestrichelter Rahmen um das (per

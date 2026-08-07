@@ -633,3 +633,22 @@
 @media (prefers-reduced-motion: reduce) {
   .missing-card-hologram { animation: none; background-position: 50% 50%; }
 }
+
+/* Holo-Glanz für BESESSENE Holo-/Reverse-Holo-Karten (volle Farbe, nicht
+   entsättigt wie der „fehlt"-Effekt oben). Dezenter Regenbogen-Sweep über dem
+   Kartenbild — etwas geringere Deckkraft + langsamer, damit es edel wirkt und
+   das Motiv nicht überstrahlt. Liegt als eigene, nicht klickbare Ebene über dem
+   Bild (innerhalb des gerundeten `overflow-hidden`-Wrappers der Karte). */
+.card-holo-shimmer {
+  background: linear-gradient(115deg,
+    transparent 22%, rgba(255,0,150,.32) 36%, rgba(0,200,255,.32) 47%,
+    rgba(255,230,0,.32) 58%, transparent 72%);
+  background-size: 260% 260%;
+  mix-blend-mode: overlay;
+  opacity: .6;
+  animation: holo-shimmer 4.5s ease-in-out infinite;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-holo-shimmer { animation: none; background-position: 50% 50%; }
+}
