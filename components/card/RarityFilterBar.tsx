@@ -64,20 +64,28 @@ export function RarityFilterBar({ cards, ownedIds, activeRarities, onToggle, rar
     // Leiste ALLE Rarity-Gruppen des Katalogs — nicht nur die zufällig auf der
     // aktuell geladenen Seite (~50 Karten) vorkommenden. In Suche/Set-Detail
     // wird `rarityCounts` nicht übergeben → dort weiter Breakdown aus den Karten.
-    if (rarityCounts) {
-      return RARITY_GROUPS
-        .filter(g => (rarityCounts[g.label] ?? 0) > 0)
-        .map(g => ({
-          group: g,
-          count: rarityCounts[g.label] ?? 0,
-          ownedCount: 0,
-        }));
+    const base = rarityCounts
+      ? RARITY_GROUPS
+          .filter(g => (rarityCounts[g.label] ?? 0) > 0)
+          .map(g => ({ group: g, count: rarityCounts[g.label] ?? 0, ownedCount: 0 }))
+      : cards.length > 0
+        ? buildRarityBreakdown(cards, ownedIds)
+        : [];
+
+    // Aktive Rarity IMMER einblenden — auch mit 0 Treffern in der aktuellen
+    // Menge. Sonst verschwindet der Chip (z.B. Rarity im Browse gewählt, dann
+    // Namenssuche ohne Treffer dieser Rarity) und der Filter lässt sich nicht
+    // mehr abwählen → Sackgasse.
+    const present = new Set(base.map(b => b.group.label));
+    const missingActive: RarityBreakdownItem[] = [];
+    for (const label of activeRarities) {
+      if (present.has(label)) continue;
+      const g = RARITY_GROUPS.find(x => x.label === label);
+      if (g) missingActive.push({ group: g, count: 0, ownedCount: 0 });
     }
-    if (cards.length > 0) {
-      return buildRarityBreakdown(cards, ownedIds);
-    }
-    return [];
-  }, [cards, ownedIds, rarityCounts]);
+    if (missingActive.length === 0) return base;
+    return [...base, ...missingActive].sort((a, b) => (a.group.order ?? 50) - (b.group.order ?? 50));
+  }, [cards, ownedIds, rarityCounts, activeRarities]);
 
   if (breakdown.length === 0 && !extraChips?.length) return null;
 
@@ -87,7 +95,8 @@ export function RarityFilterBar({ cards, ownedIds, activeRarities, onToggle, rar
         // Wenn Firestore-Counts vorhanden: diese als Gesamtzahl nutzen (nicht die 50 geladenen Karten)
         const totalCount   = rarityCounts?.[group.label] ?? count;
         const active       = activeRarities.has(group.label);
-        const disabled     = totalCount === 0;
+        // Aktiver Chip bleibt IMMER klickbar (zum Abwählen), auch bei 0 Treffern.
+        const disabled     = totalCount === 0 && !active;
         const isCssVar     = group.color.startsWith('var(');
         const activeBg     = isCssVar ? 'var(--muted)' : `${group.color}22`;
         const activeBorder = isCssVar ? 'var(--foreground)' : group.color;
