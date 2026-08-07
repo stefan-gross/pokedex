@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/modal';
 import { CollectionPickerSheet } from '@/components/collection/CollectionPickerSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
-import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
+import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe, SYMBOL_ONLY_SERIES, inherentFoilVariant } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { deleteCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { getBinders, removeCardFromBinderAndCleanup, ensureDefaultBinder, setCardExclusiveBinder } from '@/lib/firestore/binders';
@@ -719,7 +719,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           <div className="flex gap-3.5 px-4 pt-1 pb-4">
             {/* Kartenbild mit Zoom — kein Schatten */}
             <div
-              className="shrink-0 rounded-[8px] overflow-hidden cursor-zoom-in border"
+              className="relative shrink-0 rounded-[8px] overflow-hidden cursor-zoom-in border"
               style={{ width: 140, borderColor: rarityInfo?.color ?? 'var(--border)' }}
               onClick={() => setZoomed(true)}
             >
@@ -745,6 +745,18 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                   pending: card.pendingCatalog,
                 }}
               />
+              {/* Holo-Glanz nur bei EINDEUTIG-Foil-Karten (Katalog ohne
+                  standard-Variante) — das Hero-Bild ist ein Katalog-Bild, kein
+                  Exemplar, daher NICHT nach Besitz. */}
+              {(() => {
+                const foil = inherentFoilVariant(card.variants);
+                return foil ? (
+                  <div
+                    className={`absolute inset-0 card-holo-shimmer ${foil === 'holo' ? 'is-artwork' : 'is-frame'}`}
+                    aria-hidden="true"
+                  />
+                ) : null;
+              })()}
             </div>
 
             {/* Set-Infos */}

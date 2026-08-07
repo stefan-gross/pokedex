@@ -26,7 +26,7 @@ import { CardPlaceholder } from '@/components/card/CardPlaceholder';
 import { catalogCardToInfo, cardInfoToAddInput } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition as PersistedCondition, CardDoc, CardLanguage, CardVariant } from '@/types';
-import { CONDITIONS, VARIANT_LABELS, SERIES_NAMES_DE, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
+import { CONDITIONS, VARIANT_LABELS, SERIES_NAMES_DE, SYMBOL_ONLY_SERIES, inherentFoilVariant } from '@/lib/card-constants';
 import { useSetMeta } from '@/lib/hooks/use-set-meta';
 import { CardNameLabel } from '@/components/card/CardNameLabel';
 import { getSetById, getSetIdsByPrintedTotal } from '@/lib/firestore/sets';
@@ -1589,8 +1589,22 @@ export default function ScannerPage() {
                         <AlertCircle size={24} color="#f87171" />
                       </div>
                     ) : (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img src={img} alt={card?.name ?? ''} className="w-full h-full object-cover" />
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={img} alt={card?.name ?? ''} className="w-full h-full object-cover" />
+                        {/* Holo-Glanz nur bei EINDEUTIG-Foil-Karten (Katalog ohne
+                            standard-Variante) — die Scan-Variante selbst ist nur
+                            geraten, daher nicht als Glanz-Signal genutzt. */}
+                        {(() => {
+                          const foil = inherentFoilVariant(card?.variants);
+                          return foil ? (
+                            <div
+                              className={`absolute inset-0 card-holo-shimmer ${foil === 'holo' ? 'is-artwork' : 'is-frame'}`}
+                              aria-hidden="true"
+                            />
+                          ) : null;
+                        })()}
+                      </>
                     )}
                     {job.added && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/50">

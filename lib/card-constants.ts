@@ -72,6 +72,20 @@ export const VARIANT_LABELS: Record<CardVariant, string> = {
   'promo':    'Promo',
 };
 
+/** „Inhärentes Foil" — die Karte existiert AUSSCHLIESSLICH als Holo bzw. nur
+ *  Reverse (keine `standard`-Variante im Katalog). Dann ist der Foil-Charakter
+ *  eindeutig, unabhängig von Besitz/Auswahl → der Holo-Glanz darf überall
+ *  gezeigt werden (auch Katalog-/Detailbild, Suche, Scan-Kachel). Gibt es auch
+ *  eine `standard`-Variante, ist Holo NICHT eindeutig (nur ein möglicher Druck)
+ *  → `null`, dann greift der Glanz nur nach erfasstem/gewähltem Exemplar. */
+export function inherentFoilVariant(variants?: CardVariant[]): 'holo' | 'reverse' | null {
+  if (!variants || variants.length === 0) return null;
+  if (variants.includes('standard')) return null;
+  if (variants.includes('holo')) return 'holo';
+  if (variants.includes('reverse')) return 'reverse';
+  return null;
+}
+
 /**
  * Offizielle Pokémon TCG Raritäten mit korrekten Symbolen.
  *

@@ -3,6 +3,7 @@
 import { ExclamationMark } from '@/lib/binder-icons';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardDoc } from '@/types';
+import { inherentFoilVariant } from '@/lib/card-constants';
 import { CardImage } from '@/components/card/CardImage';
 import { CardBadge } from '@/components/card/CardBadge';
 import {
@@ -147,8 +148,12 @@ export function Card({
   // Effekt): Holo glänzt auf dem Artwork, Reverse Holo auf dem Rahmen (Pokémon-
   // Bild bleibt frei). Beides kann gleichzeitig gelten (Karte in beiden
   // Varianten besessen) → beide Ebenen ergeben zusammen „ganze Karte glänzt".
-  const hasHoloOwned    = ownedCards.some(c => c.variant === 'holo');
-  const hasReverseOwned = ownedCards.some(c => c.variant === 'reverse');
+  // Eindeutig Foil, wenn (a) ein besessenes Exemplar holo/reverse ist ODER
+  // (b) die Karte im Katalog NUR als Holo/Reverse existiert (kein `standard`) —
+  // dann glänzt sie überall, auch unbesessen (siehe inherentFoilVariant).
+  const inherentFoil    = inherentFoilVariant(card.variants);
+  const showHolo        = ownedCards.some(c => c.variant === 'holo')    || inherentFoil === 'holo';
+  const showReverse     = ownedCards.some(c => c.variant === 'reverse') || inherentFoil === 'reverse';
   // Sprach-Marker: der Nutzer sammelt auf Deutsch. Besitzt er eine Karte NUR in
   // anderen Sprachen (kein einziges deutsches Exemplar), wird sie mit einem
   // amber Sprach-Badge markiert = „noch auf Deutsch zu ersetzen". Deutsche
@@ -209,10 +214,10 @@ export function Card({
           )}
           {/* Holo-Glanz (siehe `.card-holo-shimmer` in globals.css):
               Holo → Artwork-Fenster, Reverse Holo → Rahmen (Bild bleibt frei). */}
-          {isOwned && hasHoloOwned && (
+          {showHolo && (
             <div className="absolute inset-0 card-holo-shimmer is-artwork" aria-hidden="true" />
           )}
-          {isOwned && hasReverseOwned && (
+          {showReverse && (
             <div className="absolute inset-0 card-holo-shimmer is-frame" aria-hidden="true" />
           )}
         </div>
