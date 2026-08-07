@@ -640,13 +640,25 @@
    das Motiv nicht überstrahlt. Liegt als eigene, nicht klickbare Ebene über dem
    Bild (innerhalb des gerundeten `overflow-hidden`-Wrappers der Karte). */
 .card-holo-shimmer {
-  background: linear-gradient(115deg,
-    transparent 22%, rgba(255,0,150,.32) 36%, rgba(0,200,255,.32) 47%,
-    rgba(255,230,0,.32) 58%, transparent 72%);
+  /* Über CSS-Variablen einstellbar (Defaults = eingestellter Look). Die
+     Design-System-Testseite überschreibt sie live per inline-Style zum
+     Optimieren; die App nutzt die Defaults. */
+  --holo-opacity: .6;
+  --holo-speed: 4.5s;
+  --holo-alpha: .32;      /* Farbintensität des Regenbogen-Bands */
+  --holo-angle: 115deg;
+  --holo-blend: overlay;
+  --holo-art-top: 11.5%;  /* Oberkante Artwork-Fenster */
+  --holo-art-side: 7%;    /* seitlicher Rand des Artwork-Fensters */
+  --holo-art-bottom: 47%; /* Unterkante Artwork-Fenster (von oben) */
+  background: linear-gradient(var(--holo-angle),
+    transparent 22%, rgba(255,0,150, var(--holo-alpha)) 36%,
+    rgba(0,200,255, var(--holo-alpha)) 47%, rgba(255,230,0, var(--holo-alpha)) 58%,
+    transparent 72%);
   background-size: 260% 260%;
-  mix-blend-mode: overlay;
-  opacity: .6;
-  animation: holo-shimmer 4.5s ease-in-out infinite;
+  mix-blend-mode: var(--holo-blend);
+  opacity: var(--holo-opacity);
+  animation: holo-shimmer var(--holo-speed) ease-in-out infinite;
   pointer-events: none;
 }
 /* Holo: Glanz nur auf dem Artwork-Fenster (grobe Standard-Kartengeometrie:
@@ -655,12 +667,16 @@
    kontur = rechteckiges Loch), damit das Pokémon-Bild frei bleibt. Prozente
    sind eine Näherung; Full-Art-Karten weichen ab (kein Layout-Wissen pro Karte). */
 .card-holo-shimmer.is-artwork {
-  clip-path: inset(11.5% 7% 53% 7% round 3%);
+  clip-path: inset(var(--holo-art-top) var(--holo-art-side) calc(100% - var(--holo-art-bottom)) var(--holo-art-side) round 3%);
 }
 .card-holo-shimmer.is-frame {
   clip-path: polygon(
     0 0, 100% 0, 100% 100%, 0 100%, 0 0,
-    7% 11.5%, 7% 47%, 93% 47%, 93% 11.5%, 7% 11.5%
+    var(--holo-art-side) var(--holo-art-top),
+    var(--holo-art-side) var(--holo-art-bottom),
+    calc(100% - var(--holo-art-side)) var(--holo-art-bottom),
+    calc(100% - var(--holo-art-side)) var(--holo-art-top),
+    var(--holo-art-side) var(--holo-art-top)
   );
 }
 @media (prefers-reduced-motion: reduce) {

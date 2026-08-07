@@ -482,6 +482,21 @@ export default function DesignSystemPreviewPage() {
   // Preis-Badge (unten links, Pillenform) — Demo-Preis einspeisen, damit die
   // Preis-Badge-Positions-Slider unten sichtbar etwas bewegen.
   const [showPriceBadge, setShowPriceBadge] = useState(false);
+  // Holo-Effekt-Regler (nur Testseite) — überschreiben die CSS-Defaults von
+  // `.card-holo-shimmer` live per inline-Style zum Optimieren.
+  const HOLO_DEFAULTS = { opacity: 0.6, speed: 4.5, alpha: 0.32, angle: 115, blend: 'overlay', artTop: 11.5, artSide: 7, artBottom: 47 };
+  const [holo, setHolo] = useState(HOLO_DEFAULTS);
+  const setHoloVal = (k: keyof typeof HOLO_DEFAULTS, v: number | string) => setHolo(prev => ({ ...prev, [k]: v }));
+  const holoVars = {
+    '--holo-opacity': String(holo.opacity),
+    '--holo-speed': `${holo.speed}s`,
+    '--holo-alpha': String(holo.alpha),
+    '--holo-angle': `${holo.angle}deg`,
+    '--holo-blend': holo.blend,
+    '--holo-art-top': `${holo.artTop}%`,
+    '--holo-art-side': `${holo.artSide}%`,
+    '--holo-art-bottom': `${holo.artBottom}%`,
+  } as React.CSSProperties;
   const updateBadge = <K extends keyof CardTileBadgeLayout>(badge: K, patch: Partial<CardTileBadgeLayout[K]>) => {
     setDraftCardTheme(prev => ({
       ...prev,
@@ -1074,6 +1089,99 @@ export default function DesignSystemPreviewPage() {
                 })}
               </div>
             ))}
+          </div>
+        </div>
+      </Section>
+
+      {/* Holo-Effekt — live einstellbar. Regler überschreiben die CSS-Variablen
+          von `.card-holo-shimmer` per inline-Style (holoVars) am Karten-Wrapper. */}
+      <Section title="Holo-Effekt (Holo / Reverse Holo)">
+        <p className="text-role-label text-glass-muted">
+          Holo = Glanz auf dem Artwork, Reverse Holo = Glanz auf dem Rahmen (Bild frei).
+          Regler wirken live auf die zwei Karten; die Werte unten kann ich als neue
+          Defaults übernehmen.
+        </p>
+        <div className="flex items-start gap-6 flex-wrap">
+          <div style={holoVars} className="flex gap-6 flex-wrap">
+            <div style={{ width: CARD_SIZE_PRESETS.lg.badgeSize * 4 }} className="space-y-1.5">
+              <p className="text-role-label text-glass-muted text-center">Holo</p>
+              <Card card={SAMPLE_CARD} size="lg" ownedCards={[SAMPLE_OWNED_CARD]} sublabel={SAMPLE_CARD.number} />
+            </div>
+            <div style={{ width: CARD_SIZE_PRESETS.lg.badgeSize * 4 }} className="space-y-1.5">
+              <p className="text-role-label text-glass-muted text-center">Reverse Holo</p>
+              <Card card={SAMPLE_CARD} size="lg" ownedCards={[SAMPLE_OWNED_CARD_REVERSE]} sublabel={SAMPLE_CARD.number} />
+            </div>
+          </div>
+
+          <div className="flex-1 min-w-[240px] space-y-3">
+            <label className="block text-role-label text-glass-muted space-y-1">
+              <span>Deckkraft: {holo.opacity.toFixed(2)}</span>
+              <input type="range" min={0} max={1} step={0.05} value={holo.opacity}
+                onChange={e => setHoloVal('opacity', Number(e.target.value))} className="w-full" />
+            </label>
+            <label className="block text-role-label text-glass-muted space-y-1">
+              <span>Farbintensität (Band): {holo.alpha.toFixed(2)}</span>
+              <input type="range" min={0} max={0.8} step={0.02} value={holo.alpha}
+                onChange={e => setHoloVal('alpha', Number(e.target.value))} className="w-full" />
+            </label>
+            <label className="block text-role-label text-glass-muted space-y-1">
+              <span>Tempo: {holo.speed.toFixed(1)}s</span>
+              <input type="range" min={1} max={9} step={0.5} value={holo.speed}
+                onChange={e => setHoloVal('speed', Number(e.target.value))} className="w-full" />
+            </label>
+            <label className="block text-role-label text-glass-muted space-y-1">
+              <span>Winkel: {holo.angle}°</span>
+              <input type="range" min={0} max={180} step={5} value={holo.angle}
+                onChange={e => setHoloVal('angle', Number(e.target.value))} className="w-full" />
+            </label>
+            <label className="block text-role-label text-glass-muted space-y-1">
+              <span>Blendmodus</span>
+              <Select
+                value={holo.blend}
+                onChange={v => setHoloVal('blend', v)}
+                options={[
+                  { value: 'overlay', label: 'overlay' },
+                  { value: 'screen', label: 'screen' },
+                  { value: 'soft-light', label: 'soft-light' },
+                  { value: 'hard-light', label: 'hard-light' },
+                  { value: 'color-dodge', label: 'color-dodge' },
+                  { value: 'plus-lighter', label: 'plus-lighter' },
+                  { value: 'lighten', label: 'lighten' },
+                ]}
+              />
+            </label>
+
+            <p className="text-role-label text-glass-muted pt-1 border-t border-white/10">Artwork-Fenster (Holo-Bereich / Reverse-Aussparung)</p>
+            <label className="block text-role-label text-glass-muted space-y-1">
+              <span>Oben: {holo.artTop}%</span>
+              <input type="range" min={0} max={40} step={0.5} value={holo.artTop}
+                onChange={e => setHoloVal('artTop', Number(e.target.value))} className="w-full" />
+            </label>
+            <label className="block text-role-label text-glass-muted space-y-1">
+              <span>Seiten: {holo.artSide}%</span>
+              <input type="range" min={0} max={25} step={0.5} value={holo.artSide}
+                onChange={e => setHoloVal('artSide', Number(e.target.value))} className="w-full" />
+            </label>
+            <label className="block text-role-label text-glass-muted space-y-1">
+              <span>Unten: {holo.artBottom}%</span>
+              <input type="range" min={40} max={90} step={0.5} value={holo.artBottom}
+                onChange={e => setHoloVal('artBottom', Number(e.target.value))} className="w-full" />
+            </label>
+
+            <div className="flex items-center gap-2 pt-1">
+              <Button variant="secondary" size="sm" onClick={() => setHolo(HOLO_DEFAULTS)}>Zurücksetzen</Button>
+            </div>
+
+            <pre className="text-[11px] leading-relaxed text-glass-muted whitespace-pre-wrap break-all pt-1 border-t border-white/10">
+{`--holo-opacity: ${holo.opacity};
+--holo-alpha: ${holo.alpha};
+--holo-speed: ${holo.speed}s;
+--holo-angle: ${holo.angle}deg;
+--holo-blend: ${holo.blend};
+--holo-art-top: ${holo.artTop}%;
+--holo-art-side: ${holo.artSide}%;
+--holo-art-bottom: ${holo.artBottom}%;`}
+            </pre>
           </div>
         </div>
       </Section>
