@@ -102,6 +102,7 @@ export function AddToCollectionModal({
       onClose={onClose}
       dragToClose
       forceDark={fromScanner}
+      lockScroll={!fromScanner}
       elevated
       footer={
         <Button

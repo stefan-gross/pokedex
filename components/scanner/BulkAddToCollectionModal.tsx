@@ -93,6 +93,7 @@ export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved
     <Sheet
       open
       onClose={saving ? () => {} : onClose}
+      lockScroll={false}
       elevated
       title={`${jobs.length} ${jobs.length === 1 ? 'Karte' : 'Karten'} hinzufügen`}
       footer={

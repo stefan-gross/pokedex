@@ -117,6 +117,7 @@ export function DeleteFromCollectionModal({
       onClose={onClose}
       dragToClose
       forceDark={fromScanner}
+      lockScroll={!fromScanner}
       elevated
       footer={ownedCopies.length > 0 ? (
         <Button
