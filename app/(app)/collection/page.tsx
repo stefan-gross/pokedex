@@ -200,7 +200,7 @@ function CollectionContent() {
     const browseFilter = filterSet
       ? { setId: filterSet }
       : activeTypes.size > 0
-        ? { type: [...activeTypes][0] }
+        ? { types: [...activeTypes] }
         : activeRarity
           ? { rarityKeys: rarityMatchValues(activeRarity) }
           : activeEvolutions.size === 1

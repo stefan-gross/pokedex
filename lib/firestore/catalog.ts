@@ -291,8 +291,12 @@ export type BrowseSortKey = 'name' | 'hp' | 'pokedex';
 export interface BrowseFilter {
   /** Set-ID (z.B. 'sv04') — equality, hoch selektiv → server-seitig zuerst */
   setId?: string;
-  /** Pokémon-Typ (englisch), z.B. 'Darkness' — array-contains */
+  /** Ein einzelner Pokémon-Typ — array-contains (nur noch für den Filter-Zähler-
+   *  Kontext von `getCatalogFilterCounts`). Für die Browse-Query `types` nutzen. */
   type?: string;
+  /** Mehrere Typen (OR) — `array-contains-any`. Deckt auch den Ein-Typ-Fall ab.
+   *  Ein einzelnes Array-Feld → kein Composite-Index. */
+  types?: string[];
   /** Supertype: 'Pokémon' | 'Trainer' | 'Energy' — equality */
   supertype?: string;
   /** Entwicklungsstufe: 'Basic' | 'Stage 1' | 'Stage 2' — array-contains auf subtypes */
@@ -314,6 +318,8 @@ export async function getBrowseCount(filter: BrowseFilter = {}): Promise<number>
   const constraints: QueryConstraint[] = [];
   if (filter.setId) {
     constraints.push(where('setId', '==', filter.setId));
+  } else if (filter.types?.length) {
+    constraints.push(where('types', 'array-contains-any', filter.types.slice(0, 30)));
   } else if (filter.type) {
     constraints.push(where('types', 'array-contains', filter.type));
   } else if (filter.rarityKeys?.length) {
@@ -345,6 +351,10 @@ export async function browseCatalog(
   // durchpaginieren (sehr langsam).
   if (filter.setId) {
     constraints.push(where('setId', '==', filter.setId));
+  } else if (filter.types?.length) {
+    // OR über mehrere Typen — array-contains-any (max. 30, einzelnes Array-Feld
+    // → kein Composite-Index). Deckt auch den Ein-Typ-Fall ab.
+    constraints.push(where('types', 'array-contains-any', filter.types.slice(0, 30)));
   } else if (filter.type) {
     constraints.push(where('types', 'array-contains', filter.type));
   } else if (filter.rarityKeys?.length) {

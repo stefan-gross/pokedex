@@ -79,7 +79,9 @@ function makeBrowseFilter(f: CardBrowserFilter): BrowseFilter {
     return { setId: f.setId };
   }
   if (f.types?.length) {
-    return { type: f.types[0] };
+    // ALLE gewählten Typen (OR) server-seitig — vorher nur types[0], wodurch
+    // Karten, die nur den zweiten Typ hatten, fehlten.
+    return { types: f.types };
   }
   // Rarity server-seitig (als `in`-Werte) — sonst müsste eine seltene Rarity
   // client-seitig durch den ganzen Katalog gepaginiert werden.
