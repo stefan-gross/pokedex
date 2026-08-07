@@ -4,7 +4,7 @@ import {
   type QueryDocumentSnapshot, type QueryConstraint,
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
-import { RARITY_GROUPS, SPECIAL_MECHANIC_KEYS } from '../card-constants';
+import { RARITY_GROUPS, SPECIAL_MECHANIC_KEYS, rarityMatchValues } from '../card-constants';
 import type { CardVariant } from '@/types';
 
 export interface CatalogCard {
@@ -264,10 +264,8 @@ export async function getCatalogFilterCounts(activeFilter: BrowseFilter = {}): P
     // ("Common", "Rare Holo" …). Firestore `in` ist case-SENSITIV → sonst 0
     // Treffer. Daher jede Key-Variante zusätzlich in Title-Case abfragen.
     Promise.all(RARITY_GROUPS.map(async g => {
-      if (!g.keys.length) return [g.label, 0] as [string, number];
-      const variants = Array.from(
-        new Set(g.keys.flatMap(k => [k, k.replace(/\b\w/g, c => c.toUpperCase())])),
-      ).slice(0, 30); // Firestore `in` erlaubt max. 30 Werte
+      const variants = rarityMatchValues(g.label); // keys + Title-Case, max. 30
+      if (!variants.length) return [g.label, 0] as [string, number];
       return [g.label, await safeCount([where('rarity', 'in', variants)])] as [string, number];
     })),
     // Sonderformen global: Karten mit mind. einer Spezial-Mechanik als Subtype
@@ -297,6 +295,10 @@ export interface BrowseFilter {
   supertype?: string;
   /** Entwicklungsstufe: 'Basic' | 'Stage 1' | 'Stage 2' — array-contains auf subtypes */
   evolutionStage?: string;
+  /** Rarity als `in`-Werte (siehe `rarityMatchValues`) — server-seitiger Filter,
+   *  damit seltene Raritäten nicht client-seitig durch den ganzen Katalog
+   *  gepaginiert werden müssen. Einzelner `in`-Filter ohne orderBy → kein Index. */
+  rarityKeys?: string[];
 }
 
 export interface BrowsePage {
@@ -310,6 +312,8 @@ export async function getBrowseCount(filter: BrowseFilter = {}): Promise<number>
   const constraints: QueryConstraint[] = [];
   if (filter.type) {
     constraints.push(where('types', 'array-contains', filter.type));
+  } else if (filter.rarityKeys?.length) {
+    constraints.push(where('rarity', 'in', filter.rarityKeys.slice(0, 30)));
   } else if (filter.evolutionStage) {
     constraints.push(where('subtypes', 'array-contains', filter.evolutionStage));
   } else if (filter.supertype) {
@@ -330,9 +334,14 @@ export async function browseCatalog(
 ): Promise<BrowsePage> {
   const constraints: QueryConstraint[] = [];
 
-  // Priorität: type > evolutionStage > supertype (je nur einer server-seitig)
+  // Priorität: type > rarity > evolutionStage > supertype (je nur einer
+  // server-seitig, um Composite-Indexes zu vermeiden). Rarity als `in` steht
+  // bewusst weit oben: eine seltene Rarity (z.B. 15 Karten) client-seitig zu
+  // filtern würde den ganzen Katalog seitenweise durchpaginieren (sehr langsam).
   if (filter.type) {
     constraints.push(where('types', 'array-contains', filter.type));
+  } else if (filter.rarityKeys?.length) {
+    constraints.push(where('rarity', 'in', filter.rarityKeys.slice(0, 30)));
   } else if (filter.evolutionStage) {
     constraints.push(where('subtypes', 'array-contains', filter.evolutionStage));
   } else if (filter.supertype) {

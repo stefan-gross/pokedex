@@ -12,7 +12,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { browseCatalog, type BrowseSortKey, type BrowseFilter, type CatalogCard } from '@/lib/firestore/catalog';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
-import { getRarityGroup } from '@/lib/card-constants';
+import { getRarityGroup, rarityMatchValues } from '@/lib/card-constants';
 import type { QueryDocumentSnapshot } from 'firebase/firestore';
 
 export type CardBrowserFilter = {
@@ -65,10 +65,16 @@ function applyClientFilters(cards: CatalogCard[], f: CardBrowserFilter): Catalog
   return r;
 }
 
-/** Server-Filter-Priorität: types[0] > evolutionStages[0] > supertype */
+/** Server-Filter-Priorität: types[0] > rarity > evolutionStages[0] > supertype */
 function makeBrowseFilter(f: CardBrowserFilter): BrowseFilter {
   if (f.types?.length) {
     return { type: f.types[0] };
+  }
+  // Rarity server-seitig (als `in`-Werte) — sonst müsste eine seltene Rarity
+  // client-seitig durch den ganzen Katalog gepaginiert werden.
+  if (f.rarity) {
+    const rarityKeys = rarityMatchValues(f.rarity);
+    if (rarityKeys.length) return { rarityKeys };
   }
   if (f.evolutionStages?.length === 1) {
     // Einzelne Stufe server-seitig; mehrere = client-seitig OR

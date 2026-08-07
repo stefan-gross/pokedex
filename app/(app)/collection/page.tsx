@@ -19,7 +19,7 @@ import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { applyFacetFilters, type FacetState, type FacetDim } from '@/lib/search/facet-filter';
-import { SPECIAL_MECHANIC_KEYS } from '@/lib/card-constants';
+import { SPECIAL_MECHANIC_KEYS, rarityMatchValues } from '@/lib/card-constants';
 import { useCardBrowser, TCG_TYPES, type TcgType, type CardBrowserFilter } from '@/lib/hooks/useCardBrowser';
 import { useWishlist } from '@/lib/hooks/use-wishlist';
 import { EnergyIcon, ENERGY_META } from '@/components/ui/EnergyIcon';
@@ -171,16 +171,21 @@ function CollectionContent() {
   const hasActiveFilterForCount = !!(activeTypes.size || activeSupertype !== 'all' || activeEvolutions.size || activeSpecialMechanics.size || ownedFilter !== 'all' || activeRarity);
   useEffect(() => {
     if (!hasActiveFilterForCount) { setBrowseTotal(null); return; }
+    // Gleiche Server-Filter-Priorität wie makeBrowseFilter: type > rarity >
+    // evolutionStage > supertype (sonst zählte eine aktive Rarity fälschlich den
+    // ganzen Katalog statt der Rarity-Treffer).
     const browseFilter = activeTypes.size > 0
       ? { type: [...activeTypes][0] }
-      : activeEvolutions.size === 1
-        ? { evolutionStage: [...activeEvolutions][0] }
-        : activeSupertype !== 'all'
-          ? { supertype: activeSupertype }
-          : {};
+      : activeRarity
+        ? { rarityKeys: rarityMatchValues(activeRarity) }
+        : activeEvolutions.size === 1
+          ? { evolutionStage: [...activeEvolutions][0] }
+          : activeSupertype !== 'all'
+            ? { supertype: activeSupertype }
+            : {};
     getBrowseCount(browseFilter).then(n => setBrowseTotal(n >= 0 ? n : null)).catch(() => setBrowseTotal(null));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTypesKey, activeSupertype, activeEvolutionsKey, hasActiveFilterForCount]);
+  }, [activeTypesKey, activeSupertype, activeEvolutionsKey, activeRarity, hasActiveFilterForCount]);
 
   // ── Derived ───────────────────────────────────────────────────
   const ownedMap = useMemo(() => {

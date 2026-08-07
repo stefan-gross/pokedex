@@ -275,6 +275,22 @@ export function getRarityGroup(rarity: string): RarityGroup | undefined {
   return RARITY_GROUPS.find(g => g.keys.some(k => lower === k));
 }
 
+/** Firestore-`in`-Werte für eine Rarity-Gruppe (per Label). Die `keys` sind
+ *  kleingeschrieben (für den case-insensitiven getRarityGroup-Abgleich), der
+ *  Katalog speichert `rarity` aber in Originalschreibweise ("Common"/"Rare Holo")
+ *  — Firestore `in` ist case-SENSITIV. Daher jede Key-Variante zusätzlich in
+ *  Title-Case. Max. 30 Werte (Firestore-`in`-Limit). Gemeinsam genutzt von
+ *  `getCatalogFilterCounts` (Zähler) und dem server-seitigen Browse-Rarity-Filter
+ *  (`useCardBrowser`/`browseCatalog`) — sonst müsste der Browse client-seitig den
+ *  ganzen Katalog seitenweise durchpagen, um eine seltene Rarity zu finden. */
+export function rarityMatchValues(label: string): string[] {
+  const g = RARITY_GROUPS.find(x => x.label === label);
+  if (!g) return [];
+  return Array.from(
+    new Set(g.keys.flatMap(k => [k, k.replace(/\b\w/g, c => c.toUpperCase())])),
+  ).slice(0, 30);
+}
+
 /** Leitet mögliche Varianten aus dem rarity-String der pokemontcg.io API ab.
  *  Für Common/Uncommon/Rare wird Reverse-Holo als Default angenommen — moderne
  *  Sets (Wizards-Era ab Legendary Collection + EX-Ära aufwärts) haben für
