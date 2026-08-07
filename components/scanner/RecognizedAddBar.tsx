@@ -167,7 +167,7 @@ export function RecognizedAddBar({
         <div className="grid grid-cols-3 gap-2">
           <Field label="Zustand">
             <CustomSelect
-              fullWidth height="sm" aria-label="Zustand"
+              fullWidth panelWide height="sm" aria-label="Zustand"
               value={condition}
               onChange={(v) => setCondition(v)}
               options={CONDITIONS.map(c => ({
@@ -180,7 +180,7 @@ export function RecognizedAddBar({
           </Field>
           <Field label="Variante">
             <CustomSelect
-              fullWidth height="sm" aria-label="Variante"
+              fullWidth panelWide height="sm" aria-label="Variante"
               value={variant}
               onChange={(v) => setVariant(v)}
               options={variantOptions.map(v => ({ value: v, label: VARIANT_LABELS[v] }))}
@@ -188,7 +188,7 @@ export function RecognizedAddBar({
           </Field>
           <Field label="Sprache">
             <CustomSelect
-              fullWidth height="sm" aria-label="Sprache"
+              fullWidth panelWide height="sm" aria-label="Sprache"
               value={language}
               onChange={(v) => setLanguage(v)}
               options={LANGUAGES.map(l => ({

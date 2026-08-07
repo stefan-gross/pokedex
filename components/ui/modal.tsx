@@ -89,6 +89,11 @@ interface SheetProps extends OverlayProps {
    *  Zwischenschritten eines Wizards auf `false` setzen — dort führt der
    *  Zurück-Chevron heraus. */
   showClose?: boolean;
+  /** Body-Scroll-Sperre beim Öffnen (Default an). Auf `false` setzen, wenn der
+   *  Hintergrund ohnehin nicht scrollt (z.B. der `fixed inset-0 overflow-hidden`
+   *  Scanner) — das Umschalten von `<body>` auf `position:fixed` würde dort auf
+   *  iOS sonst einen sichtbaren Sprung der Ansicht auslösen. */
+  lockScroll?: boolean;
 }
 
 /**
@@ -100,7 +105,7 @@ interface SheetProps extends OverlayProps {
  * Swipe-Down-Schließen — vorher jeweils individuell in `CardDetailSheet`
  * nachgebaut, jetzt hier zentral für jeden `Sheet`-Aufrufer verfügbar.
  */
-export function Sheet({ open, onClose, title, header, dragToClose, children, style, bodyClassName = 'px-4 pb-4 pt-2', footer, forceDark, elevated, onBack, onNext, showClose = true }: SheetProps) {
+export function Sheet({ open, onClose, title, header, dragToClose, children, style, bodyClassName = 'px-4 pb-4 pt-2', footer, forceDark, elevated, onBack, onNext, showClose = true, lockScroll = true }: SheetProps) {
   const [mounted, setMounted] = useState(open);
   const [visible, setVisible] = useState(false);
   const [dragY, setDragY] = useState(0);
@@ -118,7 +123,7 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
     return () => clearTimeout(t);
   }, [open]);
 
-  useBodyScrollLock(mounted);
+  useBodyScrollLock(mounted && lockScroll);
   useEscapeToClose(mounted, onClose);
   if (!mounted || typeof document === 'undefined') return null;
 

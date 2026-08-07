@@ -42,7 +42,9 @@ export function CollectionPickerSheet({
 }) {
   const visible = groups.filter(g => g.items.length > 0);
   return (
-    <Sheet open={open} onClose={onClose} title={title} forceDark={fromScanner} dragToClose elevated>
+    // Scanner ist bereits `fixed inset-0 overflow-hidden` → Body-Scroll-Lock dort
+    // unnötig und verursacht auf iOS einen Sprung; deshalb im Scanner aus.
+    <Sheet open={open} onClose={onClose} title={title} forceDark={fromScanner} lockScroll={!fromScanner} dragToClose elevated>
       <div className="flex flex-col">
         {visible.map((g, gi) => (
           <div key={g.label ?? gi} className="flex flex-col">

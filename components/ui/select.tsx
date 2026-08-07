@@ -186,6 +186,7 @@ export function CustomSelect<T extends string>({
   variant = 'secondary',
   accentColor,
   fullWidth = false,
+  panelWide = false,
   'aria-label': ariaLabel,
 }: {
   value: T | null;
@@ -202,6 +203,11 @@ export function CustomSelect<T extends string>({
   /** Trigger füllt die volle Breite (Label links, Chevron rechts); Panel
    *  übernimmt die Trigger-Breite statt der Standard-Max-Breite. */
   fullWidth?: boolean;
+  /** Auch bei `fullWidth` darf das Options-Panel breiter als der Trigger werden
+   *  (bis `PANEL_MAX_WIDTH`), statt auf die Trigger-Breite begrenzt zu sein —
+   *  für schmale Trigger (z.B. 3-spaltige Auswahl), deren Optionen sonst mit
+   *  „…" abgeschnitten würden. Mindestbreite bleibt die Trigger-Breite. */
+  panelWide?: boolean;
   'aria-label'?: string;
 }) {
   useGlassTheme();
@@ -249,7 +255,7 @@ export function CustomSelect<T extends string>({
             className="glass fixed rounded-xl overflow-y-auto py-1 z-[201]"
             style={{
               top: pos.top, bottom: pos.bottom, left: pos.left, right: pos.right,
-              minWidth: pos.width, maxWidth: fullWidth ? pos.width : PANEL_MAX_WIDTH, maxHeight: pos.maxHeight,
+              minWidth: pos.width, maxWidth: fullWidth && !panelWide ? pos.width : PANEL_MAX_WIDTH, maxHeight: pos.maxHeight,
               boxShadow: '0 8px 24px rgba(0,0,0,.25)',
             }}
           >
