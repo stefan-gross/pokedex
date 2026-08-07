@@ -45,7 +45,7 @@ import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
 import { findVariantPrice, pickTrendPrice } from '@/lib/prices/value-tier';
-import { VARIANT_LABELS } from '@/lib/card-constants';
+import { VARIANT_LABELS, holoShimmerClass } from '@/lib/card-constants';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import { readableTextColor } from '@/lib/color-utils';
 import { wiggleDelay } from '@/lib/utils';
@@ -611,7 +611,7 @@ function MiniPageGrid({
                     (Holo=Artwork, Reverse=Rahmen) — wie auf den großen Slots. */}
                 {(card.variant === 'holo' || card.variant === 'reverse') && (
                   <div
-                    className={`absolute inset-0 card-holo-shimmer ${card.variant === 'holo' ? 'is-artwork' : 'is-frame'}`}
+                    className={`absolute inset-0 ${holoShimmerClass(card.variant, card.rarity)}`}
                     aria-hidden="true"
                   />
                 )}

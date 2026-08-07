@@ -86,6 +86,29 @@ export function inherentFoilVariant(variants?: CardVariant[]): 'holo' | 'reverse
   return null;
 }
 
+/** Raritäten, deren Foil (nahezu) die GANZE Karte bedeckt (Full-Art/Full-Bleed:
+ *  Illustration/Special Illustration Rare, Ultra/Shiny/Hyper/Secret, Amazing,
+ *  Radiant). Bei ihnen darf der Holo-Glanz die ganze Karte einnehmen statt nur
+ *  das kleine Artwork-Fenster. Abgleich über die Raritäts-GRUPPE (getRarityGroup). */
+const FULL_ART_RARITY_GROUPS = new Set([
+  'Illustration Rare', 'Ultra Rare', 'Special Illustration Rare',
+  'Shiny Rare', 'Shiny Ultra Rare', 'Hyper Rare', 'Secret Rare',
+  'Amazing Rare', 'Radiant Rare',
+]);
+export function isFullArtRarity(rarity?: string): boolean {
+  if (!rarity) return false;
+  const g = getRarityGroup(rarity);
+  return !!g && FULL_ART_RARITY_GROUPS.has(g.label);
+}
+
+/** Wählt die passenden Klassen für den Holo-Glanz je nach Variante + Rarität:
+ *  Reverse → Rahmen (`is-frame`); Holo auf Full-Art → ganze Karte (kein Clip);
+ *  Holo auf Standard-Layout → Artwork-Fenster (`is-artwork`). */
+export function holoShimmerClass(variant: 'holo' | 'reverse', rarity?: string): string {
+  if (variant === 'reverse') return 'card-holo-shimmer is-frame';
+  return isFullArtRarity(rarity) ? 'card-holo-shimmer' : 'card-holo-shimmer is-artwork';
+}
+
 /**
  * Offizielle Pokémon TCG Raritäten mit korrekten Symbolen.
  *

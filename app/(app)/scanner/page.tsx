@@ -26,7 +26,7 @@ import { CardPlaceholder } from '@/components/card/CardPlaceholder';
 import { catalogCardToInfo, cardInfoToAddInput } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition as PersistedCondition, CardDoc, CardLanguage, CardVariant } from '@/types';
-import { CONDITIONS, VARIANT_LABELS, SERIES_NAMES_DE, SYMBOL_ONLY_SERIES, inherentFoilVariant } from '@/lib/card-constants';
+import { CONDITIONS, VARIANT_LABELS, SERIES_NAMES_DE, SYMBOL_ONLY_SERIES, inherentFoilVariant, holoShimmerClass } from '@/lib/card-constants';
 import { useSetMeta } from '@/lib/hooks/use-set-meta';
 import { CardNameLabel } from '@/components/card/CardNameLabel';
 import { getSetById, getSetIdsByPrintedTotal } from '@/lib/firestore/sets';
@@ -1599,7 +1599,7 @@ export default function ScannerPage() {
                           const foil = inherentFoilVariant(card?.variants);
                           return foil ? (
                             <div
-                              className={`absolute inset-0 card-holo-shimmer ${foil === 'holo' ? 'is-artwork' : 'is-frame'}`}
+                              className={`absolute inset-0 ${holoShimmerClass(foil, card?.rarity)}`}
                               aria-hidden="true"
                             />
                           ) : null;
@@ -3492,7 +3492,7 @@ function RecognizedCardLarge({
             das Umstellen der Variante sofort am großen Kartenbild sichtbar ist. */}
         {img && (shimmerVariant === 'holo' || shimmerVariant === 'reverse') && (
           <div
-            className={`absolute inset-0 card-holo-shimmer ${shimmerVariant === 'holo' ? 'is-artwork' : 'is-frame'}`}
+            className={`absolute inset-0 ${holoShimmerClass(shimmerVariant as 'holo' | 'reverse', card?.rarity)}`}
             aria-hidden="true"
           />
         )}

@@ -3,7 +3,7 @@
 import { ExclamationMark } from '@/lib/binder-icons';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardDoc } from '@/types';
-import { inherentFoilVariant } from '@/lib/card-constants';
+import { inherentFoilVariant, holoShimmerClass } from '@/lib/card-constants';
 import { CardImage } from '@/components/card/CardImage';
 import { CardBadge } from '@/components/card/CardBadge';
 import {
@@ -215,10 +215,10 @@ export function Card({
           {/* Holo-Glanz (siehe `.card-holo-shimmer` in globals.css):
               Holo → Artwork-Fenster, Reverse Holo → Rahmen (Bild bleibt frei). */}
           {showHolo && (
-            <div className="absolute inset-0 card-holo-shimmer is-artwork" aria-hidden="true" />
+            <div className={`absolute inset-0 ${holoShimmerClass('holo', card.rarity)}`} aria-hidden="true" />
           )}
           {showReverse && (
-            <div className="absolute inset-0 card-holo-shimmer is-frame" aria-hidden="true" />
+            <div className={`absolute inset-0 ${holoShimmerClass('reverse', card.rarity)}`} aria-hidden="true" />
           )}
         </div>
         {/* Silhouette — zusätzlicher gestrichelter Rahmen um das (per

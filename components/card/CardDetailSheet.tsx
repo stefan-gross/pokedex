@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/modal';
 import { CollectionPickerSheet } from '@/components/collection/CollectionPickerSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
-import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe, SYMBOL_ONLY_SERIES, inherentFoilVariant } from '@/lib/card-constants';
+import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe, SYMBOL_ONLY_SERIES, inherentFoilVariant, holoShimmerClass } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { deleteCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { getBinders, removeCardFromBinderAndCleanup, ensureDefaultBinder, setCardExclusiveBinder } from '@/lib/firestore/binders';
@@ -752,7 +752,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 const foil = inherentFoilVariant(card.variants);
                 return foil ? (
                   <div
-                    className={`absolute inset-0 card-holo-shimmer ${foil === 'holo' ? 'is-artwork' : 'is-frame'}`}
+                    className={`absolute inset-0 ${holoShimmerClass(foil, card.rarity)}`}
                     aria-hidden="true"
                   />
                 ) : null;
