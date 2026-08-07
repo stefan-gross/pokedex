@@ -1134,18 +1134,29 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           onClick={() => setZoomed(false)}
         >
           {(imgSrcDe || card.imgLarge || card.imgSmall) ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
-              src={imgSrcDe || card.imgLarge || card.imgSmall}
-              alt={card.name}
-              className="rounded-2xl"
-              style={{ maxWidth: '90vw', maxHeight: '85dvh', objectFit: 'contain' }}
-              onError={e => {
-                const target = e.currentTarget;
-                const en = card.imgLarge || card.imgSmall;
-                if (target.src !== en) target.src = en;
-              }}
-            />
+            /* Wrapper schrumpft exakt auf die (per max-Größe skalierte) Bild-Box,
+               rundet + clippt — so sitzt der Holo-Overlay deckungsgleich auf dem
+               Bild (nicht auf dem Vollbild-Hintergrund). */
+            <div className="relative inline-flex rounded-2xl overflow-hidden" style={{ maxWidth: '90vw', maxHeight: '85dvh' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imgSrcDe || card.imgLarge || card.imgSmall}
+                alt={card.name}
+                className="block"
+                style={{ maxWidth: '90vw', maxHeight: '85dvh', objectFit: 'contain' }}
+                onError={e => {
+                  const target = e.currentTarget;
+                  const en = card.imgLarge || card.imgSmall;
+                  if (target.src !== en) target.src = en;
+                }}
+              />
+              {(() => {
+                const foil = inherentFoilVariant(card.variants);
+                return foil ? (
+                  <div className={`absolute inset-0 ${holoShimmerClass(foil, card.rarity)}`} aria-hidden="true" />
+                ) : null;
+              })()}
+            </div>
           ) : (
             /* Vorläufige / bildlose Karte: große Platzhalterkarte statt leerem <img> */
             <CardPlaceholder
