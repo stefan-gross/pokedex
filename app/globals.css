@@ -634,28 +634,29 @@
   .missing-card-hologram { animation: none; background-position: 50% 50%; }
 }
 
-/* Holo-Glanz für BESESSENE Holo-/Reverse-Holo-Karten (volle Farbe, nicht
-   entsättigt wie der „fehlt"-Effekt oben). Dezenter Regenbogen-Sweep über dem
-   Kartenbild — etwas geringere Deckkraft + langsamer, damit es edel wirkt und
-   das Motiv nicht überstrahlt. Liegt als eigene, nicht klickbare Ebene über dem
-   Bild (innerhalb des gerundeten `overflow-hidden`-Wrappers der Karte). */
+/* Holo-Glanz für BESESSENE Holo-/Reverse-Holo-Karten. Werte übernommen vom
+   „fehlt"-Hologramm (`.missing-card-hologram` oben): voller Glanz (Deckkraft 1),
+   kräftiges Band (Alpha .55, Stops 15–65%), Tempo 3s — nur der Bereich ist
+   getrennt (Holo=Artwork, Reverse=Rahmen, siehe Clips unten), statt ganze Karte.
+   Liegt als eigene, nicht klickbare Ebene über dem Bild (im gerundeten
+   `overflow-hidden`-Wrapper der Karte). */
 .card-holo-shimmer {
   /* Über CSS-Variablen einstellbar (Defaults = eingestellter Look). Die
      Design-System-Testseite überschreibt sie live per inline-Style zum
      Optimieren; die App nutzt die Defaults. */
-  --holo-opacity: .6;
-  --holo-speed: 4.5s;
-  --holo-alpha: .32;      /* Farbintensität des Regenbogen-Bands */
+  --holo-opacity: 1;
+  --holo-speed: 3s;
+  --holo-alpha: .55;      /* Farbintensität des Regenbogen-Bands */
   --holo-angle: 115deg;
   --holo-blend: overlay;
   --holo-art-top: 11.5%;  /* Oberkante Artwork-Fenster */
   --holo-art-side: 7%;    /* seitlicher Rand des Artwork-Fensters */
   --holo-art-bottom: 47%; /* Unterkante Artwork-Fenster (von oben) */
   background: linear-gradient(var(--holo-angle),
-    transparent 22%, rgba(255,0,150, var(--holo-alpha)) 36%,
-    rgba(0,200,255, var(--holo-alpha)) 47%, rgba(255,230,0, var(--holo-alpha)) 58%,
-    transparent 72%);
-  background-size: 260% 260%;
+    transparent 15%, rgba(255,0,150, var(--holo-alpha)) 28%,
+    rgba(0,200,255, var(--holo-alpha)) 40%, rgba(255,230,0, var(--holo-alpha)) 52%,
+    transparent 65%);
+  background-size: 250% 250%;
   mix-blend-mode: var(--holo-blend);
   opacity: var(--holo-opacity);
   animation: holo-shimmer var(--holo-speed) ease-in-out infinite;
