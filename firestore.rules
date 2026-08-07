@@ -30,5 +30,14 @@ service cloud.firestore {
     match /tcg_catalog_meta/{id} {
       allow read, write: if true;
     }
+    // Set-Metadaten (Name DE, Logo, Kürzel, Totals) — öffentliche Katalogdaten.
+    // Client liest sie u.a. im Dashboard (getSetById) und Kartendetail; ohne
+    // diese Regel greift Default-Deny und der Client-Read schlägt still fehl
+    // (Dashboard zeigte dann EN-Namen + keine Logos). Schreibzugriff erfolgt
+    // ausschließlich serverseitig über das Admin-SDK (umgeht Rules).
+    match /tcg_sets/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
   }
 }

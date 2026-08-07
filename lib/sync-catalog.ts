@@ -353,6 +353,12 @@ interface TcgdexFullSet {
 
 const TCGDEX_REST = 'https://api.tcgdex.net/v2';
 
+/** Serien, die NICHT in den Katalog gehören. „Pokémon TCG Pocket" ist ein
+ *  separates Mobile-Game (eigene Karten, nur EN, keine echten Sammelkarten) —
+ *  bewusst ausgeschlossen, sonst tauchen die Karten in Suche/Browse als
+ *  Fremdkörper auf und der nächste Sync würde gelöschte wieder anlegen. */
+const EXCLUDED_SERIES = new Set(['Pokémon TCG Pocket']);
+
 export async function syncSets(): Promise<SyncSetsResult> {
   const db = getAdminDb();
 
@@ -392,7 +398,9 @@ export async function syncSets(): Promise<SyncSetsResult> {
   // 3. Dokumente (TCGdex-native ID). `ptcgoCode` = gedrucktes Kürzel
   //    (abbreviation.official), sonst der Online-Code (tcgOnline).
   const withExt = (base?: string | null) => (base ? `${base}.png` : undefined);
-  const docs = full.map(s => {
+  const docs = full
+    .filter(s => !EXCLUDED_SERIES.has(s.serie?.name ?? ''))
+    .map(s => {
     const de = deMap.get(s.id);
     const code = s.abbreviation?.official ?? s.tcgOnline ?? undefined;
     return {
