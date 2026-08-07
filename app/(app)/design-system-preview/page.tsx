@@ -272,7 +272,8 @@ const CARD_GRID_URLS = CARD_GRID_NUMBERS.map(n => `https://assets.tcgdex.net/en/
 const SAMPLE_CARD = {
   id: 'swsh2-1', name: 'Mimigma', number: '1', imgSmall: 'https://assets.tcgdex.net/en/swsh/swsh2/1/low.webp',
 } as CardInfo;
-const SAMPLE_OWNED_CARD = { quantity: 2, needsReview: false } as CardDoc;
+const SAMPLE_OWNED_CARD = { quantity: 2, needsReview: false, variant: 'holo' } as CardDoc;
+const SAMPLE_OWNED_CARD_REVERSE = { quantity: 1, needsReview: false, variant: 'reverse' } as CardDoc;
 const SAMPLE_OWNED_CARD_REVIEW = { quantity: 1, needsReview: true } as CardDoc;
 
 export default function DesignSystemPreviewPage() {
@@ -945,11 +946,24 @@ export default function DesignSystemPreviewPage() {
         </div>
         <div className="flex items-start gap-6 flex-wrap">
           <div style={{ width: CARD_SIZE_PRESETS[cardSize].badgeSize * 5 }} className="space-y-1.5">
-            <p className="text-role-label text-glass-muted text-center">Vorhanden</p>
+            <p className="text-role-label text-glass-muted text-center">Vorhanden (Holo)</p>
             <Card
               card={SAMPLE_CARD}
               size={cardSize}
               ownedCards={[showReviewBadge ? SAMPLE_OWNED_CARD_REVIEW : SAMPLE_OWNED_CARD]}
+              missingStyle={missingStyle}
+              badgeLayout={badgeLayout}
+              cornerRadius={cornerRadius}
+              sublabel={SAMPLE_CARD.number}
+              price={showPriceBadge ? '4,59 €' : undefined}
+            />
+          </div>
+          <div style={{ width: CARD_SIZE_PRESETS[cardSize].badgeSize * 5 }} className="space-y-1.5">
+            <p className="text-role-label text-glass-muted text-center">Reverse Holo</p>
+            <Card
+              card={SAMPLE_CARD}
+              size={cardSize}
+              ownedCards={[SAMPLE_OWNED_CARD_REVERSE]}
               missingStyle={missingStyle}
               badgeLayout={badgeLayout}
               cornerRadius={cornerRadius}

@@ -649,6 +649,20 @@
   animation: holo-shimmer 4.5s ease-in-out infinite;
   pointer-events: none;
 }
+/* Holo: Glanz nur auf dem Artwork-Fenster (grobe Standard-Kartengeometrie:
+   oberes Mitteldrittel). Reverse Holo: Glanz auf ALLEM AUSSER dem Artwork
+   (Rahmen) — via „Donut"-Polygon (Außenkontur + rückwärts umlaufende Innen-
+   kontur = rechteckiges Loch), damit das Pokémon-Bild frei bleibt. Prozente
+   sind eine Näherung; Full-Art-Karten weichen ab (kein Layout-Wissen pro Karte). */
+.card-holo-shimmer.is-artwork {
+  clip-path: inset(11.5% 7% 53% 7% round 3%);
+}
+.card-holo-shimmer.is-frame {
+  clip-path: polygon(
+    0 0, 100% 0, 100% 100%, 0 100%, 0 0,
+    7% 11.5%, 7% 47%, 93% 47%, 93% 11.5%, 7% 11.5%
+  );
+}
 @media (prefers-reduced-motion: reduce) {
   .card-holo-shimmer { animation: none; background-position: 50% 50%; }
 }

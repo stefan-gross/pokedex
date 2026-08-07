@@ -143,10 +143,12 @@ export function Card({
   const totalOwned    = ownedCards.reduce((s, c) => s + c.quantity, 0);
   const isOwned       = totalOwned > 0;
   const needsReview   = ownedCards.some(c => c.needsReview);
-  // Holo-Glanz: sobald ein besessenes Exemplar holo oder reverse-holo ist, legt
-  // sich ein dezenter Regenbogen-Sweep übers Kartenbild (nur bei Besitz — der
-  // „fehlt"-Look hat einen eigenen Hologramm-Effekt).
-  const isHoloOwned   = ownedCards.some(c => c.variant === 'holo' || c.variant === 'reverse');
+  // Holo-Glanz (nur bei Besitz — der „fehlt"-Look hat einen eigenen Hologramm-
+  // Effekt): Holo glänzt auf dem Artwork, Reverse Holo auf dem Rahmen (Pokémon-
+  // Bild bleibt frei). Beides kann gleichzeitig gelten (Karte in beiden
+  // Varianten besessen) → beide Ebenen ergeben zusammen „ganze Karte glänzt".
+  const hasHoloOwned    = ownedCards.some(c => c.variant === 'holo');
+  const hasReverseOwned = ownedCards.some(c => c.variant === 'reverse');
   // Sprach-Marker: der Nutzer sammelt auf Deutsch. Besitzt er eine Karte NUR in
   // anderen Sprachen (kein einziges deutsches Exemplar), wird sie mit einem
   // amber Sprach-Badge markiert = „noch auf Deutsch zu ersetzen". Deutsche
@@ -205,10 +207,13 @@ export function Card({
           {!isOwned && missingStyle.effect === 'hologram' && (
             <div className="absolute inset-0 missing-card-hologram" aria-hidden="true" />
           )}
-          {/* Holo-Glanz für besessene Holo-/Reverse-Holo-Karten (dezenter
-              Regenbogen-Sweep, siehe `.card-holo-shimmer` in globals.css). */}
-          {isOwned && isHoloOwned && (
-            <div className="absolute inset-0 card-holo-shimmer" aria-hidden="true" />
+          {/* Holo-Glanz (siehe `.card-holo-shimmer` in globals.css):
+              Holo → Artwork-Fenster, Reverse Holo → Rahmen (Bild bleibt frei). */}
+          {isOwned && hasHoloOwned && (
+            <div className="absolute inset-0 card-holo-shimmer is-artwork" aria-hidden="true" />
+          )}
+          {isOwned && hasReverseOwned && (
+            <div className="absolute inset-0 card-holo-shimmer is-frame" aria-hidden="true" />
           )}
         </div>
         {/* Silhouette — zusätzlicher gestrichelter Rahmen um das (per
