@@ -289,6 +289,8 @@ export async function getCatalogFilterCounts(activeFilter: BrowseFilter = {}): P
 export type BrowseSortKey = 'name' | 'hp' | 'pokedex';
 
 export interface BrowseFilter {
+  /** Set-ID (z.B. 'sv04') — equality, hoch selektiv → server-seitig zuerst */
+  setId?: string;
   /** Pokémon-Typ (englisch), z.B. 'Darkness' — array-contains */
   type?: string;
   /** Supertype: 'Pokémon' | 'Trainer' | 'Energy' — equality */
@@ -310,7 +312,9 @@ export interface BrowsePage {
 /** Exakte Gesamtzahl für einen BrowseFilter — kein Dokument wird übertragen */
 export async function getBrowseCount(filter: BrowseFilter = {}): Promise<number> {
   const constraints: QueryConstraint[] = [];
-  if (filter.type) {
+  if (filter.setId) {
+    constraints.push(where('setId', '==', filter.setId));
+  } else if (filter.type) {
     constraints.push(where('types', 'array-contains', filter.type));
   } else if (filter.rarityKeys?.length) {
     constraints.push(where('rarity', 'in', filter.rarityKeys.slice(0, 30)));
@@ -334,11 +338,14 @@ export async function browseCatalog(
 ): Promise<BrowsePage> {
   const constraints: QueryConstraint[] = [];
 
-  // Priorität: type > rarity > evolutionStage > supertype (je nur einer
-  // server-seitig, um Composite-Indexes zu vermeiden). Rarity als `in` steht
-  // bewusst weit oben: eine seltene Rarity (z.B. 15 Karten) client-seitig zu
-  // filtern würde den ganzen Katalog seitenweise durchpaginieren (sehr langsam).
-  if (filter.type) {
+  // Priorität: setId > type > rarity > evolutionStage > supertype (je nur einer
+  // server-seitig, um Composite-Indexes zu vermeiden). setId/Rarity stehen
+  // bewusst weit oben: eine seltene Rarity (z.B. 15 Karten) oder ein einzelnes
+  // Set client-seitig zu filtern würde den ganzen Katalog seitenweise
+  // durchpaginieren (sehr langsam).
+  if (filter.setId) {
+    constraints.push(where('setId', '==', filter.setId));
+  } else if (filter.type) {
     constraints.push(where('types', 'array-contains', filter.type));
   } else if (filter.rarityKeys?.length) {
     constraints.push(where('rarity', 'in', filter.rarityKeys.slice(0, 30)));

@@ -150,6 +150,26 @@ function CollectionContent() {
     [sets, setsMetaMap],
   );
 
+  // Browse-Modus: ALLE Sets zur Auswahl (neueste zuerst) — der Set-Filter läuft
+  // server-seitig (setId-equality), daher auch für große Sets sofort.
+  const browseSetOptions = useMemo(
+    () => [
+      { value: '', label: 'Alle Sets' },
+      ...[...allSets]
+        .sort((a, b) => (b.releaseDate ?? '').localeCompare(a.releaseDate ?? ''))
+        .map(s => ({
+          value: s.id,
+          label: s.nameDe ?? s.name,
+          keywords: [s.name, s.nameDe, s.ptcgoCode].filter(Boolean).join(' '),
+          hint: s.ptcgoCode ?? undefined,
+          icon: s.symbolUrl
+            ? <img src={s.symbolUrl} alt="" className="w-4 h-4 object-contain shrink-0" />
+            : undefined,
+        })),
+    ],
+    [allSets],
+  );
+
   // ── Dynamische Counts (debounced) ─────────────────────────────
   const activeTypesKey = useMemo(() => [...activeTypes].sort().join(','), [activeTypes]);
 
@@ -168,24 +188,29 @@ function CollectionContent() {
 
   // ── Exakte Gesamtzahl für aktuellen Browse-Filter ─────────────
   const activeEvolutionsKey = useMemo(() => [...activeEvolutions].sort().join(','), [activeEvolutions]);
-  const hasActiveFilterForCount = !!(activeTypes.size || activeSupertype !== 'all' || activeEvolutions.size || activeSpecialMechanics.size || ownedFilter !== 'all' || activeRarity);
+  const hasActiveFilterForCount = !!(filterSet || activeTypes.size || activeSupertype !== 'all' || activeEvolutions.size || activeSpecialMechanics.size || ownedFilter !== 'all' || activeRarity);
   useEffect(() => {
     if (!hasActiveFilterForCount) { setBrowseTotal(null); return; }
-    // Gleiche Server-Filter-Priorität wie makeBrowseFilter: type > rarity >
-    // evolutionStage > supertype (sonst zählte eine aktive Rarity fälschlich den
-    // ganzen Katalog statt der Rarity-Treffer).
-    const browseFilter = activeTypes.size > 0
-      ? { type: [...activeTypes][0] }
-      : activeRarity
-        ? { rarityKeys: rarityMatchValues(activeRarity) }
-        : activeEvolutions.size === 1
-          ? { evolutionStage: [...activeEvolutions][0] }
-          : activeSupertype !== 'all'
-            ? { supertype: activeSupertype }
-            : {};
+    // "Vorhanden" wird per ID komplett geladen (kein Server-Count nötig) → null,
+    // das Label nutzt dann die exakte geladene Anzahl (browseCards.length).
+    if (ownedFilter === 'owned') { setBrowseTotal(null); return; }
+    // Gleiche Server-Filter-Priorität wie makeBrowseFilter: setId > type > rarity
+    // > evolutionStage > supertype (sonst zählte z.B. eine aktive Rarity/ein Set
+    // fälschlich den ganzen Katalog statt der Treffer).
+    const browseFilter = filterSet
+      ? { setId: filterSet }
+      : activeTypes.size > 0
+        ? { type: [...activeTypes][0] }
+        : activeRarity
+          ? { rarityKeys: rarityMatchValues(activeRarity) }
+          : activeEvolutions.size === 1
+            ? { evolutionStage: [...activeEvolutions][0] }
+            : activeSupertype !== 'all'
+              ? { supertype: activeSupertype }
+              : {};
     getBrowseCount(browseFilter).then(n => setBrowseTotal(n >= 0 ? n : null)).catch(() => setBrowseTotal(null));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTypesKey, activeSupertype, activeEvolutionsKey, activeRarity, hasActiveFilterForCount]);
+  }, [filterSet, activeTypesKey, activeSupertype, activeEvolutionsKey, activeRarity, ownedFilter, hasActiveFilterForCount]);
 
   // ── Derived ───────────────────────────────────────────────────
   const ownedMap = useMemo(() => {
@@ -205,6 +230,7 @@ function CollectionContent() {
   const activeSpecialMechanicsKey = useMemo(() => [...activeSpecialMechanics].sort().join(','), [activeSpecialMechanics]);
 
   const browserFilter = useMemo<CardBrowserFilter>(() => ({
+    setId:           filterSet || undefined,
     supertype:       activeSupertype !== 'all' ? activeSupertype : undefined,
     types:           activeTypes.size > 0 ? [...activeTypes] : undefined,
     evolutionStages: activeEvolutions.size > 0 ? [...activeEvolutions] : undefined,
@@ -212,7 +238,7 @@ function CollectionContent() {
     rarity:          activeRarity ?? undefined,
     ownedFilter,
     ownedIds,
-  }), [activeSupertype, activeTypesKey, activeEvolutionsKey, activeSpecialMechanicsKey, activeRarity, ownedFilter, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [filterSet, activeSupertype, activeTypesKey, activeEvolutionsKey, activeSpecialMechanicsKey, activeRarity, ownedFilter, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const {
     cards: browseCards, loading: browseLoading,
@@ -583,19 +609,18 @@ function CollectionContent() {
               />
             )}
 
-            {/* Set-Filter — ganz unten, volle Breite, mit Symbol + Kürzel. Nur im
-                Suchmodus; listet nur Sets mit mindestens einem Treffer. */}
-            {!isBrowseMode && (
-              <SearchableSelect
-                value={filterSet}
-                onChange={setFilterSet}
-                options={setFilterOptions}
-                height="sm"
-                fullWidth
-                searchPlaceholder="Set suchen …"
-                aria-label="Set-Filter"
-              />
-            )}
+            {/* Set-Filter — ganz unten, volle Breite, mit Symbol + Kürzel.
+                Suchmodus: nur Sets mit mindestens einem Treffer.
+                Browse: alle Sets (server-seitiger setId-Filter). */}
+            <SearchableSelect
+              value={filterSet}
+              onChange={setFilterSet}
+              options={isBrowseMode ? browseSetOptions : setFilterOptions}
+              height="sm"
+              fullWidth
+              searchPlaceholder="Set suchen …"
+              aria-label="Set-Filter"
+            />
           </div>
         </div>
 

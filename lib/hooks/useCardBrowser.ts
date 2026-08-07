@@ -10,12 +10,13 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { browseCatalog, type BrowseSortKey, type BrowseFilter, type CatalogCard } from '@/lib/firestore/catalog';
+import { browseCatalog, getCatalogCardsByIds, type BrowseSortKey, type BrowseFilter, type CatalogCard } from '@/lib/firestore/catalog';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { getRarityGroup, rarityMatchValues } from '@/lib/card-constants';
 import type { QueryDocumentSnapshot } from 'firebase/firestore';
 
 export type CardBrowserFilter = {
+  setId?:           string;         // Set-ID (z.B. 'sv04') — equality, server-seitig
   supertype?:       string;         // 'Pokémon' | 'Trainer' | 'Energy'
   types?:           string[];       // Mehrfachauswahl, OR-Verknüpfung (englisch: 'Fire', 'Water', …)
   evolutionStages?: string[];       // ['Basic'] | ['Stage 1', 'Stage 2'] etc. — leer = alle
@@ -39,6 +40,11 @@ function sortCatalogCards(cards: CatalogCard[], sort: BrowseSortKey, desc: boole
 function applyClientFilters(cards: CatalogCard[], f: CardBrowserFilter): CatalogCard[] {
   let r = cards;
 
+  // Set-Filter (client-seitig als Sicherheitsnetz, z.B. wenn ein anderer Filter
+  // server-seitig primär ist oder im "Vorhanden"-Pfad per ID geladen wurde).
+  if (f.setId) {
+    r = r.filter(c => c.setId === f.setId);
+  }
   // Typ-Filter: OR-Verknüpfung — Karte muss mindestens einen der gewählten Typen haben
   if (f.types && f.types.length > 0) {
     r = r.filter(c => c.types?.some(t => f.types!.includes(t)));
@@ -65,8 +71,13 @@ function applyClientFilters(cards: CatalogCard[], f: CardBrowserFilter): Catalog
   return r;
 }
 
-/** Server-Filter-Priorität: types[0] > rarity > evolutionStages[0] > supertype */
+/** Server-Filter-Priorität: setId > types[0] > rarity > evolutionStages[0] > supertype */
 function makeBrowseFilter(f: CardBrowserFilter): BrowseFilter {
+  // Set zuerst: hoch selektiv (~100-300 Karten) → macht alle weiteren Filter
+  // (client-seitig über die kleine Set-Menge) ohnehin billig.
+  if (f.setId) {
+    return { setId: f.setId };
+  }
   if (f.types?.length) {
     return { type: f.types[0] };
   }
@@ -107,6 +118,10 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
   const typesKey           = [...(filter.types ?? [])].sort().join(',');
   const evolutionStagesKey = [...(filter.evolutionStages ?? [])].sort().join(',');
   const specialMechanicsKey = [...(filter.specialMechanics ?? [])].sort().join(',');
+  // Nur für den "Vorhanden"-Pfad relevant: ändert sich die Besitzmenge, neu laden.
+  const ownedKey = filter.ownedFilter === 'owned'
+    ? [...(filter.ownedIds ?? [])].sort().join(',')
+    : '';
 
   useEffect(() => {
     let cancelled = false;
@@ -116,6 +131,18 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
 
     const run = async () => {
       try {
+        // "Vorhanden": die Besitz-IDs sind bekannt → gezielt per ID laden statt
+        // den ganzen Katalog seitenweise durchzupaginieren (85 Treffer in ~21k
+        // wären sonst extrem langsam). Alles auf einmal, kein hasMore.
+        if (filter.ownedFilter === 'owned') {
+          const ids = [...(filter.ownedIds ?? [])];
+          const owned = ids.length ? await getCatalogCardsByIds(ids) : [];
+          if (cancelled) return;
+          const sorted = sortCatalogCards(applyClientFilters(owned, filter), sort, desc);
+          setCards(sorted.map(catalogCardToInfo));
+          setHasMore(false);
+          return;
+        }
         const page = await browseCatalog(makeBrowseFilter(filter), null, PAGE_SIZE);
         if (cancelled) return;
         const sorted = sortCatalogCards(applyClientFilters(page.cards, filter), sort, desc);
@@ -130,7 +157,7 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
     run();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typesKey, filter.supertype, evolutionStagesKey, specialMechanicsKey, filter.rarity, filter.ownedFilter, sort, desc]);
+  }, [filter.setId, typesKey, filter.supertype, evolutionStagesKey, specialMechanicsKey, filter.rarity, filter.ownedFilter, ownedKey, sort, desc]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore || !cursorRef.current) return;
