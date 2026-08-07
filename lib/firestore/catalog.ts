@@ -4,7 +4,7 @@ import {
   type QueryDocumentSnapshot, type QueryConstraint,
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
-import { RARITY_GROUPS } from '../card-constants';
+import { RARITY_GROUPS, SPECIAL_MECHANIC_KEYS } from '../card-constants';
 import type { CardVariant } from '@/types';
 
 export interface CatalogCard {
@@ -70,9 +70,10 @@ export interface SyncMeta {
 }
 
 export type FilterCounts = {
-  types:      Record<string, number>; // pro TcgType
-  supertypes: Record<string, number>; // 'Pokémon' | 'Trainer' | 'Energy'
-  rarities:   Record<string, number>; // pro RARITY_GROUP label (global, kein Filter-Kontext)
+  types:        Record<string, number>; // pro TcgType
+  supertypes:   Record<string, number>; // 'Pokémon' | 'Trainer' | 'Energy'
+  rarities:     Record<string, number>; // pro RARITY_GROUP label (global, kein Filter-Kontext)
+  specialForms: number;                  // global: Karten mit einer Sonderform-Mechanik (ex/V/GX …)
 };
 
 const COL = 'tcg_catalog';
@@ -87,13 +88,20 @@ export async function searchCatalog(q: string, setId = '', maxResults = 300): Pr
       ? [where('setId', '==', setId), where(field, '>=', lower), where(field, '<=', end), limit(maxResults)]
       : [where(field, '>=', lower), where(field, '<=', end), limit(maxResults)];
 
-  // Erst Deutsch — nur wenn kein Treffer, Englisch als Fallback
-  const deSnap = await getDocs(query(collection(db, COL), ...makeConstraints('nameDeLower')));
-  if (!deSnap.empty) {
-    return deSnap.docs.map(d => d.data() as CatalogCard);
+  // DE UND EN parallel abfragen und mergen (Dedupe per Doc-ID) — NICHT
+  // "DE-first, sonst EN": sehr viele Katalogkarten haben (noch) kein `nameDe`.
+  // Beim alten `if (!deSnap.empty) return deSnap` wurden alle EN-only-Karten
+  // unterschlagen, sobald auch nur EINE Karte per DE-Prefix traf — der Nutzer
+  // sah dann nur einen Teil der Treffer. Die Vereinigung deckt beide Felder ab.
+  const [deSnap, enSnap] = await Promise.all([
+    getDocs(query(collection(db, COL), ...makeConstraints('nameDeLower'))),
+    getDocs(query(collection(db, COL), ...makeConstraints('nameLower'))),
+  ]);
+  const byId = new Map<string, CatalogCard>();
+  for (const d of [...deSnap.docs, ...enSnap.docs]) {
+    if (!byId.has(d.id)) byId.set(d.id, d.data() as CatalogCard);
   }
-  const enSnap = await getDocs(query(collection(db, COL), ...makeConstraints('nameLower')));
-  return enSnap.docs.map(d => d.data() as CatalogCard);
+  return [...byId.values()].slice(0, maxResults);
 }
 
 // Wortweise Suche auf dem Illustrator-Feld über `artistTokens` (klein geschriebene
@@ -237,7 +245,7 @@ export async function getCatalogFilterCounts(activeFilter: BrowseFilter = {}): P
     }
   };
 
-  const [typeCounts, supertypeCounts, rarityCounts] = await Promise.all([
+  const [typeCounts, supertypeCounts, rarityCounts, specialForms] = await Promise.all([
     // Typ-Counts: optional nach aktivem Supertype gefiltert
     Promise.all(TYPES.map(async t => {
       const c: QueryConstraint[] = [where('types', 'array-contains', t)];
@@ -250,17 +258,28 @@ export async function getCatalogFilterCounts(activeFilter: BrowseFilter = {}): P
       if (activeFilter.type) c.push(where('types', 'array-contains', activeFilter.type));
       return [s, await safeCount(c)] as [string, number];
     })),
-    // Rarity-Counts: global (kein Filter-Kontext, vermeidet Composite-Indexes)
+    // Rarity-Counts: global (kein Filter-Kontext, vermeidet Composite-Indexes).
+    // `g.keys` sind kleingeschrieben (für den case-insensitiven getRarityGroup-
+    // Abgleich), der Katalog speichert `rarity` aber in Originalschreibweise
+    // ("Common", "Rare Holo" …). Firestore `in` ist case-SENSITIV → sonst 0
+    // Treffer. Daher jede Key-Variante zusätzlich in Title-Case abfragen.
     Promise.all(RARITY_GROUPS.map(async g => {
       if (!g.keys.length) return [g.label, 0] as [string, number];
-      return [g.label, await safeCount([where('rarity', 'in', g.keys)])] as [string, number];
+      const variants = Array.from(
+        new Set(g.keys.flatMap(k => [k, k.replace(/\b\w/g, c => c.toUpperCase())])),
+      ).slice(0, 30); // Firestore `in` erlaubt max. 30 Werte
+      return [g.label, await safeCount([where('rarity', 'in', variants)])] as [string, number];
     })),
+    // Sonderformen global: Karten mit mind. einer Spezial-Mechanik als Subtype
+    // (ex/V/VMAX/GX/MEGA …). `array-contains-any` erlaubt max. 30 Werte (11 hier).
+    safeCount([where('subtypes', 'array-contains-any', [...SPECIAL_MECHANIC_KEYS])]),
   ]);
 
   return {
-    types:      Object.fromEntries(typeCounts),
-    supertypes: Object.fromEntries(supertypeCounts),
-    rarities:   Object.fromEntries(rarityCounts),
+    types:        Object.fromEntries(typeCounts),
+    supertypes:   Object.fromEntries(supertypeCounts),
+    rarities:     Object.fromEntries(rarityCounts),
+    specialForms: specialForms as number,
   };
 }
 

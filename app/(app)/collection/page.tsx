@@ -410,11 +410,14 @@ function CollectionContent() {
   // zu EINEM Filter zusammen — aktiv = irgendeine Mechanik gewählt.
   const specialFormsActive = activeSpecialMechanics.size > 0;
   const specialFormsCount = useMemo(() => {
-    const base = isBrowseMode ? browseCards : applyFacetFilters(results, facetState, 'specialMechanics');
+    // Browse: globaler Katalog-Count (sonst zählte nur die aktuell geladene
+    // Seite — z.B. A-Z-Anfang = lauter Basis-Pokémon → fälschlich 0).
+    if (isBrowseMode) return filterCounts?.specialForms;
+    const base = applyFacetFilters(results, facetState, 'specialMechanics');
     if (base.length === 0) return undefined;
     const keys = new Set<string>(SPECIAL_MECHANIC_KEYS as readonly string[]);
     return base.filter(c => c.subtypes?.some(s => keys.has(s))).length;
-  }, [isBrowseMode, browseCards, results, facetState]);
+  }, [isBrowseMode, filterCounts, browseCards, results, facetState]);
 
   // Typ-Optionen für den Mehrfach-Auswahl-Dropdown (Icon + DE-Label + Count +
   // Typfarbe für die Pills, 0-Treffer ausgegraut).

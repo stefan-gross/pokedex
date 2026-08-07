@@ -60,9 +60,10 @@ export function RarityFilterBar({ cards, ownedIds, activeRarities, onToggle, rar
   // Wenn Karten geladen: Breakdown aus Karten (inkl. ownedCount)
   // Wenn keine Karten aber rarityCounts: Chips aus RARITY_GROUPS mit globalen Counts
   const breakdown = useMemo((): RarityBreakdownItem[] => {
-    if (cards.length > 0) {
-      return buildRarityBreakdown(cards, ownedIds);
-    }
+    // Globale Firestore-Counts (nur Browse-Modus) haben Vorrang: so zeigt die
+    // Leiste ALLE Rarity-Gruppen des Katalogs — nicht nur die zufällig auf der
+    // aktuell geladenen Seite (~50 Karten) vorkommenden. In Suche/Set-Detail
+    // wird `rarityCounts` nicht übergeben → dort weiter Breakdown aus den Karten.
     if (rarityCounts) {
       return RARITY_GROUPS
         .filter(g => (rarityCounts[g.label] ?? 0) > 0)
@@ -71,6 +72,9 @@ export function RarityFilterBar({ cards, ownedIds, activeRarities, onToggle, rar
           count: rarityCounts[g.label] ?? 0,
           ownedCount: 0,
         }));
+    }
+    if (cards.length > 0) {
+      return buildRarityBreakdown(cards, ownedIds);
     }
     return [];
   }, [cards, ownedIds, rarityCounts]);
