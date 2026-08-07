@@ -1,17 +1,21 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Check } from 'lucide-react';
+import { Plus, Check, ChevronDown } from 'lucide-react';
 import { cardInfoToAddInput, type CardInfo } from '@/lib/card-info';
 import type { CardCondition, CardLanguage, CardVariant, BinderDoc } from '@/types';
-import { addCard } from '@/lib/firestore/cards';
+import { addCard, getCards } from '@/lib/firestore/cards';
 import { getBinders, addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
 import { matchTemplateBinders } from '@/lib/template-binders/match-hint';
 import { syncTemplateBinders } from '@/lib/template-binders/sync';
+import { resolvePokemonTemplate } from '@/lib/template-binders/resolve';
+import { resolveSlotWinners } from '@/lib/template-binders/slot-winner';
+import { VARIANT_PRIORITY } from '@/lib/template-binders/constants';
 import { LANGUAGES, CONDITIONS, VARIANT_LABELS } from '@/lib/card-constants';
 import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
 import { CustomSelect } from '@/components/ui/select';
+import { CollectionPickerSheet } from '@/components/collection/CollectionPickerSheet';
 
 const CONDITION_COLOR: Record<string, string> = {
   NM: '#48bb78', LP: '#facc15', MP: '#fb923c', HP: '#f87171', Poor: '#9ca3af',
@@ -58,6 +62,8 @@ export function RecognizedAddBar({
 
   const [binders, setBinders] = useState<BinderDoc[]>([]);
   const [targetId, setTargetId] = useState<string | null>(null);
+  const [recommended, setRecommended] = useState<BinderDoc[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
@@ -67,25 +73,10 @@ export function RecognizedAddBar({
   const selectable = binders
     .filter(b => !b.template)
     .sort((a, b) => a.sortOrder - b.sortOrder);
-  // Empfehlungen: passende Vorlagen-Sammlungen (Master-Set/Pokédex/Pokémon/
-  // Illustrator) — wie die „Vorschläge" im Kartendetail-Drawer. Werden oben im
-  // Sammlung-Dropdown angezeigt (Icon/Logo + Name + Hinweis „Empfohlen").
-  const recommended = matchTemplateBinders(card, binders.filter(b => b.template));
 
-  // Sammlung-Optionen: Empfehlungen zuerst, dann Unsortiert + manuelle Sammlungen.
-  const collectionOptions = [
-    ...recommended.map(b => ({
-      value: b.id,
-      label: b.name,
-      hint: 'Empfohlen',
-      icon: <BinderIcon name={b.icon ?? 'cards'} size={15} style={{ color: b.color ?? '#cbd5e1' }} />,
-    })),
-    ...selectable.map(b => ({
-      value: b.id,
-      label: b.name,
-      icon: <BinderIcon name={b.icon ?? 'folder'} size={15} style={{ color: b.color ?? '#cbd5e1' }} />,
-    })),
-  ];
+  const targetBinder = binders.find(b => b.id === targetId) ?? null;
+  const targetName = targetBinder?.name ?? 'Unsortiert';
+  const targetIsRecommended = recommended.some(b => b.id === targetId);
 
   useEffect(() => {
     getBinders().then(list => {
@@ -95,6 +86,41 @@ export function RecognizedAddBar({
       if (def) setTargetId(def.id);
     }).catch(() => {});
   }, []);
+
+  // Empfehlungen: passende Vorlagen-Sammlungen (Master-Set/Pokémon/Illustrator)
+  // — wie die „Vorschläge" im Kartendetail-Drawer. Pokédex-Sammlungen greifen
+  // pro Dex-Nummer nur EINE (beste) Karte; sie werden daher nur empfohlen, wenn
+  // der Slot noch leer ist (Pokémon fehlt) ODER die gewählte Variante besser
+  // (höher priorisiert = wertiger) ist als die aktuell einsortierte.
+  useEffect(() => {
+    let cancelled = false;
+    const matched = matchTemplateBinders(card, binders.filter(b => b.template));
+    const others  = matched.filter(b => b.template?.type !== 'pokedex');
+    const pokedex = matched.filter(b => b.template?.type === 'pokedex');
+    if (pokedex.length === 0 || card.nationalDexNumber == null) {
+      setRecommended(others);
+      return;
+    }
+    (async () => {
+      try {
+        const [slots, owned] = await Promise.all([
+          resolvePokemonTemplate([card.nationalDexNumber!]),
+          getCards(),
+        ]);
+        const [res] = resolveSlotWinners(slots, owned, { languageAware: true });
+        const winner = res?.winnerCardId ? owned.find(c => c.id === res.winnerCardId) : null;
+        const rank = (v: CardVariant) => {
+          const i = VARIANT_PRIORITY.indexOf(v);
+          return i === -1 ? VARIANT_PRIORITY.length : i;
+        };
+        const improves = !winner || rank(variant) < rank(winner.variant);
+        if (!cancelled) setRecommended(improves ? [...others, ...pokedex] : others);
+      } catch {
+        if (!cancelled) setRecommended(others); // im Zweifel Pokédex nicht empfehlen
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [binders, card, variant]);
 
   const save = async () => {
     if (saving) return;
@@ -174,15 +200,24 @@ export function RecognizedAddBar({
           </Field>
         </div>
 
-        {/* Ziel-Sammlung */}
+        {/* Ziel-Sammlung — öffnet den geteilten CollectionPickerSheet (wie im
+            Kartendetail), mit Empfehlungen (Icon/Logo + Name) oben. */}
         <Field label="Sammlung">
-          <CustomSelect
-            fullWidth aria-label="Sammlung"
-            value={targetId}
-            placeholder="Unsortiert"
-            onChange={(v) => setTargetId(v)}
-            options={collectionOptions}
-          />
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="w-full flex items-center gap-2.5 h-11 px-3 rounded-2xl"
+            style={{ background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.16)' }}
+            aria-label="Sammlung wählen"
+          >
+            <BinderIcon
+              name={targetBinder?.icon ?? 'cards'} size={16}
+              className="shrink-0" style={{ color: targetBinder?.color ?? '#cbd5e1' }}
+            />
+            <span className="flex-1 min-w-0 truncate text-left text-white text-sm font-bold">{targetName}</span>
+            {targetIsRecommended && <span className="text-[11px] font-semibold shrink-0" style={{ color: '#8ff0b0' }}>Empfohlen</span>}
+            <ChevronDown size={16} className="text-white/55 shrink-0" />
+          </button>
         </Field>
 
         {/* Breiter Hinzufügen-Button — Design-System-Button (variant primary). */}
@@ -213,6 +248,26 @@ export function RecognizedAddBar({
         )}
       </div>
       </div>
+
+      {/* Geteilter Zielsammlungs-Picker (wie im Kartendetail): Empfohlen zuerst,
+          dann alle Sammlungen. Picken setzt die Ziel-Sammlung. */}
+      <CollectionPickerSheet
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        title="Sammlung wählen"
+        fromScanner
+        onPick={(id) => { if (id) setTargetId(id); }}
+        groups={[
+          {
+            label: 'Empfohlen',
+            items: recommended.map(b => ({ id: b.id, icon: b.icon ?? 'cards', name: b.name, hint: 'Empfohlen', color: b.color })),
+          },
+          {
+            label: 'Sammlungen',
+            items: selectable.map(b => ({ id: b.id, icon: b.icon ?? 'folder', name: b.name, color: b.color })),
+          },
+        ]}
+      />
     </div>
   );
 }

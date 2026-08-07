@@ -6,6 +6,7 @@ import { X, Plus, Heart, ChevronDown, ChevronRight, ChevronLeft, Info, Repeat2, 
 import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/modal';
+import { CollectionPickerSheet } from '@/components/collection/CollectionPickerSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
@@ -198,39 +199,20 @@ export function OwnedCopyRow({
         </div>
       )}
 
-      {/* Zielsammlung-Sheet: Vorschläge → manuelle Sammlungen → Unsortiert */}
-      <Sheet open={pickerOpen} onClose={() => setPickerOpen(false)} title="Verschieben nach">
-        <div className="flex flex-col">
-          {suggested.length > 0 && <p className="text-role-label text-glass-muted px-1 pt-1 pb-1">Vorschläge</p>}
-          {suggested.map(b => <TargetRow key={b.id} icon={b.icon ?? 'cards'} name={b.name} hint="Automatisch" onClick={() => move(b.id)} />)}
-          {manual.length > 0 && <p className="text-role-label text-glass-muted px-1 pt-3 pb-1">Manuelle Sammlungen</p>}
-          {manual.map(b => <TargetRow key={b.id} icon={b.icon ?? 'folder'} name={b.name} onClick={() => move(b.id)} />)}
-          {!isDefaultBinder && (
-            <>
-              <p className="text-role-label text-glass-muted px-1 pt-3 pb-1">Ablage</p>
-              <TargetRow icon="cards" name="Unsortiert" onClick={() => move(null)} />
-            </>
-          )}
-        </div>
-      </Sheet>
+      {/* Zielsammlung-Picker (geteilte CollectionPickerSheet):
+          Vorschläge → manuelle Sammlungen → Unsortiert */}
+      <CollectionPickerSheet
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        title="Verschieben nach"
+        onPick={move}
+        groups={[
+          { label: 'Vorschläge', items: suggested.map(b => ({ id: b.id, icon: b.icon ?? 'cards', name: b.name, hint: 'Automatisch' })) },
+          { label: 'Manuelle Sammlungen', items: manual.map(b => ({ id: b.id, icon: b.icon ?? 'folder', name: b.name })) },
+          ...(!isDefaultBinder ? [{ label: 'Ablage', items: [{ id: null, icon: 'cards', name: 'Unsortiert' }] }] : []),
+        ]}
+      />
     </div>
-  );
-}
-
-/** Eine Zielsammlungs-Zeile im „Verschieben nach"-Sheet. */
-function TargetRow({ icon, name, hint, onClick }: {
-  icon: string; name: string; hint?: string; onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full flex items-center gap-3 px-1 py-3 text-left border-b border-[var(--border)] last:border-b-0"
-    >
-      <BinderIcon name={icon} size={18} className="shrink-0 text-glass-muted" />
-      <span className="flex-1 truncate text-role-body text-glass">{name}</span>
-      {hint && <span className="text-[11px] text-glass-muted shrink-0">{hint}</span>}
-    </button>
   );
 }
 
