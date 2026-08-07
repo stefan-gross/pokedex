@@ -39,6 +39,9 @@ interface Props {
   regionStyle?: React.CSSProperties;
   /** Callback-Ref für die Höhenmessung der Region (registerRegion(0)). */
   regionRef?: (el: HTMLDivElement | null) => void;
+  /** Meldet die aktuell gewählte Variante nach oben (initial + bei Änderung),
+   *  damit die große Karte den Holo-/Reverse-Glanz passend anzeigen kann. */
+  onVariantChange?: (variant: CardVariant) => void;
 }
 
 /** Inline-Hinzufügen-Leiste unter der erkannten Karte (Einzelscan): Zustand,
@@ -51,7 +54,7 @@ interface Props {
  *  Sprache eindeutig. */
 export function RecognizedAddBar({
   card, preVariant, preCondition, preLanguage, ownedCount, onSaved, onManage,
-  regionStyle, regionRef,
+  regionStyle, regionRef, onVariantChange,
 }: Props) {
   const variantOptions: CardVariant[] =
     (card.variants && card.variants.length > 0 ? card.variants : ['standard']) as CardVariant[];
@@ -86,6 +89,10 @@ export function RecognizedAddBar({
       if (def) setTargetId(def.id);
     }).catch(() => {});
   }, []);
+
+  // Gewählte Variante nach oben melden (initial + bei jeder Änderung) → große
+  // Karte zeigt den passenden Holo-/Reverse-Glanz.
+  useEffect(() => { onVariantChange?.(variant); }, [variant, onVariantChange]);
 
   // Empfehlungen: passende Vorlagen-Sammlungen (Master-Set/Pokémon/Illustrator)
   // — wie die „Vorschläge" im Kartendetail-Drawer. Pokédex-Sammlungen greifen

@@ -3371,6 +3371,12 @@ function RecognizedCardLarge({
     regionCount: 1, ready: true, scrollTrigger: false, invertDrag: true,
   });
 
+  // Vom RecognizedAddBar gemeldete Varianten-Auswahl — steuert den Holo-/
+  // Reverse-Glanz auf dem großen Kartenbild (holo = Artwork, reverse = Rahmen).
+  const [shimmerVariant, setShimmerVariant] = useState<CardVariant | null>(
+    job.editedVariant ?? job.result?.variant ?? null,
+  );
+
   return (
     <div
       className="absolute inset-x-0 z-10 flex flex-col items-center px-4 gap-3"
@@ -3465,6 +3471,16 @@ function RecognizedCardLarge({
           <div className="w-full h-full flex items-center justify-center bg-red-500/10">
             <AlertCircle size={28} color="#f87171" />
           </div>
+        )}
+
+        {/* Holo-/Reverse-Glanz nach aktueller Varianten-Auswahl im
+            RecognizedAddBar (holo = Artwork, reverse = Rahmen) — reaktiv, damit
+            das Umstellen der Variante sofort am großen Kartenbild sichtbar ist. */}
+        {img && (shimmerVariant === 'holo' || shimmerVariant === 'reverse') && (
+          <div
+            className={`absolute inset-0 card-holo-shimmer ${shimmerVariant === 'holo' ? 'is-artwork' : 'is-frame'}`}
+            aria-hidden="true"
+          />
         )}
 
         {/* ×N-Hinweis, sobald die Karte schon vorhanden ist — auch bei genau
@@ -3602,6 +3618,7 @@ function RecognizedCardLarge({
             onManage={onManage}
             regionStyle={regionStyle(0)}
             regionRef={registerRegion(0)}
+            onVariantChange={setShimmerVariant}
           />
         </div>
       )}
