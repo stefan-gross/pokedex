@@ -12,7 +12,8 @@ export interface TotalValueState {
   withPrice: number;
   totalCards: number;
   /** Karte mit dem höchsten Einzelpreis (nicht × quantity) — für die Hero-
-   *  Anzeige im Dashboard. Nur Karten mit `tcgImageUrl` sind Kandidaten. */
+   *  Anzeige im Dashboard. Kandidaten: Karten mit `tcgId` (Bild wird live aus
+   *  dem Katalog aufgelöst, nicht mehr eingefroren). */
   topCard: CardDoc | null;
 }
 
@@ -44,7 +45,9 @@ export function useTotalValue(cards: CardDoc[] | null): TotalValueState {
         if (price == null) continue;
         total += price * (card.quantity || 1);
         withPrice++;
-        if (card.tcgImageUrl && price > topPrice) {
+        // Kandidat für die Hero-Anzeige: braucht einen Katalog-Verweis (Bild
+        // wird im Dashboard live aus dem Katalog aufgelöst, nicht eingefroren).
+        if (card.tcgId && !card.pendingCatalog && price > topPrice) {
           topPrice = price;
           topCard = card;
         }

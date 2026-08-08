@@ -11,7 +11,7 @@ import { getWishlistsRest } from '@/lib/firestore/wishlists-rest';
 import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
 import { getSetById } from '@/lib/firestore/sets';
 import { getRarityGroup } from '@/lib/card-constants';
-import { catalogCardToInfo, pendingCardInfo, type CardInfo } from '@/lib/card-info';
+import { catalogCardToInfo, pendingCardInfo, ownedCardToInfo, type CardInfo } from '@/lib/card-info';
 import { getCountFromServer, collection, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { SetListItem } from '@/components/set/SetListItem';
@@ -42,6 +42,9 @@ export default function DashboardPage() {
   const [setMeta,   setSetMeta]     = useState<Record<string, { nameDe?: string; logoDe?: string; ptcgoCode?: string; symbolUrl?: string; series?: string }>>({});
   const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
   const [detailOwned, setDetailOwned] = useState<CardDoc[]>([]);
+  // Katalog-Bilder/-Metadaten der eigenen Karten (per tcgId) — Quelle der
+  // Wahrheit statt eingefrorenem CardDoc-Bild. Einmal pro Kartenmenge geladen.
+  const [catalogById, setCatalogById] = useState<Map<string, CardInfo>>(new Map());
   const { updateAvailable } = useUpdateAvailable();
 
   useEffect(() => {
@@ -59,10 +62,23 @@ export default function DashboardPage() {
       }
     }).catch(() => setCards([]));
     getBindersRest().then(setBinders).catch(() => {});
+    // (catalogById wird in eigenem Effekt aus `cards` aufgebaut, s.u.)
     getWishlistsRest()
       .then(wls => setWishlistCount(wls.reduce((s, w) => s + w.items.filter(i => !i.acquired).length, 0)))
       .catch(() => setWishlistCount(0));
   }, []);
+
+  // Katalog-Infos der eigenen Karten laden (per tcgId) — für Bild/Metadaten in
+  // „Zuletzt hinzugefügt" + Wert-Hero. Läuft bei jeder Änderung von `cards`
+  // (inkl. nach Pending-Reconcile-Reload).
+  useEffect(() => {
+    if (!cards) return;
+    const ids = [...new Set(cards.map(c => c.tcgId).filter((x): x is string => !!x))];
+    // getCatalogCardsByIds([]) → [] → leere Map; setState nur async im then.
+    getCatalogCardsByIds(ids)
+      .then(ccs => setCatalogById(new Map(ccs.map(cc => [cc.id, catalogCardToInfo(cc)]))))
+      .catch(() => {});
+  }, [cards]);
 
   async function openDetail(cardDoc: CardDoc) {
     // Vorläufige Karte (kein Katalog-Eintrag): Platzhalter aus manualData zeigen.
@@ -92,7 +108,7 @@ export default function DashboardPage() {
   // generierten Platzhalter zeigen).
   const recentCards = cards
     ? [...cards]
-        .filter(c => c.tcgImageUrl || c.pendingCatalog)
+        .filter(c => c.tcgId || c.pendingCatalog)
         .sort((a, b) => (b.addedAt?.seconds ?? 0) - (a.addedAt?.seconds ?? 0))
         .slice(0, 6)
     : [];
@@ -155,7 +171,7 @@ export default function DashboardPage() {
     let best: CardDoc | null = null;
     let bestOrder = -1;
     for (const c of cards) {
-      if (!c.tcgImageUrl) continue;
+      if (!c.tcgId) continue;
       const order = c.rarity ? (getRarityGroup(c.rarity)?.order ?? -1) : -1;
       const effectiveOrder = order === 99 ? -1 : order;
       if (effectiveOrder > bestOrder) { bestOrder = effectiveOrder; best = c; }
@@ -163,6 +179,9 @@ export default function DashboardPage() {
     return best;
   }, [cards]);
   const heroCard = totalValue.loading ? null : (totalValue.topCard ?? rarestCard);
+  // Bild des Hero live aus dem Katalog auflösen (DE bevorzugt) statt eingefroren.
+  const heroInfo = heroCard ? ownedCardToInfo(heroCard, catalogById) : null;
+  const heroImgSrc = heroInfo ? (heroInfo.imgLargeDe || heroInfo.imgLarge) : '';
 
   return (
     <div className="relative min-h-screen">
@@ -200,7 +219,7 @@ export default function DashboardPage() {
             totalOwned={totalOwned ?? 0}
             thisWeek={thisWeek}
             totalValue={totalValue}
-            heroCard={heroCard}
+            heroImgSrc={heroImgSrc}
           />
         )}
 
@@ -295,11 +314,7 @@ export default function DashboardPage() {
             {recentCards.map(card => (
               <Card
                 key={card.id}
-                card={card.pendingCatalog ? pendingCardInfo(card) : {
-                  id: card.tcgId ?? card.id, name: card.name, number: card.number,
-                  setId: card.setId, setName: card.setName,
-                  imgSmall: card.tcgImageUrl ?? '', imgLarge: card.tcgImageUrl ?? '',
-                }}
+                card={ownedCardToInfo(card, catalogById)}
                 ownedCards={[card]}
                 sublabel={card.name}
                 onCardClick={() => openDetail(card)}
@@ -343,11 +358,11 @@ export default function DashboardPage() {
 
 /** Wert-Hero: ersetzt die 3 TopStat-Kacheln durch eine große Karte mit
  *  Kartenanzahl (Hauptwert), Wochen-Delta-Chip und Gesamtwert-Fußzeile. */
-function ValueHero({ totalOwned, thisWeek, totalValue, heroCard }: {
+function ValueHero({ totalOwned, thisWeek, totalValue, heroImgSrc }: {
   totalOwned: number | null;
   thisWeek: number | null;
   totalValue: { loading: boolean; withPrice: number; total: number };
-  heroCard: CardDoc | null;
+  heroImgSrc: string;
 }) {
   const valueLabel = totalValue.loading
     ? '—'
@@ -357,10 +372,10 @@ function ValueHero({ totalOwned, thisWeek, totalValue, heroCard }: {
 
   return (
     <div className="glass rounded-[24px] p-5 relative overflow-hidden">
-      {heroCard?.tcgImageUrl && (
+      {heroImgSrc && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={heroCard.tcgImageUrl}
+          src={heroImgSrc}
           alt=""
           aria-hidden="true"
           className="absolute pointer-events-none select-none"

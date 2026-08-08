@@ -106,6 +106,34 @@ export function pendingCardInfo(doc: CardDoc): CardInfo {
   };
 }
 
+/** Löst eine eigene Karte (`CardDoc`) für die Anzeige in eine `CardInfo` auf —
+ *  der Katalog ist die Quelle der Wahrheit für Bild + Metadaten:
+ *   - Pending (nicht katalogisiert) → `pendingCardInfo` (Platzhalter aus manualData)
+ *   - regulär → der LIVE-Katalog-Eintrag (`catalogById`, per `tcgId`) → aktuelles
+ *     DE/EN-Bild inkl. selbst gehosteter Storage-Bilder, statt eingefrorener URL
+ *   - Ausnahme „kein Katalog-Treffer" (z.B. entferntes Set) → minimale Info aus
+ *     dem CardDoc mit leeren Bildern → `CardImage` zeigt den Platzhalter.
+ *  `catalogById` baut der Aufrufer einmalig via `getCatalogCardsByIds` +
+ *  `catalogCardToInfo` (siehe z.B. Dashboard/Binder-Detail). */
+export function ownedCardToInfo(doc: CardDoc, catalogById: Map<string, CardInfo>): CardInfo {
+  if (doc.pendingCatalog) return pendingCardInfo(doc);
+  const cat = doc.tcgId ? catalogById.get(doc.tcgId) : undefined;
+  if (cat) return cat;
+  return {
+    id: doc.tcgId ?? doc.id,
+    name: doc.name,
+    number: doc.number,
+    rarity: doc.rarity,
+    supertype: doc.supertype,
+    types: doc.pokemonType ? [doc.pokemonType] : undefined,
+    setId: doc.setId,
+    setName: doc.setName,
+    series: doc.series,
+    imgSmall: '',
+    imgLarge: '',
+  };
+}
+
 /** Baut das `addCard`-Eingabeobjekt aus einer `CardInfo` — zentral für alle
  *  Save-Pfade (Scanner-Auto-Save, Add-/Bulk-Modal). Behandelt vorläufige Karten
  *  (`pendingCatalog`): kein `tcgId`/Bild, stattdessen `manualData` (Rohwerte für
@@ -150,7 +178,8 @@ export function cardInfoToAddInput(
   return {
     ...base,
     tcgId: card.id,
-    tcgImageUrl: card.imgLargeDe || card.imgLarge,
+    // Kein eingefrorenes Bild mehr — die Anzeige joint live über `tcgId` den
+    // Katalog (siehe ownedCardToInfo). Katalog = Quelle der Wahrheit.
     ...(needsReview ? { needsReview: true } : {}),
   };
 }

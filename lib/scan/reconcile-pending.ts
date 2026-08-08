@@ -74,7 +74,6 @@ export async function reconcilePendingCards(preloaded?: CardDoc[]): Promise<Reco
         rarity: info.rarity,
         pokemonType: info.types?.[0],
         supertype: info.supertype,
-        tcgImageUrl: info.imgLargeDe || info.imgLarge,
         pendingCatalog: false,
       });
       linked++;

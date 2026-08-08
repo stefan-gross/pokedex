@@ -19,7 +19,6 @@ export interface CardDoc {
   condition: CardCondition;
   language: CardLanguage;
   quantity: number;
-  tcgImageUrl?: string;
   notes?: string;
   needsReview?: boolean;   // true = per Scanner hinzugefügt, noch nicht manuell geprüft
   /** true = gescannt, aber (noch) nicht im TCGdex-Katalog gefunden. Die Karte

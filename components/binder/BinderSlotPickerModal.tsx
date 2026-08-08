@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Loader2, X } from 'lucide-react';
 import { getCards } from '@/lib/firestore/cards';
+import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
+import { catalogCardToInfo, ownedCardToInfo, type CardInfo } from '@/lib/card-info';
 import { VARIANT_LABELS } from '@/lib/card-constants';
 import { Sheet } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
@@ -21,10 +23,21 @@ interface Props {
 export function BinderSlotPickerModal({ onClose, onPick }: Props) {
   const [cards, setCards] = useState<CardDoc[] | null>(null);
   const [search, setSearch] = useState('');
+  // Katalog-Infos (per tcgId) für die Thumbnails — Bild live aus dem Katalog.
+  const [catalogById, setCatalogById] = useState<Map<string, CardInfo>>(new Map());
 
   useEffect(() => {
     getCards().then(setCards).catch(() => setCards([]));
   }, []);
+
+  useEffect(() => {
+    if (!cards) return;
+    const ids = [...new Set(cards.map(c => c.tcgId).filter((x): x is string => !!x))];
+    // getCatalogCardsByIds([]) → [] → leere Map; setState nur async im then.
+    getCatalogCardsByIds(ids)
+      .then(ccs => setCatalogById(new Map(ccs.map(cc => [cc.id, catalogCardToInfo(cc)]))))
+      .catch(() => {});
+  }, [cards]);
 
   const filtered = useMemo(() => {
     if (!cards) return [];
@@ -74,7 +87,9 @@ export function BinderSlotPickerModal({ onClose, onPick }: Props) {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-1.5">
-              {filtered.map(c => (
+              {filtered.map(c => {
+                const info = ownedCardToInfo(c, catalogById);
+                return (
                 <button
                   key={c.id}
                   onClick={() => onPick(c.id)}
@@ -82,7 +97,7 @@ export function BinderSlotPickerModal({ onClose, onPick }: Props) {
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={c.tcgImageUrl ?? ""}
+                    src={info.imgLargeDe || info.imgLarge || ""}
                     alt={c.name}
                     className="w-9 h-12 rounded object-cover shrink-0"
                   />
@@ -110,7 +125,8 @@ export function BinderSlotPickerModal({ onClose, onPick }: Props) {
                     )}
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

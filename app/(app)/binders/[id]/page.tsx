@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef, use, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, use, useCallback, createContext, useContext } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, Settings, LayoutGrid, BookOpen, FileText, Check,
@@ -24,7 +24,7 @@ import { getCard } from '@/lib/firestore/cards';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { resolveTemplateSlots } from '@/lib/template-binders/resolve';
 import { resolveSlotWinners } from '@/lib/template-binders/slot-winner';
-import { catalogCardToInfo, pendingCardInfo, type CardInfo } from '@/lib/card-info';
+import { catalogCardToInfo, pendingCardInfo, ownedCardToInfo, type CardInfo } from '@/lib/card-info';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { CollectionTypeBadge } from '@/components/binder/CollectionTypeBadge';
 import { BinderIcon } from '@/lib/binder-icons';
@@ -95,6 +95,12 @@ function slotColors(pageBg: string): { bg: string; border: string } {
   };
 }
 
+/** Katalog-Infos (per tcgId) der eigenen Karten dieser Sammlung — damit tief
+ *  verschachtelte Blätter/Grids/Slots das LIVE-Bild aus dem Katalog auflösen
+ *  (via ownedCardToInfo), statt einer eingefrorenen URL. Vom Seiten-Root
+ *  bereitgestellt, von den Blatt-Komponenten per useContext konsumiert. */
+const BinderCatalogCtx = createContext<Map<string, CardInfo>>(new Map());
+
 export default function BinderDetailPage({ params }: Props) {
   const { id } = use(params);
   const router = useRouter();
@@ -119,6 +125,9 @@ export default function BinderDetailPage({ params }: Props) {
   // richtige Slot (Key "pageIdx-slotIdx"), damit man wie in der Suche sieht,
   // welche Karte an dieser Stelle noch fehlt statt nur einer leeren Fläche.
   const [missingCards, setMissingCards] = useState<Map<string, CatalogCard>>(new Map());
+  // Katalog-Infos der eigenen Karten (per tcgId) — Bild/Metadaten live aus dem
+  // Katalog statt eingefrorenem CardDoc-Bild (siehe ownedCardToInfo).
+  const [catalogInfoById, setCatalogInfoById] = useState<Map<string, CardInfo>>(new Map());
   // Fortschritt eines Vorlagen-Binders (besessene / gesamt Slots) — aus
   // derselben Auflösung wie `missingCards`, damit beide konsistent bleiben.
   const [templateProgress, setTemplateProgress] = useState<{ owned: number; total: number } | null>(null);
@@ -135,6 +144,16 @@ export default function BinderDetailPage({ params }: Props) {
     const missingIds = Array.from(missingCards.values()).map(c => c.id);
     return Array.from(new Set([...ids, ...missingIds]));
   }, [cards, missingCards]);
+
+  // Katalog-Infos der eigenen Karten laden (per tcgId) → Bild/Metadaten für
+  // Grid/Blatt/Overlay. Läuft bei jeder Änderung von `cards`.
+  useEffect(() => {
+    const ids = [...new Set(cards.map(c => c.tcgId).filter((x): x is string => !!x))];
+    // getCatalogCardsByIds([]) → [] → leere Map; setState nur async im then.
+    getCatalogCardsByIds(ids)
+      .then(ccs => setCatalogInfoById(new Map(ccs.map(cc => [cc.id, catalogCardToInfo(cc)]))))
+      .catch(() => {});
+  }, [cards]);
   const { prices: cardPrices } = usePricesBatch(cardTcgIds);
   // Preis-Summe der noch fehlenden Karten (ein Preis pro Platzhalter-Katalog-
   // eintrag, wie beim Preis-Sortieren auf der Set-Detailseite) — addiert auf
@@ -331,6 +350,7 @@ export default function BinderDetailPage({ params }: Props) {
   const sheets = pagesToSheets(pages, binderSize);
 
   return (
+    <BinderCatalogCtx.Provider value={catalogInfoById}>
     <div className="min-h-screen">
       {/* ── Sticky Header-/Info-Panel (Zurück-Button jetzt im Panel) ── */}
       <div className="sticky top-safe z-20 mx-3 mt-3 mb-2 glass rounded-[20px] px-4 pt-2 pb-2">
@@ -540,6 +560,7 @@ export default function BinderDetailPage({ params }: Props) {
 
       <ScrollToTopButton />
     </div>
+    </BinderCatalogCtx.Provider>
   );
 }
 
@@ -577,6 +598,7 @@ function MiniPageGrid({
   const { bg: slotBg, border: slotBorder } = pageBg
     ? slotColors(pageBg)
     : { bg: 'var(--secondary)', border: 'var(--border)' };
+  const catalogInfoById = useContext(BinderCatalogCtx);
   return (
     <div
       className="grid gap-1 w-full"
@@ -584,6 +606,7 @@ function MiniPageGrid({
     >
       {slots.map((slotId, slotI) => {
         const card = slotId ? cardsById.get(slotId) : undefined;
+        const cardInfo = card ? ownedCardToInfo(card, catalogInfoById) : undefined;
         const missing = !card && pageIdx != null ? missingCards?.get(`${pageIdx}-${slotI}`) : undefined;
         return (
           <div
@@ -600,8 +623,8 @@ function MiniPageGrid({
             {card && (
               <>
                 <CardImage
-                  srcDe={undefined}
-                  src={card.tcgImageUrl ?? ""}
+                  srcDe={cardInfo?.imgLargeDe}
+                  src={cardInfo?.imgLarge ?? ""}
                   alt=""
                   width={245}
                   height={342}
@@ -639,6 +662,7 @@ function MiniPageGrid({
 function GridView({ cards, onCardTap, prices }: {
   cards: CardDoc[]; onCardTap: (c: CardDoc) => void; prices?: Map<string, PriceResult | null>;
 }) {
+  const catalogInfoById = useContext(BinderCatalogCtx);
   if (cards.length === 0) {
     return (
       <div className="px-4 py-16 text-center text-glass-muted text-sm">
@@ -655,12 +679,7 @@ function GridView({ cards, onCardTap, prices }: {
         return (
           <Card
             key={`${c.id}-${i}`}
-            card={c.pendingCatalog ? pendingCardInfo(c) : {
-              id: c.tcgId ?? c.id, name: c.name, number: c.number,
-              setId: c.setId, setName: c.setName,
-              imgSmall: c.tcgImageUrl ?? "",
-              imgLarge: c.tcgImageUrl ?? "",
-            }}
+            card={ownedCardToInfo(c, catalogInfoById)}
             ownedCards={[c]}
             onCardClick={() => onCardTap(c)}
             price={price != null ? price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : undefined}
@@ -999,6 +1018,7 @@ function SinglePageView({
   showCardInfo?: boolean;
   cardPrices?: Map<string, PriceResult | null>;
 }) {
+  const catalogInfoById = useContext(BinderCatalogCtx);
   const page = pages[pageIdx];
   const totalPages = pages.length;
   const [activeSlot, setActiveSlot] = useState<{ pageIdx: number; slotIdx: number } | null>(null);
@@ -1021,6 +1041,7 @@ function SinglePageView({
   const activeCard = activeSlot
     ? cardsById.get(pages[activeSlot.pageIdx]?.slots[activeSlot.slotIdx] ?? '')
     : null;
+  const activeCardInfo = activeCard ? ownedCardToInfo(activeCard, catalogInfoById) : null;
 
   // Page-Renderer — Slots im Layout-Grid mit Page-Background + Ring auf richtiger Seite
   const renderPage = (p: BinderPage, pIdx: number, key: string) => {
@@ -1215,7 +1236,7 @@ function SinglePageView({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={activeCard.tcgImageUrl ?? ""}
+                  src={activeCardInfo?.imgLargeDe || activeCardInfo?.imgLarge || ""}
                   alt={activeCard.name}
                   className="w-full h-full object-cover"
                 />
@@ -1374,6 +1395,8 @@ function DraggableCardSlot({
   showInfo?: boolean;
   priceResult?: PriceResult | null;
 }) {
+  const catalogInfoById = useContext(BinderCatalogCtx);
+  const cardInfo = ownedCardToInfo(card, catalogInfoById);
   const { attributes, listeners, setNodeRef, isOver } = useSortable({
     id,
     disabled: !editMode,
@@ -1427,7 +1450,7 @@ function DraggableCardSlot({
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={card.tcgImageUrl ?? ""}
+        src={cardInfo.imgLargeDe || cardInfo.imgLarge || ""}
         alt={card.name}
         className="w-full h-full object-cover pointer-events-none no-callout"
         draggable={false}

@@ -2,6 +2,8 @@ import { notFound } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getCard } from '@/lib/firestore/cards';
+import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
+import { catalogCardToInfo } from '@/lib/card-info';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { CardPriceDetail } from '@/components/card/CardPriceDetail';
 
@@ -13,6 +15,14 @@ export default async function CardDetailPage({ params }: Props) {
   const { id } = await params;
   const card = await getCard(id);
   if (!card) notFound();
+
+  // Bild live aus dem Katalog (per tcgId) statt eingefroren; tcg_catalog ist
+  // public-read → funktioniert auch in dieser Server-Component. DE bevorzugt.
+  const catalogCard = (card.tcgId && !card.pendingCatalog)
+    ? (await getCatalogCardsByIds([card.tcgId]))[0]
+    : undefined;
+  const info = catalogCard ? catalogCardToInfo(catalogCard) : undefined;
+  const imgSrc = info ? (info.imgLargeDe || info.imgLarge) : '';
 
   return (
     <div className="min-h-screen">
@@ -27,7 +37,7 @@ export default async function CardDetailPage({ params }: Props) {
           <div className="w-48 rounded-2xl overflow-hidden border border-[rgba(255,255,255,0.4)] shadow-lg">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={card.tcgImageUrl ?? ""}
+              src={imgSrc}
               alt={card.name}
               className="w-full"
             />
