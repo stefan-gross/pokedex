@@ -1,6 +1,7 @@
 import { Pin } from 'lucide-react';
 import { CardBadge } from '@/components/card/CardBadge';
 import { COVER_TL_RADIUS } from '@/components/binder/BinderCover';
+import { DEFAULT_CARD_VISUAL_THEME } from '@/lib/ui/card-theme';
 import type { BinderDoc } from '@/types';
 
 /** „A"-Badge für automatische Vorlagen-Sammlungen — als eigener Baustein
@@ -46,20 +47,34 @@ export function CollectionTypeBadge({ binder, size = 'md' }: { binder: BinderDoc
   return null;
 }
 
+/** Radius der abgerundeten (rechten unteren) Ecke der KARTEN-Badges — Grid-
+ *  Karten laufen mit `size="md"` → Karten-/Badge-Radius 10 (card-theme.ts). Die
+ *  Sammlungs-Badges übernehmen genau diesen Wert für ihre rechte untere Ecke. */
+const CARD_BADGE_BR_RADIUS = DEFAULT_CARD_VISUAL_THEME.cornerRadius.md;
+
 /** Wie {@link CollectionTypeBadge}, aber in der „Karten-Ecke"-Form: ein
- *  `CardBadge` mit `corner="tl"`, das oben links flach in die Sammlungs-Kachel
- *  eingenistet ist — gleiche Position/Form wie die Badges auf den
- *  Karten-Kacheln (statt eines aus der Ecke ragenden Kreises). Positioniert
- *  sich selbst (`absolute` via `top`/`left`), gehört in einen `relative`-Wrapper. */
+ *  `CardBadge`, das BÜNDIG (ohne Abstand) in die obere linke Ecke von Ordner
+ *  bzw. Box eingenistet ist — analog zu den Badges auf den Karten-Kacheln.
+ *  Eckenrundung:
+ *   - oben links = Radius der jeweiligen Kachelecke (`COVER_TL_RADIUS`, Ordner/
+ *     Box), damit die Außenkurve konzentrisch in der Kachelecke liegt,
+ *   - unten rechts = Radius der Karten-Badges (`CARD_BADGE_BR_RADIUS`),
+ *   - oben rechts / unten links = keine Rundung.
+ *  Positioniert sich selbst (`absolute`), gehört in einen `relative`-Wrapper. */
 export function CollectionTypeCornerBadge({
-  binder, shape = 'folder', size = 28, cornerRadius, offset = 3,
-}: { binder: BinderDoc; shape?: 'folder' | 'box'; size?: number; cornerRadius?: number; offset?: number }) {
-  // Eckradius an die Kachelform anpassen: er entspricht dem tatsächlichen
-  // Radius der oberen linken Kachelecke (COVER_TL_RADIUS), damit das Badge
-  // bündig in die Ecke von Ordner bzw. Box einnistet (`cornerRadius` kann das
-  // gezielt überschreiben).
-  const radius = cornerRadius ?? COVER_TL_RADIUS[shape];
-  const common = { corner: 'tl' as const, cornerRadius: radius, size, style: { top: offset, left: offset } };
+  binder, shape = 'folder', size = 28,
+}: { binder: BinderDoc; shape?: 'folder' | 'box'; size?: number }) {
+  const common = {
+    corner: 'tl' as const,
+    size,
+    style: {
+      top: 0, left: 0,
+      borderTopLeftRadius: COVER_TL_RADIUS[shape],
+      borderBottomRightRadius: CARD_BADGE_BR_RADIUS,
+      borderTopRightRadius: 0,
+      borderBottomLeftRadius: 0,
+    },
+  };
   if (binder.template) {
     return (
       <CardBadge {...common} color="var(--pokedex-blue)" ariaLabel="Automatische Sammlung" title="Automatische Sammlung">
