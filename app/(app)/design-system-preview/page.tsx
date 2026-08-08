@@ -529,7 +529,7 @@ export default function DesignSystemPreviewPage() {
   };
   const makeDemoCopy = (id: string, overrides: Partial<CardDoc>): CardDoc => ({
     id, tcgId: 'demo', name: 'Giflor', setId: 'me2', setName: 'Fatale Flammen', number: '003',
-    variant: 'holo', condition: 'NM', language: 'de', isFoil: false, isFirstEd: false, quantity: 1,
+    variant: 'holo', condition: 'NM', language: 'de', quantity: 1,
     addedAt: null as unknown as CardDoc['addedAt'], updatedAt: null as unknown as CardDoc['updatedAt'],
     ...overrides,
   });

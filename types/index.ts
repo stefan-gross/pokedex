@@ -18,8 +18,6 @@ export interface CardDoc {
   variant: CardVariant;
   condition: CardCondition;
   language: CardLanguage;
-  isFoil: boolean;
-  isFirstEd: boolean;
   quantity: number;
   tcgImageUrl?: string;
   notes?: string;

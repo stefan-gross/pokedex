@@ -129,8 +129,6 @@ export function cardInfoToAddInput(
     variant,
     condition,
     language,
-    isFoil: variant === 'holo',
-    isFirstEd: variant === '1st-ed',
     quantity: 1,
   };
   if (card.pendingCatalog) {
