@@ -29,10 +29,14 @@ export function getAdminDb(): Firestore {
     // REST statt gRPC: der gRPC-Verbindungsaufbau hängt beim ERSTEN Firestore-
     // Aufruf je Prozess/Instanz gern zehner­sekundenlang (Coldstart / bestimmte
     // Netze/IPv6), bevor er durchkommt — das war die Ursache für ~30 s „lookup"
-    // im Scanner. REST (HTTP/1.1) verbindet sofort. `settings()` muss VOR der
-    // ersten Nutzung laufen; try/catch für HMR-Reuse (Instanz evtl. schon genutzt).
+    // im Scanner. REST (HTTP/1.1) verbindet sofort.
+    // `ignoreUndefinedProperties`: undefined-Felder werden beim Schreiben
+    // verworfen statt einen Fehler zu werfen (konsistent zum Client-SDK) — sonst
+    // scheitern Writes mit optionalen Feldern, z.B. der Preis-Cache bei
+    // `prices.variants[].low = undefined`.
+    // `settings()` muss VOR der ersten Nutzung laufen; try/catch für HMR-Reuse.
     try {
-      adminDb.settings({ preferRest: true });
+      adminDb.settings({ preferRest: true, ignoreUndefinedProperties: true });
     } catch { /* bereits initialisiert/genutzt — ignorieren */ }
   }
   return adminDb;
