@@ -41,6 +41,7 @@ import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Progress } from '@/components/ui/progress';
 import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal';
+import { TemplateGridBrowser } from '@/components/binder/TemplateGridBrowser';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { Sheet } from '@/components/ui/modal';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
@@ -585,9 +586,11 @@ export default function BinderDetailPage({ params }: Props) {
       </div>
 
       {isBox || view === 'grid' ? (
-        binder.isDefault
-          ? <RecentTriageView cards={cards} onCardTap={openDetail} prices={cardPrices} />
-          : <GridView cards={cards} onCardTap={openDetail} prices={cardPrices} />
+        binder.template
+          ? <TemplateGridBrowser template={binder.template} priceResults={cardPrices} onCardsChanged={load} />
+          : binder.isDefault
+            ? <RecentTriageView cards={cards} onCardTap={openDetail} prices={cardPrices} />
+            : <GridView cards={cards} onCardTap={openDetail} prices={cardPrices} />
       ) : view === 'binder' ? (
         <BinderOverview
           sheets={sheets}
