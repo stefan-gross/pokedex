@@ -17,7 +17,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   getBinder, deleteBinderCascade, setBinderPages, cardIdsToPages,
-  ensureDefaultBinder, addCardToBinder, removeCardFromOtherBinders,
+  ensureDefaultBinder, addCardToBinder, addCardsToBinder, removeCardFromOtherBinders,
 } from '@/lib/firestore/binders';
 import { syncTemplateBinders } from '@/lib/template-binders/sync';
 import { matchTemplateBinders } from '@/lib/template-binders/match-hint';
@@ -208,7 +208,7 @@ export default function BinderDetailPage({ params }: Props) {
         const cc = catById.get(c.tcgId as string);
         return cc ? matchTemplateBinders(cc, [binder]).length > 0 : false;
       });
-      for (const c of toAdd) await addCardToBinder(binder.id, c.id);
+      await addCardsToBinder(binder.id, toAdd.map(c => c.id)); // 1 Write statt N
       await syncTemplateBinders({ binderIds: [binder.id] });
       await load();
     } catch (e) {
@@ -598,6 +598,14 @@ export default function BinderDetailPage({ params }: Props) {
       )}
 
       <ScrollToTopButton />
+
+      {/* Lade-Overlay während „Passende Karten einsortieren" (Bulk-Add + Sync). */}
+      {filling && (
+        <div className="fixed inset-0 z-[80] flex flex-col items-center justify-center gap-3 bg-black/45 backdrop-blur-sm">
+          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm font-medium text-white">Karten werden einsortiert …</span>
+        </div>
+      )}
     </div>
     </BinderCatalogCtx.Provider>
   );

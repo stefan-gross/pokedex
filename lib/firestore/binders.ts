@@ -66,6 +66,13 @@ export async function addCardToBinder(binderId: string, cardId: string): Promise
   await updateDoc(doc(db, COL, binderId), { cardIds: arrayUnion(cardId) });
 }
 
+/** Fügt mehrere Karten in EINEM Write hinzu (arrayUnion mit mehreren Werten) —
+ *  für Bulk-Aktionen wie „passende Karten einsortieren", statt N Einzel-Writes. */
+export async function addCardsToBinder(binderId: string, cardIds: string[]): Promise<void> {
+  if (cardIds.length === 0) return;
+  await updateDoc(doc(db, COL, binderId), { cardIds: arrayUnion(...cardIds) });
+}
+
 export async function removeCardFromBinder(binderId: string, cardId: string): Promise<void> {
   await updateDoc(doc(db, COL, binderId), { cardIds: arrayRemove(cardId) });
 }
