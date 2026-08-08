@@ -105,6 +105,11 @@ interface Props {
   /** Größenstufe — steuert Ecken-Radius/Badge-Größe/Bild-`sizes`. Default
    *  `'sm'` = bisheriges `CardTile`-Verhalten. */
   size?: CardSize;
+  /** „Nacktes" Kachelbild ohne Badges (Prüfen/Anzahl/Preis/Wunschliste-Herz),
+   *  Schatten und Sublabel — nur Bild + Besitz-/Fehlt-Look (+ Holo). Für dichte
+   *  Kontexte wie Binder-Slots, wo die fehlenden Karten wie in der Suche
+   *  aussehen sollen, aber ohne Deko pro Slot. */
+  bare?: boolean;
   /** Überschreibt den "fehlt"-Look bzw. die Badge-Positionen/den Ecken-
    *  Radius — z.B. für den Live-Entwurf auf `/design-system-preview`. Echte
    *  Aufrufer lassen alle drei weg und bekommen das aktuell GESPEICHERTE
@@ -122,7 +127,7 @@ const BORDER_COLORS: Record<'green' | 'yellow' | 'red', string> = {
 
 export function Card({
   card, ownedCards = [], onCardClick, onWishlist, isWishlisted, sublabel, sublabelColor, sublabelLoading,
-  numberPrefixCode, numberPrefixSymbolUrl, setCode, price, border, size = 'sm',
+  numberPrefixCode, numberPrefixSymbolUrl, setCode, price, border, size = 'sm', bare = false,
   missingStyle = getCardVisualTheme().missingStyle,
   cornerRadius = getCardVisualTheme().cornerRadius[size],
   badgeLayout = getCardVisualTheme().badgeLayout[size],
@@ -172,7 +177,7 @@ export function Card({
           Rundung, da `box-shadow` sich am eigenen `border-radius` orientiert
           und dafür kein Clipping braucht. */}
       <div
-        className="relative shadow-card cursor-pointer"
+        className={`relative cursor-pointer ${bare ? '' : 'shadow-card'}`}
         style={{ borderRadius: radius }}
         onClick={onCardClick}
       >
@@ -248,7 +253,7 @@ export function Card({
             Exemplaren. Vorläufige (nicht im Katalog gefundene) Karten bekommen
             KEIN Badge hier: ihr Platzhalter (CardPlaceholder) zeichnet bereits
             ein eigenes rotes „?"-Eck-Badge (gleiche Form wie dieses „!"). */}
-        {!card.pendingCatalog && needsReview && (
+        {!bare && !card.pendingCatalog && needsReview && (
           <CardBadge
             size={preset.badgeSize} color="var(--pokedex-yellow)" corner="tl" cornerRadius={badgeCornerRadius}
             style={{ top: layout.reviewBadge.top, left: layout.reviewBadge.left }}
@@ -262,7 +267,7 @@ export function Card({
             !needsReview kollisionsfrei). Nur wenn die Karte ausschließlich in
             einer anderen Sprache als Deutsch besessen wird → Signal „noch auf
             Deutsch besorgen/ersetzen". */}
-        {ownedForeignOnly && !needsReview && (
+        {!bare && ownedForeignOnly && !needsReview && (
           <CardBadge
             size={preset.badgeSize} shape="pill" color="#f59e0b" textColor="#422006" corner="tl" cornerRadius={badgeCornerRadius}
             style={{ top: layout.reviewBadge.top, left: layout.reviewBadge.left }}
@@ -275,14 +280,14 @@ export function Card({
         {/* Anzahl-Badge — grün, oben rechts. Nur ab 2 Exemplaren; bei genau
             einer Karte reicht die Voll-Farbe (fehlende sind ausgegraut) als
             Besitz-Anzeige, ein „×1" wäre redundant. */}
-        {totalOwned > 1 && (
+        {!bare && totalOwned > 1 && (
           <CardBadge size={preset.badgeSize} color="rgba(53,209,90,.9)" corner="tr" cornerRadius={badgeCornerRadius} style={{ top: layout.ownedBadge.top, right: layout.ownedBadge.right }}>
             ×{totalOwned}
           </CardBadge>
         )}
 
         {/* Preis — unten links, Pillenform statt Kreis (siehe CardBadge shape="pill"). */}
-        {price && (
+        {!bare && price && (
           <CardBadge
             size={preset.badgeSize} shape="pill" color="rgba(0,0,0,.72)" corner="bl" cornerRadius={badgeCornerRadius}
             style={{ bottom: layout.priceBadge.bottom, left: layout.priceBadge.left }}
@@ -298,7 +303,7 @@ export function Card({
             eine besessene Karte kann von einer Vorlagen-Sammlung weiterhin in
             anderer Variante/Sprache gebraucht werden (z.B. EN besessen,
             Pokédex will DE). Besessen + nicht gewünscht → kein Herz. */}
-        {(!isOwned || isWishlisted) && (
+        {!bare && (!isOwned || isWishlisted) && (
           <CardBadge
             size={preset.badgeSize} background={false}
             style={{ bottom: layout.wishlistBadge.bottom, right: layout.wishlistBadge.right }}
