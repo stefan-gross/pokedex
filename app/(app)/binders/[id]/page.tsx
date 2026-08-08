@@ -61,6 +61,20 @@ interface Props {
 
 type View = 'binder' | 'page' | 'grid';
 
+/** „i" mit diagonalem Strich = Zusatzinfos AUS. Lucide hat kein `InfoOff`,
+ *  daher das Info-Icon mit einem currentColor-Strich überlagert. */
+function InfoOffIcon({ size = 13 }: { size?: number }) {
+  return (
+    <span className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
+      <Info size={size} />
+      <span
+        className="absolute bg-current rounded-full"
+        style={{ width: size + 3, height: 1.5, transform: 'rotate(45deg)' }}
+      />
+    </span>
+  );
+}
+
 /** Resolved Hintergrund-Farbe basierend auf Binder-Setting. */
 const MILKY_BG = 'rgba(255, 255, 255, 0.55)';
 
@@ -565,7 +579,9 @@ export default function BinderDetailPage({ params }: Props) {
                 checked={showCardInfo}
                 onChange={setShowCardInfo}
                 accentColor={binderColor}
-                label={<Info size={14} />}
+                iconOn={<Info size={13} />}
+                iconOff={<InfoOffIcon size={13} />}
+                aria-label="Zusatzinformationen"
                 className="shrink-0"
               />
             )}
