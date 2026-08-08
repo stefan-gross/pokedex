@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef, use, useCallback, createContext, 
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, Settings, LayoutGrid, BookOpen, FileText, Check,
-  Plus, Minus, ChevronRight, ChevronDown, Info,
+  Plus, Minus, ChevronRight, ChevronDown, Info, MoreHorizontal, FileDown,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, TouchSensor, useSensor, useSensors,
@@ -43,6 +43,7 @@ import { ButtonGroup } from '@/components/ui/button-group';
 import { Progress } from '@/components/ui/progress';
 import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
+import { Sheet } from '@/components/ui/modal';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
 import { findVariantPrice, pickTrendPrice } from '@/lib/prices/value-tier';
@@ -217,6 +218,39 @@ export default function BinderDetailPage({ params }: Props) {
       setFilling(false);
     }
   }, [binder, filling, load]);
+
+  // ── Export (Liste als PDF) ──────────────────────────────────────────────
+  const [showExport, setShowExport] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const handleExportList = useCallback(async (variant: 'missing' | 'owned' | 'both') => {
+    if (!binder || exporting) return;
+    setExporting(true);
+    try {
+      const fmtPrice = (tcgId?: string) => {
+        const v = tcgId ? pickTrendPrice(cardPrices?.get(tcgId)) : null;
+        return v != null ? v.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : '';
+      };
+      const ownedRows = cards.map(c => {
+        const info = c.tcgId ? catalogInfoById.get(c.tcgId) : undefined;
+        return { name: info?.name ?? c.name, number: info?.number ?? c.number, setName: info?.setName ?? c.setName, price: fmtPrice(c.tcgId), owned: true };
+      });
+      const missingRows = [...missingCards.values()].map(cc => {
+        const info = catalogCardToInfo(cc);
+        return { name: info.name, number: info.number, setName: info.setName, price: fmtPrice(cc.id), owned: false };
+      });
+      const rows = (variant === 'owned' ? ownedRows : variant === 'missing' ? missingRows : [...ownedRows, ...missingRows])
+        .sort((a, b) => (parseInt(a.number) || 0) - (parseInt(b.number) || 0));
+      const { downloadCollectionPdf } = await import('@/components/binder/collection-pdf');
+      const dateStr = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' });
+      const label = variant === 'owned' ? 'Besitz' : variant === 'missing' ? 'Fehlliste' : 'Sammlung';
+      await downloadCollectionPdf({ title: `${binder.name} — ${label}`, dateStr, variant, showSet: false, rows });
+      setShowExport(false);
+    } catch (e) {
+      console.error('[export] list', e);
+    } finally {
+      setExporting(false);
+    }
+  }, [binder, exporting, cards, catalogInfoById, missingCards, cardPrices]);
 
   // Platzhalter-Karten für fehlende Slots eines Vorlagen-Binders — dieselbe
   // Regel-Engine wie der Sync (lib/template-binders/*), aber rein lesend
@@ -407,7 +441,7 @@ export default function BinderDetailPage({ params }: Props) {
               className="w-11 h-11 rounded-md glass-inner flex items-center justify-center text-glass"
               aria-label="Aktionen"
             >
-              <Settings size={20} />
+              <MoreHorizontal size={20} />
             </button>
           )}
         </div>
@@ -507,6 +541,14 @@ export default function BinderDetailPage({ params }: Props) {
                 Passende Karten einsortieren
               </button>
             )}
+            {binder.template && (
+              <button
+                onClick={() => { setShowActions(false); setShowExport(true); }}
+                className="w-full px-4 py-3 text-sm text-left text-glass hover:bg-white/10"
+              >
+                Exportieren …
+              </button>
+            )}
             <button onClick={() => { setShowActions(false); setShowEdit(true); }} className="w-full px-4 py-3 text-sm text-left text-glass hover:bg-white/10">
               Bearbeiten
             </button>
@@ -598,6 +640,34 @@ export default function BinderDetailPage({ params }: Props) {
       )}
 
       <ScrollToTopButton />
+
+      {/* Export-Sheet: Listen-PDF (fehlend/besessen/beide). Proxy-Karten folgen. */}
+      <Sheet open={showExport} onClose={() => setShowExport(false)} title="Exportieren">
+        <div className="flex flex-col gap-2 pb-2">
+          <p className="text-role-label text-glass-muted px-1">Liste als PDF</p>
+          {([
+            { v: 'missing', label: 'Fehlende Karten' },
+            { v: 'owned',   label: 'Besessene Karten' },
+            { v: 'both',    label: 'Alle Karten (mit Status)' },
+          ] as const).map(o => (
+            <button
+              key={o.v}
+              onClick={() => handleExportList(o.v)}
+              disabled={exporting}
+              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl glass-inner text-left text-glass disabled:opacity-50"
+            >
+              <FileDown size={18} className="shrink-0 text-glass-muted" />
+              <span className="flex-1">{o.label}</span>
+            </button>
+          ))}
+          {exporting && (
+            <div className="flex items-center gap-2 px-1 pt-1 text-role-label text-glass-muted">
+              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              PDF wird erstellt …
+            </div>
+          )}
+        </div>
+      </Sheet>
 
       {/* Lade-Overlay während „Passende Karten einsortieren" (Bulk-Add + Sync). */}
       {filling && (
