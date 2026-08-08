@@ -35,7 +35,6 @@ import {
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { CardImage } from '@/components/card/CardImage';
 import { Card } from '@/components/card/Card';
-import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Progress } from '@/components/ui/progress';
@@ -589,14 +588,20 @@ export default function BinderDetailPage({ params }: Props) {
               ein "Fertig"-Button, analog zur Sammlungsübersicht. */}
           <div className="flex items-center gap-2 shrink-0">
             {!isBox && view === 'page' && (
-              <Switch
-                checked={showCardInfo}
-                onChange={setShowCardInfo}
-                accentColor={binderColor}
-                iconOn={<Info size={13} />}
-                iconOff={<InfoOffIcon size={13} />}
-                aria-label="Zusatzinformationen"
+              // Zusatzinfo-Toggle als iconOnly-ButtonGroup (Toggle-Modus) —
+              // nutzt deren Gooey-Gleit-Indikator (goo-squish) statt eines
+              // eigenen Switch. Links „aus" (durchgestrichenes i), rechts „an".
+              <ButtonGroup
+                iconOnly
+                size="sm"
+                toggle
                 className="shrink-0"
+                value={showCardInfo ? 'on' : 'off'}
+                onChange={(v) => setShowCardInfo(v === 'on')}
+                options={[
+                  { value: 'off', label: <InfoOffIcon size={15} />, ariaLabel: 'Zusatzinformationen aus' },
+                  { value: 'on',  label: <Info size={15} />,        ariaLabel: 'Zusatzinformationen an' },
+                ]}
               />
             )}
             {editMode ? (
