@@ -443,11 +443,17 @@ export default function BinderDetailPage({ params }: Props) {
   const pageBg = resolvePageBg(binder.pageBackground);
   const sheets = pagesToSheets(pages, binderSize);
 
+  // In der Grid-Ansicht einer Vorlagen-Sammlung bringt der `TemplateGridBrowser`
+  // sein EIGENES sticky Filter-Panel mit (Grabber-/Scroll-Kollaps wie die Suche).
+  // Dann darf der Kopf NICHT zusätzlich sticky sein — sonst pinnten zwei Panels
+  // gleichzeitig übereinander. Er scrollt stattdessen weg wie der Header der Suche.
+  const templateGridActive = !!binder.template && view === 'grid';
+
   return (
     <BinderCatalogCtx.Provider value={catalogInfoById}>
     <div className="min-h-screen">
-      {/* ── Sticky Header-/Info-Panel (Zurück-Button jetzt im Panel) ── */}
-      <div className="sticky top-safe z-20 mx-3 mt-3 mb-2 glass rounded-[20px] px-4 pt-2 pb-2">
+      {/* ── Header-/Info-Panel (in Vorlagen-Grid-Ansicht nicht sticky, s.o.) ── */}
+      <div className={`z-20 mx-3 mt-3 mb-2 glass rounded-[20px] px-4 pt-2 pb-2${templateGridActive ? '' : ' sticky top-safe'}`}>
         <Button variant="ghost" onClick={() => router.back()} className="px-0 -ml-1" icon={<ChevronLeft size={18} strokeWidth={2} />}>
           Sammlungen
         </Button>

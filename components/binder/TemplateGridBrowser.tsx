@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getCards } from '@/lib/firestore/cards';
 import { getBinders } from '@/lib/firestore/binders';
 import { resolveTemplateSlots } from '@/lib/template-binders/resolve';
@@ -9,8 +9,10 @@ import { getRarityGroup } from '@/lib/card-constants';
 import { filterCardsByQuery } from '@/lib/search/card-query';
 import { pickTrendPrice } from '@/lib/prices/value-tier';
 import { useWishlist } from '@/lib/hooks/use-wishlist';
+import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { Input } from '@/components/ui/input';
 import { ButtonGroup } from '@/components/ui/button-group';
+import { Grabber } from '@/components/ui/Grabber';
 import { CardGrid, CardGridSkeleton } from '@/components/card/CardGrid';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
@@ -131,39 +133,77 @@ export function TemplateGridBrowser({
   const toggleRarity = (label: string) =>
     setRarityFilter(prev => { const n = new Set(prev); if (n.has(label)) n.delete(label); else n.add(label); return n; });
 
-  if (cards === null) return <div className="px-3 py-3"><CardGridSkeleton count={9} /></div>;
+  // Grabber-/Scroll-Kollaps wie auf der Such-/Set-Detailseite: EIN sticky
+  // Glas-Panel, dessen Filter-Region (Suche + Vorhanden/Fehlen + Rarity) sich
+  // per Griff (ziehen/tippen) und beim Scrollen ein-/ausklappt. Die Sortierung
+  // bleibt immer sichtbar. `ready` erst, wenn die Karten geladen sind (sonst
+  // misst der Hook eine leere Region).
+  const panelRef    = useRef<HTMLDivElement>(null);
+  const gridWrapRef = useRef<HTMLDivElement>(null);
+  const { stage, registerRegion, regionStyle, grabberProps } = useGrabberCollapse({
+    regionCount: 1,
+    panelRef,
+    gridWrapRef,
+    ready: cards !== null,
+    measureDeps: [cards, spansMultipleSets],
+  });
 
   return (
-    <div className="px-3 py-3 space-y-2">
-      <Input
-        variant="search"
-        value={search}
-        onChange={setSearch}
-        onClear={() => setSearch('')}
-        placeholder="Suchen (Name, Nummer, Illustrator)"
-        size="sm"
-      />
-      <ButtonGroup options={FILTER_OPTIONS} value={filter} onChange={setFilter} />
-      <RarityFilterBar cards={cards} ownedIds={ownedTcgIds} activeRarities={rarityFilter} onToggle={toggleRarity} />
-      <CardSortBar
-        options={SORT_OPTIONS}
-        sortField={sortField}
-        onSortFieldChange={setSortField}
-        sortDir={sortDir}
-        onSortDirChange={() => setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))}
-        resultLabel={pluralKarten(displayed.length)}
-      />
-      <CardGrid
-        cards={displayed}
-        ownedMap={ownedMap}
-        binders={binders}
-        sortKey={sortField}
-        priceMap={priceMap}
-        wishlistIds={wishlistIds}
-        onToggleWishlist={(c) => toggleWishlist(c)}
-        onCardsChanged={onCardsChanged}
-        showSetBadge={spansMultipleSets}
-      />
-    </div>
+    <>
+      {/* Sticky Filter-Panel — mirror der Set-Detailseite (ein Glas-Panel,
+          kollabierende Filter-Region + immer sichtbare Sortierung + Griff). */}
+      <div className="sticky top-safe z-20 px-3 pt-3 pb-1">
+        <div ref={panelRef} className="glass rounded-[20px] px-4 pt-3 pb-3">
+          {/* Klappbarer Body: Suche + Vorhanden/Fehlen + Rarity */}
+          <div style={regionStyle(0)} className="overflow-hidden">
+            <div ref={registerRegion(0)} className="space-y-2 pt-0.5">
+              <Input
+                variant="search"
+                value={search}
+                onChange={setSearch}
+                onClear={() => setSearch('')}
+                placeholder="Suchen (Name, Nummer, Illustrator)"
+                size="sm"
+              />
+              <ButtonGroup options={FILTER_OPTIONS} value={filter} onChange={setFilter} />
+              {cards && <RarityFilterBar cards={cards} ownedIds={ownedTcgIds} activeRarities={rarityFilter} onToggle={toggleRarity} />}
+            </div>
+          </div>
+
+          {/* Immer sichtbar: Sortierung + Kartenanzahl */}
+          <div className="pt-2">
+            <CardSortBar
+              options={SORT_OPTIONS}
+              sortField={sortField}
+              onSortFieldChange={setSortField}
+              sortDir={sortDir}
+              onSortDirChange={() => setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))}
+              resultLabel={pluralKarten(displayed.length)}
+            />
+          </div>
+
+          {/* Griff: ziehen/tippen klappt die Filter-Region auf/zu. */}
+          <Grabber expanded={stage === 0} {...grabberProps} />
+        </div>
+      </div>
+
+      <div ref={gridWrapRef} className="px-3 py-3">
+        {cards === null ? (
+          <CardGridSkeleton count={9} />
+        ) : (
+          <CardGrid
+            cards={displayed}
+            ownedMap={ownedMap}
+            binders={binders}
+            sortKey={sortField}
+            priceMap={priceMap}
+            wishlistIds={wishlistIds}
+            onToggleWishlist={(c) => toggleWishlist(c)}
+            onCardsChanged={onCardsChanged}
+            showSetBadge={spansMultipleSets}
+          />
+        )}
+      </div>
+    </>
   );
 }
