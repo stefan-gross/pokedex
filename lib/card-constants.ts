@@ -101,12 +101,25 @@ export function isFullArtRarity(rarity?: string): boolean {
   return !!g && FULL_ART_RARITY_GROUPS.has(g.label);
 }
 
-/** Wählt die passenden Klassen für den Holo-Glanz je nach Variante + Rarität:
- *  Reverse → Rahmen (`is-frame`); Holo auf Full-Art → ganze Karte (kein Clip);
- *  Holo auf Standard-Layout → Artwork-Fenster (`is-artwork`). */
-export function holoShimmerClass(variant: 'holo' | 'reverse', rarity?: string): string {
+const SPECIAL_MECHANIC_SET = new Set<string>(SPECIAL_MECHANIC_KEYS);
+
+/** Foil bedeckt (nahezu) die GANZE Karte — nicht nur das Artwork-Fenster.
+ *  Zwei Fälle: (1) Full-Art-Rarität (Illustration/Ultra/Secret/…), (2) eine
+ *  Sonderform-Mechanik im `subtypes` (V/VMAX/VSTAR/ex/GX/MEGA/BREAK/…): deren
+ *  Kartenstock ist vollflächig foliert, auch bei der „normalen" (nicht Alt-Art)
+ *  Version — z.B. Tauboss V #137 (Rarität-Gruppe „Double Rare", subtype „V"). */
+export function isFullBleedFoil(rarity?: string, subtypes?: string[]): boolean {
+  if (isFullArtRarity(rarity)) return true;
+  return !!subtypes?.some(s => SPECIAL_MECHANIC_SET.has(s));
+}
+
+/** Wählt die passenden Klassen für den Holo-Glanz je nach Variante + Karte:
+ *  Reverse → Rahmen (`is-frame`); Holo auf vollflächigem Foil (Full-Art ODER
+ *  Sonderform V/ex/…) → ganze Karte (kein Clip); Holo auf Standard-Layout →
+ *  Artwork-Fenster (`is-artwork`). */
+export function holoShimmerClass(variant: 'holo' | 'reverse', rarity?: string, subtypes?: string[]): string {
   if (variant === 'reverse') return 'card-holo-shimmer is-frame';
-  return isFullArtRarity(rarity) ? 'card-holo-shimmer' : 'card-holo-shimmer is-artwork';
+  return isFullBleedFoil(rarity, subtypes) ? 'card-holo-shimmer' : 'card-holo-shimmer is-artwork';
 }
 
 /**

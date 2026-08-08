@@ -215,10 +215,10 @@ export function Card({
           {/* Holo-Glanz (siehe `.card-holo-shimmer` in globals.css):
               Holo → Artwork-Fenster, Reverse Holo → Rahmen (Bild bleibt frei). */}
           {showHolo && (
-            <div className={`absolute inset-0 ${holoShimmerClass('holo', card.rarity)}`} aria-hidden="true" />
+            <div className={`absolute inset-0 ${holoShimmerClass('holo', card.rarity, card.subtypes)}`} aria-hidden="true" />
           )}
           {showReverse && (
-            <div className={`absolute inset-0 ${holoShimmerClass('reverse', card.rarity)}`} aria-hidden="true" />
+            <div className={`absolute inset-0 ${holoShimmerClass('reverse', card.rarity, card.subtypes)}`} aria-hidden="true" />
           )}
         </div>
         {/* Silhouette — zusätzlicher gestrichelter Rahmen um das (per

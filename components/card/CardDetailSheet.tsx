@@ -752,7 +752,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 const foil = inherentFoilVariant(card.variants);
                 return foil ? (
                   <div
-                    className={`absolute inset-0 ${holoShimmerClass(foil, card.rarity)}`}
+                    className={`absolute inset-0 ${holoShimmerClass(foil, card.rarity, card.subtypes)}`}
                     aria-hidden="true"
                   />
                 ) : null;
@@ -1153,7 +1153,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
               {(() => {
                 const foil = inherentFoilVariant(card.variants);
                 return foil ? (
-                  <div className={`absolute inset-0 ${holoShimmerClass(foil, card.rarity)}`} aria-hidden="true" />
+                  <div className={`absolute inset-0 ${holoShimmerClass(foil, card.rarity, card.subtypes)}`} aria-hidden="true" />
                 ) : null;
               })()}
             </div>
