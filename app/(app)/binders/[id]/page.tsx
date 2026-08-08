@@ -1451,8 +1451,13 @@ function SinglePageView({
           className="relative"
           style={{
             perspective: '2000px',
-            touchAction: 'pan-y',
-            overscrollBehaviorX: 'contain',
+            // `none` statt `pan-y`: die Seite selbst lässt sich nicht mehr
+            // verschieben/scrollen — ein (auch leicht diagonaler) Wisch steuert
+            // ausschließlich den Blätter-/Seiten-Flip, statt die Seite darunter
+            // wegzuscrollen. Die Einzel-Seite ist auf Bildschirmhöhe ausgelegt,
+            // daher wird hier kein vertikales Scrollen benötigt.
+            touchAction: 'none',
+            overscrollBehavior: 'contain',
           }}
           onPointerDown={onFlipDown}
           onPointerMove={onFlipMove}
