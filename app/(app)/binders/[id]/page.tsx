@@ -554,6 +554,12 @@ export default function BinderDetailPage({ params }: Props) {
                 <ChevronDown size={11} className="absolute right-1.5 pointer-events-none text-glass-muted" />
               </label>
             )}
+          </div>
+          {/* Rechts ausgerichtet: Zusatzinfo-Switch (nur Seitenansicht) +
+              Bearbeiten-Modus startet per Long-Press auf eine Kachel (wie iOS-
+              Homescreen) — kein separater Einstiegs-Button. Zum Beenden bleibt
+              ein "Fertig"-Button, analog zur Sammlungsübersicht. */}
+          <div className="flex items-center gap-2 shrink-0">
             {!isBox && view === 'page' && (
               <Switch
                 checked={showCardInfo}
@@ -563,27 +569,24 @@ export default function BinderDetailPage({ params }: Props) {
                 className="shrink-0"
               />
             )}
+            {editMode ? (
+              <button
+                onClick={() => setEditMode(false)}
+                className="inline-flex items-center gap-1.5 h-11 px-3 rounded-full text-xs font-semibold shrink-0"
+                style={{ background: 'var(--pokedex-blue)', color: '#fff', border: 'none' }}
+              >
+                <Check size={13} />
+                Fertig
+              </button>
+            ) : binder.template ? null : (
+              <span className="text-role-label font-semibold text-right shrink-0" style={{ color: binderColor }}>
+                {!totalValue.loading && totalValue.withPrice > 0
+                  ? `≈${totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
+                  : ''}
+                {' · '}{cards.length} Karten
+              </span>
+            )}
           </div>
-          {/* Bearbeiten-Modus startet per Long-Press auf eine Kachel (wie iOS-
-              Homescreen) — kein separater Einstiegs-Button mehr nötig. Zum
-              Beenden bleibt ein "Fertig"-Button, analog zur Sammlungsübersicht. */}
-          {editMode ? (
-            <button
-              onClick={() => setEditMode(false)}
-              className="inline-flex items-center gap-1.5 h-11 px-3 rounded-full text-xs font-semibold shrink-0"
-              style={{ background: 'var(--pokedex-blue)', color: '#fff', border: 'none' }}
-            >
-              <Check size={13} />
-              Fertig
-            </button>
-          ) : binder.template ? null : (
-            <span className="text-role-label font-semibold text-right shrink-0" style={{ color: binderColor }}>
-              {!totalValue.loading && totalValue.withPrice > 0
-                ? `≈${totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
-                : ''}
-              {' · '}{cards.length} Karten
-            </span>
-          )}
         </div>
 
         {/* Filter der Grid-Ansicht — im SELBEN Panel wie Kopf + Ansichts-Switch.
