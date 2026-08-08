@@ -113,11 +113,16 @@ export default function DashboardPage() {
         .slice(0, 6)
     : [];
 
-  // Sets grouped by setId
+  // Sets grouped by setId. `owned` = EINDEUTIGE Karten des Sets (Duplikate/
+  // Varianten zählen als eine — Dedupe über tcgId, vorläufige über Doc-ID).
   const setMap = new Map<string, SetEntry>();
+  const setUniq = new Map<string, Set<string>>();
   (cards ?? []).forEach(c => {
     const cur = setMap.get(c.setId) ?? { setId: c.setId, name: c.setName, owned: 0, total: null, latestAt: 0 };
-    cur.owned    += c.quantity;
+    const u = setUniq.get(c.setId) ?? new Set<string>();
+    u.add(c.tcgId ?? c.id);
+    setUniq.set(c.setId, u);
+    cur.owned     = u.size;
     cur.latestAt  = Math.max(cur.latestAt, c.addedAt?.seconds ?? 0);
     setMap.set(c.setId, cur);
   });

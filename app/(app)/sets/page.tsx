@@ -53,13 +53,19 @@ export default function SetsPage() {
     }).finally(() => setLoading(false));
   }, []);
 
-  // Karten pro setId zählen
+  // EINDEUTIGE Karten pro setId (Duplikate/Varianten zählen als eine Karte —
+  // Dedupe über tcgId; vorläufige Karten ohne tcgId über die Doc-ID).
   const ownedBySet = useMemo(() => {
-    const map = new Map<string, number>();
+    const uniq = new Map<string, Set<string>>();
     for (const card of owned) {
-      if (card.setId) map.set(card.setId, (map.get(card.setId) ?? 0) + 1);
+      if (!card.setId) continue;
+      const s = uniq.get(card.setId) ?? new Set<string>();
+      s.add(card.tcgId ?? card.id);
+      uniq.set(card.setId, s);
     }
-    return map;
+    const counts = new Map<string, number>();
+    for (const [setId, ids] of uniq) counts.set(setId, ids.size);
+    return counts;
   }, [owned]);
 
   // Sets nach Series gruppieren (Reihenfolge: wie von API — neueste zuerst)
