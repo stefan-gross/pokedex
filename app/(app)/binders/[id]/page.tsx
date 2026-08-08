@@ -42,6 +42,7 @@ import { Progress } from '@/components/ui/progress';
 import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal';
 import { useTemplateGrid } from '@/components/binder/TemplateGridBrowser';
 import { Grabber } from '@/components/ui/Grabber';
+import { Menu } from '@/components/ui/menu';
 import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { Sheet } from '@/components/ui/modal';
@@ -131,7 +132,6 @@ export default function BinderDetailPage({ params }: Props) {
   const [pages, setPages] = useState<BinderPage[]>([]);
   const [loading, setLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
-  const [showActions, setShowActions] = useState(false);
   const [view, setView] = useState<View>('binder');
   const [pageIdx, setPageIdx] = useState<number>(0);
   const [editMode, setEditMode] = useState(false);
@@ -213,16 +213,6 @@ export default function BinderDetailPage({ params }: Props) {
   const templateGridActive = !!binder?.template && view === 'grid';
   const panelRef    = useRef<HTMLDivElement>(null);
   const gridWrapRef = useRef<HTMLDivElement>(null);
-  // Aktionen-Menü: Klick irgendwohin (außerhalb von Button+Menü) schließt es.
-  const actionsRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!showActions) return;
-    const onDown = (e: PointerEvent) => {
-      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) setShowActions(false);
-    };
-    document.addEventListener('pointerdown', onDown);
-    return () => document.removeEventListener('pointerdown', onDown);
-  }, [showActions]);
   const tg = useTemplateGrid({
     template: binder?.template ?? null,
     active: templateGridActive,
@@ -516,47 +506,27 @@ export default function BinderDetailPage({ params }: Props) {
             <p className="text-role-label text-glass-muted">{layoutLabel}</p>
           </div>
           {!isProtected && (
-            <div ref={actionsRef} className="relative shrink-0">
-              <Button
-                variant="secondary"
-                icon={<MoreHorizontal />}
-                aria-label="Aktionen"
-                onClick={() => setShowActions(a => !a)}
-              />
-              {showActions && (
-                // Liegt AUF dem Button (top-0/right-0) und quillt gooey aus der
-                // rechten oberen Ecke; Glas-Design (transluzent + Blur).
-                <div
-                  className="menu-goo-open origin-top-right absolute right-0 top-0 z-40 min-w-[190px] glass rounded-2xl overflow-hidden shadow-xl"
-                >
-                  {binder.template && (
-                    <button
-                      onClick={() => { setShowActions(false); handleFillFromOwned(); }}
-                      disabled={filling}
-                      className="w-full px-4 py-3 text-sm text-left text-glass hover:bg-white/10 disabled:opacity-50"
-                    >
-                      Passende Karten einsortieren
-                    </button>
-                  )}
-                  {binder.template && (
-                    <button
-                      onClick={() => { setShowActions(false); setShowExport(true); }}
-                      className="w-full px-4 py-3 text-sm text-left text-glass hover:bg-white/10"
-                    >
-                      Exportieren …
-                    </button>
-                  )}
-                  <button onClick={() => { setShowActions(false); setShowEdit(true); }} className="w-full px-4 py-3 text-sm text-left text-glass hover:bg-white/10">
-                    Bearbeiten
-                  </button>
-                  {!binder.isDefault && (
-                    <button onClick={() => { setShowActions(false); handleDelete(); }} className="w-full px-4 py-3 text-sm text-left text-destructive hover:bg-white/10">
-                      Sammlung löschen
-                    </button>
-                  )}
-                </div>
+            <Menu
+              trigger={(open, toggle) => (
+                <Button
+                  variant="secondary"
+                  icon={<MoreHorizontal />}
+                  aria-label="Aktionen"
+                  aria-expanded={open}
+                  onClick={toggle}
+                />
               )}
-            </div>
+              items={[
+                ...(binder.template ? [
+                  { label: 'Passende Karten einsortieren', onClick: handleFillFromOwned, disabled: filling },
+                  { label: 'Exportieren …', onClick: () => setShowExport(true) },
+                ] : []),
+                { label: 'Bearbeiten', onClick: () => setShowEdit(true) },
+                ...(!binder.isDefault ? [
+                  { label: 'Sammlung löschen', onClick: handleDelete, destructive: true },
+                ] : []),
+              ]}
+            />
           )}
         </div>
 

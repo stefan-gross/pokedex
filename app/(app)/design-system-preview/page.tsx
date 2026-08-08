@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Star, Sun, Moon, Image as ImageIcon, Waves, Trash2, Plus, Camera, Settings, Save, RotateCcw } from 'lucide-react';
+import { Star, Sun, Moon, Image as ImageIcon, Waves, Trash2, Plus, Camera, Settings, Save, RotateCcw, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Menu } from '@/components/ui/menu';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ButtonGroup } from '@/components/ui/button-group';
@@ -1721,6 +1722,42 @@ export default function DesignSystemPreviewPage() {
             Zentriertes Modal — gleiches Schließverhalten wie das Sheet.
           </p>
         </Dialog>
+      </Section>
+
+      <Section title="Menü (Aktionen)">
+        <p className="text-role-label text-glass-muted">
+          Aufklappendes Aktionen-Dropdown: quillt gooey aus der Ecke (kein
+          SVG-Blur → scharfer Text), Glas-Fläche (`.glass-menu`, blickdichter als
+          `.glass`, da es meist über hellem Glas liegt), liegt AUF dem Auslöser
+          und schließt bei Klick irgendwohin außerhalb.
+        </p>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-role-label text-glass-muted">Rechts ausgerichtet</span>
+          <Menu
+            trigger={(open, toggle) => (
+              <Button variant="secondary" icon={<MoreHorizontal />} aria-label="Aktionen" aria-expanded={open} onClick={toggle} />
+            )}
+            items={[
+              { label: 'Bearbeiten', onClick: () => setDemoLog('Menü: Bearbeiten') },
+              { label: 'Duplizieren', onClick: () => setDemoLog('Menü: Duplizieren') },
+              { label: 'Deaktiviert', onClick: () => {}, disabled: true },
+              { label: 'Löschen', onClick: () => setDemoLog('Menü: Löschen'), destructive: true },
+            ]}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <Menu
+            align="left"
+            trigger={(open, toggle) => (
+              <Button variant="secondary" icon={<MoreHorizontal />} aria-label="Aktionen" aria-expanded={open} onClick={toggle} />
+            )}
+            items={[
+              { label: 'Bearbeiten', onClick: () => setDemoLog('Menü: Bearbeiten') },
+              { label: 'Löschen', onClick: () => setDemoLog('Menü: Löschen'), destructive: true },
+            ]}
+          />
+          <span className="text-role-label text-glass-muted">Links ausgerichtet</span>
+        </div>
       </Section>
     </div>
   );
