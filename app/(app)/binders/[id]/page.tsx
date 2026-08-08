@@ -20,7 +20,6 @@ import {
   ensureDefaultBinder, addCardToBinder, addCardsToBinder, removeCardFromOtherBinders,
 } from '@/lib/firestore/binders';
 import { syncTemplateBinders } from '@/lib/template-binders/sync';
-import { matchTemplateBinders } from '@/lib/template-binders/match-hint';
 import { getCard, getCards } from '@/lib/firestore/cards';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { resolveTemplateSlots } from '@/lib/template-binders/resolve';
@@ -190,26 +189,29 @@ export default function BinderDetailPage({ params }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  // „Füllen": passende Owned-Karten (aus der ganzen Sammlung, v.a. Unsortiert) in
-  // diese Vorlagen-Sammlung einsortieren. Match per Template-Regel
-  // (Set/Pokémon/Illustrator) über die Katalog-Karte; danach Template-Sync, der
-  // die Karten in ihre Slots legt und Gewinner aus „Unsortiert" entfernt.
+  // „Füllen": nur FEHLENDE Slots dieser Vorlagen-Sammlung mit der jeweils
+  // BESTEN besessenen Karte belegen. Wir lösen die Slot-Gewinner global über den
+  // gesamten Bestand (nicht nur die schon enthaltenen Karten) auf — so wird eine
+  // schon vorhandene, aber schlechtere Variante (z.B. Standard) durch die bessere
+  // (z.B. Holo) ersetzt; der anschließende Template-Sync verdrängt die verlierende
+  // Karte zurück nach „Unsortiert". Duplikate/schlechtere Varianten kommen erst
+  // gar nicht in die Sammlung.
   const [filling, setFilling] = useState(false);
   const handleFillFromOwned = useCallback(async () => {
     if (!binder?.template || filling) return;
     setFilling(true);
     try {
-      const allOwned = await getCards();
+      const [allOwned, slots] = await Promise.all([
+        getCards(),
+        resolveTemplateSlots(binder.template),
+      ]);
+      const languageAware = binder.template.type === 'pokedex';
+      const winnerIds = resolveSlotWinners(slots, allOwned, { languageAware })
+        .map(r => r.winnerCardId)
+        .filter((id): id is string => id !== null);
       const inThis = new Set(binder.cardIds);
-      const candidates = allOwned.filter(c => c.tcgId && !c.pendingCatalog && !inThis.has(c.id));
-      const catIds = [...new Set(candidates.map(c => c.tcgId as string))];
-      const cats = await getCatalogCardsByIds(catIds);
-      const catById = new Map(cats.map(cc => [cc.id, cc]));
-      const toAdd = candidates.filter(c => {
-        const cc = catById.get(c.tcgId as string);
-        return cc ? matchTemplateBinders(cc, [binder]).length > 0 : false;
-      });
-      await addCardsToBinder(binder.id, toAdd.map(c => c.id)); // 1 Write statt N
+      const toAdd = winnerIds.filter(id => !inThis.has(id));
+      if (toAdd.length > 0) await addCardsToBinder(binder.id, toAdd); // 1 Write statt N
       await syncTemplateBinders({ binderIds: [binder.id] });
       await load();
     } catch (e) {

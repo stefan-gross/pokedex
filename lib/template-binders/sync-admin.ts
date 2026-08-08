@@ -66,7 +66,13 @@ export async function syncTemplateBindersAdmin(opts?: { binderIds?: string[] }):
 
       const plan = await computeBinderSyncPlan(binder, candidateCards, wishlist.items);
 
-      if (plan.pagesChanged) {
+      // Ein Vorlagen-Binder hält immer genau EIN Exemplar je Karte (den Slot-
+      // Gewinner) — alles andere im Pool (verdrängte Varianten, Duplikate) wird
+      // nach „Unsortiert" ausgeräumt UND aus dem Binder entfernt (siehe sync.ts).
+      const winnerSet = new Set(plan.winnerCardIds);
+      const evicted = binder.cardIds.filter(id => !winnerSet.has(id));
+
+      if (plan.pagesChanged || evicted.length > 0) {
         await db.collection('binders').doc(binder.id).update({
           pages: plan.pages,
           cardIds: plan.pages.flatMap(p => p.slots).filter((id): id is string => id !== null),
@@ -78,7 +84,7 @@ export async function syncTemplateBindersAdmin(opts?: { binderIds?: string[] }):
         for (const id of plan.winnerCardIds) {
           await db.collection('binders').doc(defaultBinderId).update({ cardIds: FieldValue.arrayRemove(id) });
         }
-        for (const id of plan.loserCardIds) {
+        for (const id of evicted) {
           await db.collection('binders').doc(defaultBinderId).update({ cardIds: FieldValue.arrayUnion(id) });
           moved++;
         }

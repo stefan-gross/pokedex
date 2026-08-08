@@ -280,8 +280,13 @@ function banderoleClipPath(tileWidthPx: number): string {
 const LONG_PRESS_MS = 500;
 
 function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { binder: BinderDoc; binderCards: CardDoc[]; editMode: boolean; onDelete: () => void; onLongPress: () => void }) {
-  const cardCount = binder.cardIds.length;
   const isBox     = binder.collectionType === 'box';
+  // Vorlagen-Sammlung: ein Slot = eine Karte → eindeutig nach tcgId zählen
+  // (Duplikate/Varianten als eine Karte, wie die Set-Übersicht). Sonst alle
+  // Exemplare (eine Box darf mehrere gleiche Karten getrennt zählen).
+  const cardCount = binder.template
+    ? new Set(binderCards.map(c => c.tcgId ?? c.id)).size
+    : binder.cardIds.length;
   const totalValue = useTotalValue(binderCards);
   // Automatische Sammlung: Gesamt-Slotzahl (max. Karten) auflösen, damit die
   // Banderole „besessen / max" zeigt statt nur der besessenen Anzahl.

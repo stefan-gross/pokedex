@@ -40,17 +40,25 @@ async function syncOneBinder(
 
   const plan = await computeBinderSyncPlan(binder, ownedCards, wl.items);
 
-  if (plan.pagesChanged) await setBinderPages(binder.id, plan.pages);
+  // Ein Vorlagen-Binder hält immer genau EIN Exemplar je Karte (den Slot-
+  // Gewinner). Alles andere im Pool — verdrängte Varianten, Duplikate, evtl.
+  // verirrte Nicht-Treffer — wird ausgeräumt: zurück nach „Unsortiert" UND aus
+  // dem Binder entfernt. `setBinderPages` schreibt `cardIds = Gewinner`, daher
+  // muss es auch laufen, wenn nur der Pool (nicht das Layout) bereinigt wird.
+  const winnerSet = new Set(plan.winnerCardIds);
+  const evicted = binder.cardIds.filter(id => !winnerSet.has(id));
+
+  if (plan.pagesChanged || evicted.length > 0) await setBinderPages(binder.id, plan.pages);
 
   let moved = 0;
   if (defaultBinderId !== binder.id) {
     // Gewinner werden aus „Meine Sammlung" entfernt (arrayRemove ist ein
-    // sicherer No-op, falls sie dort gar nicht lagen), Verlierer (z.B. die
-    // verdrängte Normal-Karte) wandern dorthin. Einschränkung: andere,
-    // nicht-Standard-Binder, in die eine Karte manuell gepackt wurde,
-    // werden hier nicht angefasst.
+    // sicherer No-op, falls sie dort gar nicht lagen), ausgeräumte Karten (z.B.
+    // die verdrängte Normal-Karte oder ein Duplikat) wandern dorthin.
+    // Einschränkung: andere, nicht-Standard-Binder, in die eine Karte manuell
+    // gepackt wurde, werden hier nicht angefasst.
     for (const id of plan.winnerCardIds) await removeCardFromBinder(defaultBinderId, id);
-    for (const id of plan.loserCardIds) { await addCardToBinder(defaultBinderId, id); moved++; }
+    for (const id of evicted) { await addCardToBinder(defaultBinderId, id); moved++; }
   }
 
   if (JSON.stringify(plan.wishlistItems) !== JSON.stringify(wl.items)) {
