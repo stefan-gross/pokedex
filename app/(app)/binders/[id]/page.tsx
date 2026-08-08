@@ -593,14 +593,13 @@ export default function BinderDetailPage({ params }: Props) {
               // eigenen Switch. Links „aus" (durchgestrichenes i), rechts „an".
               <ButtonGroup
                 iconOnly
-                size="sm"
                 toggle
                 className="shrink-0"
                 value={showCardInfo ? 'on' : 'off'}
                 onChange={(v) => setShowCardInfo(v === 'on')}
                 options={[
-                  { value: 'off', label: <InfoOffIcon size={15} />, ariaLabel: 'Zusatzinformationen aus' },
-                  { value: 'on',  label: <Info size={15} />,        ariaLabel: 'Zusatzinformationen an' },
+                  { value: 'off', label: <InfoOffIcon size={18} />, ariaLabel: 'Zusatzinformationen aus' },
+                  { value: 'on',  label: <Info size={18} />,        ariaLabel: 'Zusatzinformationen an' },
                 ]}
               />
             )}
