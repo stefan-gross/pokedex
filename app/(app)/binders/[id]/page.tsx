@@ -20,7 +20,8 @@ import {
   ensureDefaultBinder, addCardToBinder, removeCardFromOtherBinders,
 } from '@/lib/firestore/binders';
 import { syncTemplateBinders } from '@/lib/template-binders/sync';
-import { getCard } from '@/lib/firestore/cards';
+import { matchTemplateBinders } from '@/lib/template-binders/match-hint';
+import { getCard, getCards } from '@/lib/firestore/cards';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { resolveTemplateSlots } from '@/lib/template-binders/resolve';
 import { resolveSlotWinners } from '@/lib/template-binders/slot-winner';
@@ -187,6 +188,35 @@ export default function BinderDetailPage({ params }: Props) {
   }, [id, router]);
 
   useEffect(() => { load(); }, [load]);
+
+  // „Füllen": passende Owned-Karten (aus der ganzen Sammlung, v.a. Unsortiert) in
+  // diese Vorlagen-Sammlung einsortieren. Match per Template-Regel
+  // (Set/Pokémon/Illustrator) über die Katalog-Karte; danach Template-Sync, der
+  // die Karten in ihre Slots legt und Gewinner aus „Unsortiert" entfernt.
+  const [filling, setFilling] = useState(false);
+  const handleFillFromOwned = useCallback(async () => {
+    if (!binder?.template || filling) return;
+    setFilling(true);
+    try {
+      const allOwned = await getCards();
+      const inThis = new Set(binder.cardIds);
+      const candidates = allOwned.filter(c => c.tcgId && !c.pendingCatalog && !inThis.has(c.id));
+      const catIds = [...new Set(candidates.map(c => c.tcgId as string))];
+      const cats = await getCatalogCardsByIds(catIds);
+      const catById = new Map(cats.map(cc => [cc.id, cc]));
+      const toAdd = candidates.filter(c => {
+        const cc = catById.get(c.tcgId as string);
+        return cc ? matchTemplateBinders(cc, [binder]).length > 0 : false;
+      });
+      for (const c of toAdd) await addCardToBinder(binder.id, c.id);
+      await syncTemplateBinders({ binderIds: [binder.id] });
+      await load();
+    } catch (e) {
+      console.error('[fill] error', e);
+    } finally {
+      setFilling(false);
+    }
+  }, [binder, filling, load]);
 
   // Platzhalter-Karten für fehlende Slots eines Vorlagen-Binders — dieselbe
   // Regel-Engine wie der Sync (lib/template-binders/*), aber rein lesend
@@ -468,6 +498,15 @@ export default function BinderDetailPage({ params }: Props) {
 
         {showActions && (
           <div className="absolute right-4 top-[calc(100%-8px)] glass rounded-md overflow-hidden z-30 min-w-[160px]">
+            {binder.template && (
+              <button
+                onClick={() => { setShowActions(false); handleFillFromOwned(); }}
+                disabled={filling}
+                className="w-full px-4 py-3 text-sm text-left text-glass hover:bg-white/10 disabled:opacity-50"
+              >
+                Passende Karten einsortieren
+              </button>
+            )}
             <button onClick={() => { setShowActions(false); setShowEdit(true); }} className="w-full px-4 py-3 text-sm text-left text-glass hover:bg-white/10">
               Bearbeiten
             </button>
