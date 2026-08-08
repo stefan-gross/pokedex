@@ -506,13 +506,46 @@ export default function BinderDetailPage({ params }: Props) {
             <p className="text-role-label text-glass-muted">{layoutLabel}</p>
           </div>
           {!isProtected && (
-            <button
-              onClick={() => setShowActions(a => !a)}
-              className="w-11 h-11 rounded-md glass-inner flex items-center justify-center text-glass"
-              aria-label="Aktionen"
-            >
-              <MoreHorizontal size={20} />
-            </button>
+            <div className="relative shrink-0">
+              <Button
+                variant="secondary"
+                icon={<MoreHorizontal />}
+                aria-label="Aktionen"
+                onClick={() => setShowActions(a => !a)}
+              />
+              {showActions && (
+                <div
+                  className="absolute right-0 top-full mt-2 z-40 min-w-[190px] rounded-xl overflow-hidden shadow-xl border border-black/10 dark:border-white/10"
+                  style={{ background: 'var(--popover)', color: 'var(--popover-foreground)' }}
+                >
+                  {binder.template && (
+                    <button
+                      onClick={() => { setShowActions(false); handleFillFromOwned(); }}
+                      disabled={filling}
+                      className="w-full px-4 py-3 text-sm text-left hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-50"
+                    >
+                      Passende Karten einsortieren
+                    </button>
+                  )}
+                  {binder.template && (
+                    <button
+                      onClick={() => { setShowActions(false); setShowExport(true); }}
+                      className="w-full px-4 py-3 text-sm text-left hover:bg-black/5 dark:hover:bg-white/10"
+                    >
+                      Exportieren …
+                    </button>
+                  )}
+                  <button onClick={() => { setShowActions(false); setShowEdit(true); }} className="w-full px-4 py-3 text-sm text-left hover:bg-black/5 dark:hover:bg-white/10">
+                    Bearbeiten
+                  </button>
+                  {!binder.isDefault && (
+                    <button onClick={() => { setShowActions(false); handleDelete(); }} className="w-full px-4 py-3 text-sm text-left text-destructive hover:bg-black/5 dark:hover:bg-white/10">
+                      Sammlung löschen
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -615,36 +648,6 @@ export default function BinderDetailPage({ params }: Props) {
             </div>
             <div className="pt-2">{tg.sortBar}</div>
             <Grabber expanded={stage === 0} {...grabberProps} />
-          </div>
-        )}
-
-        {showActions && (
-          <div className="absolute right-4 top-[calc(100%-8px)] glass rounded-md overflow-hidden z-30 min-w-[160px]">
-            {binder.template && (
-              <button
-                onClick={() => { setShowActions(false); handleFillFromOwned(); }}
-                disabled={filling}
-                className="w-full px-4 py-3 text-sm text-left text-glass hover:bg-white/10 disabled:opacity-50"
-              >
-                Passende Karten einsortieren
-              </button>
-            )}
-            {binder.template && (
-              <button
-                onClick={() => { setShowActions(false); setShowExport(true); }}
-                className="w-full px-4 py-3 text-sm text-left text-glass hover:bg-white/10"
-              >
-                Exportieren …
-              </button>
-            )}
-            <button onClick={() => { setShowActions(false); setShowEdit(true); }} className="w-full px-4 py-3 text-sm text-left text-glass hover:bg-white/10">
-              Bearbeiten
-            </button>
-            {!binder.isDefault && (
-              <button onClick={() => { setShowActions(false); handleDelete(); }} className="w-full px-4 py-3 text-sm text-left text-destructive hover:bg-white/10">
-                Sammlung löschen
-              </button>
-            )}
           </div>
         )}
       </div>
