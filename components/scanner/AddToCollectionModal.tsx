@@ -104,7 +104,11 @@ export function AddToCollectionModal({
       // Manuelles Hinzufügen aus Suche/Kartendetail ist bewusst gewählt → kein
       // Review-Status. Vorläufige Karten (pendingCatalog) behandelt der Helper.
       const cardId = await addCard(
-        cardInfoToAddInput(card, { variant, condition, language, needsReview: fromScanner }),
+        // Einzeln, manuell bestätigtes Hinzufügen (Grid-„+", Erkennen-FAB,
+        // Kartendetail, Suche) — der Nutzer prüft die Karte selbst → kein
+        // Prüfen-Badge. Der bleibt „Alle hinzufügen" (Bulk) + Auto-Save beim
+        // Verlassen vorbehalten, wo NICHT einzeln geprüft wird.
+        cardInfoToAddInput(card, { variant, condition, language, needsReview: false }),
       );
       const chosen = allBinders.find(b => b.id === targetId);
       if (chosen?.template) {
