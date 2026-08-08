@@ -17,8 +17,10 @@ export interface MenuItem {
  *    der Verankerungsecke — kein SVG-Blur, damit der Text scharf bleibt.
  *  - **Glas**: `.glass-menu` (mattierte, transluzente Scheibe — bewusst
  *    blickdichter als `.glass`, da Menüs meist über hellem Glas liegen).
- *  - **Öffnet direkt unter dem Auslöser** (`top-full`) — der Auslöser bleibt
- *    sichtbar; das Menü quillt gooey aus seiner oberen Ecke nach unten.
+ *  - **Öffnet ÜBER dem Auslöser** (`top-0`, z-Ebene): der Auslöser verschwindet,
+ *    während das Menü offen ist, und ploppt beim Schließen gooey zurück
+ *    (`menu-trigger-pop`). Der Auslöser behält im Layout seinen Platz
+ *    (unsichtbar statt entfernt), damit nichts springt.
  *  - **Klick irgendwohin außerhalb** (Button + Menü) schließt es
  *    (document-`pointerdown`).
  *
@@ -39,6 +41,17 @@ export function Menu({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  // Zählt jede Schließung hoch → `key` am Auslöser-Wrapper wechselt → die
+  // Wiedererscheinen-Animation (`menu-trigger-pop`) startet neu. `> 0` schließt
+  // den ersten Mount aus (da soll der Button NICHT einploppen).
+  const [closeCount, setCloseCount] = useState(0);
+  const prevOpen = useRef(false);
+  // Auf JEDEM Schließpfad (Toggle, Eintrag-Klick, Klick-außerhalb) genau einmal
+  // hochzählen — deckt alle Wege ab, ohne dass jeder Aufrufer daran denken muss.
+  useEffect(() => {
+    if (prevOpen.current && !open) setCloseCount(c => c + 1);
+    prevOpen.current = open;
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -53,11 +66,18 @@ export function Menu({
 
   return (
     <div ref={ref} className={`relative shrink-0 ${className}`}>
-      {trigger(open, toggle)}
+      {/* Auslöser behält seinen Platz (unsichtbar statt entfernt → kein
+          Layout-Sprung); ploppt beim Schließen per key-Remount gooey zurück. */}
+      <span
+        key={closeCount}
+        className={open ? 'opacity-0 pointer-events-none' : (closeCount > 0 ? 'menu-trigger-pop inline-flex' : 'inline-flex')}
+      >
+        {trigger(open, toggle)}
+      </span>
       {open && (
         <div
           role="menu"
-          className={`menu-goo-open absolute top-full mt-2 z-40 min-w-[190px] glass-menu rounded-2xl overflow-hidden shadow-xl ${
+          className={`menu-goo-open absolute top-0 z-40 min-w-[190px] glass-menu rounded-2xl overflow-hidden shadow-xl ${
             align === 'right' ? 'right-0 origin-top-right' : 'left-0 origin-top-left'
           }`}
         >

@@ -647,6 +647,22 @@
   .menu-goo-open { animation: none; }
 }
 
+/* Gooey-Wiedererscheinen des Auslösers, NACHDEM das Menü (das über ihm lag)
+   geschlossen wurde — der Button „ploppt" mit Überschwung zurück. Läuft nur
+   beim Schließen (per key-Remount im `Menu`), nie beim ersten Mount. */
+@keyframes menu-trigger-pop {
+  0%   { opacity: 0; transform: scale(0.4); }
+  55%  { opacity: 1; transform: scale(1.12); }
+  76%  { transform: scale(0.95); }
+  100% { transform: scale(1); }
+}
+.menu-trigger-pop {
+  animation: menu-trigger-pop 340ms cubic-bezier(.34,1.56,.64,1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu-trigger-pop { animation: none; }
+}
+
 /* Karte „lebendig" während Drag — sanftes Auf-Ab-Bobbing */
 @keyframes binder-card-bob {
   0%   { transform: translateY(0); }
