@@ -213,6 +213,16 @@ export default function BinderDetailPage({ params }: Props) {
   const templateGridActive = !!binder?.template && view === 'grid';
   const panelRef    = useRef<HTMLDivElement>(null);
   const gridWrapRef = useRef<HTMLDivElement>(null);
+  // Aktionen-Menü: Klick irgendwohin (außerhalb von Button+Menü) schließt es.
+  const actionsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showActions) return;
+    const onDown = (e: PointerEvent) => {
+      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) setShowActions(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [showActions]);
   const tg = useTemplateGrid({
     template: binder?.template ?? null,
     active: templateGridActive,
@@ -506,7 +516,7 @@ export default function BinderDetailPage({ params }: Props) {
             <p className="text-role-label text-glass-muted">{layoutLabel}</p>
           </div>
           {!isProtected && (
-            <div className="relative shrink-0">
+            <div ref={actionsRef} className="relative shrink-0">
               <Button
                 variant="secondary"
                 icon={<MoreHorizontal />}
@@ -514,15 +524,16 @@ export default function BinderDetailPage({ params }: Props) {
                 onClick={() => setShowActions(a => !a)}
               />
               {showActions && (
+                // Liegt AUF dem Button (top-0/right-0) und quillt gooey aus der
+                // rechten oberen Ecke; Glas-Design (transluzent + Blur).
                 <div
-                  className="absolute right-0 top-full mt-2 z-40 min-w-[190px] rounded-xl overflow-hidden shadow-xl border border-black/10 dark:border-white/10"
-                  style={{ background: 'var(--popover)', color: 'var(--popover-foreground)' }}
+                  className="menu-goo-open origin-top-right absolute right-0 top-0 z-40 min-w-[190px] glass rounded-2xl overflow-hidden shadow-xl"
                 >
                   {binder.template && (
                     <button
                       onClick={() => { setShowActions(false); handleFillFromOwned(); }}
                       disabled={filling}
-                      className="w-full px-4 py-3 text-sm text-left hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-50"
+                      className="w-full px-4 py-3 text-sm text-left text-glass hover:bg-white/10 disabled:opacity-50"
                     >
                       Passende Karten einsortieren
                     </button>
@@ -530,16 +541,16 @@ export default function BinderDetailPage({ params }: Props) {
                   {binder.template && (
                     <button
                       onClick={() => { setShowActions(false); setShowExport(true); }}
-                      className="w-full px-4 py-3 text-sm text-left hover:bg-black/5 dark:hover:bg-white/10"
+                      className="w-full px-4 py-3 text-sm text-left text-glass hover:bg-white/10"
                     >
                       Exportieren …
                     </button>
                   )}
-                  <button onClick={() => { setShowActions(false); setShowEdit(true); }} className="w-full px-4 py-3 text-sm text-left hover:bg-black/5 dark:hover:bg-white/10">
+                  <button onClick={() => { setShowActions(false); setShowEdit(true); }} className="w-full px-4 py-3 text-sm text-left text-glass hover:bg-white/10">
                     Bearbeiten
                   </button>
                   {!binder.isDefault && (
-                    <button onClick={() => { setShowActions(false); handleDelete(); }} className="w-full px-4 py-3 text-sm text-left text-destructive hover:bg-black/5 dark:hover:bg-white/10">
+                    <button onClick={() => { setShowActions(false); handleDelete(); }} className="w-full px-4 py-3 text-sm text-left text-destructive hover:bg-white/10">
                       Sammlung löschen
                     </button>
                   )}

@@ -602,6 +602,25 @@
   .goo-squish { animation: none; }
 }
 
+/* Gooey-Öffnen für aufklappende Menüs (z.B. das Aktionen-„…"-Dropdown der
+   Binder-Detailseite): organisch aus der Verankerungsecke „herausquellen" —
+   Stauch-Overshoot wie `goo-squish`, aber mit Fade + festem transform-origin.
+   Bewusst OHNE SVG-Blur-Filter (der würde den Text während der Animation
+   unscharf machen, siehe Kommentar bei `goo-squish`). Der Aufrufer setzt die
+   Ecke via `transform-origin`-Utility (z.B. `origin-top-right`). */
+@keyframes menu-goo-open {
+  0%   { opacity: 0; transform: scale(0.55) scaleY(0.42); }
+  55%  { opacity: 1; transform: scale(1.05) scaleY(1.07); }
+  78%  { transform: scale(0.985) scaleY(0.98); }
+  100% { transform: scale(1); }
+}
+.menu-goo-open {
+  animation: menu-goo-open 340ms cubic-bezier(.36,.07,.19,.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu-goo-open { animation: none; }
+}
+
 /* Karte „lebendig" während Drag — sanftes Auf-Ab-Bobbing */
 @keyframes binder-card-bob {
   0%   { transform: translateY(0); }
