@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef, use, useCallback, createContext, 
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, Settings, LayoutGrid, BookOpen, FileText, Check,
-  Plus, Minus, ChevronRight, ChevronDown, Info, MoreHorizontal, FileDown,
+  Plus, Minus, ChevronRight, ChevronDown, Info, MoreHorizontal, FileDown, Images,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, TouchSensor, useSensor, useSensors,
@@ -251,6 +251,30 @@ export default function BinderDetailPage({ params }: Props) {
       setExporting(false);
     }
   }, [binder, exporting, cards, catalogInfoById, missingCards, cardPrices]);
+
+  // ── Export (Proxy-Karten der fehlenden als PDF, Graustufen) ──────────────
+  const [proxyProgress, setProxyProgress] = useState<{ done: number; total: number } | null>(null);
+  const handleExportProxies = useCallback(async () => {
+    if (!binder || exporting) return;
+    setExporting(true);
+    try {
+      const cardsIn = [...missingCards.values()].map(cc => {
+        const info = catalogCardToInfo(cc);
+        return { imgUrl: info.imgLargeDe || info.imgLarge || undefined, name: info.name, number: info.number, setCode: cc.setCode };
+      });
+      if (cardsIn.length === 0) { setShowExport(false); return; }
+      const mod = await import('@/components/binder/proxy-pdf');
+      setProxyProgress({ done: 0, total: cardsIn.length });
+      const images = await mod.prepareProxyImages(cardsIn, (done, total) => setProxyProgress({ done, total }));
+      await mod.downloadProxyPdf(`${binder.name} — Proxy-Karten`, images);
+      setShowExport(false);
+    } catch (e) {
+      console.error('[export] proxies', e);
+    } finally {
+      setExporting(false);
+      setProxyProgress(null);
+    }
+  }, [binder, exporting, missingCards]);
 
   // Platzhalter-Karten für fehlende Slots eines Vorlagen-Binders — dieselbe
   // Regel-Engine wie der Sync (lib/template-binders/*), aber rein lesend
@@ -660,10 +684,21 @@ export default function BinderDetailPage({ params }: Props) {
               <span className="flex-1">{o.label}</span>
             </button>
           ))}
+          <p className="text-role-label text-glass-muted px-1 pt-2">Zum Ausdrucken</p>
+          <button
+            onClick={handleExportProxies}
+            disabled={exporting}
+            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl glass-inner text-left text-glass disabled:opacity-50"
+          >
+            <Images size={18} className="shrink-0 text-glass-muted" />
+            <span className="flex-1">Proxy-Karten der fehlenden (Graustufen)</span>
+          </button>
           {exporting && (
             <div className="flex items-center gap-2 px-1 pt-1 text-role-label text-glass-muted">
               <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-              PDF wird erstellt …
+              {proxyProgress
+                ? `Proxy-Bilder … ${proxyProgress.done}/${proxyProgress.total}`
+                : 'PDF wird erstellt …'}
             </div>
           )}
         </div>
