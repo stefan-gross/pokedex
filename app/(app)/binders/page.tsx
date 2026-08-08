@@ -8,7 +8,7 @@ import { getCards } from '@/lib/firestore/cards';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { CreateTemplateBinderModal } from '@/components/binder/CreateTemplateBinderModal';
 import { BinderCover } from '@/components/binder/BinderCover';
-import { CollectionTypeBadge } from '@/components/binder/CollectionTypeBadge';
+import { CollectionTypeCornerBadge } from '@/components/binder/CollectionTypeBadge';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/modal';
@@ -379,9 +379,7 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
         />
 
         {(!editMode || isProtected) && (
-          <div className="absolute -top-1.5 -left-1.5">
-            <CollectionTypeBadge binder={binder} />
-          </div>
+          <CollectionTypeCornerBadge binder={binder} />
         )}
 
         {wishlistCount > 0 && (
