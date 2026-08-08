@@ -190,23 +190,27 @@ export default function BinderDetailPage({ params }: Props) {
   useEffect(() => { load(); }, [load]);
 
   // „Füllen": nur FEHLENDE Slots dieser Vorlagen-Sammlung mit der jeweils
-  // BESTEN besessenen Karte belegen. Wir lösen die Slot-Gewinner global über den
-  // gesamten Bestand (nicht nur die schon enthaltenen Karten) auf — so wird eine
-  // schon vorhandene, aber schlechtere Variante (z.B. Standard) durch die bessere
-  // (z.B. Holo) ersetzt; der anschließende Template-Sync verdrängt die verlierende
-  // Karte zurück nach „Unsortiert". Duplikate/schlechtere Varianten kommen erst
-  // gar nicht in die Sammlung.
+  // BESTEN Karte aus dem losen Stapel „Unsortiert" belegen — andere Sammlungen
+  // bleiben unangetastet. Wir lösen die Slot-Gewinner nur über die Karten in
+  // „Unsortiert" auf; liegt dort eine bessere Variante (z.B. Holo) als die schon
+  // im Binder (z.B. Standard), wird sie hinzugefügt und der anschließende
+  // Template-Sync verdrängt die schlechtere Karte zurück nach „Unsortiert".
+  // Duplikate/schlechtere Varianten kommen erst gar nicht in die Sammlung.
   const [filling, setFilling] = useState(false);
   const handleFillFromOwned = useCallback(async () => {
     if (!binder?.template || filling) return;
     setFilling(true);
     try {
-      const [allOwned, slots] = await Promise.all([
+      const [allOwned, slots, defaultBinderId] = await Promise.all([
         getCards(),
         resolveTemplateSlots(binder.template),
+        ensureDefaultBinder(),
       ]);
+      const defaultBinder = await getBinder(defaultBinderId);
+      const unsortedIds = new Set(defaultBinder?.cardIds ?? []);
+      const unsorted = allOwned.filter(c => unsortedIds.has(c.id));
       const languageAware = binder.template.type === 'pokedex';
-      const winnerIds = resolveSlotWinners(slots, allOwned, { languageAware })
+      const winnerIds = resolveSlotWinners(slots, unsorted, { languageAware })
         .map(r => r.winnerCardId)
         .filter((id): id is string => id !== null);
       const inThis = new Set(binder.cardIds);
