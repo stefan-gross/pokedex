@@ -149,11 +149,12 @@ export function RecognizedAddBar({
       );
       const chosen = binders.find(b => b.id === targetId);
       if (chosen?.template) {
-        // Vorlagen-Sammlungen sind auto-verwaltet — nicht direkt bebuchen,
-        // sondern nach „Unsortiert" legen und die passende Vorlage syncen (die
-        // holt sich die Karte dann selbst rein, exklusiv wie beim Auto-Flow).
-        const unsortedId = await ensureDefaultBinder();
-        await addCardToBinder(unsortedId, cardId);
+        // Vorlagen-Sammlungen: Karte IN die Vorlage legen und dann syncen — der
+        // Sync sortiert sie in ihren Slot ein. (Der Sync übernimmt KEINE Karten
+        // von selbst, er arrangiert nur die bereits enthaltenen; deshalb muss die
+        // Karte vorher rein. Passt sie nicht zur Vorlage, wandert sie beim Sync
+        // nach „Unsortiert".)
+        await addCardToBinder(chosen.id, cardId);
         await syncTemplateBinders({ binderIds: [chosen.id] });
       } else {
         await addCardToBinder(targetId ?? await ensureDefaultBinder(), cardId);
