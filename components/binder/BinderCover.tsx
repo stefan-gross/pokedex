@@ -60,6 +60,10 @@ interface CoverProps {
    *  des `overflow-hidden`-Deckels, daher nur für eingerückte Ecken-Badges
    *  gedacht (nicht für aus der Ecke ragende Elemente). */
   badge?: ReactNode;
+  /** Am unteren Rand freizuhaltender Bereich in px (z.B. für eine über die
+   *  Kachel gelegte Banderole) — Logo/Name werden dann im Bereich DARÜBER
+   *  zentriert, statt vom Fußband verdeckt zu werden. */
+  reserveBottom?: number;
 }
 
 /** Eckenrundung je Form — die BEIDEN Cover-Komponenten unten nutzen jeweils
@@ -173,7 +177,7 @@ function useCoverChrome(color: string, icon?: string) {
  * vertikaler Schatten dort statt Rundung), Logo + Name mittig. Farbe/Name/Logo
  * frei parametrisiert; optionaler `badge`-Slot oben links.
  */
-export function BinderCover({ color = 'var(--pokedex-red)', name, icon, className = '', badge }: CoverProps) {
+export function BinderCover({ color = 'var(--pokedex-red)', name, icon, className = '', badge, reserveBottom = 0 }: CoverProps) {
   const c = useCoverChrome(color, icon);
   return (
     <div className={`relative aspect-[3/4] overflow-hidden ${COVER_ROUNDING.folder} ${className}`}>
@@ -209,8 +213,10 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, classNam
         <path d={FOLDER_STITCH_PATH} stroke="rgba(255,255,255,.18)" strokeWidth="1" strokeDasharray="5 4" strokeDashoffset="1.5" strokeLinecap="round" />
       </svg>
 
-      {/* Logo + Name mittig */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+      {/* Logo + Name mittig — im Bereich ÜBER der Banderole zentriert
+          (paddingBottom = reserveBottom), damit lange Namen nicht dahinter
+          verschwinden. */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ paddingBottom: reserveBottom }}>
         {icon && <div className="flex justify-center w-full px-[10px]">{c.renderIcon()}</div>}
         {name && (
           <span className="font-extrabold text-[19px] text-center leading-tight line-clamp-3 px-[10px]" style={c.engravedTextStyle}>
@@ -229,7 +235,7 @@ export function BinderCover({ color = 'var(--pokedex-red)', name, icon, classNam
  * oben, Naht nur am Körper). Name im Deckel, Logo unten. Optionaler
  * `badge`-Slot oben links.
  */
-export function BoxCover({ color = 'var(--pokedex-red)', name, icon, className = '', badge }: CoverProps) {
+export function BoxCover({ color = 'var(--pokedex-red)', name, icon, className = '', badge, reserveBottom = 0 }: CoverProps) {
   const c = useCoverChrome(color, icon);
   return (
     <div className={`relative aspect-[3/4] overflow-hidden ${COVER_ROUNDING.box} ${className}`}>
@@ -283,8 +289,9 @@ export function BoxCover({ color = 'var(--pokedex-red)', name, icon, className =
           </span>
         )}
       </div>
-      {/* Logo auf der Box, unterhalb der Naht */}
-      <div className="absolute inset-x-0 bottom-0 flex items-center justify-center px-[10px]" style={{ top: '33%' }}>
+      {/* Logo auf der Box, unterhalb der Naht — im Bereich über der Banderole
+          zentriert (paddingBottom = reserveBottom). */}
+      <div className="absolute inset-x-0 bottom-0 flex items-center justify-center px-[10px]" style={{ top: '33%', paddingBottom: reserveBottom }}>
         {icon && c.renderIcon()}
       </div>
 

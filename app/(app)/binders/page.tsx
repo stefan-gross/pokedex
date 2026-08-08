@@ -376,6 +376,7 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
             color={binder.color}
             name={binder.name}
             icon={binder.icon ?? 'box'}
+            reserveBottom={BANDEROLE_HEIGHT + BANDEROLE_GAP}
             badge={(!editMode || isProtected) ? <CollectionTypeCornerBadge binder={binder} shape="box" /> : undefined}
           />
         ) : (
@@ -383,6 +384,7 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
             color={binder.color}
             name={binder.name}
             icon={binder.icon ?? 'folder'}
+            reserveBottom={BANDEROLE_HEIGHT + BANDEROLE_GAP}
             badge={(!editMode || isProtected) ? <CollectionTypeCornerBadge binder={binder} shape="folder" /> : undefined}
           />
         )}
