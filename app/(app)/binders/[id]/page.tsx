@@ -653,9 +653,9 @@ export default function BinderDetailPage({ params }: Props) {
           pageBg={pageBg}
           editMode={editMode}
           onLongPress={() => { if (!binder?.template) setEditMode(true); }}
-          onOpenSheet={(sheetIdx) => {
-            // Sheet n öffnet die Vorderseite des Blatts = pageIdx 2n
-            setPageIdx(sheetIdx * 2);
+          onOpenPage={(pageIdx) => {
+            // Öffnet exakt die angeklickte Seite (Vorder = 2n, Rück = 2n+1).
+            setPageIdx(pageIdx);
             setView('page');
           }}
           onAddSheet={addSheet}
@@ -952,7 +952,9 @@ function SheetTile({
   accent: string;
   pageBg: string;
   editMode: boolean;
-  onOpen?: () => void;
+  /** Öffnet die konkrete Seite (absoluter pageIdx: Vorderseite = 2·sheet,
+   *  Rückseite = 2·sheet+1). */
+  onOpen?: (pageIdx: number) => void;
   onDelete?: () => void;
   isOverlay?: boolean;
 }) {
@@ -969,17 +971,24 @@ function SheetTile({
         borderWidth: isOverlay ? 2 : 1,
         cursor: editMode ? undefined : 'pointer',
       }}
-      onClick={() => { if (!editMode && onOpen) onOpen(); }}
+      // Rest der Kachel (Spine, Blatt-Label) öffnet die Vorderseite.
+      onClick={() => { if (!editMode && onOpen) onOpen(sheet.sheetIdx * 2); }}
     >
       <div className="relative flex items-stretch gap-1.5">
         <RingsCol />
+        {/* Vorderseite anklicken → Vorderseite öffnen */}
         <div className="flex-1 min-w-0">
           <MiniPageGrid slots={sheet.front.slots} cols={cols} cardsById={cardsById} pageBg={pageBg} missingCards={missingCards} pageIdx={sheet.sheetIdx * 2} />
           <div className="text-[9px] text-center mt-1" style={{ color: pageTextColor, opacity: 0.75 }}>Vorder</div>
         </div>
         {/* Buchrücken-Knick */}
         <div className="self-stretch w-px" style={{ background: pageTextColor, opacity: 0.25 }} />
-        <div className="flex-1 min-w-0">
+        {/* Rückseite anklicken → Rückseite öffnen (stoppt den Vorderseiten-
+            Handler der Gesamtkachel). */}
+        <div
+          className="flex-1 min-w-0"
+          onClick={e => { if (!editMode && onOpen) { e.stopPropagation(); onOpen(sheet.sheetIdx * 2 + 1); } }}
+        >
           <MiniPageGrid slots={sheet.back.slots} cols={cols} cardsById={cardsById} pageBg={pageBg} missingCards={missingCards} pageIdx={sheet.sheetIdx * 2 + 1} />
           <div className="text-[9px] text-center mt-1" style={{ color: pageTextColor, opacity: 0.75 }}>Rück</div>
         </div>
@@ -1011,7 +1020,7 @@ function SheetTile({
 // ── Binder Overview — Sheets als Sortable mit dnd-kit ─────────────────────
 function BinderOverview({
   sheets, cols, cardsById, missingCards, accent, pageBg, editMode,
-  onLongPress, onOpenSheet, onAddSheet, onDeleteSheet, onMoveSheet,
+  onLongPress, onOpenPage, onAddSheet, onDeleteSheet, onMoveSheet,
 }: {
   sheets: { front: BinderPage; back: BinderPage; sheetIdx: number }[];
   cols: number;
@@ -1021,7 +1030,7 @@ function BinderOverview({
   pageBg: string;
   editMode: boolean;
   onLongPress: () => void;
-  onOpenSheet: (sheetIdx: number) => void;
+  onOpenPage: (pageIdx: number) => void;
   onAddSheet: () => void;
   onDeleteSheet: (sheetIdx: number) => void;
   onMoveSheet: (fromId: string, toId: string) => void;
@@ -1060,7 +1069,7 @@ function BinderOverview({
               pageBg={pageBg}
               editMode={editMode}
               onLongPress={onLongPress}
-              onOpen={() => onOpenSheet(sheet.sheetIdx)}
+              onOpen={onOpenPage}
               onDelete={() => onDeleteSheet(sheet.sheetIdx)}
             />
           ))}
@@ -1123,7 +1132,7 @@ function SortableSheetTile({
   pageBg: string;
   editMode: boolean;
   onLongPress: () => void;
-  onOpen: () => void;
+  onOpen: (pageIdx: number) => void;
   onDelete: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({
@@ -1242,9 +1251,13 @@ function SinglePageView({
     : null;
   const activeCardInfo = activeCard ? ownedCardToInfo(activeCard, catalogInfoById) : null;
 
-  // Page-Renderer — Slots im Layout-Grid mit Page-Background + Ring auf richtiger Seite
-  const renderPage = (p: BinderPage, pIdx: number, key: string) => {
-    const pageIsFront = pIdx % 2 === 0;
+  // Page-Renderer — Slots im Layout-Grid mit Page-Background + Ring auf richtiger Seite.
+  // `forceRingsLeft`: im Ruhezustand/Edit steht die Lochung IMMER links (feste
+  // Bindung wie in einem echten Ringordner) — unabhängig von Vorder/Rückseite.
+  // Nur die transienten Flip-Layer nutzen die natürliche, alternierende Seite
+  // (Vorder links / Rück rechts), damit die 3D-Umblätter-Animation stimmt.
+  const renderPage = (p: BinderPage, pIdx: number, key: string, forceRingsLeft = false) => {
+    const ringsLeft = forceRingsLeft || pIdx % 2 === 0;
     const slotsContent = (
       <div
         className="flex-1 grid gap-1.5"
@@ -1298,9 +1311,9 @@ function SinglePageView({
         className={`flex items-stretch gap-2 px-3 py-2 mx-3 rounded-xl border${isBg ? '' : ' shadow-card'}`}
         style={{ background: pageBg, borderColor: 'var(--border)' }}
       >
-        {pageIsFront && <RingsCol />}
+        {ringsLeft && <RingsCol />}
         {slotsContent}
-        {!pageIsFront && <RingsCol />}
+        {!ringsLeft && <RingsCol />}
       </div>
     );
   };
@@ -1418,7 +1431,7 @@ function SinglePageView({
           }}
           onDragCancel={() => setActiveSlot(null)}
         >
-          {renderPage(page, pageIdx, 'edit')}
+          {renderPage(page, pageIdx, 'edit', true)}
 
           <DragOverlay dropAnimation={{ duration: 220, easing: 'cubic-bezier(.2,.9,.3,1)' }}>
             {activeCard ? (
@@ -1506,6 +1519,29 @@ function SinglePageView({
               {renderPage(targetPage, targetIdx, 'target')}
             </div>
           )}
+          {/* Nachbarseiten andeuten (nur im Ruhezustand): eine Seiten-Kante, die
+              BÜNDIG am Bildschirmrand sitzt (kein Abstand zum Rand) und mit ~2px
+              Abstand hinter der aktuellen Seite hervorschaut — rechts die nächste,
+              links die vorherige Seite. Liegt hinter der aktuellen Seite (zIndex 0).
+              Breite = Seiten-Außenrand (mx-3 = 12px) minus 2px Spalt. */}
+          {!showFlip && pageIdx < totalPages - 1 && (
+            <div
+              aria-hidden
+              className="absolute rounded-l-lg border-y border-l pointer-events-none"
+              style={{ top: 8, bottom: 8, right: 0, width: 10, zIndex: 0,
+                background: pageBg === 'transparent' ? 'rgba(120,120,130,.12)' : pageBg,
+                borderColor: 'var(--border)', boxShadow: '-2px 1px 5px rgba(0,0,0,.20)' }}
+            />
+          )}
+          {!showFlip && pageIdx > 0 && (
+            <div
+              aria-hidden
+              className="absolute rounded-r-lg border-y border-r pointer-events-none"
+              style={{ top: 8, bottom: 8, left: 0, width: 10, zIndex: 0,
+                background: pageBg === 'transparent' ? 'rgba(120,120,130,.12)' : pageBg,
+                borderColor: 'var(--border)', boxShadow: '2px 1px 5px rgba(0,0,0,.20)' }}
+            />
+          )}
           {/* Animierter Container — bei Rotate als 3D-„Blatt" mit Front- und
               Backface (Folgeseite); bei Slide einfache horizontale Translation. */}
           <div
@@ -1531,7 +1567,7 @@ function SinglePageView({
                 backfaceVisibility: flip?.kind === 'rotate' ? 'hidden' : undefined,
               }}
             >
-              {renderPage(page, pageIdx, 'top-front')}
+              {renderPage(page, pageIdx, 'top-front', !showFlip)}
             </div>
             {/* Backface — Folgeseite, an die Vorderseite „angeklebt", rotiert
                 mit; durch eigenes rotateY(180deg) ist sie ab 90° sichtbar. */}
