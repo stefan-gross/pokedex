@@ -40,7 +40,9 @@ import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Progress } from '@/components/ui/progress';
 import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal';
-import { TemplateGridBrowser } from '@/components/binder/TemplateGridBrowser';
+import { useTemplateGrid } from '@/components/binder/TemplateGridBrowser';
+import { Grabber } from '@/components/ui/Grabber';
+import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { Sheet } from '@/components/ui/modal';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
@@ -188,6 +190,29 @@ export default function BinderDetailPage({ params }: Props) {
   }, [id, router]);
 
   useEffect(() => { load(); }, [load]);
+
+  // ── Grid-Ansicht einer Vorlagen-Sammlung ────────────────────────────────
+  // Die Filter leben im SELBEN sticky Panel wie Ansichts-Switch + Infos (nicht
+  // in einem zweiten Panel darunter). Der Grid-Zustand kommt aus dem Hook, der
+  // Kollaps (Grabber/Scroll) aus `useGrabberCollapse` — beide unbedingt (nicht
+  // bedingt) aufrufen, daher hier vor jedem early-return.
+  const templateGridActive = !!binder?.template && view === 'grid';
+  const panelRef    = useRef<HTMLDivElement>(null);
+  const gridWrapRef = useRef<HTMLDivElement>(null);
+  const tg = useTemplateGrid({
+    template: binder?.template ?? null,
+    active: templateGridActive,
+    priceResults: cardPrices,
+    onCardsChanged: load,
+  });
+  const { stage, registerRegion, regionStyle, grabberProps } = useGrabberCollapse({
+    regionCount: 1,
+    panelRef,
+    gridWrapRef,
+    ready: tg.ready,
+    scrollTrigger: templateGridActive,
+    measureDeps: [tg.ready, templateGridActive],
+  });
 
   // „Füllen": nur FEHLENDE Slots dieser Vorlagen-Sammlung mit der jeweils
   // BESTEN Karte aus dem losen Stapel „Unsortiert" belegen — andere Sammlungen
@@ -443,17 +468,12 @@ export default function BinderDetailPage({ params }: Props) {
   const pageBg = resolvePageBg(binder.pageBackground);
   const sheets = pagesToSheets(pages, binderSize);
 
-  // In der Grid-Ansicht einer Vorlagen-Sammlung bringt der `TemplateGridBrowser`
-  // sein EIGENES sticky Filter-Panel mit (Grabber-/Scroll-Kollaps wie die Suche).
-  // Dann darf der Kopf NICHT zusätzlich sticky sein — sonst pinnten zwei Panels
-  // gleichzeitig übereinander. Er scrollt stattdessen weg wie der Header der Suche.
-  const templateGridActive = !!binder.template && view === 'grid';
-
   return (
     <BinderCatalogCtx.Provider value={catalogInfoById}>
     <div className="min-h-screen">
-      {/* ── Header-/Info-Panel (in Vorlagen-Grid-Ansicht nicht sticky, s.o.) ── */}
-      <div className={`z-20 mx-3 mt-3 mb-2 glass rounded-[20px] px-4 pt-2 pb-2${templateGridActive ? '' : ' sticky top-safe'}`}>
+      {/* ── Sticky Header-/Info-Panel: Kopf + Ansichts-Switch UND (in der
+          Grid-Ansicht) die kollabierenden Filter — alles in EINEM Panel. ── */}
+      <div ref={panelRef} className="sticky top-safe z-20 mx-3 mt-3 mb-2 glass rounded-[20px] px-4 pt-2 pb-2">
         <Button variant="ghost" onClick={() => router.back()} className="px-0 -ml-1" icon={<ChevronLeft size={18} strokeWidth={2} />}>
           Sammlungen
         </Button>
@@ -566,6 +586,19 @@ export default function BinderDetailPage({ params }: Props) {
           )}
         </div>
 
+        {/* Filter der Grid-Ansicht — im SELBEN Panel wie Kopf + Ansichts-Switch.
+            Kollabierende Region (Suche + Vorhanden/Fehlen + Rarity) per Griff/
+            Scroll, Sortierung darunter immer sichtbar (wie Set-Detailseite). */}
+        {templateGridActive && (
+          <div className="mt-3">
+            <div style={regionStyle(0)} className="overflow-hidden">
+              <div ref={registerRegion(0)} className="pt-0.5">{tg.filterControls}</div>
+            </div>
+            <div className="pt-2">{tg.sortBar}</div>
+            <Grabber expanded={stage === 0} {...grabberProps} />
+          </div>
+        )}
+
         {showActions && (
           <div className="absolute right-4 top-[calc(100%-8px)] glass rounded-md overflow-hidden z-30 min-w-[160px]">
             {binder.template && (
@@ -597,12 +630,12 @@ export default function BinderDetailPage({ params }: Props) {
         )}
       </div>
 
-      {isBox || view === 'grid' ? (
-        binder.template
-          ? <TemplateGridBrowser template={binder.template} priceResults={cardPrices} onCardsChanged={load} />
-          : binder.isDefault
-            ? <RecentTriageView cards={cards} onCardTap={openDetail} prices={cardPrices} />
-            : <GridView cards={cards} onCardTap={openDetail} prices={cardPrices} />
+      {templateGridActive ? (
+        <div ref={gridWrapRef} className="px-3 py-3">{tg.grid}</div>
+      ) : isBox || view === 'grid' ? (
+        binder.isDefault
+          ? <RecentTriageView cards={cards} onCardTap={openDetail} prices={cardPrices} />
+          : <GridView cards={cards} onCardTap={openDetail} prices={cardPrices} />
       ) : view === 'binder' ? (
         <BinderOverview
           sheets={sheets}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { getCards } from '@/lib/firestore/cards';
 import { getBinders } from '@/lib/firestore/binders';
 import { resolveTemplateSlots } from '@/lib/template-binders/resolve';
@@ -9,10 +9,8 @@ import { getRarityGroup } from '@/lib/card-constants';
 import { filterCardsByQuery } from '@/lib/search/card-query';
 import { pickTrendPrice } from '@/lib/prices/value-tier';
 import { useWishlist } from '@/lib/hooks/use-wishlist';
-import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { Input } from '@/components/ui/input';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { Grabber } from '@/components/ui/Grabber';
 import { CardGrid, CardGridSkeleton } from '@/components/card/CardGrid';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
@@ -37,21 +35,41 @@ const SORT_OPTIONS: { value: SortField; label: string }[] = [
 ];
 const pluralKarten = (n: number) => (n === 1 ? '1 Karte' : `${n} Karten`);
 
+/** Fertige, in EIN Panel montierbare Teile der Vorlagen-Grid-Ansicht. */
+export interface TemplateGridParts {
+  /** true, sobald die Kartenmenge geladen ist (für die Höhenmessung des Grabbers). */
+  ready: boolean;
+  /** Filter-Region (Suche + Vorhanden/Fehlen + Rarity) — vom Aufrufer in die
+   *  kollabierende Region des sticky Panels gehängt. */
+  filterControls: ReactNode;
+  /** Sortierung + Kartenanzahl — immer sichtbar unter der Filter-Region. */
+  sortBar: ReactNode;
+  /** Das Karten-Raster (oder Skeleton) für den Content-Bereich. */
+  grid: ReactNode;
+}
+
 /**
  * Grid-Ansicht einer Vorlagen-Sammlung als vollwertiger Set-Browser: zeigt ALLE
  * Karten der Vorlage (besessen farbig, fehlend im Grau-Look), mit Suche,
  * Vorhanden/Fehlen-Filter, Rarity-Facetten und Sortierung — dieselben geteilten
  * Komponenten wie die Set-Detailseite (`RarityFilterBar`/`CardSortBar`/`CardGrid`/
- * `filterCardsByQuery`), nur hier für die Vorlagen-Kartenmenge verdrahtet.
+ * `filterCardsByQuery`).
+ *
+ * Bewusst als Hook (statt Komponente): so kann die Binder-Detailseite die Filter
+ * in IHR bestehendes sticky Kopf-Panel (mit Ansichts-Switch + Infos) einhängen,
+ * statt ein zweites Panel darunter zu stapeln. Der Kollaps (Grabber/Scroll) läuft
+ * über das `useGrabberCollapse` des Aufrufers.
  */
-export function TemplateGridBrowser({
-  template, priceResults, onCardsChanged,
+export function useTemplateGrid({
+  template, active, priceResults, onCardsChanged,
 }: {
-  template: BinderTemplate;
+  template: BinderTemplate | null;
+  /** Nur laden/arbeiten, wenn die Grid-Ansicht wirklich sichtbar ist. */
+  active: boolean;
   /** Preisdaten (tcgId → PriceResult) aus der Binder-Seite; für Preis-Sortierung/Pills. */
   priceResults?: Map<string, PriceResult | null>;
   onCardsChanged?: () => void;
-}) {
+}): TemplateGridParts {
   const [cards, setCards]   = useState<CardInfo[] | null>(null);
   const [owned, setOwned]   = useState<CardDoc[]>([]);
   const [binders, setBinders] = useState<BinderDoc[]>([]);
@@ -62,9 +80,12 @@ export function TemplateGridBrowser({
   const [rarityFilter, setRarityFilter] = useState<Set<string>>(new Set());
   const { wishlistIds, toggle: toggleWishlist } = useWishlist();
 
-  // Kartenmenge der Vorlage (Master-Set/Pokémon/Illustrator) + eigene Karten.
-  const templateKey = JSON.stringify(template);
+  // Kartenmenge der Vorlage (Master-Set/Pokémon/Illustrator) + eigene Karten —
+  // erst laden, wenn die Grid-Ansicht sichtbar ist (spart Reads in Blätter-/
+  // Seiten-Ansicht).
+  const templateKey = template ? JSON.stringify(template) : null;
   useEffect(() => {
+    if (!template || !active) return;
     let cancelled = false;
     (async () => {
       const [slots, ownedCards, allBinders] = await Promise.all([
@@ -85,7 +106,7 @@ export function TemplateGridBrowser({
     })();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [templateKey]);
+  }, [templateKey, active]);
 
   const ownedMap = useMemo(() => {
     const m = new Map<string, CardDoc[]>();
@@ -133,77 +154,47 @@ export function TemplateGridBrowser({
   const toggleRarity = (label: string) =>
     setRarityFilter(prev => { const n = new Set(prev); if (n.has(label)) n.delete(label); else n.add(label); return n; });
 
-  // Grabber-/Scroll-Kollaps wie auf der Such-/Set-Detailseite: EIN sticky
-  // Glas-Panel, dessen Filter-Region (Suche + Vorhanden/Fehlen + Rarity) sich
-  // per Griff (ziehen/tippen) und beim Scrollen ein-/ausklappt. Die Sortierung
-  // bleibt immer sichtbar. `ready` erst, wenn die Karten geladen sind (sonst
-  // misst der Hook eine leere Region).
-  const panelRef    = useRef<HTMLDivElement>(null);
-  const gridWrapRef = useRef<HTMLDivElement>(null);
-  const { stage, registerRegion, regionStyle, grabberProps } = useGrabberCollapse({
-    regionCount: 1,
-    panelRef,
-    gridWrapRef,
-    ready: cards !== null,
-    measureDeps: [cards, spansMultipleSets],
-  });
-
-  return (
-    <>
-      {/* Sticky Filter-Panel — mirror der Set-Detailseite (ein Glas-Panel,
-          kollabierende Filter-Region + immer sichtbare Sortierung + Griff). */}
-      <div className="sticky top-safe z-20 px-3 pt-3 pb-1">
-        <div ref={panelRef} className="glass rounded-[20px] px-4 pt-3 pb-3">
-          {/* Klappbarer Body: Suche + Vorhanden/Fehlen + Rarity */}
-          <div style={regionStyle(0)} className="overflow-hidden">
-            <div ref={registerRegion(0)} className="space-y-2 pt-0.5">
-              <Input
-                variant="search"
-                value={search}
-                onChange={setSearch}
-                onClear={() => setSearch('')}
-                placeholder="Suchen (Name, Nummer, Illustrator)"
-                size="sm"
-              />
-              <ButtonGroup options={FILTER_OPTIONS} value={filter} onChange={setFilter} />
-              {cards && <RarityFilterBar cards={cards} ownedIds={ownedTcgIds} activeRarities={rarityFilter} onToggle={toggleRarity} />}
-            </div>
-          </div>
-
-          {/* Immer sichtbar: Sortierung + Kartenanzahl */}
-          <div className="pt-2">
-            <CardSortBar
-              options={SORT_OPTIONS}
-              sortField={sortField}
-              onSortFieldChange={setSortField}
-              sortDir={sortDir}
-              onSortDirChange={() => setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))}
-              resultLabel={pluralKarten(displayed.length)}
-            />
-          </div>
-
-          {/* Griff: ziehen/tippen klappt die Filter-Region auf/zu. */}
-          <Grabber expanded={stage === 0} {...grabberProps} />
-        </div>
-      </div>
-
-      <div ref={gridWrapRef} className="px-3 py-3">
-        {cards === null ? (
-          <CardGridSkeleton count={9} />
-        ) : (
-          <CardGrid
-            cards={displayed}
-            ownedMap={ownedMap}
-            binders={binders}
-            sortKey={sortField}
-            priceMap={priceMap}
-            wishlistIds={wishlistIds}
-            onToggleWishlist={(c) => toggleWishlist(c)}
-            onCardsChanged={onCardsChanged}
-            showSetBadge={spansMultipleSets}
-          />
-        )}
-      </div>
-    </>
+  const filterControls = (
+    <div className="space-y-2">
+      <Input
+        variant="search"
+        value={search}
+        onChange={setSearch}
+        onClear={() => setSearch('')}
+        placeholder="Suchen (Name, Nummer, Illustrator)"
+        size="sm"
+      />
+      <ButtonGroup options={FILTER_OPTIONS} value={filter} onChange={setFilter} />
+      {cards && <RarityFilterBar cards={cards} ownedIds={ownedTcgIds} activeRarities={rarityFilter} onToggle={toggleRarity} />}
+    </div>
   );
+
+  const sortBar = (
+    <CardSortBar
+      options={SORT_OPTIONS}
+      sortField={sortField}
+      onSortFieldChange={setSortField}
+      sortDir={sortDir}
+      onSortDirChange={() => setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))}
+      resultLabel={pluralKarten(displayed.length)}
+    />
+  );
+
+  const grid = cards === null ? (
+    <CardGridSkeleton count={9} />
+  ) : (
+    <CardGrid
+      cards={displayed}
+      ownedMap={ownedMap}
+      binders={binders}
+      sortKey={sortField}
+      priceMap={priceMap}
+      wishlistIds={wishlistIds}
+      onToggleWishlist={(c) => toggleWishlist(c)}
+      onCardsChanged={onCardsChanged}
+      showSetBadge={spansMultipleSets}
+    />
+  );
+
+  return { ready: active && cards !== null, filterControls, sortBar, grid };
 }
