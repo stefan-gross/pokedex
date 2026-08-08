@@ -1,5 +1,6 @@
 import { Pin } from 'lucide-react';
 import { CardBadge } from '@/components/card/CardBadge';
+import { COVER_TL_RADIUS } from '@/components/binder/BinderCover';
 import type { BinderDoc } from '@/types';
 
 /** „A"-Badge für automatische Vorlagen-Sammlungen — als eigener Baustein
@@ -51,9 +52,14 @@ export function CollectionTypeBadge({ binder, size = 'md' }: { binder: BinderDoc
  *  Karten-Kacheln (statt eines aus der Ecke ragenden Kreises). Positioniert
  *  sich selbst (`absolute` via `top`/`left`), gehört in einen `relative`-Wrapper. */
 export function CollectionTypeCornerBadge({
-  binder, size = 28, cornerRadius = 5, offset = 3,
-}: { binder: BinderDoc; size?: number; cornerRadius?: number; offset?: number }) {
-  const common = { corner: 'tl' as const, cornerRadius, size, style: { top: offset, left: offset } };
+  binder, shape = 'folder', size = 28, cornerRadius, offset = 3,
+}: { binder: BinderDoc; shape?: 'folder' | 'box'; size?: number; cornerRadius?: number; offset?: number }) {
+  // Eckradius an die Kachelform anpassen: er entspricht dem tatsächlichen
+  // Radius der oberen linken Kachelecke (COVER_TL_RADIUS), damit das Badge
+  // bündig in die Ecke von Ordner bzw. Box einnistet (`cornerRadius` kann das
+  // gezielt überschreiben).
+  const radius = cornerRadius ?? COVER_TL_RADIUS[shape];
+  const common = { corner: 'tl' as const, cornerRadius: radius, size, style: { top: offset, left: offset } };
   if (binder.template) {
     return (
       <CardBadge {...common} color="var(--pokedex-blue)" ariaLabel="Automatische Sammlung" title="Automatische Sammlung">

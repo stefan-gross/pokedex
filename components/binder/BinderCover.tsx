@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, type CSSProperties } from 'react';
+import { useId, type CSSProperties, type ReactNode } from 'react';
 import { BinderIcon } from '@/lib/binder-icons';
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -41,41 +41,39 @@ function coverFillColor(bg: string): string {
 /** Text-/Icon-Farbe auf dem Deckel: EIN Stil für alle Farben — Prägeeffekt
  *  durch Abdunkeln Richtung Schwarz. Einziger Sonderfall: Anthrazit (die
  *  Schwarz-Darstellung, siehe coverFillColor) kann nicht weiter abgedunkelt
- *  werden, hellt stattdessen dezent auf. Weiß bekommt bewusst KEINEN
- *  Sonderfall mehr (vorher reines Weiß) — läuft durch dieselbe Abdunkeln-
- *  Logik wie jede andere Paletten-Farbe. */
+ *  werden, hellt stattdessen dezent auf. */
 function coverAccentColor(bg: string, amount?: number): string {
   if (bg?.toLowerCase() === '#2c2e33') return embossTextColor(bg, amount ?? 0.21, 255);
   return embossTextColor(bg, amount ?? 0.26, 0);
 }
 
-interface Props {
+interface CoverProps {
   /** Sammlungsfarbe (Hex/CSS) — bestimmt die Lederfläche der Grafik. */
   color?: string;
   /** Name der Sammlung — wird als Beschriftung auf dem Deckel platziert. */
   name?: string;
-  /** BinderIcon-Schlüssel (Lucide/EnergyIcon/Set-Logo) — großes Logo mittig
-   *  (Ordner) bzw. im unteren Bereich (Box). */
+  /** BinderIcon-Schlüssel (Lucide/EnergyIcon/Set-Logo). */
   icon?: string;
-  /** 'folder' = Ringbuch mit umlaufender Naht, die links flach ausläuft.
-   *  'box' = Karton mit Deckel + Körper als zwei eigenständigen Rechtecken,
-   *  die exakt an der Deckel-Unterkante zusammenschließen. */
-  shape?: 'folder' | 'box';
   className?: string;
+  /** Optionaler Badge-Slot (z.B. `CollectionTypeCornerBadge`), oben links in
+   *  die Ecke eingenistet — positioniert sich selbst absolut. Liegt INNERHALB
+   *  des `overflow-hidden`-Deckels, daher nur für eingerückte Ecken-Badges
+   *  gedacht (nicht für aus der Ecke ragende Elemente). */
+  badge?: ReactNode;
 }
 
-const ROUNDING = {
+/** Eckenrundung je Form — die BEIDEN Cover-Komponenten unten nutzen jeweils
+ *  ihren eigenen Eintrag. Wird auch von `CollectionTypeCornerBadge` (shape)
+ *  genutzt, damit der Badge-Eckradius zur Kachelecke passt (flush nesten). */
+export const COVER_ROUNDING = {
   folder: 'rounded-tl-[4px] rounded-bl-[4px] rounded-tr-[20px] rounded-br-[20px]',
   box:    'rounded-[4px]',
 };
+/** Tatsächlicher Radius der oberen LINKEN Ecke je Form (px) — dort sitzt das
+ *  Ecken-Badge; sein `cornerRadius` wird darauf angeglichen. */
+export const COVER_TL_RADIUS = { folder: 4, box: 4 } as const;
 
 // ── Ordner ───────────────────────────────────────────────────────────────
-// Naht läuft oben/rechts/unten umlaufend, endet links flach (keine Rundung,
-// kein Bruch) — dort sitzt statt der Naht ein leichter vertikaler Schatten.
-// Rechter Eckradius konzentrisch zur tatsächlichen Kachel-Rundung (20px CSS)
-// berechnet: gemessene Kachelbreite 165.5px → Skalierungsfaktor 300/165.5 ≈
-// 1.813 → Außenradius ≈ 36.25 Einheiten, abzüglich des Naht-Insets (5)
-// ergibt den Naht-eigenen Radius von ≈31.
 const FOLDER_STITCH_INSET = 5;
 const FOLDER_STITCH_RIGHT_RADIUS = 31;
 const FOLDER_STITCH_LEFT_X = 6;
@@ -88,37 +86,19 @@ const FOLDER_STITCH_PATH = (() => {
 })();
 
 // ── Box ──────────────────────────────────────────────────────────────────
-// Deckel (oben, Kanten berühren die Kachel-Ecken) und Körper (unten, an den
-// Seiten 2px eingezogen) sind zwei eigenständige Rechtecke, die exakt an
-// der Deckel-Unterkante zusammenschließen — kein Diagonal-Knick.
 const BOX_LID_HEIGHT = 131;
 const BOX_BODY_INSET = 4;
 const BOX_BODY_LEFT = 3 + BOX_BODY_INSET;
 const BOX_BODY_RIGHT = 297 - BOX_BODY_INSET;
-// Deckel-Unterkante rundet sich nach unten ab — Kubische Bezier mit
-// Kontrollpunkten SENKRECHT unter den Eckpunkten (nicht seitlich versetzt
-// wie bei einer einzelnen quadratischen Kurve), dadurch ist die Tangente an
-// beiden Enden exakt vertikal und schließt knickfrei an die geraden
-// Seitenkanten an — sieht wie eine sanft ausgerundete Wanne statt eines
-// spitzen "V" mit Eckenknick aus. Körper-Oberkante folgt derselben
-// Kurvenform (nur 2px schmaler), damit beide Formen nahtlos zusammenpassen.
 const BOX_LID_DIP = 24;
 const BOX_LID_PATH  = `M9 0 L291 0 Q297 0 297 6 L297 ${BOX_LID_HEIGHT} `
   + `C297 ${BOX_LID_HEIGHT + BOX_LID_DIP} 3 ${BOX_LID_HEIGHT + BOX_LID_DIP} 3 ${BOX_LID_HEIGHT} L3 6 Q3 0 9 0 Z`;
 const BOX_BODY_PATH = `M${BOX_BODY_LEFT} ${BOX_LID_HEIGHT} C${BOX_BODY_LEFT} ${BOX_LID_HEIGHT + BOX_LID_DIP} ${BOX_BODY_RIGHT} ${BOX_LID_HEIGHT + BOX_LID_DIP} ${BOX_BODY_RIGHT} ${BOX_LID_HEIGHT} `
   + `L${BOX_BODY_RIGHT} 394 Q${BOX_BODY_RIGHT} 400 ${BOX_BODY_RIGHT - 6} 400 L${BOX_BODY_LEFT + 6} 400 Q${BOX_BODY_LEFT} 400 ${BOX_BODY_LEFT} 394 Z`;
-// Weicher, der Wölbung folgender Schatten: geschlossene "Banane"-Form —
-// Oberkante = dieselbe Kurve wie BOX_BODY_PATH, Unterkante = exakt dieselbe
-// Kurve, nur um BOX_SHADOW_BAND nach unten verschoben. Dadurch ist das Band
-// überall gleich dick und folgt der Rundung exakt statt (wie ein simpler
-// vertikaler Verlauf) an den Rändern anders anzusetzen als in der Mitte.
-// Bewusst schmal/dezent (kleines Band, niedrige Opacity).
 const BOX_SHADOW_BAND = 11;
 const BOX_SHADOW_PATH = `M${BOX_BODY_LEFT} ${BOX_LID_HEIGHT} C${BOX_BODY_LEFT} ${BOX_LID_HEIGHT + BOX_LID_DIP} ${BOX_BODY_RIGHT} ${BOX_LID_HEIGHT + BOX_LID_DIP} ${BOX_BODY_RIGHT} ${BOX_LID_HEIGHT} `
   + `L${BOX_BODY_RIGHT} ${BOX_LID_HEIGHT + BOX_SHADOW_BAND} `
   + `C${BOX_BODY_RIGHT} ${BOX_LID_HEIGHT + BOX_LID_DIP + BOX_SHADOW_BAND} ${BOX_BODY_LEFT} ${BOX_LID_HEIGHT + BOX_LID_DIP + BOX_SHADOW_BAND} ${BOX_BODY_LEFT} ${BOX_LID_HEIGHT + BOX_SHADOW_BAND} Z`;
-// Naht am Körper — läuft oben offen (dort sitzt bereits die Deckel-
-// Trennlinie), rundet nur die untere Kante mit, analog zur Ordner-Naht.
 const BOX_STITCH_INSET = 5;
 const BOX_STITCH_RADIUS = 5;
 const BOX_STITCH_PATH = (() => {
@@ -132,239 +112,183 @@ const BOX_STITCH_PATH = (() => {
        + `L${right - r} ${bottom} Q${right} ${bottom} ${right} ${bottom - r} L${right} ${top}`;
 })();
 
-/**
- * Bindergrafik — Ringbuch-Deckel (Leder-Optik, umlaufende Naht die links
- * flach ausläuft + vertikaler Schatten dort statt Rundung) oder Karton
- * (Deckel mit diagonalem Glanz, Körper mit vertikalem Schatten von oben,
- * Naht nur am Körper). Farbe/Name/Logo sind frei parametrisiert, damit jede
- * Sammlung ihre eigene Deckel-Ansicht bekommt.
- */
-export function BinderCover({ color = 'var(--pokedex-red)', name, icon, shape = 'folder', className = '' }: Props) {
-  const isBox = shape === 'box';
-  const rounding = ROUNDING[shape];
-  const uid = useId().replace(/:/g, '');
+const ICON_SIZE_MULTIPLIER: Record<string, number> = { cards: 1.35 };
 
+/** Geteilte Deckel-Optik (Farbe/Prägung/Icon-Stil + Körnungs-Filter) für BEIDE
+ *  Cover-Komponenten — vorher inline im einzigen `BinderCover`, jetzt einmal
+ *  hier, damit Ordner und Box sich nichts duplizieren. */
+function useCoverChrome(color: string, icon?: string) {
+  const uid = useId().replace(/:/g, '');
   const fill = coverFillColor(color);
   const isAnthracite = fill?.toLowerCase() === '#2c2e33';
-  // NUR Basis-Icons (Lucide, kein type:/set:-Präfix) werden wie der
-  // Titel-Text eingefärbt. Typ-Icons (EnergyIcon) und Set-Logos behalten
-  // ihre eigenen Farben (Detailgrafik bzw. Typ-Branding) — alle drei
-  // Icon-Arten UND der Text teilen sich aber denselben Schatten/Körnung.
   const isColorableIcon = !!icon && !icon.startsWith('type:') && !icon.startsWith('set:');
-  // Gleiche Ziel-/Originalgröße wie Typ-/Set-Icons (56px) — Lucide-Glyphen
-  // (z.B. "folder") sind aber dünne Outline-Symbole (2px-Strich, viel
-  // Leerraum im 24x24-Raster, füllen nur ~70% der Höhe) verglichen mit der
-  // randfüllenden, VOLLFLÄCHIGEN Farbe der Typ-Icons (~96%) — deshalb nur
-  // die Strichstärke kräftiger, nicht die Größe.
   const iconSize = 56;
   const iconStrokeWidth = isColorableIcon ? 2.75 : undefined;
-  // "file-stack" (Unsortiert) besteht aus 3 dünnen, verschachtelten Karten
-  // statt einer einzelnen kräftigen Fläche wie "folder"/"trophy" — bei
-  // identischer Bounding-Box (per getBBox geprüft) wirkt es dadurch deutlich
-  // leichter/kleiner. Gezielter Größenausgleich nur für dieses eine Icon,
-  // damit es optisch mit den übrigen Basis-Icons mithält.
-  const ICON_SIZE_MULTIPLIER: Record<string, number> = { cards: 1.35 };
-  // Pokémon-Artwork (`pokemon:<dex>`) hat viel transparenten Rand — deutlich
-  // größer rendern, damit das sichtbare Pokémon die Kachel ähnlich prägt wie
-  // ein Set-Logo (die füllen die Breite bis ~2.4× der Basis-Icon-Größe).
   const isPokemonIcon = icon?.startsWith('pokemon:') ?? false;
   const iconRenderSize = isPokemonIcon
     ? iconSize * 2.4
     : iconSize * (ICON_SIZE_MULTIPLIER[icon ?? ''] ?? 1);
-  // ECHTE (deckende) Farbe, leicht dunkler als die Fläche (coverAccentColor,
-  // 40%/15% Anthrazit) — der background-clip:text-Trick wurde verworfen,
-  // weil der helle Schein bei unserer kleinen Schriftgröße (15-19px) breiter
-  // als die Strichstärke selbst war und die dunklere Füllfarbe komplett
-  // überdeckt hat, sodass Text/Icon trotz dunklerer Grundfarbe insgesamt
-  // heller als der Hintergrund wirkten. Mit einer deckenden dunkleren Farbe
-  // ist der Kontrast garantiert richtig herum; der Schein bleibt nur noch
-  // als dezenter Zusatz obendrauf.
   const textBgColor = coverAccentColor(fill, isAnthracite ? 0.15 : 0.4);
-  // Nur auf Anthrazit/Schwarz zusätzlich einen dunklen Gegenschatten +
-  // helleren Schein — auf den übrigen Farben bleibt es beim bisherigen
-  // einzelnen, dezenten Schein (unverändert).
   const textShineColor = hexToRgba(embossTextColor(fill, isAnthracite ? 0.6 : 0.55, 255), isAnthracite ? 0.4 : 0.28);
   const engravedTextStyle: CSSProperties = {
     color: textBgColor,
     textShadow: isAnthracite
       ? `${hexToRgba(embossTextColor(fill, 0.6, 0), 0.35)} -0.5px -0.8px 0.4px, ${textShineColor} 0.5px 0.8px 0.4px`
       : `${textShineColor} 0.5px 0.8px 0.4px`,
-    // Gleicher Körnungs-Filter wie bei Typ-/Set-Icons (feBlend multiply auf
-    // die Text-Alpha-Form geclippt) — funktioniert unabhängig von der
-    // Deckkraft, verwäscht die Textfarbe also nicht (anders als der frühere
-    // Opacity-Ansatz).
     filter: `url(#icon-grain-${uid})`,
     opacity: 0.7,
   };
-  // Icons: gleiche (aus der Binderfarbe abgeleitete) Schein-Farbe wie beim
-  // Text, aber kräftiger als der Text-Schatten — auf einer durchgehenden
-  // Kreis-/Glyphenfläche (Typ-Icon) liest sich der für Text austarierte,
-  // sehr dezente Versatz (0.5px/0.8px, Alpha .28) kaum als Prägung, anders
-  // als bei dünnen Textstrichen. Zusätzlich die Leder-Körnung direkt auf
-  // die Icon-Fläche geblendet (multiply, auf die Icon-eigene Alpha-Form
-  // geclippt) — bei Typ-Icons/Set-Logos ist das die einzige Textur-Quelle,
-  // da sie (anders als Basis-Icons/Text) keine eigene deckende Farbe
-  // bekommen, deren Kontrastrichtung wir steuern könnten (ihre
-  // Originalfarben bleiben unverändert erhalten).
   const iconShineColor = hexToRgba(embossTextColor(fill, isAnthracite ? 0.6 : 0.55, 255), 0.5);
   const iconShadowColor = hexToRgba(embossTextColor(fill, 0.7, 0), 0.65);
   const iconShadowFilter = `url(#icon-grain-${uid}) drop-shadow(${iconShadowColor} -1.3px -1.6px 0.6px) drop-shadow(${iconShineColor} 1px 1.3px 0.6px)`;
   const iconColor = isColorableIcon ? textBgColor : undefined;
 
+  const grainFilter = (
+    <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+      <defs>
+        <filter id={`icon-grain-${uid}`}>
+          <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" result="noise" />
+          <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.18 0.18 0.18 0 0" result="grain" />
+          <feComposite in="grain" in2="SourceAlpha" operator="in" result="grainClipped" />
+          <feBlend in="SourceGraphic" in2="grainClipped" mode="multiply" />
+        </filter>
+      </defs>
+    </svg>
+  );
+
+  const renderIcon = () => icon && (
+    <BinderIcon
+      name={icon}
+      size={iconRenderSize}
+      strokeWidth={iconStrokeWidth}
+      style={{ color: iconColor, filter: iconShadowFilter, opacity: isColorableIcon ? 0.7 : 0.88, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: iconRenderSize }}
+    />
+  );
+
+  return { uid, fill, engravedTextStyle, grainFilter, renderIcon };
+}
+
+/**
+ * Ringbuch-Deckel (Leder-Optik, umlaufende Naht die links flach ausläuft +
+ * vertikaler Schatten dort statt Rundung), Logo + Name mittig. Farbe/Name/Logo
+ * frei parametrisiert; optionaler `badge`-Slot oben links.
+ */
+export function BinderCover({ color = 'var(--pokedex-red)', name, icon, className = '', badge }: CoverProps) {
+  const c = useCoverChrome(color, icon);
   return (
-    <div
-      className={`relative aspect-[3/4] overflow-hidden ${rounding} ${className}`}
-    >
-      <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+    <div className={`relative aspect-[3/4] overflow-hidden ${COVER_ROUNDING.folder} ${className}`}>
+      {c.grainFilter}
+      <div className="absolute inset-0" style={{ background: c.fill }} />
+      {/* Leder-/Vinyl-Glanzlicht — diagonaler heller Verlauf oben links */}
+      <div
+        className="absolute inset-0"
+        style={{ background: 'linear-gradient(135deg, rgba(255,255,255,.38) 0%, rgba(255,255,255,.10) 20%, rgba(255,255,255,0) 42%)' }}
+      />
+      {/* Abdunklung unten für Tiefe/Rundung */}
+      <div
+        className="absolute inset-0"
+        style={{ background: 'linear-gradient(0deg, rgba(0,0,0,.20) 0%, rgba(0,0,0,0) 32%)' }}
+      />
+      {/* Leichter vertikaler Schatten links — dort, wo die Naht flach ausläuft statt zu runden */}
+      <div
+        className="absolute inset-0"
+        style={{ background: 'linear-gradient(90deg, rgba(0,0,0,.3) 0%, rgba(0,0,0,0) 9%)' }}
+      />
+
+      <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 300 400" fill="none" preserveAspectRatio="none">
         <defs>
-          <filter id={`icon-grain-${uid}`}>
+          <filter id={`leather-${c.uid}`}>
             <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" result="noise" />
-            <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.18 0.18 0.18 0 0" result="grain" />
-            <feComposite in="grain" in2="SourceAlpha" operator="in" result="grainClipped" />
-            <feBlend in="SourceGraphic" in2="grainClipped" mode="multiply" />
+            <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.1 0.1 0.1 0 0" />
           </filter>
         </defs>
+        {/* Ganz feine Leder-Körnung */}
+        <rect x="0" y="0" width="300" height="400" filter={`url(#leather-${c.uid})`} />
+        {/* Umlaufende gesteppte Naht — läuft links flach aus statt zu runden */}
+        <path d={FOLDER_STITCH_PATH} stroke="rgba(0,0,0,.22)" strokeWidth="1.8" strokeDasharray="5 4" strokeLinecap="round" />
+        <path d={FOLDER_STITCH_PATH} stroke="rgba(255,255,255,.18)" strokeWidth="1" strokeDasharray="5 4" strokeDashoffset="1.5" strokeLinecap="round" />
       </svg>
-      {isBox ? (
-        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 300 400" fill="none" preserveAspectRatio="none">
-          <defs>
-            <linearGradient id={`lidsheen-${uid}`} x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stopColor="#fff" stopOpacity=".38" />
-              <stop offset=".2" stopColor="#fff" stopOpacity=".1" />
-              <stop offset=".42" stopColor="#fff" stopOpacity="0" />
-            </linearGradient>
-            <clipPath id={`lidclip-${uid}`}><path d={BOX_LID_PATH} /></clipPath>
-            <clipPath id={`bodyclip-${uid}`}><path d={BOX_BODY_PATH} /></clipPath>
-            <filter id={`leatherbox-${uid}`}>
-              <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" result="noise" />
-              <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.1 0.1 0.1 0 0" />
-            </filter>
-            {/* Weicher Schatten, der der Wölbung folgt (BOX_SHADOW_PATH) —
-                Blur statt hartem Rand, damit er nach unten hin ausklingt. */}
-            <filter id={`boxshadowblur-${uid}`} x="-20%" y="-60%" width="140%" height="240%">
-              <feGaussianBlur stdDeviation="6" />
-            </filter>
-          </defs>
 
-          {/* Deckel — eigenes Rechteck mit diagonalem Leder-Glanz. Höhe reicht
-              bewusst über BOX_LID_HEIGHT hinaus bis in die Wölbung hinein
-              (+BOX_LID_DIP), sonst bleibt die gerundete Unterkante ungefüllt
-              (zeigt den Seitenhintergrund durch statt der Lederfarbe). */}
-          <g clipPath={`url(#lidclip-${uid})`}>
-            <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT + BOX_LID_DIP} fill={fill} />
-            <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT + BOX_LID_DIP} fill={`url(#lidsheen-${uid})`} />
-            {/* Ganz feine Leder-Körnung — gleiche Textur wie beim Ordner, sonst
-                wirkt v.a. Weiß auf der Box viel reiner/heller als auf dem
-                Ordner (dort bricht die Körnung die Fläche bewusst grau). */}
-            <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT + BOX_LID_DIP} filter={`url(#leatherbox-${uid})`} />
-          </g>
-          {/* Körper */}
-          <g clipPath={`url(#bodyclip-${uid})`}>
-            <rect x="0" y={BOX_LID_HEIGHT} width="300" height={400 - BOX_LID_HEIGHT} fill={fill} />
-            <rect x="0" y={BOX_LID_HEIGHT} width="300" height={400 - BOX_LID_HEIGHT} filter={`url(#leatherbox-${uid})`} />
-            {/* Weicher Schatten direkt unter der Deckelkante — BOX_SHADOW_PATH
-                ist eine der Wölbung nachgezogene, gleich dicke Bahn (keine
-                geraden Verlaufs-Bänder mehr), folgt der Rundung dadurch
-                exakt statt an den Rändern anders anzusetzen als in der
-                Mitte. Zusätzlich per bodyclip auf den Körper begrenzt. */}
-            <path d={BOX_SHADOW_PATH} fill="#000" fillOpacity=".18" filter={`url(#boxshadowblur-${uid})`} />
-          </g>
+      {/* Logo + Name mittig */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+        {icon && <div className="flex justify-center w-full px-[10px]">{c.renderIcon()}</div>}
+        {name && (
+          <span className="font-extrabold text-[19px] text-center leading-tight line-clamp-3 px-[10px]" style={c.engravedTextStyle}>
+            {name}
+          </span>
+        )}
+      </div>
 
-          {/* Feine Trennlinie an der Deckel-Unterkante — folgt derselben
-              Rundung wie BOX_LID_PATH/BOX_BODY_PATH. */}
-          <path d={`M3 ${BOX_LID_HEIGHT} C3 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT}`} stroke="#000" strokeOpacity=".22" strokeWidth="2.5" />
-          {/* Daumenkerbe zum Aufklappen */}
-          <ellipse cx="150" cy="6" rx="26" ry="15" fill="#000" fillOpacity=".28" />
-          <ellipse cx="150" cy="3" rx="20" ry="9" fill="#fff" fillOpacity=".12" />
-          {/* Naht am Körper — läuft oben offen (dort sitzt bereits die Trennlinie) */}
-          <path d={BOX_STITCH_PATH} stroke="rgba(0,0,0,.22)" strokeWidth="1.8" strokeDasharray="5 4" strokeLinecap="round" />
-          <path d={BOX_STITCH_PATH} stroke="rgba(255,255,255,.18)" strokeWidth="1" strokeDasharray="5 4" strokeDashoffset="1.5" strokeLinecap="round" />
-        </svg>
-      ) : (
-        <>
-          <div className="absolute inset-0" style={{ background: fill }} />
-          {/* Leder-/Vinyl-Glanzlicht — diagonaler heller Verlauf oben links */}
-          <div
-            className="absolute inset-0"
-            style={{ background: 'linear-gradient(135deg, rgba(255,255,255,.38) 0%, rgba(255,255,255,.10) 20%, rgba(255,255,255,0) 42%)' }}
-          />
-          {/* Abdunklung unten für Tiefe/Rundung */}
-          <div
-            className="absolute inset-0"
-            style={{ background: 'linear-gradient(0deg, rgba(0,0,0,.20) 0%, rgba(0,0,0,0) 32%)' }}
-          />
-          {/* Leichter vertikaler Schatten links — dort, wo die Naht flach ausläuft statt zu runden */}
-          <div
-            className="absolute inset-0"
-            style={{ background: 'linear-gradient(90deg, rgba(0,0,0,.3) 0%, rgba(0,0,0,0) 9%)' }}
-          />
+      {badge}
+    </div>
+  );
+}
 
-          <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 300 400" fill="none" preserveAspectRatio="none">
-            <defs>
-              <filter id={`leather-${uid}`}>
-                <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" result="noise" />
-                <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.1 0.1 0.1 0 0" />
-              </filter>
-            </defs>
-            {/* Ganz feine Leder-Körnung */}
-            <rect x="0" y="0" width="300" height="400" filter={`url(#leather-${uid})`} />
+/**
+ * Karton (Deckel mit diagonalem Glanz, Körper mit vertikalem Schatten von
+ * oben, Naht nur am Körper). Name im Deckel, Logo unten. Optionaler
+ * `badge`-Slot oben links.
+ */
+export function BoxCover({ color = 'var(--pokedex-red)', name, icon, className = '', badge }: CoverProps) {
+  const c = useCoverChrome(color, icon);
+  return (
+    <div className={`relative aspect-[3/4] overflow-hidden ${COVER_ROUNDING.box} ${className}`}>
+      {c.grainFilter}
+      <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 300 400" fill="none" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id={`lidsheen-${c.uid}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#fff" stopOpacity=".38" />
+            <stop offset=".2" stopColor="#fff" stopOpacity=".1" />
+            <stop offset=".42" stopColor="#fff" stopOpacity="0" />
+          </linearGradient>
+          <clipPath id={`lidclip-${c.uid}`}><path d={BOX_LID_PATH} /></clipPath>
+          <clipPath id={`bodyclip-${c.uid}`}><path d={BOX_BODY_PATH} /></clipPath>
+          <filter id={`leatherbox-${c.uid}`}>
+            <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" result="noise" />
+            <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.1 0.1 0.1 0 0" />
+          </filter>
+          <filter id={`boxshadowblur-${c.uid}`} x="-20%" y="-60%" width="140%" height="240%">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
+        </defs>
 
-            {/* Umlaufende gesteppte Naht — läuft links flach aus statt zu runden */}
-            <path d={FOLDER_STITCH_PATH} stroke="rgba(0,0,0,.22)" strokeWidth="1.8" strokeDasharray="5 4" strokeLinecap="round" />
-            <path d={FOLDER_STITCH_PATH} stroke="rgba(255,255,255,.18)" strokeWidth="1" strokeDasharray="5 4" strokeDashoffset="1.5" strokeLinecap="round" />
-          </svg>
-        </>
-      )}
+        {/* Deckel */}
+        <g clipPath={`url(#lidclip-${c.uid})`}>
+          <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT + BOX_LID_DIP} fill={c.fill} />
+          <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT + BOX_LID_DIP} fill={`url(#lidsheen-${c.uid})`} />
+          <rect x="0" y="0" width="300" height={BOX_LID_HEIGHT + BOX_LID_DIP} filter={`url(#leatherbox-${c.uid})`} />
+        </g>
+        {/* Körper */}
+        <g clipPath={`url(#bodyclip-${c.uid})`}>
+          <rect x="0" y={BOX_LID_HEIGHT} width="300" height={400 - BOX_LID_HEIGHT} fill={c.fill} />
+          <rect x="0" y={BOX_LID_HEIGHT} width="300" height={400 - BOX_LID_HEIGHT} filter={`url(#leatherbox-${c.uid})`} />
+          <path d={BOX_SHADOW_PATH} fill="#000" fillOpacity=".18" filter={`url(#boxshadowblur-${c.uid})`} />
+        </g>
 
-      {isBox ? (
-        <>
-          {/* Name im oberen Bereich (Deckel), oberhalb der Naht */}
-          <div className="absolute inset-x-0 top-0 flex items-center justify-center px-[10px]" style={{ height: '30%' }}>
-            {name && (
-              <span
-                className="font-extrabold text-[17px] text-center leading-tight line-clamp-2"
-                style={engravedTextStyle}
-              >
-                {name}
-              </span>
-            )}
-          </div>
-          {/* Logo auf der Box, unterhalb der Naht — nur 5px Rand links/rechts */}
-          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center px-[10px]" style={{ top: '33%' }}>
-            {icon && (
-              <BinderIcon
-                name={icon}
-                size={iconRenderSize}
-                strokeWidth={iconStrokeWidth}
-                style={{ color: iconColor, filter: iconShadowFilter, opacity: isColorableIcon ? 0.7 : 0.88, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: iconRenderSize }}
-              />
-            )}
-          </div>
-        </>
-      ) : (
-        /* Logo + Name mittig — Logo nur 5px Rand links/rechts (eigener
-           Wrapper, damit der Name weiterhin mehr Innenabstand behält) */
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-          {icon && (
-            <div className="flex justify-center w-full px-[10px]">
-              <BinderIcon
-                name={icon}
-                size={iconRenderSize}
-                strokeWidth={iconStrokeWidth}
-                style={{ color: iconColor, filter: iconShadowFilter, opacity: isColorableIcon ? 0.7 : 0.88, maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: iconRenderSize }}
-              />
-            </div>
-          )}
-          {name && (
-            <span
-              className="font-extrabold text-[19px] text-center leading-tight line-clamp-3 px-[10px]"
-              style={engravedTextStyle}
-            >
-              {name}
-            </span>
-          )}
-        </div>
-      )}
+        {/* Feine Trennlinie an der Deckel-Unterkante */}
+        <path d={`M3 ${BOX_LID_HEIGHT} C3 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT + BOX_LID_DIP} 297 ${BOX_LID_HEIGHT}`} stroke="#000" strokeOpacity=".22" strokeWidth="2.5" />
+        {/* Daumenkerbe zum Aufklappen */}
+        <ellipse cx="150" cy="6" rx="26" ry="15" fill="#000" fillOpacity=".28" />
+        <ellipse cx="150" cy="3" rx="20" ry="9" fill="#fff" fillOpacity=".12" />
+        {/* Naht am Körper — läuft oben offen (dort sitzt bereits die Trennlinie) */}
+        <path d={BOX_STITCH_PATH} stroke="rgba(0,0,0,.22)" strokeWidth="1.8" strokeDasharray="5 4" strokeLinecap="round" />
+        <path d={BOX_STITCH_PATH} stroke="rgba(255,255,255,.18)" strokeWidth="1" strokeDasharray="5 4" strokeDashoffset="1.5" strokeLinecap="round" />
+      </svg>
+
+      {/* Name im oberen Bereich (Deckel), oberhalb der Naht */}
+      <div className="absolute inset-x-0 top-0 flex items-center justify-center px-[10px]" style={{ height: '30%' }}>
+        {name && (
+          <span className="font-extrabold text-[17px] text-center leading-tight line-clamp-2" style={c.engravedTextStyle}>
+            {name}
+          </span>
+        )}
+      </div>
+      {/* Logo auf der Box, unterhalb der Naht */}
+      <div className="absolute inset-x-0 bottom-0 flex items-center justify-center px-[10px]" style={{ top: '33%' }}>
+        {icon && c.renderIcon()}
+      </div>
+
+      {badge}
     </div>
   );
 }

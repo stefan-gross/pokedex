@@ -7,7 +7,7 @@ import { getBinders, deleteBinderCascade, updateBinder } from '@/lib/firestore/b
 import { getCards } from '@/lib/firestore/cards';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { CreateTemplateBinderModal } from '@/components/binder/CreateTemplateBinderModal';
-import { BinderCover } from '@/components/binder/BinderCover';
+import { BinderCover, BoxCover } from '@/components/binder/BinderCover';
 import { CollectionTypeCornerBadge } from '@/components/binder/CollectionTypeBadge';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { Button } from '@/components/ui/button';
@@ -371,15 +371,20 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
           animationDelay: editMode && !isProtected ? `${wiggleOffset}s` : undefined,
         }}
       >
-        <BinderCover
-          color={binder.color}
-          name={binder.name}
-          icon={binder.icon ?? (isBox ? 'box' : 'folder')}
-          shape={isBox ? 'box' : 'folder'}
-        />
-
-        {(!editMode || isProtected) && (
-          <CollectionTypeCornerBadge binder={binder} />
+        {isBox ? (
+          <BoxCover
+            color={binder.color}
+            name={binder.name}
+            icon={binder.icon ?? 'box'}
+            badge={(!editMode || isProtected) ? <CollectionTypeCornerBadge binder={binder} shape="box" /> : undefined}
+          />
+        ) : (
+          <BinderCover
+            color={binder.color}
+            name={binder.name}
+            icon={binder.icon ?? 'folder'}
+            badge={(!editMode || isProtected) ? <CollectionTypeCornerBadge binder={binder} shape="folder" /> : undefined}
+          />
         )}
 
         {wishlistCount > 0 && (
