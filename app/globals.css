@@ -663,6 +663,20 @@
   .menu-trigger-pop { animation: none; }
 }
 
+/* Lade-Skeleton für Bilder (Karten): pulsierender neutraler Hintergrund direkt
+   am <img>/<Image>, bis das (deckende) Kartenbild darüber geladen ist — analog
+   zum Panel-/Grid-Skeleton, aber ohne separates Element. Neutraler Blaugrau-Ton
+   funktioniert in Light UND Dark. Wird per JS (onLoad) wieder entfernt, sodass
+   die Animation nach dem Laden nicht weiterläuft. */
+@keyframes img-skeleton {
+  0%, 100% { background-color: rgba(120,130,150,0.18); }
+  50%      { background-color: rgba(120,130,150,0.09); }
+}
+.img-skeleton { animation: img-skeleton 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .img-skeleton { animation: none; background-color: rgba(120,130,150,0.14); }
+}
+
 /* Karte „lebendig" während Drag — sanftes Auf-Ab-Bobbing */
 @keyframes binder-card-bob {
   0%   { transform: translateY(0); }

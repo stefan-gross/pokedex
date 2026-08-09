@@ -45,6 +45,7 @@ export function CardImage({
   placeholderInfo,
 }: CardImageProps) {
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   // || statt ?? — fängt auch leere Strings aus Firestore ab
   const activeSrc = (!failed && srcDe) ? srcDe : (src || undefined);
@@ -75,13 +76,15 @@ export function CardImage({
       alt={alt}
       width={width}
       height={height}
-      className={className}
+      className={`${className ?? ''}${loaded ? '' : ' img-skeleton'}`}
       style={style}
       sizes={sizes}
       loading={loading}
       priority={priority}
       onClick={onClick}
-      onError={() => setFailed(true)}
+      onLoad={() => setLoaded(true)}
+      // Bei DE→EN-Fallback lädt ein neues Bild → Skeleton erneut zeigen.
+      onError={() => { setFailed(true); setLoaded(false); }}
       unoptimized={!failed && !!srcDe}
     />
   );

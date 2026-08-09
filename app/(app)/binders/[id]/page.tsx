@@ -1668,6 +1668,7 @@ function DraggableCardSlot({
 }) {
   const catalogInfoById = useContext(BinderCatalogCtx);
   const cardInfo = ownedCardToInfo(card, catalogInfoById);
+  const [imgLoaded, setImgLoaded] = useState(false);
   const { attributes, listeners, setNodeRef, isOver } = useSortable({
     id,
     disabled: !editMode,
@@ -1723,8 +1724,9 @@ function DraggableCardSlot({
       <img
         src={cardInfo.imgLargeDe || cardInfo.imgLarge || undefined}
         alt={card.name}
-        className="w-full h-full object-cover pointer-events-none no-callout"
+        className={`w-full h-full object-cover pointer-events-none no-callout${imgLoaded ? '' : ' img-skeleton'}`}
         draggable={false}
+        onLoad={() => setImgLoaded(true)}
         onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
       />
       {showInfo && !editMode && (
