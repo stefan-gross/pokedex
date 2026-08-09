@@ -1,6 +1,6 @@
 import {
   collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc,
-  orderBy, query, Timestamp, arrayUnion, arrayRemove,
+  orderBy, query, Timestamp, arrayUnion, arrayRemove, writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import type { BinderDoc, BinderPage } from '@/types';
@@ -56,6 +56,17 @@ export async function addBinder(data: Omit<BinderDoc, 'id' | 'createdAt' | 'card
 
 export async function updateBinder(id: string, data: Partial<BinderDoc>): Promise<void> {
   await updateDoc(doc(db, COL, id), data);
+}
+
+/** Schreibt die neue Reihenfolge der (nicht-Default-)Sammlungen: `sortOrder`
+ *  = Position 0..n-1 in einem einzigen Batch-Write. „Unsortiert" (isDefault,
+ *  sortOrder -1) wird NICHT übergeben und bleibt durch den Client-Sort vorn
+ *  gepinnt; später erstellte Binder (`Date.now()`) sortieren dahinter. */
+export async function reorderBinders(orderedIds: string[]): Promise<void> {
+  if (orderedIds.length === 0) return;
+  const batch = writeBatch(db);
+  orderedIds.forEach((id, i) => batch.update(doc(db, COL, id), { sortOrder: i }));
+  await batch.commit();
 }
 
 export async function deleteBinder(id: string): Promise<void> {

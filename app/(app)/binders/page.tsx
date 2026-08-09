@@ -1,9 +1,15 @@
 'use client';
 
-import { Fragment, useState, useEffect, useMemo, useId, useRef, useLayoutEffect } from 'react';
+import { useState, useEffect, useMemo, useId, useRef, useLayoutEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Folder, Heart, Check, Minus, FolderPlus, BookOpen, Package, Repeat2, Palette } from 'lucide-react';
-import { getBinders, deleteBinderCascade, updateBinder } from '@/lib/firestore/binders';
+import { Plus, Folder, Heart, Check, Minus, Pencil, FolderPlus, BookOpen, Package, Repeat2, Palette } from 'lucide-react';
+import {
+  DndContext, PointerSensor, TouchSensor, useSensor, useSensors, closestCenter,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { getBinders, deleteBinderCascade, updateBinder, reorderBinders } from '@/lib/firestore/binders';
 import { getCards } from '@/lib/firestore/cards';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { CreateTemplateBinderModal } from '@/components/binder/CreateTemplateBinderModal';
@@ -88,12 +94,30 @@ export default function BindersPage() {
     return m;
   }, [cards]);
 
-  // Anzahl der fest vorangestellten, ungelöschbaren Binder (nur „Unsortiert") —
-  // die "+"-Kachel wird direkt dahinter eingefügt statt ganz ans Grid-Ende.
-  const protectedCount = useMemo(
-    () => binders.filter(b => b.isDefault).length,
-    [binders],
+  // Drag & Drop zum Umsortieren (nur im Bearbeiten-Modus) — Muster wie die
+  // Blatt-Sortierung auf der Detailseite. „Unsortiert" (isDefault) ist per
+  // useSortable disabled und wird hier zusätzlich abgesichert.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 350, tolerance: 16 } }),
   );
+  const handleDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const byId = new Map(binders.map(b => [b.id, b]));
+    if (byId.get(String(active.id))?.isDefault || byId.get(String(over.id))?.isDefault) return;
+    const nonDefault = binders.filter(b => !b.isDefault);
+    const from = nonDefault.findIndex(b => b.id === active.id);
+    const to = nonDefault.findIndex(b => b.id === over.id);
+    if (from < 0 || to < 0) return;
+    const reordered = arrayMove(nonDefault, from, to);
+    const def = binders.filter(b => b.isDefault);
+    setBinders([...def, ...reordered]);   // optimistisch
+    reorderBinders(reordered.map(b => b.id)).catch(err => {
+      console.error('[binders] reorder error', err);
+      load();   // bei Fehler serverseitigen Stand wiederherstellen
+    });
+  };
 
   return (
     <div className="min-h-screen">
@@ -104,17 +128,16 @@ export default function BindersPage() {
             <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Sammlungen</h1>
             <p className="text-role-label text-glass-muted">{binders.length} {binders.length === 1 ? 'Sammlung' : 'Sammlungen'}</p>
           </div>
-          {/* Bearbeiten-Modus wird per Long-Press auf eine Kachel gestartet
-              (wie iOS-Homescreen). Rechts: im Bearbeiten-Modus „Fertig", sonst
-              ein Erstellen-Button (jederzeit erreichbar, nicht nur im Edit-Modus). */}
+          {/* Rechts: im Bearbeiten-Modus „Fertig", sonst zwei icon-only Buttons —
+              „+“ (neue Sammlung) und ein Stift (Bearbeiten-Modus starten;
+              Löschen + Umsortieren). Kein Long-Press mehr (analog Detailseite). */}
           {editMode ? (
-            <Button variant="primary" onClick={() => setEditMode(false)} icon={<Check size={16} />} className="shrink-0">
-              Fertig
-            </Button>
+            <Button variant="primary" onClick={() => setEditMode(false)} icon={<Check />} aria-label="Fertig" className="shrink-0" />
           ) : (
-            <Button variant="primary" accentColor="#2f855a" onClick={() => setCreateMode('choose')} icon={<Plus strokeWidth={2.5} />} className="shrink-0">
-              Erstellen
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button variant="primary" accentColor="#2f855a" onClick={() => setCreateMode('choose')} icon={<Plus strokeWidth={2.5} />} aria-label="Neue Sammlung" />
+              <Button variant="secondary" onClick={() => setEditMode(true)} icon={<Pencil />} aria-label="Bearbeiten" />
+            </div>
           )}
         </div>
       </div>
@@ -141,34 +164,26 @@ export default function BindersPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
-          {binders.map((binder, i) => {
-            const binderCards = binder.cardIds
-              .map(id => cardsById.get(id))
-              .filter((c): c is CardDoc => !!c);
-            return (
-              <Fragment key={binder.id}>
-                {/* Direkt hinter den beiden festen Ordnern (Inbox/Standard) statt
-                    ganz am Ende — sonst fällt die "+"-Kachel bei mehreren
-                    Sammlungen aus dem sichtbaren Bereich und man merkt gar
-                    nicht, dass man neue anlegen kann. */}
-                {editMode && !loading && i === protectedCount && (
-                  <AddBinderTile onClick={() => setCreateMode('choose')} />
-                )}
-                <BinderTile
-                  binder={binder}
-                  binderCards={binderCards}
-                  editMode={editMode}
-                  onDelete={() => handleDeleteBinder(binder)}
-                  onLongPress={() => setEditMode(true)}
-                />
-              </Fragment>
-            );
-          })}
-          {editMode && !loading && protectedCount >= binders.length && (
-            <AddBinderTile onClick={() => setCreateMode('choose')} />
-          )}
-        </div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={binders.map(b => b.id)} strategy={rectSortingStrategy}>
+            <div className="grid grid-cols-2 gap-3">
+              {binders.map((binder) => {
+                const binderCards = binder.cardIds
+                  .map(id => cardsById.get(id))
+                  .filter((c): c is CardDoc => !!c);
+                return (
+                  <BinderTile
+                    key={binder.id}
+                    binder={binder}
+                    binderCards={binderCards}
+                    editMode={editMode}
+                    onDelete={() => handleDeleteBinder(binder)}
+                  />
+                );
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
       </div>
 
       {createMode === 'choose' && (
@@ -283,9 +298,7 @@ function banderoleClipPath(tileWidthPx: number): string {
  *  Wert/Kartenanzahl als Banderole (eigene Farbfläche, etwas heller als der
  *  Binder, mit Leder-Körnung) unten. Boxen nutzen automatisch das Box-Icon
  *  statt des Ordner-Icons (binder.icon-Fallback), sehen sonst identisch aus. */
-const LONG_PRESS_MS = 500;
-
-function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { binder: BinderDoc; binderCards: CardDoc[]; editMode: boolean; onDelete: () => void; onLongPress: () => void }) {
+function BinderTile({ binder, binderCards, editMode, onDelete }: { binder: BinderDoc; binderCards: CardDoc[]; editMode: boolean; onDelete: () => void }) {
   const isBox     = binder.collectionType === 'box';
   // Vorlagen-Sammlung: ein Slot = eine Karte → eindeutig nach tcgId zählen
   // (Duplikate/Varianten als eine Karte, wie die Set-Übersicht). Sonst alle
@@ -330,38 +343,36 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
     if (tileRef.current) setTileWidth(tileRef.current.offsetWidth);
   }, []);
 
-  // Long-Press startet den Bearbeiten-Modus (wie iOS Homescreen) — kein
-  // separater Header-Button mehr nötig. `longPressFired` wird sofort (per
-  // Ref, nicht State) gesetzt, damit der anschließende Klick zuverlässig
-  // unterdrückt werden kann, auch bevor `editMode` im Parent aktualisiert ist.
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressFired = useRef(false);
-  const startLongPress = () => {
-    // Long-Press auf JEDER Kachel startet den globalen Bearbeiten-Modus —
-    // auch auf geschützten Bindern (Inbox/Standard), analog zu iOS, wo das
-    // Long-Press auf ein beliebiges (auch nicht löschbares System-)Icon den
-    // Wackel-Modus für den ganzen Homescreen auslöst.
-    if (editMode) return;
-    longPressFired.current = false;
-    longPressTimer.current = setTimeout(() => {
-      longPressFired.current = true;
-      onLongPress();
-    }, LONG_PRESS_MS);
-  };
-  const cancelLongPress = () => {
-    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
-  };
+  // Bearbeiten-Modus → Kacheln per Drag & Drop umsortieren (Muster wie die
+  // Blatt-Sortierung auf der Detailseite). „Unsortiert" (isProtected) ist
+  // disabled und bleibt vorn gepinnt. Kein Long-Press mehr — der Einstieg
+  // läuft über den Stift-Button in der Kopfzeile.
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({
+    id: binder.id,
+    disabled: !editMode || isProtected,
+  });
+  const dragEnabled = editMode && !isProtected;
+  const wiggle = dragEnabled && !isDragging && !isOver;
 
   return (
+    <div
+      ref={setNodeRef}
+      className="no-callout"
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.3 : 1,
+        touchAction: dragEnabled ? 'none' : undefined,
+        zIndex: isDragging ? 10 : undefined,
+      }}
+      {...(dragEnabled ? attributes : {})}
+      {...(dragEnabled ? listeners : {})}
+    >
     <Link
       href={`/binders/${binder.id}`}
       className="block active:scale-[.98] transition-transform no-callout"
-      onPointerDown={startLongPress}
-      onPointerUp={cancelLongPress}
-      onPointerLeave={cancelLongPress}
-      onPointerCancel={cancelLongPress}
       onContextMenu={e => e.preventDefault()}
-      onClick={e => { if (editMode || longPressFired.current) e.preventDefault(); }}
+      onClick={e => { if (editMode) e.preventDefault(); }}
     >
       {/* Boxen etwas kleiner als Ordner darstellen (Karton wirkt kompakter) —
           Skalierung auf einem eigenen relative-Wrapper, damit Badge/Footer
@@ -373,8 +384,8 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
         ref={tileRef}
         style={{
           ...(isBox ? { transform: 'scale(0.92)', transformOrigin: 'center' } : {}),
-          animation: editMode && !isProtected ? 'binder-wiggle 0.18s ease-in-out infinite alternate' : undefined,
-          animationDelay: editMode && !isProtected ? `${wiggleOffset}s` : undefined,
+          animation: wiggle ? 'binder-wiggle 0.18s ease-in-out infinite alternate' : undefined,
+          animationDelay: wiggle ? `${wiggleOffset}s` : undefined,
         }}
       >
         {isBox ? (
@@ -478,24 +489,6 @@ function BinderTile({ binder, binderCards, editMode, onDelete, onLongPress }: { 
         </div>
       </div>
     </Link>
-  );
-}
-
-/** Inline "+"-Kachel im Grid (nur Bearbeiten-Modus) statt eines separaten
- *  Header-Buttons — analog zur "Neues Blatt"-Kachel auf der Detailseite,
- *  nur im Cover-Format (aspect-[3/4], gleiche Eckenrundung wie BinderCover
- *  im Ordner-Zustand). */
-function AddBinderTile({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      aria-label="Neue Sammlung"
-      className="relative aspect-[3/4] rounded-tl-[4px] rounded-bl-[4px] rounded-tr-[20px] rounded-br-[20px] border-2 border-dashed border-border/70 bg-white/[0.04] dark:bg-white/[0.03] flex flex-col items-center justify-center gap-2 opacity-75 hover:opacity-100 active:scale-[.98] transition-all"
-    >
-      <span className="w-12 h-12 rounded-full flex items-center justify-center text-white opacity-90" style={tintedGlassStyle('#2f855a')}>
-        <Plus size={24} strokeWidth={3} />
-      </span>
-      <span className="text-xs text-glass-muted">Neue Sammlung</span>
-    </button>
+    </div>
   );
 }
