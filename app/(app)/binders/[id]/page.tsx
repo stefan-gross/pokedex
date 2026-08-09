@@ -1411,6 +1411,15 @@ function SinglePageView({
       ? -(1 - flip.progress) * 100   // forward: -100 → 0 (rein v. links)
       : -flip.progress * 100;        // backward: 0 → -100 (raus n. links)
 
+  // Ein „Seitenschritt" (100%) entspricht NICHT der vollen Containerbreite,
+  // sondern der Seitenbreite + kleinem Spalt: der Container ist um 2·mx-3 = 24px
+  // breiter als die Seite; abzüglich des gewünschten 2px-Spalts bleibt ein
+  // Versatz von 22px pro 100%. So haben benachbarte Seiten beim Verschieben UND
+  // Drehen denselben schmalen Abstand wie die Ruhe-Vorschau am Rand (statt der
+  // vollen 24px). `step(pct)` rechnet einen Prozent-Versatz in genau diesen
+  // Schritt um: translateX(step(100)) = Seitenbreite + 2px.
+  const STEP_OFFSET_PX = 22;
+  const step = (pct: number) => `calc(${pct}% - ${(pct * STEP_OFFSET_PX / 100).toFixed(3)}px)`;
 
   return (
     <div>
@@ -1483,7 +1492,7 @@ function SinglePageView({
             <div
               className="absolute inset-0"
               style={{
-                transform: `translateX(${prevBackShift}%)`,
+                transform: `translateX(${step(prevBackShift)})`,
                 transition: flipTransition,
                 zIndex: 0,
               }}
@@ -1497,7 +1506,7 @@ function SinglePageView({
             <div
               className="absolute inset-0"
               style={{
-                transform: `translateX(${neighborShift}%)`,
+                transform: `translateX(${step(neighborShift)})`,
                 transition: flipTransition,
                 zIndex: 0,
               }}
@@ -1512,7 +1521,7 @@ function SinglePageView({
             <div
               className="absolute inset-0"
               style={{
-                transform: `translateX(${slideShift + (flip.dir === 'forward' ? 100 : -100)}%)`,
+                transform: `translateX(${step(slideShift + (flip.dir === 'forward' ? 100 : -100))})`,
                 transition: flipTransition,
               }}
             >
@@ -1547,9 +1556,9 @@ function SinglePageView({
           <div
             style={{
               transform: flip?.kind === 'rotate'
-                ? `translateX(${(rotateHingeLeft ? 1 : -1) * flip.progress * 100}%) rotateY(${rotateAngle}deg)`
+                ? `translateX(${step((rotateHingeLeft ? 1 : -1) * flip.progress * 100)}) rotateY(${rotateAngle}deg)`
                 : flip?.kind === 'slide'
-                  ? `translateX(${slideShift}%)`
+                  ? `translateX(${step(slideShift)})`
                   : undefined,
               transformOrigin: flip?.kind === 'rotate'
                 ? (rotateHingeLeft ? 'left center' : 'right center')
