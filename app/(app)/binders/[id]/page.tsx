@@ -1261,13 +1261,12 @@ function SinglePageView({
     : null;
   const activeCardInfo = activeCard ? ownedCardToInfo(activeCard, catalogInfoById) : null;
 
-  // Page-Renderer — Slots im Layout-Grid mit Page-Background + Ring auf richtiger Seite.
-  // `forceRingsLeft`: im Ruhezustand/Edit steht die Lochung IMMER links (feste
-  // Bindung wie in einem echten Ringordner) — unabhängig von Vorder/Rückseite.
-  // Nur die transienten Flip-Layer nutzen die natürliche, alternierende Seite
-  // (Vorder links / Rück rechts), damit die 3D-Umblätter-Animation stimmt.
-  const renderPage = (p: BinderPage, pIdx: number, key: string, forceRingsLeft = false) => {
-    const ringsLeft = forceRingsLeft || pIdx % 2 === 0;
+  // Page-Renderer — Slots im Layout-Grid mit Page-Background + Lochung IMMER
+  // links (feste Bindung wie in einem echten Ringordner, unabhängig von Vorder-/
+  // Rückseite). Bewusst KONSTANT links — auch während des Flips: sonst wechselte
+  // die Löcher-Spalte am Ende des Umblätterns die Seite und schob das Karten-Grid
+  // ein paar Pixel (sichtbarer Ruckler beim Loslassen).
+  const renderPage = (p: BinderPage, pIdx: number, key: string) => {
     const slotsContent = (
       <div
         className="flex-1 grid gap-1.5"
@@ -1321,9 +1320,8 @@ function SinglePageView({
         className={`flex items-stretch gap-2 px-3 py-2 mx-3 rounded-xl border${isBg ? '' : ' shadow-card'}`}
         style={{ background: pageBg, borderColor: 'var(--border)' }}
       >
-        {ringsLeft && <RingsCol />}
+        <RingsCol />
         {slotsContent}
-        {!ringsLeft && <RingsCol />}
       </div>
     );
   };
@@ -1461,7 +1459,7 @@ function SinglePageView({
           }}
           onDragCancel={() => setActiveSlot(null)}
         >
-          {renderPage(page, pageIdx, 'edit', true)}
+          {renderPage(page, pageIdx, 'edit')}
 
           <DragOverlay dropAnimation={{ duration: 220, easing: 'cubic-bezier(.2,.9,.3,1)' }}>
             {activeCard ? (
@@ -1603,7 +1601,7 @@ function SinglePageView({
                 backfaceVisibility: flip?.kind === 'rotate' ? 'hidden' : undefined,
               }}
             >
-              {renderPage(page, pageIdx, 'top-front', !showFlip)}
+              {renderPage(page, pageIdx, 'top-front')}
             </div>
             {/* Backface — Folgeseite, an die Vorderseite „angeklebt", rotiert
                 mit; durch eigenes rotateY(180deg) ist sie ab 90° sichtbar. */}
