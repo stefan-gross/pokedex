@@ -1261,12 +1261,14 @@ function SinglePageView({
     : null;
   const activeCardInfo = activeCard ? ownedCardToInfo(activeCard, catalogInfoById) : null;
 
-  // Page-Renderer — Slots im Layout-Grid mit Page-Background + Lochung IMMER
-  // links (feste Bindung wie in einem echten Ringordner, unabhängig von Vorder-/
-  // Rückseite). Bewusst KONSTANT links — auch während des Flips: sonst wechselte
-  // die Löcher-Spalte am Ende des Umblätterns die Seite und schob das Karten-Grid
-  // ein paar Pixel (sichtbarer Ruckler beim Loslassen).
+  // Page-Renderer — Slots im Layout-Grid mit Page-Background + Lochung auf der
+  // natürlichen Seite: Vorderseite (gerader Index) links, Rückseite (ungerader
+  // Index) rechts — wie beim Wenden eines gelochten Blatts. WICHTIG: dieselbe
+  // Regel gilt im Ruhezustand UND in allen Flip-Layern, damit die Löcher-Spalte
+  // am Ende des Umblätterns NICHT die Seite wechselt (das schob sonst das Grid
+  // ein paar Pixel = Ruckler beim Loslassen).
   const renderPage = (p: BinderPage, pIdx: number, key: string) => {
+    const ringsLeft = pIdx % 2 === 0;
     const slotsContent = (
       <div
         className="flex-1 grid gap-1.5"
@@ -1320,8 +1322,9 @@ function SinglePageView({
         className={`flex items-stretch gap-2 px-3 py-2 mx-3 rounded-xl border${isBg ? '' : ' shadow-card'}`}
         style={{ background: pageBg, borderColor: 'var(--border)' }}
       >
-        <RingsCol />
+        {ringsLeft && <RingsCol />}
         {slotsContent}
+        {!ringsLeft && <RingsCol />}
       </div>
     );
   };
