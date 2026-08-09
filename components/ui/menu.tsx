@@ -90,7 +90,7 @@ export function Menu({
     <div
       ref={menuRef}
       role="menu"
-      className={`menu-goo-open z-50 min-w-[190px] glass rounded-2xl overflow-hidden shadow-xl ${
+      className={`menu-goo-open z-50 w-max max-w-[80vw] glass rounded-2xl overflow-hidden shadow-xl ${
         align === 'right' ? 'origin-top-right' : 'origin-top-left'
       } ${portal ? 'fixed' : `absolute top-0 ${align === 'right' ? 'right-0' : 'left-0'}`}`}
       style={portal && coords ? { top: coords.top, left: coords.left, right: coords.right } : undefined}
