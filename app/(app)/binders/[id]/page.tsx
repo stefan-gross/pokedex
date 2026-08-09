@@ -1356,6 +1356,17 @@ function SinglePageView({
     if (!flipStartRef.current) return;
     flipStartRef.current = null;
     if (!flip) return;
+    // Nach einem echten Wisch (Flip war aktiv) den unmittelbar folgenden Klick
+    // EINMALIG schlucken — sonst löst das Loslassen einen Klick auf der Karte
+    // unter dem Finger aus und öffnet ungewollt deren Kartendetail. Capture-
+    // Phase am window, damit er vor dem onClick der Karte greift.
+    const swallow = (ev: Event) => {
+      ev.stopPropagation();
+      (ev as MouseEvent).preventDefault?.();
+      window.removeEventListener('click', swallow, true);
+    };
+    window.addEventListener('click', swallow, true);
+    setTimeout(() => window.removeEventListener('click', swallow, true), 400);
     if (flip.progress > 0.35) {
       const target = flip.dir === 'forward' ? pageIdx + 1 : pageIdx - 1;
       setFlip({ ...flip, progress: 1, committing: true });
