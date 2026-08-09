@@ -82,9 +82,6 @@ const MILKY_BG = 'rgba(255, 255, 255, 0.55)';
 
 const ADD_GLASS_STYLE    = tintedGlassStyle('#2f855a');
 const DELETE_GLASS_STYLE = tintedGlassStyle('#c53030');
-// Bearbeiten-Modus startet per Long-Press auf eine Kachel (wie iOS-Homescreen,
-// analog zur Sammlungsübersicht) statt über einen separaten Toggle-Button.
-const LONG_PRESS_MS = 500;
 
 function resolvePageBg(setting: 'black' | 'white' | 'transparent' | undefined): string {
   switch (setting) {
@@ -688,9 +685,12 @@ export default function BinderDetailPage({ params }: Props) {
               // Switch + Info-Schalter + Blatt-Dropdown) nicht überläuft —
               // iOS-typisches Bearbeiten↔Fertig.
               <Button variant="primary" onClick={exitEditMode} icon={<Check />} aria-label="Fertig" className="shrink-0" />
-            ) : binder.template ? (
-              // Bearbeiten-Modus-Einstieg als Icon-only Stift an gleicher
-              // Stelle — nur für automatische Sammlungen (Karten entfernen).
+            ) : !isProtected && !isBox ? (
+              // Bearbeiten-Modus-Einstieg als Icon-only Stift — für alle
+              // Ordner-Sammlungen außer „Unsortiert" (Boxen nutzen die Grid-
+              // Ansicht ohne Bearbeiten-UI). Einziger Einstieg (kein Long-Press
+              // mehr): automatische Sammlungen wählen Karten zum Entfernen,
+              // manuelle sortieren/löschen wie gehabt.
               <Button variant="primary" onClick={() => setEditMode(true)} icon={<Pencil />} aria-label="Bearbeiten" className="shrink-0" />
             ) : (
               <span className="text-role-label font-semibold text-right shrink-0" style={{ color: binderColor }}>
@@ -735,7 +735,6 @@ export default function BinderDetailPage({ params }: Props) {
           template={!!binder.template}
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
-          onLongPress={() => { if (!binder?.template) setEditMode(true); }}
           onOpenPage={(pageIdx) => {
             // Öffnet exakt die angeklickte Seite (Vorder = 2n, Rück = 2n+1).
             setPageIdx(pageIdx);
@@ -759,7 +758,6 @@ export default function BinderDetailPage({ params }: Props) {
           template={!!binder.template}
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
-          onLongPress={() => { if (!binder?.template) setEditMode(true); }}
           onChangePageIdx={setPageIdx}
           onSwap={swapSlots}
           onClearSlot={clearSlot}
@@ -1166,7 +1164,7 @@ function SheetTile({
 function BinderOverview({
   sheets, cols, cardsById, missingCards, accent, pageBg, editMode,
   template, selectedIds, onToggleSelect,
-  onLongPress, onOpenPage, onAddSheet, onDeleteSheet, onMoveSheet,
+  onOpenPage, onAddSheet, onDeleteSheet, onMoveSheet,
 }: {
   sheets: { front: BinderPage; back: BinderPage; sheetIdx: number }[];
   cols: number;
@@ -1180,7 +1178,6 @@ function BinderOverview({
   template?: boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (cardId: string) => void;
-  onLongPress: () => void;
   onOpenPage: (pageIdx: number) => void;
   onAddSheet: () => void;
   onDeleteSheet: (sheetIdx: number) => void;
@@ -1227,7 +1224,6 @@ function BinderOverview({
               selectMode={selectMode}
               selectedIds={selectedIds}
               onToggleSelect={onToggleSelect}
-              onLongPress={onLongPress}
               onOpen={onOpenPage}
               onDelete={() => onDeleteSheet(sheet.sheetIdx)}
             />
@@ -1280,7 +1276,7 @@ function BinderOverview({
 }
 
 function SortableSheetTile({
-  id, sheet, cols, cardsById, missingCards, accent, pageBg, editMode, onLongPress, onOpen, onDelete,
+  id, sheet, cols, cardsById, missingCards, accent, pageBg, editMode, onOpen, onDelete,
   template, selectMode, selectedIds, onToggleSelect,
 }: {
   id: string;
@@ -1291,7 +1287,6 @@ function SortableSheetTile({
   accent: string;
   pageBg: string;
   editMode: boolean;
-  onLongPress: () => void;
   onOpen: (pageIdx: number) => void;
   onDelete: () => void;
   template?: boolean;
@@ -1303,23 +1298,6 @@ function SortableSheetTile({
     id,
     disabled: !editMode || !!template,   // automatische Sammlung: kein Blatt-Drag
   });
-
-  // Bearbeiten-Modus per Long-Press starten (wie auf der Sammlungsübersicht)
-  // — nur relevant außerhalb des Bearbeiten-Modus, da dnd-kit's eigene
-  // Pointer-Listener sonst schon das Sortieren übernehmen.
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressFired = useRef(false);
-  const startLongPress = () => {
-    if (editMode) return;
-    longPressFired.current = false;
-    longPressTimer.current = setTimeout(() => {
-      longPressFired.current = true;
-      onLongPress();
-    }, LONG_PRESS_MS);
-  };
-  const cancelLongPress = () => {
-    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
-  };
 
   // Bei automatischen Sammlungen ist Blatt-Drag aus → weder Wackeln noch
   // touch-action:none noch Drag-Listener/Attribute.
@@ -1345,12 +1323,7 @@ function SortableSheetTile({
       style={style}
       {...(dragEnabled ? attributes : {})}
       {...(dragEnabled ? listeners : {})}
-      onPointerDown={e => { if (dragEnabled) listeners?.onPointerDown?.(e); startLongPress(); }}
-      onPointerUp={e => { if (dragEnabled) listeners?.onPointerUp?.(e); cancelLongPress(); }}
-      onPointerLeave={e => { if (dragEnabled) listeners?.onPointerLeave?.(e); cancelLongPress(); }}
-      onPointerCancel={e => { if (dragEnabled) listeners?.onPointerCancel?.(e); cancelLongPress(); }}
       onContextMenu={e => e.preventDefault()}
-      onClickCapture={e => { if (longPressFired.current) { e.stopPropagation(); longPressFired.current = false; } }}
     >
       <SheetTile
         sheet={sheet}
@@ -1382,7 +1355,7 @@ type FlipState = {
 function SinglePageView({
   pages, pageIdx, cols, binderSize, cardsById, missingCards, accent, pageBg, editMode,
   template, selectedIds, onToggleSelect,
-  onLongPress, onChangePageIdx, onSwap, onClearSlot, onAddToSlot, onBack, onCardTap, onMissingTap,
+  onChangePageIdx, onSwap, onClearSlot, onAddToSlot, onBack, onCardTap, onMissingTap,
   showCardInfo, cardPrices,
 }: {
   pages: BinderPage[]; pageIdx: number; cols: number; binderSize: number;
@@ -1392,7 +1365,6 @@ function SinglePageView({
   template?: boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (cardId: string) => void;
-  onLongPress: () => void;
   onChangePageIdx: (i: number) => void;
   onSwap: (pA: number, sA: number, pB: number, sB: number) => void;
   onClearSlot: (pageIdx: number, slotIdx: number) => void;
@@ -1458,7 +1430,6 @@ function SinglePageView({
               selectMode={selectMode}
               selected={!!selectedIds?.has(card.id)}
               onToggleSelect={() => onToggleSelect?.(card.id)}
-              onLongPress={onLongPress}
               isDragging={activeSlot?.pageIdx === pIdx && activeSlot?.slotIdx === slotI}
               onTap={() => onCardTap(card)}
               onDelete={() => onClearSlot(pIdx, slotI)}
@@ -1471,6 +1442,7 @@ function SinglePageView({
               id={slotKey}
               n={pIdx * binderSize + slotI + 1}
               editMode={editMode && !selectMode}
+              selectMode={selectMode}
               accent={accent}
               pageBg={pageBg}
               missingCard={missingCards.get(`${pIdx}-${slotI}`)}
@@ -1833,7 +1805,7 @@ function CardInfoOverlay({
 
 // ── Draggable Card-Slot ───────────────────────────────────────────────────
 function DraggableCardSlot({
-  id, card, accent, pageBg, editMode, selectMode, selected, onToggleSelect, onLongPress, isDragging, onTap, onDelete,
+  id, card, accent, pageBg, editMode, selectMode, selected, onToggleSelect, isDragging, onTap, onDelete,
   showInfo, priceResult,
 }: {
   id: string;
@@ -1845,7 +1817,6 @@ function DraggableCardSlot({
   selectMode?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
-  onLongPress: () => void;
   isDragging: boolean;
   onTap: () => void;
   onDelete: () => void;
@@ -1859,23 +1830,6 @@ function DraggableCardSlot({
     id,
     disabled: !editMode || selectMode,   // im Auswahl-Modus kein Drag
   });
-
-  // Bearbeiten-Modus per Long-Press starten (wie auf der Sammlungsübersicht) —
-  // `listeners` sind hier ohnehin nur bei bereits aktivem editMode gebunden,
-  // also keine Kollision mit dnd-kit's eigenen Pointer-Handlern.
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressFired = useRef(false);
-  const startLongPress = () => {
-    if (editMode) return;
-    longPressFired.current = false;
-    longPressTimer.current = setTimeout(() => {
-      longPressFired.current = true;
-      onLongPress();
-    }, LONG_PRESS_MS);
-  };
-  const cancelLongPress = () => {
-    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
-  };
 
   return (
     <div
@@ -1897,13 +1851,8 @@ function DraggableCardSlot({
         touchAction: editMode && !selectMode ? 'none' : undefined,
         cursor: selectMode ? 'pointer' : undefined,
       }}
-      onPointerDown={startLongPress}
-      onPointerUp={cancelLongPress}
-      onPointerLeave={cancelLongPress}
-      onPointerCancel={cancelLongPress}
       onContextMenu={e => e.preventDefault()}
       onClick={() => {
-        if (longPressFired.current) { longPressFired.current = false; return; }
         if (selectMode) { onToggleSelect?.(); return; }
         if (!editMode) onTap();
       }}
@@ -1975,12 +1924,15 @@ function DraggableCardSlot({
 
 // ── Droppable Empty-Slot ──────────────────────────────────────────────────
 function DroppableEmptySlot({
-  id, n, editMode, accent, pageBg, missingCard, onAdd, onMissingTap,
+  id, n, editMode, selectMode, accent, pageBg, missingCard, onAdd, onMissingTap,
   showInfo, priceResult,
 }: {
   id: string;
   n: number;
   editMode: boolean;
+  /** Auswahl-Modus (automatische Sammlung): fehlende Karten sind hier NICHT
+   *  antippbar — kein Detail-Öffnen, nur besessene Karten lassen sich wählen. */
+  selectMode?: boolean;
   accent: string;
   pageBg: string;
   /** Vorlagen-Binder: Katalog-Platzhalter für diesen fehlenden Slot —
@@ -2006,9 +1958,9 @@ function DroppableEmptySlot({
         boxShadow: isOver ? `0 0 0 4px ${accent}40` : undefined,
         transform: isOver ? 'scale(1.04)' : undefined,
         transition: 'border-color 150ms ease-out, box-shadow 150ms ease-out, transform 150ms ease-out',
-        cursor: !editMode && missingCard ? 'pointer' : undefined,
+        cursor: !editMode && !selectMode && missingCard ? 'pointer' : undefined,
       }}
-      onClick={() => { if (!editMode && missingCard) onMissingTap?.(missingCard); }}
+      onClick={() => { if (!editMode && !selectMode && missingCard) onMissingTap?.(missingCard); }}
     >
       {missingCard && (
         <>
