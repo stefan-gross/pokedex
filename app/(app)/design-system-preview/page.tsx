@@ -380,14 +380,6 @@ export default function DesignSystemPreviewPage() {
     document.documentElement.style.setProperty('--swipe-solid-bg-dark', resolveSwipeSolidColor(draftGlassTheme.swipeSolid.dark));
   }, [draftGlassTheme.swipeSolid]);
 
-  // Menü-Glas (`.glass-menu`) live spiegeln — analog zu oben (`--glass-menu-*`).
-  useEffect(() => {
-    const r = document.documentElement.style;
-    r.setProperty('--glass-menu-alpha', String(draftGlassTheme.menu.alpha));
-    r.setProperty('--glass-menu-blur', `${draftGlassTheme.menu.blur}px`);
-    r.setProperty('--glass-menu-saturate', String(draftGlassTheme.menu.saturate));
-  }, [draftGlassTheme.menu]);
-
   const handleSaveAll = () => {
     setGlassTheme(draftGlassTheme);
     setCardVisualTheme(draftCardTheme);
@@ -576,14 +568,6 @@ export default function DesignSystemPreviewPage() {
   const setGlassAlpha = (v: number) => setDraftGlassTheme(prev => ({ ...prev, panel: { ...prev.panel, alpha: v } }));
   const setGlassBlur = (v: number) => setDraftGlassTheme(prev => ({ ...prev, panel: { ...prev.panel, blur: v } }));
   const setGlassSaturate = (v: number) => setDraftGlassTheme(prev => ({ ...prev, panel: { ...prev.panel, saturate: v } }));
-  // Menü-Glas (`.glass-menu`, Dropdown/Aktionen-Menü) — eigene Deckkraft/Blur/
-  // Sättigung, analog zum Panel.
-  const menuAlpha = draftGlassTheme.menu.alpha;
-  const menuBlur = draftGlassTheme.menu.blur;
-  const menuSaturate = draftGlassTheme.menu.saturate;
-  const setMenuAlpha = (v: number) => setDraftGlassTheme(prev => ({ ...prev, menu: { ...prev.menu, alpha: v } }));
-  const setMenuBlur = (v: number) => setDraftGlassTheme(prev => ({ ...prev, menu: { ...prev.menu, blur: v } }));
-  const setMenuSaturate = (v: number) => setDraftGlassTheme(prev => ({ ...prev, menu: { ...prev.menu, saturate: v } }));
   // Textfarbe: Schwarzwert in Light, Weißwert in Dark — jetzt Teil des
   // Entwurfs (`draftGlassTheme.textColor`), Moduswechsel überschreibt den
   // jeweils anderen Modus nicht (zwei getrennte Felder).
@@ -1743,9 +1727,8 @@ export default function DesignSystemPreviewPage() {
       <Section title="Menü (Aktionen)">
         <p className="text-role-label text-glass-muted">
           Aufklappendes Aktionen-Dropdown: quillt gooey aus der Ecke (kein
-          SVG-Blur → scharfer Text), Glas-Fläche (`.glass-menu`, blickdichter als
-          `.glass`, da es meist über hellem Glas liegt), liegt AUF dem Auslöser
-          und schließt bei Klick irgendwohin außerhalb.
+          SVG-Blur → scharfer Text), nutzt dieselbe `.glass`-Fläche wie die Panels,
+          liegt AUF dem Auslöser und schließt bei Klick irgendwohin außerhalb.
         </p>
         <div className="flex items-center justify-between gap-4">
           <span className="text-role-label text-glass-muted">Rechts ausgerichtet</span>
@@ -1774,29 +1757,10 @@ export default function DesignSystemPreviewPage() {
           />
           <span className="text-role-label text-glass-muted">Links ausgerichtet</span>
         </div>
-
-        {/* Live-Vorschau des Menü-Glases über buntem Grund (damit Deckkraft/Blur
-            sichtbar werden) + Regler. Werte gelten erst nach „Speichern" app-weit. */}
-        <div className="pt-2 space-y-2">
-          <span className="text-role-label text-glass-muted">Glas-Vorschau (Deckkraft / Blur / Sättigung)</span>
-          <div
-            className="rounded-2xl p-6 flex justify-center"
-            style={{ background: 'linear-gradient(120deg, #3b82f6 0%, #a855f7 50%, #ef4444 100%)' }}
-          >
-            <div className="glass-menu rounded-2xl overflow-hidden shadow-xl" style={{ width: 190 }}>
-              <div className="px-4 py-3 text-sm text-glass">Bearbeiten</div>
-              <div className="px-4 py-3 text-sm text-glass">Duplizieren</div>
-              <div className="px-4 py-3 text-sm text-destructive">Löschen</div>
-            </div>
-          </div>
-          <GlassSliders
-            alpha={menuAlpha} setAlpha={setMenuAlpha}
-            blur={menuBlur} setBlur={setMenuBlur}
-            saturate={menuSaturate} setSaturate={setMenuSaturate}
-            color="var(--foreground)"
-            defaults={{ alpha: DEFAULT_GLASS_THEME.menu.alpha, blur: DEFAULT_GLASS_THEME.menu.blur, saturate: DEFAULT_GLASS_THEME.menu.saturate }}
-          />
-        </div>
+        <p className="text-role-label text-glass-muted">
+          Das Menü nutzt dieselbe `.glass`-Klasse wie die Panels — Deckkraft/Blur/
+          Sättigung werden also über die „Panel (.glass)"-Regler oben gesteuert.
+        </p>
       </Section>
     </div>
   );

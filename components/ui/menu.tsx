@@ -15,8 +15,8 @@ export interface MenuItem {
  *
  *  - **Gooey-Öffnen**: quillt per `menu-goo-open` (globals.css) organisch aus
  *    der Verankerungsecke — kein SVG-Blur, damit der Text scharf bleibt.
- *  - **Glas**: `.glass-menu` (mattierte, transluzente Scheibe — bewusst
- *    blickdichter als `.glass`, da Menüs meist über hellem Glas liegen).
+ *  - **Glas**: dieselbe `.glass`-Klasse wie die App-Panels (identische
+ *    Deckkraft/Blur/Hintergrund) — gut lesbar über dem bunten App-Hintergrund.
  *  - **Öffnet ÜBER dem Auslöser** (`top-0`, z-Ebene): der Auslöser verschwindet,
  *    während das Menü offen ist, und ploppt beim Schließen gooey zurück
  *    (`menu-trigger-pop`). Der Auslöser behält im Layout seinen Platz
@@ -77,7 +77,7 @@ export function Menu({
       {open && (
         <div
           role="menu"
-          className={`menu-goo-open absolute top-0 z-40 min-w-[190px] glass-menu rounded-2xl overflow-hidden shadow-xl ${
+          className={`menu-goo-open absolute top-0 z-40 min-w-[190px] glass rounded-2xl overflow-hidden shadow-xl ${
             align === 'right' ? 'right-0 origin-top-right' : 'left-0 origin-top-left'
           }`}
         >

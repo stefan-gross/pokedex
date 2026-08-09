@@ -132,8 +132,6 @@ export interface ButtonGroupTheme extends ToggleTheme {
 
 export interface GlassTheme {
   panel: PanelTheme;
-  /** Dropdown-/Aktionen-Menü (`.glass-menu`). */
-  menu: PanelTheme;
   primary: GlassOverride;
   secondary: SecondaryOverride;
   scan: GlassOverride;
@@ -169,9 +167,6 @@ export interface GlassTheme {
 // eigener hartcodierter Zahlen.
 export const DEFAULT_GLASS_THEME: GlassTheme = {
   panel: { alpha: 0.15, blur: 22, saturate: 1.4 },
-  // Dropdown-/Aktionen-Menü (`.glass-menu`) — blickdichter als `panel`, da es
-  // meist über hellem Glas liegt (siehe globals.css).
-  menu: { alpha: 0.62, blur: 22, saturate: 1.4 },
   primary: {
     alpha: 0.46, blur: 13, saturate: 1.7,
     borderWidth: 0, borderOpacity: 0.5,
@@ -250,15 +245,12 @@ export function resolveSwipeSolidColor({ color, brightness }: SwipeSolidTheme): 
   return color;
 }
 
-function applyCssVars(panel: PanelTheme, textColor: GlassTheme['textColor'], swipeSolid: GlassTheme['swipeSolid'], menu: PanelTheme) {
+function applyCssVars(panel: PanelTheme, textColor: GlassTheme['textColor'], swipeSolid: GlassTheme['swipeSolid']) {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   root.style.setProperty('--glass-alpha', String(panel.alpha));
   root.style.setProperty('--glass-blur', `${panel.blur}px`);
   root.style.setProperty('--glass-saturate', String(panel.saturate));
-  root.style.setProperty('--glass-menu-alpha', String(menu.alpha));
-  root.style.setProperty('--glass-menu-blur', `${menu.blur}px`);
-  root.style.setProperty('--glass-menu-saturate', String(menu.saturate));
   root.style.setProperty('--text-glass-light', String(textColor.light));
   root.style.setProperty('--text-glass-dark', String(textColor.dark));
   root.style.setProperty('--swipe-solid-bg-light', resolveSwipeSolidColor(swipeSolid.light));
@@ -291,7 +283,6 @@ export function hydrateGlassTheme() {
         ...DEFAULT_GLASS_THEME,
         ...parsed,
         panel: { ...DEFAULT_GLASS_THEME.panel, ...parsed.panel },
-        menu: { ...DEFAULT_GLASS_THEME.menu, ...parsed.menu },
         primary: { ...DEFAULT_GLASS_THEME.primary, ...parsed.primary },
         secondary: { ...DEFAULT_GLASS_THEME.secondary, ...parsed.secondary },
         scan: { ...DEFAULT_GLASS_THEME.scan, ...parsed.scan },
@@ -308,7 +299,7 @@ export function hydrateGlassTheme() {
       };
     }
   } catch { /* kaputtes/altes Format ignorieren, bei Default bleiben */ }
-  applyCssVars(state.panel, state.textColor, state.swipeSolid, state.menu);
+  applyCssVars(state.panel, state.textColor, state.swipeSolid);
   listeners.forEach(l => l());
 }
 
@@ -320,7 +311,7 @@ export function getGlassTheme(): GlassTheme {
 
 export function setGlassTheme(updater: GlassTheme | ((prev: GlassTheme) => GlassTheme)) {
   state = typeof updater === 'function' ? (updater as (p: GlassTheme) => GlassTheme)(state) : updater;
-  applyCssVars(state.panel, state.textColor, state.swipeSolid, state.menu);
+  applyCssVars(state.panel, state.textColor, state.swipeSolid);
   persist(state);
   listeners.forEach(l => l());
 }
