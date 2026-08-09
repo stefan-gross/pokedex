@@ -42,6 +42,16 @@ interface Props {
   /** Zeigt ein kleines Set-Symbol oben links auf jeder Kachel — sinnvoll, wenn
    *  Ergebnisse mehrere Sets umfassen (z.B. Suche nach einem Pokémon-Namen). */
   showSetBadge?: boolean;
+  /** Auswahl-Modus (z.B. Bearbeiten einer automatischen Sammlung): ein Tipp
+   *  wählt eine auswählbare Karte aus, statt das Detail zu öffnen. Opt-in — ohne
+   *  diese Props verhält sich das Grid wie bisher (Suche etc. unberührt). */
+  selectMode?: boolean;
+  /** tcgIds, die in diesem Kontext auswählbar sind (z.B. Exemplar in der Sammlung). */
+  selectableIds?: Set<string>;
+  /** tcgIds, die aktuell ausgewählt sind. */
+  selectedIds?: Set<string>;
+  /** Auswahl einer Karte umschalten. */
+  onToggleSelect?: (card: CardInfo) => void;
 }
 
 /** Gibt das passende Label zur aktiven Sortierung zurück. */
@@ -102,6 +112,10 @@ export function CardGrid({
   pricesLoading,
   setsMeta,
   showSetBadge,
+  selectMode,
+  selectableIds,
+  selectedIds,
+  onToggleSelect,
 }: Props) {
   const [selected, setSelected] = useState<CardInfo | null>(null);
 
@@ -144,6 +158,10 @@ export function CardGrid({
             setCode={numberPrefixCode}
             numberPrefixCode={showNumberPrefix && !numberPrefixSymbolUrl ? numberPrefixCode : undefined}
             numberPrefixSymbolUrl={showNumberPrefix ? numberPrefixSymbolUrl : undefined}
+            selectMode={selectMode}
+            selectable={!!selectMode && !!selectableIds?.has(card.id)}
+            selected={!!selectedIds?.has(card.id)}
+            onToggleSelect={() => onToggleSelect?.(card)}
           />
           );
         })}

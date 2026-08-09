@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, Settings, LayoutGrid, BookOpen, FileText, Check,
   Plus, Minus, ChevronRight, ChevronDown, Info, MoreHorizontal, FileDown, Images,
+  Pencil, Trash2,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, TouchSensor, useSensor, useSensors,
@@ -18,6 +19,7 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   getBinder, deleteBinderCascade, setBinderPages, cardIdsToPages,
   ensureDefaultBinder, addCardToBinder, addCardsToBinder, removeCardFromOtherBinders,
+  setCardExclusiveBinder,
 } from '@/lib/firestore/binders';
 import { syncTemplateBinders } from '@/lib/template-binders/sync';
 import { getCard, getCards } from '@/lib/firestore/cards';
@@ -134,6 +136,10 @@ export default function BinderDetailPage({ params }: Props) {
   const [view, setView] = useState<View>('binder');
   const [pageIdx, setPageIdx] = useState<number>(0);
   const [editMode, setEditMode] = useState(false);
+  // Bearbeiten-Modus (automatische Sammlungen): ausgewählte Karten (CardDoc-IDs)
+  // zum Entfernen. Tipp wählt aus, „Entfernen" schickt sie zurück nach Unsortiert.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [removing, setRemoving] = useState(false);
   const [pickerSlot, setPickerSlot] = useState<{ pageIdx: number; slotIdx: number } | null>(null);
   const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
   const [detailOwned, setDetailOwned] = useState<CardDoc[]>([]);
@@ -214,6 +220,35 @@ export default function BinderDetailPage({ params }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
+  // ── Bearbeiten-Modus (automatische Sammlungen): Karten entfernen ──────────
+  const exitEditMode = useCallback(() => { setEditMode(false); setSelectedIds(new Set()); }, []);
+  const toggleSelect = useCallback((cardId: string) => {
+    setSelectedIds(prev => {
+      const n = new Set(prev);
+      if (n.has(cardId)) n.delete(cardId); else n.add(cardId);
+      return n;
+    });
+  }, []);
+  // Ausgewählte Karten aus der (Vorlagen-)Sammlung entfernen → zurück nach
+  // „Unsortiert" (setCardExclusiveBinder: aus allen Bindern raus + in Default
+  // rein), danach Template-Sync (leere Slots werden wieder Platzhalter). NICHT
+  // clearSlot (das würde die Karte verwaisen und `pages` direkt editieren).
+  const removeSelectedFromTemplate = useCallback(async () => {
+    if (!binder || removing || selectedIds.size === 0) return;
+    setRemoving(true);
+    try {
+      const defaultId = await ensureDefaultBinder();
+      for (const cardId of selectedIds) await setCardExclusiveBinder(cardId, defaultId);
+      await syncTemplateBinders({ binderIds: [binder.id] });
+      setSelectedIds(new Set());
+      await load();
+    } catch (e) {
+      console.error('[binder] remove selected error', e);
+    } finally {
+      setRemoving(false);
+    }
+  }, [binder, removing, selectedIds, load]);
+
   // Bei jedem Ansichtswechsel nach oben scrollen: Öffnet man aus der (langen,
   // gescrollten) Blätter-Übersicht eine Seite, behielte das Dokument sonst seine
   // Scrollposition — die kurze Einzelseite erschiene dann halb nach oben aus dem
@@ -233,6 +268,10 @@ export default function BinderDetailPage({ params }: Props) {
     active: templateGridActive,
     priceResults: cardPrices,
     onCardsChanged: load,
+    selectMode: editMode && !!binder?.template,
+    binderCardIds: binder?.cardIds,
+    selectedCardIds: selectedIds,
+    onToggleSelectCard: toggleSelect,
   });
   const { stage, registerRegion, regionStyle, grabberProps } = useGrabberCollapse({
     regionCount: 1,
@@ -552,11 +591,14 @@ export default function BinderDetailPage({ params }: Props) {
                 />
               )}
               items={[
+                // „Bearbeiten" (Modus) ist jetzt ein Button im Panel, kein
+                // Menüpunkt mehr; der bisherige „Bearbeiten"-Eintrag (Settings)
+                // heißt jetzt „Einstellungen".
+                { label: 'Einstellungen', onClick: () => setShowEdit(true) },
                 ...(binder.template ? [
-                  { label: 'Passende Karten einsortieren', onClick: handleFillFromOwned, disabled: filling },
                   { label: 'Exportieren …', onClick: () => setShowExport(true) },
+                  { label: 'Passende Karten einsortieren', onClick: handleFillFromOwned, disabled: filling },
                 ] : []),
-                { label: 'Bearbeiten', onClick: () => setShowEdit(true) },
                 ...(!binder.isDefault ? [
                   { label: 'Sammlung löschen', onClick: handleDelete, destructive: true },
                 ] : []),
@@ -594,7 +636,7 @@ export default function BinderDetailPage({ params }: Props) {
                 iconOnly
                 className="shrink-0"
                 value={view}
-                onChange={(v) => { setView(v); setEditMode(false); }}
+                onChange={(v) => { setView(v); exitEditMode(); }}
                 options={[
                   { value: 'binder', label: <BookOpen size={18} />, ariaLabel: 'Blätter' },
                   { value: 'page', label: <FileText size={18} />, ariaLabel: 'Seite' },
@@ -619,9 +661,10 @@ export default function BinderDetailPage({ params }: Props) {
             )}
           </div>
           {/* Rechts ausgerichtet: Zusatzinfo-Switch (nur Seitenansicht) +
-              Bearbeiten-Modus startet per Long-Press auf eine Kachel (wie iOS-
-              Homescreen) — kein separater Einstiegs-Button. Zum Beenden bleibt
-              ein "Fertig"-Button, analog zur Sammlungsübersicht. */}
+              Kontext-Aktion. Automatische Sammlungen zeigen einen sichtbaren
+              „Bearbeiten"-Button (Karten entfernen); im Modus wird daraus
+              „Fertig". Manuelle Sammlungen starten den Modus weiterhin per
+              Long-Press auf eine Kachel und zeigen sonst den Sammlungswert. */}
           <div className="flex items-center gap-2 shrink-0">
             {!isBox && view === 'page' && (
               // Zusatzinfo-Toggle als iconOnly-ButtonGroup (Toggle-Modus) —
@@ -640,15 +683,16 @@ export default function BinderDetailPage({ params }: Props) {
               />
             )}
             {editMode ? (
-              <button
-                onClick={() => setEditMode(false)}
-                className="inline-flex items-center gap-1.5 h-11 px-3 rounded-full text-xs font-semibold shrink-0"
-                style={{ background: 'var(--pokedex-blue)', color: '#fff', border: 'none' }}
-              >
-                <Check size={13} />
+              <Button variant="primary" onClick={exitEditMode} icon={<Check />} className="shrink-0">
                 Fertig
-              </button>
-            ) : binder.template ? null : (
+              </Button>
+            ) : binder.template ? (
+              // Bearbeiten-Modus-Einstieg als sichtbarer Button (symmetrisch zu
+              // „Fertig") — nur für automatische Sammlungen (Karten entfernen).
+              <Button variant="primary" onClick={() => setEditMode(true)} icon={<Pencil />} className="shrink-0">
+                Bearbeiten
+              </Button>
+            ) : (
               <span className="text-role-label font-semibold text-right shrink-0" style={{ color: binderColor }}>
                 {!totalValue.loading && totalValue.withPrice > 0
                   ? `≈${totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
@@ -688,6 +732,9 @@ export default function BinderDetailPage({ params }: Props) {
           accent={binderColor}
           pageBg={pageBg}
           editMode={editMode}
+          template={!!binder.template}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
           onLongPress={() => { if (!binder?.template) setEditMode(true); }}
           onOpenPage={(pageIdx) => {
             // Öffnet exakt die angeklickte Seite (Vorder = 2n, Rück = 2n+1).
@@ -709,6 +756,9 @@ export default function BinderDetailPage({ params }: Props) {
           accent={binderColor}
           pageBg={pageBg}
           editMode={editMode}
+          template={!!binder.template}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
           onLongPress={() => { if (!binder?.template) setEditMode(true); }}
           onChangePageIdx={setPageIdx}
           onSwap={swapSlots}
@@ -794,6 +844,39 @@ export default function BinderDetailPage({ params }: Props) {
         </div>
       </Sheet>
 
+      {/* Auswahl-Leiste im Bearbeiten-Modus (automatische Sammlung) — fix über
+          der Bottom-Nav; zeigt Anzahl + Entfernen (zurück nach Unsortiert). */}
+      {editMode && binder.template && (
+        <div
+          className="fixed inset-x-0 z-[70] px-3 pointer-events-none"
+          style={{ bottom: 'calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 8px)' }}
+        >
+          <div className="glass rounded-full px-4 py-2 flex items-center justify-between gap-3 shadow-xl pointer-events-auto max-w-md mx-auto">
+            <span className="text-sm font-semibold text-glass">
+              {selectedIds.size === 0 ? 'Karten zum Entfernen wählen' : `${selectedIds.size} ausgewählt`}
+            </span>
+            <div className="flex items-center gap-1 shrink-0">
+              {selectedIds.size > 0 && (
+                <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                  Abbrechen
+                </Button>
+              )}
+              <Button
+                variant="primary"
+                size="sm"
+                accentColor="var(--action-delete)"
+                onClick={removeSelectedFromTemplate}
+                disabled={selectedIds.size === 0 || removing}
+                icon={<Trash2 />}
+                className="shrink-0"
+              >
+                Entfernen
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Lade-Overlay während „Passende Karten einsortieren" (Bulk-Add + Sync). */}
       {filling && (
         <div className="fixed inset-0 z-[80] flex flex-col items-center justify-center gap-3 bg-black/45 backdrop-blur-sm">
@@ -829,6 +912,7 @@ function RingsCol() {
 // ── Mini-Page-Grid ────────────────────────────────────────────────────────
 function MiniPageGrid({
   slots, cols, cardsById, dim, pageBg, missingCards, pageIdx,
+  selectMode, selectedIds, onToggleSelect,
 }: {
   slots: (string | null)[]; cols: number; cardsById: Map<string, CardDoc>; dim?: boolean; pageBg?: string;
   /** Vorlagen-Binder: Katalog-Platzhalter für fehlende Slots (Key
@@ -836,6 +920,10 @@ function MiniPageGrid({
    *  hier noch fehlt statt nur einer leeren Fläche. */
   missingCards?: Map<string, CatalogCard>;
   pageIdx?: number;
+  /** Auswahl-Modus (automatische Sammlung): vorhandene Karten sind antippbar. */
+  selectMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (cardId: string) => void;
 }) {
   const { bg: slotBg, border: slotBorder } = pageBg
     ? slotColors(pageBg)
@@ -850,6 +938,8 @@ function MiniPageGrid({
         const card = slotId ? cardsById.get(slotId) : undefined;
         const cardInfo = card ? ownedCardToInfo(card, catalogInfoById) : undefined;
         const missing = !card && pageIdx != null ? missingCards?.get(`${pageIdx}-${slotI}`) : undefined;
+        const selectable = selectMode && !!card;
+        const isSel = selectable && !!selectedIds?.has(card!.id);
         return (
           <div
             key={slotI}
@@ -857,8 +947,23 @@ function MiniPageGrid({
             style={{
               background: card || missing ? '#1a1a1a' : slotBg,
               border: card || missing ? 'none' : `1px dashed ${slotBorder}`,
+              cursor: selectable ? 'pointer' : undefined,
+              opacity: selectMode && card && !isSel ? 0.6 : undefined,
+              boxShadow: isSel ? `0 0 0 2px ${'var(--pokedex-blue)'}` : undefined,
             }}
+            onClick={selectable ? (e) => { e.stopPropagation(); onToggleSelect?.(card!.id); } : undefined}
           >
+            {selectable && (
+              <div
+                className="absolute top-0.5 right-0.5 z-10 w-4 h-4 rounded-full flex items-center justify-center"
+                style={isSel
+                  ? { background: 'var(--pokedex-blue)', color: '#fff' }
+                  : { background: 'rgba(0,0,0,.45)', border: '1.5px solid rgba(255,255,255,.85)' }}
+                aria-hidden
+              >
+                {isSel && <Check size={10} strokeWidth={3} />}
+              </div>
+            )}
             {missing && !card && (
               <div className="absolute inset-0 bg-[#c9c9c9] dark:bg-[#5b5d63]" />
             )}
@@ -980,6 +1085,7 @@ function RecentTriageView({ cards, onCardTap, prices }: {
 // ── Sheet-Tile (Vorder + Rück mit Ringen an beiden Außenrändern) ──────────
 function SheetTile({
   sheet, cols, cardsById, missingCards, accent, pageBg, editMode, onOpen, onDelete, isOverlay,
+  template, selectMode, selectedIds, onToggleSelect,
 }: {
   sheet: { front: BinderPage; back: BinderPage; sheetIdx: number };
   cols: number;
@@ -993,6 +1099,11 @@ function SheetTile({
   onOpen?: (pageIdx: number) => void;
   onDelete?: () => void;
   isOverlay?: boolean;
+  /** Automatische Sammlung: keine Blatt-Löschung, stattdessen Karten-Auswahl. */
+  template?: boolean;
+  selectMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (cardId: string) => void;
 }) {
   const slotsFilled = sheet.front.slots.filter(Boolean).length + sheet.back.slots.filter(Boolean).length;
   const slotsTotal = sheet.front.slots.length + sheet.back.slots.length;
@@ -1014,7 +1125,7 @@ function SheetTile({
         <RingsCol />
         {/* Vorderseite anklicken → Vorderseite öffnen */}
         <div className="flex-1 min-w-0">
-          <MiniPageGrid slots={sheet.front.slots} cols={cols} cardsById={cardsById} pageBg={pageBg} missingCards={missingCards} pageIdx={sheet.sheetIdx * 2} />
+          <MiniPageGrid slots={sheet.front.slots} cols={cols} cardsById={cardsById} pageBg={pageBg} missingCards={missingCards} pageIdx={sheet.sheetIdx * 2} selectMode={selectMode} selectedIds={selectedIds} onToggleSelect={onToggleSelect} />
           <div className="text-[9px] text-center mt-1" style={{ color: pageTextColor, opacity: 0.75 }}>Vorder</div>
         </div>
         {/* Buchrücken-Knick */}
@@ -1025,7 +1136,7 @@ function SheetTile({
           className="flex-1 min-w-0"
           onClick={e => { if (!editMode && onOpen) { e.stopPropagation(); onOpen(sheet.sheetIdx * 2 + 1); } }}
         >
-          <MiniPageGrid slots={sheet.back.slots} cols={cols} cardsById={cardsById} pageBg={pageBg} missingCards={missingCards} pageIdx={sheet.sheetIdx * 2 + 1} />
+          <MiniPageGrid slots={sheet.back.slots} cols={cols} cardsById={cardsById} pageBg={pageBg} missingCards={missingCards} pageIdx={sheet.sheetIdx * 2 + 1} selectMode={selectMode} selectedIds={selectedIds} onToggleSelect={onToggleSelect} />
           <div className="text-[9px] text-center mt-1" style={{ color: pageTextColor, opacity: 0.75 }}>Rück</div>
         </div>
         <RingsCol />
@@ -1037,7 +1148,7 @@ function SheetTile({
         >
           Blatt {sheet.sheetIdx + 1}
         </span>
-        {editMode && onDelete && (
+        {editMode && !template && onDelete && (
           <button
             onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); onDelete(); }}
@@ -1056,6 +1167,7 @@ function SheetTile({
 // ── Binder Overview — Sheets als Sortable mit dnd-kit ─────────────────────
 function BinderOverview({
   sheets, cols, cardsById, missingCards, accent, pageBg, editMode,
+  template, selectedIds, onToggleSelect,
   onLongPress, onOpenPage, onAddSheet, onDeleteSheet, onMoveSheet,
 }: {
   sheets: { front: BinderPage; back: BinderPage; sheetIdx: number }[];
@@ -1065,12 +1177,20 @@ function BinderOverview({
   accent: string;
   pageBg: string;
   editMode: boolean;
+  /** Automatische Sammlung: keine Blatt-Verwaltung (Add/Delete/Reorder),
+   *  stattdessen Karten-Auswahl zum Entfernen. */
+  template?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (cardId: string) => void;
   onLongPress: () => void;
   onOpenPage: (pageIdx: number) => void;
   onAddSheet: () => void;
   onDeleteSheet: (sheetIdx: number) => void;
   onMoveSheet: (fromId: string, toId: string) => void;
 }) {
+  // Auswahl-Modus (automatische Sammlung im editMode): Karten antippen, keine
+  // Blatt-Verwaltung.
+  const selectMode = !!template && editMode;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 350, tolerance: 16 } }),
@@ -1086,6 +1206,7 @@ function BinderOverview({
       onDragStart={(e: DragStartEvent) => setActiveId(String(e.active.id))}
       onDragEnd={(e: DragEndEvent) => {
         setActiveId(null);
+        if (template) return;   // automatische Sammlung: kein Blatt-Umsortieren
         if (!e.over || e.over.id === e.active.id) return;
         onMoveSheet(String(e.active.id), String(e.over.id));
       }}
@@ -1104,13 +1225,17 @@ function BinderOverview({
               accent={accent}
               pageBg={pageBg}
               editMode={editMode}
+              template={template}
+              selectMode={selectMode}
+              selectedIds={selectedIds}
+              onToggleSelect={onToggleSelect}
               onLongPress={onLongPress}
               onOpen={onOpenPage}
               onDelete={() => onDeleteSheet(sheet.sheetIdx)}
             />
           ))}
 
-          {editMode && (
+          {editMode && !template && (
             <button
               onClick={onAddSheet}
               className="relative glass-inner rounded-xl border-2 border-dashed border-border p-2"
@@ -1158,6 +1283,7 @@ function BinderOverview({
 
 function SortableSheetTile({
   id, sheet, cols, cardsById, missingCards, accent, pageBg, editMode, onLongPress, onOpen, onDelete,
+  template, selectMode, selectedIds, onToggleSelect,
 }: {
   id: string;
   sheet: { front: BinderPage; back: BinderPage; sheetIdx: number };
@@ -1170,10 +1296,14 @@ function SortableSheetTile({
   onLongPress: () => void;
   onOpen: (pageIdx: number) => void;
   onDelete: () => void;
+  template?: boolean;
+  selectMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (cardId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({
     id,
-    disabled: !editMode,
+    disabled: !editMode || !!template,   // automatische Sammlung: kein Blatt-Drag
   });
 
   // Bearbeiten-Modus per Long-Press starten (wie auf der Sammlungsübersicht)
@@ -1193,13 +1323,16 @@ function SortableSheetTile({
     if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
   };
 
+  // Bei automatischen Sammlungen ist Blatt-Drag aus → weder Wackeln noch
+  // touch-action:none noch Drag-Listener/Attribute.
+  const dragEnabled = editMode && !template;
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.3 : 1,
-    animation: editMode && !isDragging && !isOver ? 'binder-wiggle 0.18s ease-in-out infinite alternate' : undefined,
-    animationDelay: editMode && !isDragging && !isOver ? `${wiggleDelay(id)}s` : undefined,
-    touchAction: editMode ? 'none' : undefined,
+    animation: dragEnabled && !isDragging && !isOver ? 'binder-wiggle 0.18s ease-in-out infinite alternate' : undefined,
+    animationDelay: dragEnabled && !isDragging && !isOver ? `${wiggleDelay(id)}s` : undefined,
+    touchAction: dragEnabled ? 'none' : undefined,
     borderColor: isOver ? accent : undefined,
     borderStyle: isOver ? 'dashed' : undefined,
     borderWidth: isOver ? 2 : undefined,
@@ -1212,12 +1345,12 @@ function SortableSheetTile({
       ref={setNodeRef}
       className="no-callout"
       style={style}
-      {...attributes}
-      {...listeners}
-      onPointerDown={e => { listeners?.onPointerDown?.(e); startLongPress(); }}
-      onPointerUp={e => { listeners?.onPointerUp?.(e); cancelLongPress(); }}
-      onPointerLeave={e => { listeners?.onPointerLeave?.(e); cancelLongPress(); }}
-      onPointerCancel={e => { listeners?.onPointerCancel?.(e); cancelLongPress(); }}
+      {...(dragEnabled ? attributes : {})}
+      {...(dragEnabled ? listeners : {})}
+      onPointerDown={e => { if (dragEnabled) listeners?.onPointerDown?.(e); startLongPress(); }}
+      onPointerUp={e => { if (dragEnabled) listeners?.onPointerUp?.(e); cancelLongPress(); }}
+      onPointerLeave={e => { if (dragEnabled) listeners?.onPointerLeave?.(e); cancelLongPress(); }}
+      onPointerCancel={e => { if (dragEnabled) listeners?.onPointerCancel?.(e); cancelLongPress(); }}
       onContextMenu={e => e.preventDefault()}
       onClickCapture={e => { if (longPressFired.current) { e.stopPropagation(); longPressFired.current = false; } }}
     >
@@ -1229,6 +1362,10 @@ function SortableSheetTile({
         accent={accent}
         pageBg={pageBg}
         editMode={editMode}
+        template={template}
+        selectMode={selectMode}
+        selectedIds={selectedIds}
+        onToggleSelect={onToggleSelect}
         onOpen={onOpen}
         onDelete={onDelete}
       />
@@ -1246,11 +1383,17 @@ type FlipState = {
 
 function SinglePageView({
   pages, pageIdx, cols, binderSize, cardsById, missingCards, accent, pageBg, editMode,
+  template, selectedIds, onToggleSelect,
   onLongPress, onChangePageIdx, onSwap, onClearSlot, onAddToSlot, onBack, onCardTap, onMissingTap,
   showCardInfo, cardPrices,
 }: {
   pages: BinderPage[]; pageIdx: number; cols: number; binderSize: number;
   cardsById: Map<string, CardDoc>; missingCards: Map<string, CatalogCard>; accent: string; pageBg: string; editMode: boolean;
+  /** Automatische Sammlung: Manual-Ops (Drag/Swap/Add/Löschen) aus, stattdessen
+   *  Auswahl zum Entfernen. */
+  template?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (cardId: string) => void;
   onLongPress: () => void;
   onChangePageIdx: (i: number) => void;
   onSwap: (pA: number, sA: number, pB: number, sB: number) => void;
@@ -1262,6 +1405,9 @@ function SinglePageView({
   showCardInfo?: boolean;
   cardPrices?: Map<string, PriceResult | null>;
 }) {
+  // Auswahl-Modus (nur automatische Sammlung im editMode): Tipp wählt aus statt
+  // Detail zu öffnen; Drag/Swap/Add sind aus.
+  const selectMode = !!template && editMode;
   const catalogInfoById = useContext(BinderCatalogCtx);
   const page = pages[pageIdx];
   const totalPages = pages.length;
@@ -1311,6 +1457,9 @@ function SinglePageView({
               accent={accent}
               pageBg={pageBg}
               editMode={editMode}
+              selectMode={selectMode}
+              selected={!!selectedIds?.has(card.id)}
+              onToggleSelect={() => onToggleSelect?.(card.id)}
               onLongPress={onLongPress}
               isDragging={activeSlot?.pageIdx === pIdx && activeSlot?.slotIdx === slotI}
               onTap={() => onCardTap(card)}
@@ -1323,7 +1472,7 @@ function SinglePageView({
               key={slotKey}
               id={slotKey}
               n={pIdx * binderSize + slotI + 1}
-              editMode={editMode}
+              editMode={editMode && !selectMode}
               accent={accent}
               pageBg={pageBg}
               missingCard={missingCards.get(`${pIdx}-${slotI}`)}
@@ -1686,7 +1835,7 @@ function CardInfoOverlay({
 
 // ── Draggable Card-Slot ───────────────────────────────────────────────────
 function DraggableCardSlot({
-  id, card, accent, pageBg, editMode, onLongPress, isDragging, onTap, onDelete,
+  id, card, accent, pageBg, editMode, selectMode, selected, onToggleSelect, onLongPress, isDragging, onTap, onDelete,
   showInfo, priceResult,
 }: {
   id: string;
@@ -1694,6 +1843,10 @@ function DraggableCardSlot({
   accent: string;
   pageBg: string;
   editMode: boolean;
+  /** Auswahl-Modus (automatische Sammlung): Tipp wählt aus, kein Drag/Löschen. */
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
   onLongPress: () => void;
   isDragging: boolean;
   onTap: () => void;
@@ -1706,7 +1859,7 @@ function DraggableCardSlot({
   const [imgLoaded, setImgLoaded] = useState(false);
   const { attributes, listeners, setNodeRef, isOver } = useSortable({
     id,
-    disabled: !editMode,
+    disabled: !editMode || selectMode,   // im Auswahl-Modus kein Drag
   });
 
   // Bearbeiten-Modus per Long-Press starten (wie auf der Sammlungsübersicht) —
@@ -1730,20 +1883,21 @@ function DraggableCardSlot({
     <div
       ref={setNodeRef}
       {...attributes}
-      {...(editMode ? listeners : {})}
+      {...(editMode && !selectMode ? listeners : {})}
       className="relative rounded-[5px] overflow-hidden aspect-[2.5/3.5] w-full no-callout"
       style={{
-        borderColor: isOver ? accent : `${accent}55`,
+        borderColor: selectMode && selected ? accent : isOver ? accent : `${accent}55`,
         borderStyle: isOver ? 'dashed' : 'solid',
-        borderWidth: isOver ? 2 : 1,
+        borderWidth: (isOver || (selectMode && selected)) ? 2 : 1,
         background: pageBg === 'transparent' ? '#1a1a1a' : pageBg,
-        opacity: isDragging ? 0.3 : 1,
-        boxShadow: isOver ? `0 0 0 4px ${accent}40` : undefined,
+        opacity: isDragging ? 0.3 : (selectMode && !selected ? 0.6 : 1),
+        boxShadow: isOver ? `0 0 0 4px ${accent}40` : (selectMode && selected ? `0 0 0 3px ${accent}` : undefined),
         transform: isOver ? 'scale(1.04)' : undefined,
-        transition: 'border-color 150ms ease-out, box-shadow 150ms ease-out, transform 150ms ease-out',
-        animation: editMode && !isDragging && !isOver ? 'binder-wiggle 0.18s ease-in-out infinite alternate' : undefined,
-        animationDelay: editMode && !isDragging && !isOver ? `${wiggleDelay(id)}s` : undefined,
-        touchAction: editMode ? 'none' : undefined,
+        transition: 'border-color 150ms ease-out, box-shadow 150ms ease-out, transform 150ms ease-out, opacity 150ms ease-out',
+        animation: editMode && !selectMode && !isDragging && !isOver ? 'binder-wiggle 0.18s ease-in-out infinite alternate' : undefined,
+        animationDelay: editMode && !selectMode && !isDragging && !isOver ? `${wiggleDelay(id)}s` : undefined,
+        touchAction: editMode && !selectMode ? 'none' : undefined,
+        cursor: selectMode ? 'pointer' : undefined,
       }}
       onPointerDown={startLongPress}
       onPointerUp={cancelLongPress}
@@ -1752,6 +1906,7 @@ function DraggableCardSlot({
       onContextMenu={e => e.preventDefault()}
       onClick={() => {
         if (longPressFired.current) { longPressFired.current = false; return; }
+        if (selectMode) { onToggleSelect?.(); return; }
         if (!editMode) onTap();
       }}
     >
@@ -1792,7 +1947,20 @@ function DraggableCardSlot({
           ×{card.quantity}
         </div>
       )}
-      {editMode && !isDragging && (
+      {/* Auswahl-Häkchen (Auswahl-Modus, automatische Sammlung) */}
+      {selectMode && (
+        <div
+          className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center"
+          style={selected
+            ? { background: accent, color: '#fff' }
+            : { background: 'rgba(0,0,0,.45)', border: '1.5px solid rgba(255,255,255,.85)' }}
+          aria-hidden
+        >
+          {selected && <Check size={12} strokeWidth={3} />}
+        </div>
+      )}
+      {/* Manuelle Sammlung: Minus-Button zum Slot-Leeren (nicht im Auswahl-Modus) */}
+      {editMode && !selectMode && !isDragging && (
         <button
           onPointerDown={e => e.stopPropagation()}
           onClick={e => { e.stopPropagation(); onDelete(); }}

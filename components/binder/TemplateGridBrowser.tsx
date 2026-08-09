@@ -62,6 +62,7 @@ export interface TemplateGridParts {
  */
 export function useTemplateGrid({
   template, active, priceResults, onCardsChanged,
+  selectMode, binderCardIds, selectedCardIds, onToggleSelectCard,
 }: {
   template: BinderTemplate | null;
   /** Nur laden/arbeiten, wenn die Grid-Ansicht wirklich sichtbar ist. */
@@ -69,6 +70,15 @@ export function useTemplateGrid({
   /** Preisdaten (tcgId → PriceResult) aus der Binder-Seite; für Preis-Sortierung/Pills. */
   priceResults?: Map<string, PriceResult | null>;
   onCardsChanged?: () => void;
+  /** Bearbeiten-Modus: ein Tipp wählt das in DIESER Sammlung liegende Exemplar aus. */
+  selectMode?: boolean;
+  /** CardDoc-IDs, die in dieser (Vorlagen-)Sammlung liegen — bestimmt, welche
+   *  Karte (per tcgId) auswählbar ist und welches Exemplar getroffen wird. */
+  binderCardIds?: string[];
+  /** Aktuell ausgewählte CardDoc-IDs (Seiten-State). */
+  selectedCardIds?: Set<string>;
+  /** Umschalten der Auswahl eines CardDoc-Exemplars. */
+  onToggleSelectCard?: (cardDocId: string) => void;
 }): TemplateGridParts {
   const [cards, setCards]   = useState<CardInfo[] | null>(null);
   const [owned, setOwned]   = useState<CardDoc[]>([]);
@@ -114,6 +124,23 @@ export function useTemplateGrid({
     return m;
   }, [owned]);
   const ownedTcgIds = useMemo(() => new Set(ownedMap.keys()), [ownedMap]);
+
+  // Auswahl (Bearbeiten-Modus): pro tcgId genau das Exemplar, das in DIESER
+  // Sammlung liegt (binderCardIds). Grid-Karten sind Katalog-Karten (`id` =
+  // tcgId) → Brücke tcgId → CardDoc-ID, damit ein Tipp das richtige Exemplar
+  // aus der Sammlung entfernt (nicht ein Duplikat aus „Unsortiert").
+  const binderCardIdSet = useMemo(() => new Set(binderCardIds ?? []), [binderCardIds]);
+  const exemplarByTcg = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of owned) if (c.tcgId && binderCardIdSet.has(c.id) && !m.has(c.tcgId)) m.set(c.tcgId, c.id);
+    return m;
+  }, [owned, binderCardIdSet]);
+  const selectableIds = useMemo(() => new Set(exemplarByTcg.keys()), [exemplarByTcg]);
+  const selectedTcgIds = useMemo(() => {
+    const s = new Set<string>();
+    if (selectedCardIds) exemplarByTcg.forEach((docId, tcgId) => { if (selectedCardIds.has(docId)) s.add(tcgId); });
+    return s;
+  }, [exemplarByTcg, selectedCardIds]);
 
   const priceMap = useMemo(() => {
     const m = new Map<string, number>();
@@ -193,6 +220,10 @@ export function useTemplateGrid({
       onToggleWishlist={(c) => toggleWishlist(c)}
       onCardsChanged={onCardsChanged}
       showSetBadge={spansMultipleSets}
+      selectMode={selectMode}
+      selectableIds={selectableIds}
+      selectedIds={selectedTcgIds}
+      onToggleSelect={(c) => { const id = exemplarByTcg.get(c.id); if (id) onToggleSelectCard?.(id); }}
     />
   );
 
