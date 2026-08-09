@@ -684,7 +684,7 @@ export default function BinderDetailPage({ params }: Props) {
               // textlos, damit die Kopfzeile in der Seiten-Ansicht (View-
               // Switch + Info-Schalter + Blatt-Dropdown) nicht überläuft —
               // iOS-typisches Bearbeiten↔Fertig.
-              <Button variant="primary" onClick={exitEditMode} icon={<Check />} aria-label="Fertig" className="shrink-0" />
+              <Button variant="primary" accentColor="#2f855a" onClick={exitEditMode} icon={<Check />} aria-label="Fertig" className="shrink-0" />
             ) : !isProtected && !isBox ? (
               // Bearbeiten-Modus-Einstieg als Icon-only Stift — für alle
               // Ordner-Sammlungen außer „Unsortiert" (Boxen nutzen die Grid-

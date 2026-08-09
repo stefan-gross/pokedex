@@ -131,7 +131,7 @@ export default function BindersPage() {
               „+“ (neue Sammlung) und ein Stift (Bearbeiten-Modus starten;
               Löschen + Umsortieren). Kein Long-Press mehr (analog Detailseite). */}
           {editMode ? (
-            <Button variant="primary" onClick={() => setEditMode(false)} icon={<Check />} aria-label="Fertig" className="shrink-0" />
+            <Button variant="primary" accentColor="#2f855a" onClick={() => setEditMode(false)} icon={<Check />} aria-label="Fertig" className="shrink-0" />
           ) : (
             <div className="flex items-center gap-2 shrink-0">
               <Button variant="primary" accentColor="#2f855a" onClick={() => setCreateMode('choose')} icon={<Plus strokeWidth={2.5} />} aria-label="Neue Sammlung" />
