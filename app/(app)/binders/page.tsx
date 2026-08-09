@@ -22,7 +22,6 @@ import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { resolveTemplateSlots } from '@/lib/template-binders/resolve';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import { readableTextColor } from '@/lib/color-utils';
-import { wiggleDelay } from '@/lib/utils';
 import type { BinderDoc, CardDoc } from '@/types';
 
 export default function BindersPage() {
@@ -326,12 +325,8 @@ function BinderTile({ binder, binderCards, editMode, onDelete }: { binder: Binde
   // ebenfalls hellen Banderole unlesbar — luminanzbasierte Kontrastfarbe.
   const bandTextColor = readableTextColor(bandColor);
   // „Unsortiert" (Default) ist der dauerhafte Hub (u.a. Scanner-Ziel) — im
-  // Bearbeiten-Modus weder wackeln noch löschbar.
+  // Bearbeiten-Modus nicht löschbar/ziehbar.
   const isProtected = !!binder.isDefault;
-  // Negativer Start-Versatz (aus der Binder-ID abgeleitet, daher stabil
-  // zwischen Renders) — sonst wackeln alle Kacheln exakt synchron, echtes
-  // iOS wirkt dagegen asynchron/organisch, da jedes Icon zufällig phasenverschoben ist.
-  const wiggleOffset = wiggleDelay(binder.id);
 
   // Tatsächliche Kachelbreite messen (responsives Grid, kein fester Wert)
   // — die Bogenberechnung für die Binder-Ecke unten rechts braucht echte
@@ -347,12 +342,11 @@ function BinderTile({ binder, binderCards, editMode, onDelete }: { binder: Binde
   // Blatt-Sortierung auf der Detailseite). „Unsortiert" (isProtected) ist
   // disabled und bleibt vorn gepinnt. Kein Long-Press mehr — der Einstieg
   // läuft über den Stift-Button in der Kopfzeile.
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: binder.id,
     disabled: !editMode || isProtected,
   });
   const dragEnabled = editMode && !isProtected;
-  const wiggle = dragEnabled && !isDragging && !isOver;
 
   return (
     <div
@@ -376,17 +370,11 @@ function BinderTile({ binder, binderCards, editMode, onDelete }: { binder: Binde
     >
       {/* Boxen etwas kleiner als Ordner darstellen (Karton wirkt kompakter) —
           Skalierung auf einem eigenen relative-Wrapper, damit Badge/Footer
-          mitschrumpfen und weiterhin korrekt am Cover ausgerichtet bleiben.
-          Wackel-Animation (Bearbeiten-Modus) auf demselben Wrapper, gleiche
-          Keyframe wie auf der Detailseite (app/globals.css: binder-wiggle). */}
+          mitschrumpfen und weiterhin korrekt am Cover ausgerichtet bleiben. */}
       <div
         className="relative"
         ref={tileRef}
-        style={{
-          ...(isBox ? { transform: 'scale(0.92)', transformOrigin: 'center' } : {}),
-          animation: wiggle ? 'binder-wiggle 0.18s ease-in-out infinite alternate' : undefined,
-          animationDelay: wiggle ? `${wiggleOffset}s` : undefined,
-        }}
+        style={isBox ? { transform: 'scale(0.92)', transformOrigin: 'center' } : undefined}
       >
         {isBox ? (
           <BoxCover
