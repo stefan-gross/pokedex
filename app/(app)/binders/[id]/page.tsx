@@ -214,6 +214,12 @@ export default function BinderDetailPage({ params }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Bei jedem Ansichtswechsel nach oben scrollen: Öffnet man aus der (langen,
+  // gescrollten) Blätter-Übersicht eine Seite, behielte das Dokument sonst seine
+  // Scrollposition — die kurze Einzelseite erschiene dann halb nach oben aus dem
+  // Sichtfeld geschoben. Bei bereits oben stehendem Scroll ein No-op.
+  useEffect(() => { window.scrollTo({ top: 0 }); }, [view]);
+
   // ── Grid-Ansicht einer Vorlagen-Sammlung ────────────────────────────────
   // Die Filter leben im SELBEN sticky Panel wie Ansichts-Switch + Infos (nicht
   // in einem zweiten Panel darunter). Der Grid-Zustand kommt aus dem Hook, der
