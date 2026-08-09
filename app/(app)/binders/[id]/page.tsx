@@ -703,6 +703,28 @@ export default function BinderDetailPage({ params }: Props) {
           </div>
         </div>
 
+        {/* Bearbeiten-Modus (automatische Sammlung): Auswahl-Info + Entfernen
+            als Zeile IM (ohnehin sticky) Panel — statt eines losgelösten
+            Balkens über der Footer-Navi. */}
+        {editMode && binder.template && (
+          <div className="flex items-center justify-between gap-3 mt-3">
+            <span className="text-sm font-semibold text-glass">
+              {selectedIds.size === 0 ? 'Karten zum Entfernen wählen' : `${selectedIds.size} ausgewählt`}
+            </span>
+            <Button
+              variant="primary"
+              size="sm"
+              accentColor="var(--action-delete)"
+              onClick={removeSelectedFromTemplate}
+              disabled={selectedIds.size === 0 || removing}
+              icon={<Trash2 />}
+              className="shrink-0"
+            >
+              Entfernen
+            </Button>
+          </div>
+        )}
+
         {/* Filter der Grid-Ansicht — im SELBEN Panel wie Kopf + Ansichts-Switch.
             Kollabierende Region (Suche + Vorhanden/Fehlen + Rarity) per Griff/
             Scroll, Sortierung darunter immer sichtbar (wie Set-Detailseite). */}
@@ -841,37 +863,6 @@ export default function BinderDetailPage({ params }: Props) {
           )}
         </div>
       </Sheet>
-
-      {/* Auswahl-Leiste im Bearbeiten-Modus (automatische Sammlung) — fix über
-          der Bottom-Nav; zeigt Anzahl + Entfernen (zurück nach Unsortiert). */}
-      {editMode && binder.template && (
-        <div
-          className="fixed inset-x-0 z-[70] px-3 pointer-events-none"
-          style={{ bottom: 'calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 8px)' }}
-        >
-          <div className="glass rounded-full px-4 py-2 flex items-center justify-between gap-3 shadow-xl pointer-events-auto max-w-md mx-auto">
-            <span className="text-sm font-semibold text-glass">
-              {selectedIds.size === 0 ? 'Karten zum Entfernen wählen' : `${selectedIds.size} ausgewählt`}
-            </span>
-            <div className="flex items-center gap-1 shrink-0">
-              {/* „Abbrechen" bewusst entfernt: „Fertig" (Kopfzeile) verlässt den
-                  Modus, Abwählen geht durch erneutes Antippen — ein separater
-                  Abbrechen-Button wäre redundant. */}
-              <Button
-                variant="primary"
-                size="sm"
-                accentColor="var(--action-delete)"
-                onClick={removeSelectedFromTemplate}
-                disabled={selectedIds.size === 0 || removing}
-                icon={<Trash2 />}
-                className="shrink-0"
-              >
-                Entfernen
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Lade-Overlay während „Passende Karten einsortieren" (Bulk-Add + Sync). */}
       {filling && (
