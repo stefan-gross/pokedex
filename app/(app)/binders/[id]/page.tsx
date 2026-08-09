@@ -1578,7 +1578,12 @@ function SinglePageView({
           <div
             style={{
               transform: flip?.kind === 'rotate'
-                ? `translateX(${step((rotateHingeLeft ? 1 : -1) * flip.progress * 100)}) rotateY(${rotateAngle}deg)`
+                // Volle 100% (Containerbreite), NICHT step(): die Rotation um die
+                // Blattkante muss die geklappte Seite exakt mittig einrasten —
+                // mit dem 22px-Gap-Versatz endete sie ~22px daneben und sprang
+                // beim Loslassen (flip→null) auf die Rest-Position. Der schmale
+                // Abstand zur Nachbarseite entsteht über deren step()-Layer.
+                ? `translateX(${(rotateHingeLeft ? 1 : -1) * flip.progress * 100}%) rotateY(${rotateAngle}deg)`
                 : flip?.kind === 'slide'
                   ? `translateX(${step(slideShift)})`
                   : undefined,
