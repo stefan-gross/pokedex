@@ -90,7 +90,7 @@ export function Menu({
     <div
       ref={menuRef}
       role="menu"
-      className={`menu-goo-open z-50 w-max max-w-[80vw] glass rounded-2xl overflow-hidden shadow-xl ${
+      className={`menu-goo-open z-50 w-max max-w-[80vw] flex flex-col glass rounded-2xl overflow-hidden shadow-xl ${
         align === 'right' ? 'origin-top-right' : 'origin-top-left'
       } ${portal ? 'fixed' : `absolute top-0 ${align === 'right' ? 'right-0' : 'left-0'}`}`}
       style={portal && coords ? { top: coords.top, left: coords.left, right: coords.right } : undefined}
@@ -102,7 +102,7 @@ export function Menu({
           type="button"
           onClick={() => { setOpen(false); it.onClick(); }}
           disabled={it.disabled}
-          className={`w-full px-4 py-3 text-sm text-left hover:bg-white/10 disabled:opacity-50 ${
+          className={`px-4 py-3 text-sm text-left hover:bg-white/10 disabled:opacity-50 ${
             it.destructive ? 'text-destructive' : 'text-glass'
           }`}
         >
