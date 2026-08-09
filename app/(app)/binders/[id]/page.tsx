@@ -188,18 +188,28 @@ export default function BinderDetailPage({ params }: Props) {
   const isBox = binder?.collectionType === 'box';
 
   const load = useCallback(async () => {
-    const b = await getBinder(id);
-    if (!b) { router.push('/binders'); return; }
-    setBinder(b);
-    const owned = await Promise.all(b.cardIds.map(cid => getCard(cid)));
-    const ownedCards = owned.filter(Boolean) as CardDoc[];
-    setCards(ownedCards);
-    const size = (b.size ?? 9) as BinderSize;
-    const rawPages = b.pages && b.pages.length > 0 ? b.pages : cardIdsToPages(b.cardIds, size);
-    // Pages immer gerade Anzahl — Sheets sind Vorder+Rück-Paare
-    setPages(ensureEvenPages(rawPages, size));
-    if (b.collectionType === 'box') setView('grid');
-    setLoading(false);
+    try {
+      // Binder + ALLE eigenen Karten in nur ZWEI Reads laden und die
+      // enthaltenen Karten per Map auflösen — statt (früher) ein getDoc PRO
+      // Karte (`Promise.all(cardIds.map(getCard))`, bei z.B. „Unsortiert" 100+
+      // Einzel-Reads). Das war auf wackligem Netz langsam und konnte hängen; ein
+      // fehlgeschlagener Read ließ zudem den Spinner ewig stehen (kein finally).
+      const [b, allCards] = await Promise.all([getBinder(id), getCards()]);
+      if (!b) { router.push('/binders'); return; }
+      setBinder(b);
+      const byId = new Map(allCards.map(c => [c.id, c]));
+      const ownedCards = b.cardIds.map(cid => byId.get(cid)).filter(Boolean) as CardDoc[];
+      setCards(ownedCards);
+      const size = (b.size ?? 9) as BinderSize;
+      const rawPages = b.pages && b.pages.length > 0 ? b.pages : cardIdsToPages(b.cardIds, size);
+      // Pages immer gerade Anzahl — Sheets sind Vorder+Rück-Paare
+      setPages(ensureEvenPages(rawPages, size));
+      if (b.collectionType === 'box') setView('grid');
+    } catch (e) {
+      console.error('[binder] load error', e);
+    } finally {
+      setLoading(false);
+    }
   }, [id, router]);
 
   useEffect(() => { load(); }, [load]);
