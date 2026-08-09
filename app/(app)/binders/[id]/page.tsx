@@ -318,15 +318,30 @@ export default function BinderDetailPage({ params }: Props) {
     if (!binder || exporting) return;
     setExporting(true);
     try {
-      const cardsIn = [...missingCards.values()].map(cc => {
+      // Fehlende Karten in Binder-Reihenfolge (Blatt → Slot) sortieren und je
+      // Karte die Fundstelle als Label bauen — Schlüssel ist "pageIdx-slotIdx".
+      const entries = [...missingCards.entries()].sort(([ka], [kb]) => {
+        const [pa, sa] = ka.split('-').map(Number);
+        const [pb, sb] = kb.split('-').map(Number);
+        return pa - pb || sa - sb;
+      });
+      const cardsIn = entries.map(([key, cc]) => {
+        const [pIdx, sIdx] = key.split('-').map(Number);
         const info = catalogCardToInfo(cc);
-        return { imgUrl: info.imgLargeDe || info.imgLarge || undefined, name: info.name, number: info.number, setCode: cc.setCode };
+        const sheet = Math.floor(pIdx / 2) + 1;
+        const side = pIdx % 2 === 0 ? 'Vorder' : 'Rück';
+        return {
+          imgUrl: info.imgLargeDe || info.imgLarge || undefined,
+          name: info.name, number: info.number, setCode: cc.setCode,
+          label: `Blatt ${sheet} · ${side} · Slot ${sIdx + 1}`,
+        };
       });
       if (cardsIn.length === 0) { setShowExport(false); return; }
       const mod = await import('@/components/binder/proxy-pdf');
       setProxyProgress({ done: 0, total: cardsIn.length });
       const images = await mod.prepareProxyImages(cardsIn, (done, total) => setProxyProgress({ done, total }));
-      await mod.downloadProxyPdf(`${binder.name} — Proxy-Karten`, images);
+      const items = cardsIn.map((c, i) => ({ src: images[i], label: c.label }));
+      await mod.downloadProxyPdf(`${binder.name} — Proxy-Karten`, items);
       setShowExport(false);
     } catch (e) {
       console.error('[export] proxies', e);
@@ -1848,7 +1863,12 @@ function DroppableEmptySlot({
             <Plus size={16} strokeWidth={3} />
           </button>
         ) : !missingCard ? (
-          <span className="text-glass-muted/50 text-xs">{n}</span>
+          // Kontraststarke Platzhalter-Zahl: dunkle Pille + weiße Ziffer, auf
+          // jedem Slot-Hintergrund (hell/dunkel) gut lesbar statt der bisherigen
+          // sehr blassen 50%-Variante.
+          <span className="px-1.5 py-0.5 rounded-full bg-black/45 text-white/95 text-[11px] font-bold tabular-nums leading-none">
+            {n}
+          </span>
         ) : null}
       </div>
     </div>

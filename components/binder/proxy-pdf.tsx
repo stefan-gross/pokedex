@@ -1,6 +1,6 @@
 'use client';
 
-import { Document, Page, View, Image, StyleSheet, pdf } from '@react-pdf/renderer';
+import { Document, Page, View, Image, Text, StyleSheet, pdf } from '@react-pdf/renderer';
 
 /** Eingabe pro fehlender Karte für den Proxy-Druck. */
 export interface ProxyCardInput {
@@ -9,6 +9,15 @@ export interface ProxyCardInput {
   name: string;
   number: string;
   setCode?: string;
+  /** Fundstelle im Binder (z.B. „Blatt 3 · Rück · Slot 5") — wird unter der
+   *  Proxy-Karte gedruckt, damit man beim Einsortieren die Position kennt. */
+  label?: string;
+}
+
+/** Fertig aufbereitete Proxy-Karte: Graustufen-/Platzhalter-Bild + Fundstelle. */
+export interface ProxyItem {
+  src: string;
+  label?: string;
 }
 
 // Kartengröße in pt (1mm ≈ 2.8346pt): 63,5 × 88,9 mm = Standard-TCG-Format.
@@ -16,23 +25,29 @@ const CARD_W = 180;
 const CARD_H = 252;
 
 const styles = StyleSheet.create({
-  page: { padding: 18, backgroundColor: '#ffffff' },
+  // Seitenrand knapp, damit 3×3 Karten INKL. Label-Zeile darunter auf A4 passen.
+  page: { padding: 14, backgroundColor: '#ffffff' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center' },
+  cell: { width: CARD_W, alignItems: 'center' },
   card: { width: CARD_W, height: CARD_H, objectFit: 'cover', borderWidth: 0.5, borderColor: '#999', borderRadius: 8 },
+  label: { width: CARD_W, marginTop: 2, fontSize: 8, textAlign: 'center', color: '#333' },
 });
 
-function ProxyPdfDocument({ title, images }: { title: string; images: string[] }) {
+function ProxyPdfDocument({ title, items }: { title: string; items: ProxyItem[] }) {
   // 9 Karten (3×3) pro A4-Seite.
   const perPage = 9;
-  const pages: string[][] = [];
-  for (let i = 0; i < images.length; i += perPage) pages.push(images.slice(i, i + perPage));
+  const pages: ProxyItem[][] = [];
+  for (let i = 0; i < items.length; i += perPage) pages.push(items.slice(i, i + perPage));
   return (
     <Document title={title}>
-      {pages.map((pageImgs, pi) => (
+      {pages.map((pageItems, pi) => (
         <Page key={pi} size="A4" style={styles.page}>
           <View style={styles.grid}>
-            {pageImgs.map((src, i) => (
-              <Image key={i} src={src} style={styles.card} />
+            {pageItems.map((it, i) => (
+              <View key={i} style={styles.cell}>
+                <Image src={it.src} style={styles.card} />
+                {it.label ? <Text style={styles.label}>{it.label}</Text> : null}
+              </View>
             ))}
           </View>
         </Page>
@@ -111,9 +126,9 @@ export async function prepareProxyImages(
   return out;
 }
 
-/** Baut das Proxy-PDF aus vorbereiteten data:-URL-Bildern + Download. */
-export async function downloadProxyPdf(title: string, images: string[]): Promise<void> {
-  const blob = await pdf(<ProxyPdfDocument title={title} images={images} />).toBlob();
+/** Baut das Proxy-PDF aus vorbereiteten Items (Bild + Fundstelle) + Download. */
+export async function downloadProxyPdf(title: string, items: ProxyItem[]): Promise<void> {
+  const blob = await pdf(<ProxyPdfDocument title={title} items={items} />).toBlob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

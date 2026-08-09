@@ -29,8 +29,10 @@ export default function BindersPage() {
 
   const load = async () => {
     try {
-      // Binder + Karten parallel laden (unabhängige Reads) statt nacheinander.
-      let [binderData, cardData] = await Promise.all([getBinders(), getCards()]);
+      // Zuerst NUR die Binder laden → Cover/Namen können sofort erscheinen, ohne
+      // auf die (u.U. große/langsame) Kartenliste zu warten. Bisher blockierte
+      // ein hängender getCards()-Read die gesamte Übersicht (leerer Bildschirm).
+      let binderData = await getBinders();
       // Einmalige Migration zum neuen Modell: der frühere „Eingang" (isInbox)
       // entfällt — seine Karten wandern nach „Unsortiert", der Binder wird
       // gelöscht (deleteBinderCascade übernimmt beides). Danach neu laden.
@@ -54,10 +56,14 @@ export default function BindersPage() {
         return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
       });
       setBinders(sorted);
-      setCards(cardData);
+    } catch (e) {
+      console.error('[binders] load error', e);
     } finally {
       setLoading(false);
     }
+    // Karten separat und NICHT blockierend nachladen — nur für Kartenzähler/Wert
+    // in der Banderole. Die Cover stehen davon unabhängig sofort.
+    getCards().then(setCards).catch(() => {});
   };
 
   useEffect(() => { load(); }, []);
