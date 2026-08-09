@@ -126,13 +126,15 @@ export async function searchCatalogByArtist(q: string, maxResults = 300): Promis
 // Lookup mehrerer Karten per ID (für Deutsch-Suche via TCGdex)
 export async function getCatalogCardsByIds(ids: string[]): Promise<CatalogCard[]> {
   if (ids.length === 0) return [];
-  const results: CatalogCard[] = [];
-  for (let i = 0; i < ids.length; i += 30) {
-    const chunk = ids.slice(i, i + 30);
-    const snap = await getDocs(query(collection(db, COL), where(documentId(), 'in', chunk)));
-    results.push(...snap.docs.map(d => d.data() as CatalogCard));
-  }
-  return results;
+  // Chunks (max. 30 IDs je `in`-Query) PARALLEL laden statt nacheinander —
+  // bei großen Sammlungen (z.B. „Unsortiert" mit 100+ Karten) war das serielle
+  // Await die Ursache, dass die Kartenbilder erst nach mehreren Sekunden kamen.
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30));
+  const snaps = await Promise.all(
+    chunks.map(chunk => getDocs(query(collection(db, COL), where(documentId(), 'in', chunk)))),
+  );
+  return snaps.flatMap(snap => snap.docs.map(d => d.data() as CatalogCard));
 }
 
 // Alle Karten einer Pokédex-Nummer (Fallback für Evolutionslinie)

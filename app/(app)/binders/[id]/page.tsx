@@ -1735,15 +1735,27 @@ function DraggableCardSlot({
         if (!editMode) onTap();
       }}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={cardInfo.imgLargeDe || cardInfo.imgLarge || undefined}
-        alt={card.name}
-        className={`w-full h-full object-cover pointer-events-none no-callout${imgLoaded ? '' : ' img-skeleton'}`}
-        draggable={false}
-        onLoad={() => setImgLoaded(true)}
-        onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
-      />
+      {(() => {
+        // Bild-URL kommt aus dem Katalog (Owned-Karten verweisen nur darauf) —
+        // solange der Katalog-Lookup noch lädt, gibt es KEINE URL. Dann ein
+        // Skeleton rendern statt eines <img> ohne src (das zeigte sonst den
+        // alt-Text = Kartenname). Erst mit URL das echte Bild (mit eigenem
+        // Skeleton bis onLoad).
+        const src = cardInfo.imgLargeDe || cardInfo.imgLarge || undefined;
+        return src ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={src}
+            alt={card.name}
+            className={`w-full h-full object-cover pointer-events-none no-callout${imgLoaded ? '' : ' img-skeleton'}`}
+            draggable={false}
+            onLoad={() => setImgLoaded(true)}
+            onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
+          />
+        ) : (
+          <div className="w-full h-full img-skeleton" aria-label={card.name} />
+        );
+      })()}
       {showInfo && !editMode && (
         <CardInfoOverlay
           name={card.name}
