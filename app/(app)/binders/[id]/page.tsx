@@ -330,10 +330,14 @@ export default function BinderDetailPage({ params }: Props) {
         const info = catalogCardToInfo(cc);
         const sheet = Math.floor(pIdx / 2) + 1;
         const side = pIdx % 2 === 0 ? 'Vorder' : 'Rück';
+        // Absolute Slot-Nummer — dieselbe Zahl, die im Binder auf dem leeren
+        // Slot als Platzhalter steht (pageIdx · Größe + slotIdx + 1), damit man
+        // die Proxy-Karte direkt dem passenden Slot zuordnen kann.
+        const slotNo = pIdx * binderSize + sIdx + 1;
         return {
           imgUrl: info.imgLargeDe || info.imgLarge || undefined,
           name: info.name, number: info.number, setCode: cc.setCode,
-          label: `Blatt ${sheet} · ${side} · Slot ${sIdx + 1}`,
+          label: `Blatt ${sheet} · ${side} · Slot ${slotNo}`,
         };
       });
       if (cardsIn.length === 0) { setShowExport(false); return; }
@@ -349,7 +353,7 @@ export default function BinderDetailPage({ params }: Props) {
       setExporting(false);
       setProxyProgress(null);
     }
-  }, [binder, exporting, missingCards]);
+  }, [binder, exporting, missingCards, binderSize]);
 
   // Platzhalter-Karten für fehlende Slots eines Vorlagen-Binders — dieselbe
   // Regel-Engine wie der Sync (lib/template-binders/*), aber rein lesend
@@ -1863,10 +1867,15 @@ function DroppableEmptySlot({
             <Plus size={16} strokeWidth={3} />
           </button>
         ) : !missingCard ? (
-          // Kontraststarke Platzhalter-Zahl: dunkle Pille + weiße Ziffer, auf
-          // jedem Slot-Hintergrund (hell/dunkel) gut lesbar statt der bisherigen
-          // sehr blassen 50%-Variante.
-          <span className="px-1.5 py-0.5 rounded-full bg-black/45 text-white/95 text-[11px] font-bold tabular-nums leading-none">
+          // Platzhalter-Zahl an den Slot-Hintergrund angepasst: dunkel auf hellem,
+          // hell auf dunklem Untergrund (Luminanz via readableText), mit moderater
+          // Deckkraft — lesbar, aber bewusst dezent (kein harter Kontrast/keine
+          // Pille). Volle Kontrastfarbe bei ~55% wirkt klarer als der frühere
+          // ausgegraute 50%-Ton.
+          <span
+            className="text-sm font-bold tabular-nums"
+            style={{ color: pageBg?.startsWith('#') ? readableText(pageBg) : '#1a1a1a', opacity: 0.55 }}
+          >
             {n}
           </span>
         ) : null}
