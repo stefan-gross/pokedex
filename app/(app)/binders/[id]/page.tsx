@@ -1528,7 +1528,7 @@ function SinglePageView({
             <div
               aria-hidden
               className="absolute rounded-l-lg border-y border-l pointer-events-none"
-              style={{ top: 8, bottom: 8, right: 0, width: 10, zIndex: 0,
+              style={{ top: 0, bottom: 0, right: 0, width: 10, zIndex: 0,
                 background: pageBg === 'transparent' ? 'rgba(120,120,130,.12)' : pageBg,
                 borderColor: 'var(--border)', boxShadow: '-2px 1px 5px rgba(0,0,0,.20)' }}
             />
@@ -1537,7 +1537,7 @@ function SinglePageView({
             <div
               aria-hidden
               className="absolute rounded-r-lg border-y border-r pointer-events-none"
-              style={{ top: 8, bottom: 8, left: 0, width: 10, zIndex: 0,
+              style={{ top: 0, bottom: 0, left: 0, width: 10, zIndex: 0,
                 background: pageBg === 'transparent' ? 'rgba(120,120,130,.12)' : pageBg,
                 borderColor: 'var(--border)', boxShadow: '2px 1px 5px rgba(0,0,0,.20)' }}
             />
