@@ -683,15 +683,15 @@ export default function BinderDetailPage({ params }: Props) {
               />
             )}
             {editMode ? (
-              <Button variant="primary" onClick={exitEditMode} icon={<Check />} className="shrink-0">
-                Fertig
-              </Button>
+              // Icon-only Haken = „Fertig" (verlässt den Modus). Bewusst
+              // textlos, damit die Kopfzeile in der Seiten-Ansicht (View-
+              // Switch + Info-Schalter + Blatt-Dropdown) nicht überläuft —
+              // iOS-typisches Bearbeiten↔Fertig.
+              <Button variant="primary" onClick={exitEditMode} icon={<Check />} aria-label="Fertig" className="shrink-0" />
             ) : binder.template ? (
-              // Bearbeiten-Modus-Einstieg als sichtbarer Button (symmetrisch zu
-              // „Fertig") — nur für automatische Sammlungen (Karten entfernen).
-              <Button variant="primary" onClick={() => setEditMode(true)} icon={<Pencil />} className="shrink-0">
-                Bearbeiten
-              </Button>
+              // Bearbeiten-Modus-Einstieg als Icon-only Stift an gleicher
+              // Stelle — nur für automatische Sammlungen (Karten entfernen).
+              <Button variant="primary" onClick={() => setEditMode(true)} icon={<Pencil />} aria-label="Bearbeiten" className="shrink-0" />
             ) : (
               <span className="text-role-label font-semibold text-right shrink-0" style={{ color: binderColor }}>
                 {!totalValue.loading && totalValue.withPrice > 0
@@ -856,11 +856,9 @@ export default function BinderDetailPage({ params }: Props) {
               {selectedIds.size === 0 ? 'Karten zum Entfernen wählen' : `${selectedIds.size} ausgewählt`}
             </span>
             <div className="flex items-center gap-1 shrink-0">
-              {selectedIds.size > 0 && (
-                <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
-                  Abbrechen
-                </Button>
-              )}
+              {/* „Abbrechen" bewusst entfernt: „Fertig" (Kopfzeile) verlässt den
+                  Modus, Abwählen geht durch erneutes Antippen — ein separater
+                  Abbrechen-Button wäre redundant. */}
               <Button
                 variant="primary"
                 size="sm"
