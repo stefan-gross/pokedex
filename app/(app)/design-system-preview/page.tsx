@@ -1726,13 +1726,16 @@ export default function DesignSystemPreviewPage() {
 
       <Section title="Menü (Aktionen)">
         <p className="text-role-label text-glass-muted">
-          Aufklappendes Aktionen-Dropdown: quillt gooey aus der Ecke (kein
-          SVG-Blur → scharfer Text), nutzt dieselbe `.glass`-Fläche wie die Panels,
-          liegt AUF dem Auslöser und schließt bei Klick irgendwohin außerhalb.
+          Aufklappendes Aktionen-Dropdown: quillt gooey aus der Ecke, nutzt
+          dieselbe `.glass`-Fläche wie die Panels. Hier mit `portal` — das Menü
+          wird an `document.body` (außerhalb dieses Glas-Panels) gerendert, damit
+          der `backdrop-filter`-Blur wirklich greift (verschachteltes
+          backdrop-filter wäre ein No-op). Schließt bei Klick irgendwohin außerhalb.
         </p>
         <div className="flex items-center justify-between gap-4">
           <span className="text-role-label text-glass-muted">Rechts ausgerichtet</span>
           <Menu
+            portal
             trigger={(open, toggle) => (
               <Button variant="secondary" icon={<MoreHorizontal />} aria-label="Aktionen" aria-expanded={open} onClick={toggle} />
             )}
@@ -1747,6 +1750,7 @@ export default function DesignSystemPreviewPage() {
         <div className="flex items-center justify-between gap-4">
           <Menu
             align="left"
+            portal
             trigger={(open, toggle) => (
               <Button variant="secondary" icon={<MoreHorizontal />} aria-label="Aktionen" aria-expanded={open} onClick={toggle} />
             )}
