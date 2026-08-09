@@ -82,15 +82,27 @@ export function BinderIcon({ name, size = 20, className, style, strokeWidth }: {
     );
   }
   if (setId) {
-    // Deutsches TCGdex-Logo bevorzugt (setMeta.logoUrl), pokemontcg.io nur
-    // als Fallback, solange die Set-Metadaten noch nicht geladen sind.
-    const src = setMeta?.logoUrl ?? "";
+    // Deutsches TCGdex-Logo (setMeta.logoUrl). Solange die Set-Metadaten noch
+    // laden (oder es kein Logo gibt), KEIN <img> mit leerem src rendern — der
+    // zeigt sonst den alt-Text (die rohe Set-ID „me02"). Stattdessen ein
+    // dezentes Skeleton (nach dem ersten Laden ist das Meta gecacht → sofort).
+    const src = setMeta?.logoUrl || undefined;
+    if (!src) {
+      return (
+        <span
+          aria-label={setId}
+          className="img-skeleton"
+          style={{ ...style, display: 'inline-block', height: size, width: size * 1.8, borderRadius: 4 }}
+        />
+      );
+    }
     return (
       <img
         src={src}
         style={{ height: size, width: 'auto', maxWidth: size * 3, objectFit: 'contain', ...style }}
         className={className}
-        alt={setId}
+        alt=""
+        onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
       />
     );
   }

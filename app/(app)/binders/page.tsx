@@ -29,7 +29,8 @@ export default function BindersPage() {
 
   const load = async () => {
     try {
-      let binderData = await getBinders();
+      // Binder + Karten parallel laden (unabhängige Reads) statt nacheinander.
+      let [binderData, cardData] = await Promise.all([getBinders(), getCards()]);
       // Einmalige Migration zum neuen Modell: der frühere „Eingang" (isInbox)
       // entfällt — seine Karten wandern nach „Unsortiert", der Binder wird
       // gelöscht (deleteBinderCascade übernimmt beides). Danach neu laden.
@@ -38,7 +39,6 @@ export default function BindersPage() {
         await deleteBinderCascade(inbox);
         binderData = await getBinders();
       }
-      const cardData = await getCards();
       // Alte Bestandsdaten: „Unsortiert" war früher „Meine Sammlung" — Name/
       // Icon/Farbe einmalig auf den aktuellen Stand anheben, falls nötig.
       const def = binderData.find(b => b.isDefault);
