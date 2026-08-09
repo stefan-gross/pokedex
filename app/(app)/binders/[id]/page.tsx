@@ -691,7 +691,7 @@ export default function BinderDetailPage({ params }: Props) {
               // Ansicht ohne Bearbeiten-UI). Einziger Einstieg (kein Long-Press
               // mehr): automatische Sammlungen wählen Karten zum Entfernen,
               // manuelle sortieren/löschen wie gehabt.
-              <Button variant="primary" onClick={() => setEditMode(true)} icon={<Pencil />} aria-label="Bearbeiten" className="shrink-0" />
+              <Button variant="secondary" onClick={() => setEditMode(true)} icon={<Pencil />} aria-label="Bearbeiten" className="shrink-0" />
             ) : (
               <span className="text-role-label font-semibold text-right shrink-0" style={{ color: binderColor }}>
                 {!totalValue.loading && totalValue.withPrice > 0
