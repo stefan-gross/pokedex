@@ -1551,12 +1551,15 @@ function SinglePageView({
               {renderPage(targetPage, targetIdx, 'target')}
             </div>
           )}
-          {/* Nachbarseiten andeuten (nur im Ruhezustand): eine Seiten-Kante, die
-              BÜNDIG am Bildschirmrand sitzt (kein Abstand zum Rand) und mit ~2px
-              Abstand hinter der aktuellen Seite hervorschaut — rechts die nächste,
-              links die vorherige Seite. Liegt hinter der aktuellen Seite (zIndex 0).
-              Breite = Seiten-Außenrand (mx-3 = 12px) minus 2px Spalt. */}
-          {!showFlip && pageIdx < totalPages - 1 && (
+          {/* Nachbarseiten andeuten (nur im Ruhezustand): eine Seiten-Kante,
+              BÜNDIG am Bildschirmrand, ~2px hinter der aktuellen Seite hervor.
+              WICHTIG: nur auf der Seite, auf der ein SLIDE (Verschieben) hinführt
+              — nicht auf der Dreh-Seite. Vorderseite → nach rechts wischen slidet
+              zur VORHERIGEN Seite (kommt von links) ⇒ Vorschau LINKS. Rückseite →
+              nach links wischen slidet zur NÄCHSTEN Seite (kommt von rechts) ⇒
+              Vorschau RECHTS. (Die jeweils andere Wischrichtung ist ein Dreh-Flip
+              der Blattrückseite/-vorderseite — dafür keine Rand-Vorschau.) */}
+          {!showFlip && !isFront && pageIdx < totalPages - 1 && (
             <div
               aria-hidden
               className="absolute rounded-l-lg border-y border-l pointer-events-none"
@@ -1565,7 +1568,7 @@ function SinglePageView({
                 borderColor: 'var(--border)', boxShadow: '-2px 1px 5px rgba(0,0,0,.20)' }}
             />
           )}
-          {!showFlip && pageIdx > 0 && (
+          {!showFlip && isFront && pageIdx > 0 && (
             <div
               aria-hidden
               className="absolute rounded-r-lg border-y border-r pointer-events-none"
