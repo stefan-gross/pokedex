@@ -541,6 +541,7 @@ export default function BinderDetailPage({ params }: Props) {
           </div>
           {!isProtected && (
             <Menu
+              portal
               trigger={(open, toggle) => (
                 <Button
                   variant="secondary"
