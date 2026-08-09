@@ -97,9 +97,10 @@ export function BinderSlotPickerModal({ onClose, onPick }: Props) {
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={info.imgLargeDe || info.imgLarge || ""}
+                    src={info.imgLargeDe || info.imgLarge || undefined}
                     alt={c.name}
                     className="w-9 h-12 rounded object-cover shrink-0"
+                    onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold truncate">{c.name}</div>

@@ -1478,9 +1478,10 @@ function SinglePageView({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={activeCardInfo?.imgLargeDe || activeCardInfo?.imgLarge || ""}
+                  src={activeCardInfo?.imgLargeDe || activeCardInfo?.imgLarge || undefined}
                   alt={activeCard.name}
                   className="w-full h-full object-cover"
+                  onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
                 />
               </div>
             ) : null}
@@ -1720,10 +1721,11 @@ function DraggableCardSlot({
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={cardInfo.imgLargeDe || cardInfo.imgLarge || ""}
+        src={cardInfo.imgLargeDe || cardInfo.imgLarge || undefined}
         alt={card.name}
         className="w-full h-full object-cover pointer-events-none no-callout"
         draggable={false}
+        onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
       />
       {showInfo && !editMode && (
         <CardInfoOverlay
