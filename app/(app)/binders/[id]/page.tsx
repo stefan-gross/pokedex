@@ -714,7 +714,7 @@ export default function BinderDetailPage({ params }: Props) {
             <Button
               variant="primary"
               size="sm"
-              accentColor="var(--action-delete)"
+              accentColor="#c53030"
               onClick={removeSelectedFromTemplate}
               disabled={selectedIds.size === 0 || removing}
               icon={<Trash2 />}
