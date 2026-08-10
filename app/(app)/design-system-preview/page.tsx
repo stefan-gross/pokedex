@@ -1240,6 +1240,10 @@ export default function DesignSystemPreviewPage() {
                   setDemoCopies(cs => cs.filter(c => c.id !== copy.id));
                   setDemoLog(`"${copy.id}" gelöscht`);
                 }}
+                onMarkReviewed={() => {
+                  setDemoCopies(cs => cs.map(c => c.id === copy.id ? { ...c, needsReview: false } : c));
+                  setDemoLog(`"${copy.id}" als geprüft markiert`);
+                }}
               />
             ))}
             {demoCopies.length === 0 && (
