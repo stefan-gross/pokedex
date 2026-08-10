@@ -171,10 +171,10 @@ function SortableWishlistTile({ list, meta, editMode, onDelete }: {
   // in kontrastierender Farbe. Ohne Farbe: neutrales Glas.
   const bg = meta.color;
   const fg = bg ? readableTextColor(bg) : undefined;
-  // Bild-Icons (Pokémon-Artwork / Set-Logo) dürfen groß werden; gezeichnete
-  // Symbole (Lucide/Energie/Herz) wirken bei der Größe zu wuchtig → kleiner.
+  // Bild-Icons (Pokémon-Artwork / Set-Logo) füllen die Kachelbreite (minus
+  // Rand) wie auf den Sammlungs-Covern: `maxWidth:100%` skaliert responsiv und
+  // läuft nie über. Gezeichnete Symbole (Lucide/Energie/Herz) bleiben klein.
   const isImageIcon = !!meta.icon && (meta.icon.startsWith('pokemon:') || meta.icon.startsWith('set:'));
-  const iconSize = isImageIcon ? 176 : 60;
 
   return (
     <div
@@ -198,9 +198,21 @@ function SortableWishlistTile({ list, meta, editMode, onDelete }: {
         style={bg ? { background: bg } : undefined}
       >
         {isTemplate && <AutomaticCornerBadge tlRadius={16} />}
-        {meta.icon
-          ? <BinderIcon name={meta.icon} size={iconSize} style={fg ? { color: fg } : undefined} />
-          : <Heart size={60} style={fg ? { color: fg } : undefined} className={fg ? '' : 'text-glass-muted'} />}
+        {meta.icon ? (
+          isImageIcon ? (
+            <div className="w-full px-2 flex justify-center">
+              <BinderIcon
+                name={meta.icon}
+                size={176}
+                style={{ ...(fg ? { color: fg } : {}), maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: 176 }}
+              />
+            </div>
+          ) : (
+            <BinderIcon name={meta.icon} size={60} style={fg ? { color: fg } : undefined} />
+          )
+        ) : (
+          <Heart size={60} style={fg ? { color: fg } : undefined} className={fg ? '' : 'text-glass-muted'} />
+        )}
         <span className={`text-sm font-semibold truncate max-w-full ${fg ? '' : 'text-glass'}`} style={fg ? { color: fg } : undefined}>{meta.name}</span>
         <span className={`text-xs ${fg ? '' : 'text-glass-muted'}`} style={fg ? { color: fg, opacity: 0.75 } : undefined}>{count} {count === 1 ? 'Karte' : 'Karten'}</span>
 
