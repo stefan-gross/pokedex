@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useId, useRef, useLayoutEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Folder, Heart, Check, Minus, Pencil, FolderPlus, BookOpen, Package, Repeat2, Palette } from 'lucide-react';
+import { Plus, Folder, Heart, Check, Trash2, Pencil, FolderPlus, BookOpen, Package, Repeat2, Palette } from 'lucide-react';
 import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors, closestCenter,
   type DragEndEvent,
@@ -426,11 +426,11 @@ function BinderTile({ binder, binderCards, editMode, onDelete }: { binder: Binde
           <button
             onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
-            className="absolute -top-1 -left-1 w-11 h-11 rounded-full flex items-center justify-center text-white"
-            style={tintedGlassStyle('#c53030')}
+            className="absolute -top-1 -left-1 w-11 h-11 rounded-full flex items-center justify-center text-white ring-2 ring-white shadow-lg active:scale-90 transition-transform"
+            style={{ background: '#dc2626' }}
             aria-label="Sammlung löschen"
           >
-            <Minus size={20} strokeWidth={3} />
+            <Trash2 size={18} strokeWidth={2.5} />
           </button>
         )}
 

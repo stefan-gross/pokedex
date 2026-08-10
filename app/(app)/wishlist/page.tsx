@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { Heart, Plus, Check, Pencil, Minus } from 'lucide-react';
+import { Heart, Plus, Check, Pencil, Trash2 } from 'lucide-react';
 import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors, closestCenter,
   type DragEndEvent,
@@ -240,11 +240,11 @@ function SortableWishlistTile({ list, meta, editMode, onDelete }: {
           <button
             onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
-            className="absolute -top-1 -left-1 w-11 h-11 rounded-full flex items-center justify-center text-white"
-            style={tintedGlassStyle('#c53030')}
+            className="absolute -top-1 -left-1 w-11 h-11 rounded-full flex items-center justify-center text-white ring-2 ring-white shadow-lg active:scale-90 transition-transform"
+            style={{ background: '#dc2626' }}
             aria-label="Wunschliste löschen"
           >
-            <Minus size={20} strokeWidth={3} />
+            <Trash2 size={18} strokeWidth={2.5} />
           </button>
         )}
       </Link>
