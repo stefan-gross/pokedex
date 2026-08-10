@@ -9,7 +9,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { getWishlists, deleteWishlist, reorderWishlists } from '@/lib/firestore/wishlists';
+import { getWishlists, deleteWishlist, reorderWishlists, pruneOrphanTemplateWishlists } from '@/lib/firestore/wishlists';
 import { getBinders } from '@/lib/firestore/binders';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { Button } from '@/components/ui/button';
@@ -34,7 +34,11 @@ export default function WishlistOverviewPage() {
   const load = useCallback(async () => {
     try {
       const [wl, bs] = await Promise.all([getWishlists(), getBinders()]);
-      setLists(wl);
+      // Verwaiste Auto-Wunschlisten (Vorlagen-Sammlung gelöscht/umbenannt)
+      // hier aufräumen — die Übersicht ist die Stelle, an der sie sichtbar
+      // würden, und hat beide Datensätze bereits geladen (keine Race).
+      const pruned = await pruneOrphanTemplateWishlists(wl, bs);
+      setLists(pruned);
       setBinders(bs);
     } finally { setLoading(false); }
   }, []);

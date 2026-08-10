@@ -3,6 +3,7 @@ import {
   orderBy, query, Timestamp, arrayUnion, arrayRemove, writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
+import { deleteWishlistsForBinder } from './wishlists';
 import type { BinderDoc, BinderPage } from '@/types';
 
 const COL = 'binders';
@@ -185,5 +186,10 @@ export async function deleteBinderCascade(binder: BinderDoc): Promise<void> {
       }
     }
   }
+  // Ist es eine automatische (Vorlagen-)Sammlung, auch ihre gekoppelte
+  // Auto-Wunschliste entfernen — sonst bleibt sie als Waise in der
+  // Wunschlisten-Übersicht zurück (Name/Icon/Farbe kann sie dann nicht mehr
+  // von der gelöschten Sammlung erben).
+  if (binder.template) await deleteWishlistsForBinder(binder.id);
   await deleteBinder(binder.id);
 }
