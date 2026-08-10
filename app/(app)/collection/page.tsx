@@ -247,12 +247,11 @@ function CollectionContent() {
     loadingMore, hasMore, loadMore,
   } = useCardBrowser(browseSort, browserFilter, browseSortDir === 'desc');
 
-  const { manualIds, autoIds, manualLists, memberManualListIds, toggleOnList, createList } = useWishlist();
+  const { manualIds, autoIds, manualLists, memberManualListIds, toggleOnList } = useWishlist();
   const wishlistGridProps = {
     manualIds, autoIds, manualLists,
     memberIdsFor: memberManualListIds,
     onToggleList: toggleOnList,
-    onCreateList: createList,
   };
 
   // ── Infinite Scroll ───────────────────────────────────────────

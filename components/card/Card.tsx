@@ -139,15 +139,18 @@ const BORDER_COLORS: Record<'green' | 'yellow' | 'red', string> = {
   red: '#ef4444',
 };
 
-/** Wunschlisten-Herz mit 4 Zuständen: leer (Outline) / rot (manuell) / weiß
- *  (automatisch benötigt) / geteilt (links rot, rechts weiß = beides). Der
- *  geteilte Zustand nutzt einen Hart-Stopp-Verlauf bei 50 %. */
-function WishlistHeart({ manual, auto, width, height, gradId }: {
+/** Wunschlisten-Herz mit 4 Zuständen: leer (Outline) / rot (manuell) /
+ *  theme-adaptiv (automatisch benötigt — schwarz im Hellen, weiß im Dunklen via
+ *  `var(--foreground)`) / geteilt (links rot, rechts theme-adaptiv = beides).
+ *  Der geteilte Zustand nutzt einen Hart-Stopp-Verlauf bei 50 %. Exportiert,
+ *  damit der Wunschlisten-Button im Kartendetail dasselbe Icon nutzt. */
+export function WishlistHeart({ manual, auto, width, height, gradId }: {
   manual: boolean; auto: boolean; width: number; height: number; gradId: string;
 }) {
   const both = manual && auto;
-  const fill = both ? `url(#${gradId})` : manual ? '#ef4444' : auto ? '#fff' : 'none';
-  const stroke = manual && !auto ? '#ef4444' : '#fff';
+  const AUTO = 'var(--foreground)';
+  const fill = both ? `url(#${gradId})` : manual ? '#ef4444' : auto ? AUTO : 'none';
+  const stroke = manual && !auto ? '#ef4444' : AUTO;
   return (
     <svg
       width={width} height={height} viewBox="0 0 24 22"
@@ -158,7 +161,7 @@ function WishlistHeart({ manual, auto, width, height, gradId }: {
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="0">
             <stop offset="50%" stopColor="#ef4444" />
-            <stop offset="50%" stopColor="#fff" />
+            <stop offset="50%" style={{ stopColor: AUTO }} />
           </linearGradient>
         </defs>
       )}

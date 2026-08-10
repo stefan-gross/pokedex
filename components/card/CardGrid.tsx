@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Card } from '@/components/card/Card';
 import { CardDetailSheet, type SetMeta } from '@/components/card/CardDetailSheet';
-import { WishlistPickerSheet } from '@/components/wishlist/WishlistPickerSheet';
+import { WishlistPickerSheet, type ManualListMeta } from '@/components/wishlist/WishlistPickerSheet';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardDoc, BinderDoc } from '@/types';
 import { PRICE_COLOR } from '@/lib/prices/value-tier';
@@ -37,10 +37,9 @@ interface Props {
   autoIds?: Set<string>;
   /** Manuelle Wunschlisten + Mitgliedschaft/Mutation für den Herz-Drawer.
    *  Nur wenn `onToggleList` gesetzt ist, wird das Herz zum Button. */
-  manualLists?: { id: string; name: string }[];
+  manualLists?: ManualListMeta[];
   memberIdsFor?: (tcgId: string) => Set<string>;
   onToggleList?: (card: CardInfo, listId: string) => void;
-  onCreateList?: (name: string, card: CardInfo) => void;
   /** Preise werden noch per Batch-Route nachgeladen — zeigt animierte
    *  Platzhalter statt "–", solange nach Preis sortiert wird. */
   pricesLoading?: boolean;
@@ -119,7 +118,6 @@ export function CardGrid({
   manualLists,
   memberIdsFor,
   onToggleList,
-  onCreateList,
   pricesLoading,
   setsMeta,
   showSetBadge,
@@ -198,7 +196,7 @@ export function CardGrid({
           manualLists={manualLists ?? []}
           memberIds={wishlistCard ? (memberIdsFor?.(wishlistCard.id) ?? new Set()) : new Set()}
           onToggle={(listId) => { if (wishlistCard) onToggleList(wishlistCard, listId); }}
-          onCreate={(name) => { if (wishlistCard) onCreateList?.(name, wishlistCard); }}
+          onCreated={(listId) => { if (wishlistCard) onToggleList(wishlistCard, listId); }}
         />
       )}
     </>

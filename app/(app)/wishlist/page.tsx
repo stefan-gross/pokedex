@@ -2,18 +2,19 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { Heart, Lock, Plus, Check, Pencil, Minus } from 'lucide-react';
+import { Heart, Plus, Check, Pencil, Minus } from 'lucide-react';
 import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors, closestCenter,
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { getWishlists, addWishlist, deleteWishlist, reorderWishlists } from '@/lib/firestore/wishlists';
+import { getWishlists, deleteWishlist, reorderWishlists } from '@/lib/firestore/wishlists';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { Button } from '@/components/ui/button';
-import { Sheet } from '@/components/ui/modal';
-import { Input } from '@/components/ui/input';
+import { BinderIcon } from '@/lib/binder-icons';
+import { AutomaticBadge } from '@/components/binder/CollectionTypeBadge';
+import { CreateWishlistModal } from '@/components/wishlist/CreateWishlistModal';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import type { WishlistDoc } from '@/types';
 
@@ -26,7 +27,6 @@ export default function WishlistOverviewPage() {
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [newName, setNewName] = useState('');
 
   const load = useCallback(async () => {
     try { setLists(await getWishlists()); }
@@ -61,15 +61,6 @@ export default function WishlistOverviewPage() {
     if (list.templateBinderId) return;   // automatische Listen sind gesperrt
     if (list.items.length > 0 && !confirm(`Wunschliste „${list.name}" mit ${list.items.length} Karte(n) löschen?`)) return;
     await deleteWishlist(list.id);
-    load();
-  };
-
-  const submitCreate = async () => {
-    const name = newName.trim();
-    if (!name) return;
-    await addWishlist(name);
-    setNewName('');
-    setCreateOpen(false);
     load();
   };
 
@@ -132,12 +123,10 @@ export default function WishlistOverviewPage() {
       </div>
 
       {createOpen && (
-        <Sheet open onClose={() => { setCreateOpen(false); setNewName(''); }} title="Neue Wunschliste">
-          <div className="flex items-center gap-2">
-            <Input value={newName} onChange={setNewName} placeholder="z.B. Flohmarkt, Cardmarket" autoFocus className="flex-1" />
-            <Button variant="primary" onClick={submitCreate} disabled={!newName.trim()}>Anlegen</Button>
-          </div>
-        </Sheet>
+        <CreateWishlistModal
+          onClose={() => setCreateOpen(false)}
+          onSaved={() => { setCreateOpen(false); load(); }}
+        />
       )}
 
       <ScrollToTopButton />
@@ -175,11 +164,13 @@ function SortableWishlistTile({ list, editMode, onDelete }: { list: WishlistDoc;
         className="relative aspect-[3/4] rounded-2xl glass-inner flex flex-col items-center justify-center gap-2 px-3 text-center active:scale-[.98] transition-transform"
       >
         {isTemplate && (
-          <span className="absolute top-2.5 right-2.5 text-glass-muted">
-            <Lock size={13} />
+          <span className="absolute top-2 right-2">
+            <AutomaticBadge size="sm" />
           </span>
         )}
-        <Heart size={28} className="text-glass-muted" />
+        {list.icon
+          ? <BinderIcon name={list.icon} size={28} style={list.color ? { color: list.color } : undefined} />
+          : <Heart size={28} className="text-glass-muted" />}
         <span className="text-sm font-semibold text-glass truncate max-w-full">{list.name}</span>
         <span className="text-xs text-glass-muted">{count} {count === 1 ? 'Karte' : 'Karten'}</span>
 

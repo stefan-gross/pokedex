@@ -30,12 +30,17 @@ export async function getWishlist(id: string): Promise<WishlistDoc | null> {
   return snap.exists() ? ({ id: snap.id, ...snap.data() } as WishlistDoc) : null;
 }
 
-export async function addWishlist(name: string, description?: string, sortOrder?: number): Promise<string> {
+export async function addWishlist(
+  name: string,
+  opts?: { description?: string; icon?: string; color?: string; sortOrder?: number },
+): Promise<string> {
   const ref = await addDoc(collection(db, COL), {
     name,
-    description: description ?? '',
+    description: opts?.description ?? '',
     items: [],
-    sortOrder: sortOrder ?? Date.now(),
+    sortOrder: opts?.sortOrder ?? Date.now(),
+    ...(opts?.icon ? { icon: opts.icon } : {}),
+    ...(opts?.color ? { color: opts.color } : {}),
     createdAt: Timestamp.now(),
   });
   return ref.id;

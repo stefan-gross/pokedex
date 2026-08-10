@@ -122,6 +122,11 @@ export interface WishlistDoc {
   /** Nutzer-Reihenfolge der manuellen Listen (DnD in der Übersicht). Fehlt bei
    *  Altbestand/automatischen Listen → sortieren ans Ende. */
   sortOrder?: number;
+  /** Icon-String wie bei BinderDoc.icon (folder/box/`type:`/`set:`/`pokemon:`/
+   *  Lucide-Key) — wird über `BinderIcon` gerendert. Fehlt → Herz-Fallback. */
+  icon?: string;
+  /** Akzentfarbe (Hex) wie bei BinderDoc.color. Fehlt → gedämpftes Glas. */
+  color?: string;
   createdAt: Timestamp;
   items: WishlistItem[];
 }

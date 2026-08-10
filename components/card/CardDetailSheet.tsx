@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Plus, Heart, ChevronDown, ChevronRight, ChevronLeft, Info, Repeat2, LayoutGrid, Trash2, Check } from 'lucide-react';
 import { BinderIcon } from '@/lib/binder-icons';
@@ -17,6 +17,7 @@ import { syncTemplateBinders } from '@/lib/template-binders/sync';
 import { getWishlists } from '@/lib/firestore/wishlists';
 import { useWishlist } from '@/lib/hooks/use-wishlist';
 import { WishlistPickerSheet } from '@/components/wishlist/WishlistPickerSheet';
+import { WishlistHeart } from '@/components/card/Card';
 import { getCardsByEvolutionFamily, getCardsByDexNumber } from '@/lib/firestore/catalog';
 import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
 import { CardVariantPrice } from '@/components/card/CardPriceDetail';
@@ -441,7 +442,8 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   const [neededByCollections, setNeededByCollections] = useState<{ binderId: string; name: string }[]>([]);
   // Manuelle Wunschlisten (Drawer) — via geteiltem Hook, damit dieselbe Logik
   // wie in den Grids greift (rot = manuell, weiß = auto/benötigt).
-  const { manualLists, memberManualListIds, manualIds, toggleOnList, createList } = useWishlist();
+  const { manualLists, memberManualListIds, manualIds, autoIds, toggleOnList } = useWishlist();
+  const wlGradId = useId();
   const [wishlistOpen, setWishlistOpen] = useState(false);
   const [sortingBinderId, setSortingBinderId] = useState<string | null>(null);
 
@@ -1121,18 +1123,17 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 </div>
               )
             )}
-            {/* Manuelle Wunschlisten — öffnet den Auswahl-Drawer (Mehrfach-
-                Toggle über alle manuellen Listen + Neuanlegen). Rotes Herz =
-                bereits auf mind. einer manuellen Liste. */}
+            {/* Wunschlisten — öffnet den Auswahl-Drawer (Mehrfach-Toggle über
+                alle manuellen Listen + Neuanlegen). Herz zeigt den Status wie
+                auf der Kachel: rot=manuell, theme-Farbe=auto, geteilt=beides. */}
             <Button
               variant="secondary"
               size="lg"
               onClick={() => setWishlistOpen(true)}
-              icon={<Heart size={19} fill={card && manualIds.has(card.id) ? '#ef4444' : 'none'} stroke={card && manualIds.has(card.id) ? '#ef4444' : 'currentColor'} />}
+              icon={<WishlistHeart manual={!!card && manualIds.has(card.id)} auto={!!card && autoIds.has(card.id)} width={20} height={18} gradId={wlGradId} />}
               className="w-full"
-              style={card && manualIds.has(card.id) ? { color: '#ef4444' } : undefined}
             >
-              Auf Wunschliste
+              Wunschlisten
             </Button>
           </div>
 
@@ -1143,7 +1144,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
               manualLists={manualLists}
               memberIds={memberManualListIds(card.id)}
               onToggle={(listId) => toggleOnList(card, listId)}
-              onCreate={(name) => createList(name, card)}
+              onCreated={(id) => toggleOnList(card, id)}
             />
           )}
       </Sheet>

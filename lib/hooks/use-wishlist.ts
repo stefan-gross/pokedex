@@ -46,7 +46,7 @@ export function useWishlist() {
   }, []);
 
   const manualLists = useMemo(
-    () => lists.filter(l => !l.templateBinderId).map(l => ({ id: l.id, name: l.name })),
+    () => lists.filter(l => !l.templateBinderId).map(l => ({ id: l.id, name: l.name, icon: l.icon, color: l.color })),
     [lists],
   );
 
@@ -87,9 +87,9 @@ export function useWishlist() {
     await reload();
   }, [lists, reload]);
 
-  /** Neue manuelle Liste anlegen (optional Karte direkt aufnehmen). */
-  const createList = useCallback(async (name: string, card?: CardInfo): Promise<string> => {
-    const id = await addWishlist(name.trim() || 'Wunschliste');
+  /** Neue manuelle Liste anlegen (Name/Icon/Farbe), optional Karte direkt aufnehmen. */
+  const createList = useCallback(async (meta: { name: string; icon?: string; color?: string }, card?: CardInfo): Promise<string> => {
+    const id = await addWishlist(meta.name.trim() || 'Wunschliste', { icon: meta.icon, color: meta.color });
     if (card) await addItemToWishlist(id, toItemInput(card));
     await reload();
     return id;

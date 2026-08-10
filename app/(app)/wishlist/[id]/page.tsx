@@ -2,7 +2,9 @@
 
 import { use, useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Heart, Minus, Lock, Download } from 'lucide-react';
+import { ChevronLeft, Heart, Minus, Pencil, Download } from 'lucide-react';
+import { AutomaticBadge } from '@/components/binder/CollectionTypeBadge';
+import { CreateWishlistModal } from '@/components/wishlist/CreateWishlistModal';
 import { getWishlist, removeItemFromWishlist } from '@/lib/firestore/wishlists';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { getCardsByTcgId } from '@/lib/firestore/cards';
@@ -64,6 +66,7 @@ export default function WishlistDetailPage({ params }: Props) {
   const [loading, setLoading] = useState(true);
   const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
   const [detailOwned, setDetailOwned] = useState<CardDoc[]>([]);
+  const [editOpen, setEditOpen] = useState(false);
 
   const load = async () => {
     try {
@@ -228,10 +231,20 @@ export default function WishlistDetailPage({ params }: Props) {
           <div className="flex-1 min-w-0">
             <h1 className="text-role-h2 truncate text-glass flex items-center gap-1.5">
               {list.name}
-              {isTemplateList && <Lock size={13} className="text-glass-muted shrink-0" />}
+              {isTemplateList && <AutomaticBadge size="sm" />}
             </h1>
             <p className="text-role-label text-glass-muted">{items.length} {items.length === 1 ? 'Karte' : 'Karten'}</p>
           </div>
+          {!isTemplateList && (
+            <Button
+              variant="secondary"
+              icon={<Pencil />}
+              onClick={() => setEditOpen(true)}
+              aria-label="Wunschliste bearbeiten"
+              title="Bearbeiten"
+              className="shrink-0"
+            />
+          )}
           <Button
             variant="secondary"
             icon={<Download />}
@@ -322,6 +335,14 @@ export default function WishlistDetailPage({ params }: Props) {
           ownedCopies={detailOwned}
           onClose={() => setDetailCard(null)}
           onSaved={load}
+        />
+      )}
+
+      {editOpen && !isTemplateList && (
+        <CreateWishlistModal
+          existing={list}
+          onClose={() => setEditOpen(false)}
+          onSaved={() => { setEditOpen(false); load(); }}
         />
       )}
 

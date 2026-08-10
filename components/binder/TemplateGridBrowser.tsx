@@ -88,7 +88,7 @@ export function useTemplateGrid({
   const [sortField, setSortField] = useState<SortField>('number');
   const [sortDir, setSortDir]     = useState<SortDir>('asc');
   const [rarityFilter, setRarityFilter] = useState<Set<string>>(new Set());
-  const { manualIds, autoIds, manualLists, memberManualListIds, toggleOnList, createList } = useWishlist();
+  const { manualIds, autoIds, manualLists, memberManualListIds, toggleOnList } = useWishlist();
 
   // Kartenmenge der Vorlage (Master-Set/Pokémon/Illustrator) + eigene Karten —
   // erst laden, wenn die Grid-Ansicht sichtbar ist (spart Reads in Blätter-/
@@ -221,7 +221,6 @@ export function useTemplateGrid({
       manualLists={manualLists}
       memberIdsFor={memberManualListIds}
       onToggleList={toggleOnList}
-      onCreateList={createList}
       onCardsChanged={onCardsChanged}
       showSetBadge={spansMultipleSets}
       selectMode={selectMode}
