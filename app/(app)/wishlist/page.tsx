@@ -13,7 +13,7 @@ import { getWishlists, deleteWishlist, reorderWishlists } from '@/lib/firestore/
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { Button } from '@/components/ui/button';
 import { BinderIcon } from '@/lib/binder-icons';
-import { AutomaticBadge } from '@/components/binder/CollectionTypeBadge';
+import { AutomaticCornerBadge } from '@/components/binder/CollectionTypeBadge';
 import { CreateWishlistModal } from '@/components/wishlist/CreateWishlistModal';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import type { WishlistDoc } from '@/types';
@@ -163,11 +163,7 @@ function SortableWishlistTile({ list, editMode, onDelete }: { list: WishlistDoc;
         onContextMenu={e => e.preventDefault()}
         className="relative aspect-[3/4] rounded-2xl glass-inner flex flex-col items-center justify-center gap-2 px-3 text-center active:scale-[.98] transition-transform"
       >
-        {isTemplate && (
-          <span className="absolute top-2 right-2">
-            <AutomaticBadge size="sm" />
-          </span>
-        )}
+        {isTemplate && <AutomaticCornerBadge tlRadius={16} />}
         {list.icon
           ? <BinderIcon name={list.icon} size={28} style={list.color ? { color: list.color } : undefined} />
           : <Heart size={28} className="text-glass-muted" />}

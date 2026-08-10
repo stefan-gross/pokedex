@@ -91,3 +91,28 @@ export function CollectionTypeCornerBadge({
   }
   return null;
 }
+
+/** „A"-Corner-Badge (identische Form wie {@link CollectionTypeCornerBadge}) für
+ *  Kontexte ohne `BinderDoc`/Cover-Form — z.B. Wunschlisten-Kacheln. `tlRadius`
+ *  = Radius der oberen linken Kachelecke, damit die Außenkurve konzentrisch in
+ *  der Ecke sitzt. */
+export function AutomaticCornerBadge({ tlRadius, size = 28 }: { tlRadius: number; size?: number }) {
+  return (
+    <CardBadge
+      corner="tl"
+      size={size}
+      color="var(--pokedex-blue)"
+      style={{
+        top: 0, left: 0,
+        borderTopLeftRadius: tlRadius,
+        borderBottomRightRadius: CARD_BADGE_BR_RADIUS,
+        borderTopRightRadius: 0,
+        borderBottomLeftRadius: 0,
+      }}
+      ariaLabel="Automatische Wunschliste"
+      title="Automatische Wunschliste"
+    >
+      A
+    </CardBadge>
+  );
+}
