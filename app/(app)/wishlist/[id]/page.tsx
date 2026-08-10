@@ -2,10 +2,10 @@
 
 import { use, useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Heart, Minus, Pencil, Download } from 'lucide-react';
+import { ChevronLeft, Heart, Minus, Pencil, Download, Trash2 } from 'lucide-react';
 import { AutomaticBadge } from '@/components/binder/CollectionTypeBadge';
 import { CreateWishlistModal } from '@/components/wishlist/CreateWishlistModal';
-import { getWishlist, removeItemFromWishlist } from '@/lib/firestore/wishlists';
+import { getWishlist, removeItemFromWishlist, deleteWishlist } from '@/lib/firestore/wishlists';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { getCardsByTcgId } from '@/lib/firestore/cards';
 import { getAllSets } from '@/lib/firestore/sets';
@@ -84,6 +84,16 @@ export default function WishlistDetailPage({ params }: Props) {
   };
 
   useEffect(() => { load(); }, [id]);
+
+  // Löscht die (manuelle) Wunschliste komplett — Rückfrage bei nicht-leerer
+  // Liste (gleiches Muster wie die Übersicht), danach zurück zur Übersicht.
+  const handleDeleteList = async () => {
+    if (!list || list.templateBinderId) return;
+    if (list.items.length > 0 &&
+        !confirm(`Wunschliste „${list.name}" mit ${list.items.length} Karte(n) löschen?`)) return;
+    await deleteWishlist(list.id);
+    router.push('/wishlist');
+  };
 
   const isTemplateList = !!list?.templateBinderId;
   // Auto-Listen erben Name/Icon/Farbe von der Sammlung; manuelle nutzen ihre eigenen.
@@ -266,6 +276,17 @@ export default function WishlistDetailPage({ params }: Props) {
             title="Als PDF exportieren"
             className="shrink-0"
           />
+          {!isTemplateList && (
+            <Button
+              variant="primary"
+              accentColor="#dc2626"
+              icon={<Trash2 />}
+              onClick={handleDeleteList}
+              aria-label="Wunschliste löschen"
+              title="Löschen"
+              className="shrink-0"
+            />
+          )}
         </div>
         {isTemplateList && (
           <p className="text-role-label text-glass-muted mt-2">
