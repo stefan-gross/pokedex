@@ -138,6 +138,32 @@ export async function setCardExclusiveBinder(cardId: string, targetBinderId: str
   await addCardToBinder(targetBinderId, cardId);
 }
 
+/** Bulk-Variante von `setCardExclusiveBinder`: verschiebt MEHRERE Kopien
+ *  exklusiv in den Ziel-Binder — entfernt sie aus allen anderen Sammlungen
+ *  (positionale Slots werden geleert, `cardIds` daraus neu abgeleitet) und legt
+ *  sie ins Ziel. Alles in EINEM `getBinders()`-Read + EINEM `writeBatch` statt
+ *  N×(Read+2 Writes) — der entscheidende Unterschied beim Entfernen mehrerer
+ *  Karten (vorher sekundenlang, sequenziell). Ziel wird nur über `cardIds`
+ *  ergänzt (für nicht-positionale Ziele wie „Unsortiert"). */
+export async function moveCardsToBinderExclusive(cardIds: string[], targetBinderId: string): Promise<void> {
+  if (cardIds.length === 0) return;
+  const idSet = new Set(cardIds);
+  const binders = await getBinders();
+  const batch = writeBatch(db);
+  for (const b of binders) {
+    if (b.id === targetBinderId) continue;
+    if (!b.cardIds.some(id => idSet.has(id))) continue;
+    if (b.pages?.some(p => p.slots.some(s => s != null && idSet.has(s)))) {
+      const newPages = b.pages.map(p => ({ slots: p.slots.map(s => (s != null && idSet.has(s) ? null : s)) }));
+      batch.update(doc(db, COL, b.id), { pages: newPages, cardIds: pagesToCardIds(newPages) });
+    } else {
+      batch.update(doc(db, COL, b.id), { cardIds: b.cardIds.filter(id => !idSet.has(id)) });
+    }
+  }
+  batch.update(doc(db, COL, targetBinderId), { cardIds: arrayUnion(...cardIds) });
+  await batch.commit();
+}
+
 /** Entfernt eine Karte aus einem Binder. „Unsortiert" (isDefault) ist der
  *  dauerhafte Hub und wird NICHT gelöscht, wenn er leer wird. */
 export async function removeCardFromBinderAndCleanup(binderId: string, cardId: string): Promise<void> {

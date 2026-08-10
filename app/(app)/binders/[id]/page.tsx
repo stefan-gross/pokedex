@@ -19,7 +19,7 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   getBinder, deleteBinderCascade, setBinderPages, cardIdsToPages,
   ensureDefaultBinder, addCardToBinder, addCardsToBinder, removeCardFromOtherBinders,
-  setCardExclusiveBinder,
+  setCardExclusiveBinder, moveCardsToBinderExclusive,
 } from '@/lib/firestore/binders';
 import { syncTemplateBinders } from '@/lib/template-binders/sync';
 import { getCard, getCards } from '@/lib/firestore/cards';
@@ -227,15 +227,17 @@ export default function BinderDetailPage({ params }: Props) {
     });
   }, []);
   // Ausgewählte Karten aus der (Vorlagen-)Sammlung entfernen → zurück nach
-  // „Unsortiert" (setCardExclusiveBinder: aus allen Bindern raus + in Default
-  // rein), danach Template-Sync (leere Slots werden wieder Platzhalter). NICHT
-  // clearSlot (das würde die Karte verwaisen und `pages` direkt editieren).
+  // „Unsortiert". Gebündelt: EIN Read + EIN writeBatch für ALLE Karten
+  // (`moveCardsToBinderExclusive`) statt pro Karte ein Voll-Read + Einzel-
+  // Writes (das dauerte bei mehreren Karten sekundenlang). Danach Template-
+  // Sync (leere Slots → Platzhalter). NICHT clearSlot (würde verwaisen).
   const removeSelectedFromTemplate = useCallback(async () => {
     if (!binder || removing || selectedIds.size === 0) return;
     setRemoving(true);
     try {
+      const ids = [...selectedIds];
       const defaultId = await ensureDefaultBinder();
-      for (const cardId of selectedIds) await setCardExclusiveBinder(cardId, defaultId);
+      await moveCardsToBinderExclusive(ids, defaultId);
       await syncTemplateBinders({ binderIds: [binder.id] });
       setSelectedIds(new Set());
       await load();
@@ -869,6 +871,15 @@ export default function BinderDetailPage({ params }: Props) {
         <div className="fixed inset-0 z-[80] flex flex-col items-center justify-center gap-3 bg-black/45 backdrop-blur-sm">
           <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
           <span className="text-sm font-medium text-white">Karten werden einsortiert …</span>
+        </div>
+      )}
+
+      {/* Lade-Overlay während des Entfernens — sofortiges Feedback beim Tippen
+          (statt „sekundenlang passiert nichts"). */}
+      {removing && (
+        <div className="fixed inset-0 z-[80] flex flex-col items-center justify-center gap-3 bg-black/45 backdrop-blur-sm">
+          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm font-medium text-white">Karten werden entfernt …</span>
         </div>
       )}
     </div>
