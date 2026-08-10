@@ -247,7 +247,13 @@ function CollectionContent() {
     loadingMore, hasMore, loadMore,
   } = useCardBrowser(browseSort, browserFilter, browseSortDir === 'desc');
 
-  const { wishlistIds, toggle: toggleWishlist } = useWishlist();
+  const { manualIds, autoIds, manualLists, memberManualListIds, toggleOnList, createList } = useWishlist();
+  const wishlistGridProps = {
+    manualIds, autoIds, manualLists,
+    memberIdsFor: memberManualListIds,
+    onToggleList: toggleOnList,
+    onCreateList: createList,
+  };
 
   // ── Infinite Scroll ───────────────────────────────────────────
   useEffect(() => {
@@ -665,7 +671,7 @@ function CollectionContent() {
                   Keine Karten für diesen Filter.
                 </p>
               )}
-              <CardGrid cards={browseCards} ownedMap={ownedMap} sortKey={browseSort} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} onCardsChanged={() => getCards().then(setOwnedCards).catch(() => {})} />
+              <CardGrid cards={browseCards} ownedMap={ownedMap} sortKey={browseSort} {...wishlistGridProps} onCardsChanged={() => getCards().then(setOwnedCards).catch(() => {})} />
               <div ref={sentinelRef} className="h-1" />
               {loadingMore && (
                 <div className="flex justify-center py-4">
@@ -702,8 +708,7 @@ function CollectionContent() {
                   cards={displayed.slice(0, searchVisibleCount)}
                   ownedMap={ownedMap}
                   sortKey={searchSort}
-                  wishlistIds={wishlistIds}
-                  onToggleWishlist={toggleWishlist}
+                  {...wishlistGridProps}
                   onCardsChanged={() => getCards().then(setOwnedCards).catch(() => {})}
                   setsMeta={setsMetaMap}
                   showSetBadge={resultsSpanMultipleSets}

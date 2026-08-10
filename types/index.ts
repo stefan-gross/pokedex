@@ -119,6 +119,9 @@ export interface WishlistDoc {
    *  `syncTemplateBinders()` verwaltet, nicht manuell entfernbar. Fehlt =
    *  normale/freie Wunschliste (heutiges Standardverhalten). */
   templateBinderId?: string;
+  /** Nutzer-Reihenfolge der manuellen Listen (DnD in der Übersicht). Fehlt bei
+   *  Altbestand/automatischen Listen → sortieren ans Ende. */
+  sortOrder?: number;
   createdAt: Timestamp;
   items: WishlistItem[];
 }

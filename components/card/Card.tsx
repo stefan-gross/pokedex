@@ -1,5 +1,6 @@
 'use client';
 
+import { useId } from 'react';
 import { ExclamationMark } from '@/lib/binder-icons';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardDoc } from '@/types';
@@ -79,8 +80,14 @@ interface Props {
   card: CardInfo;
   ownedCards?: CardDoc[];
   onCardClick?: () => void;
-  onWishlist?: () => void;
-  isWishlisted?: boolean;
+  /** Karte liegt auf mind. einer MANUELLEN Wunschliste (→ rotes Herz). */
+  onManualWishlist?: boolean;
+  /** Karte liegt auf mind. einer AUTOMATISCHEN (Vorlagen-)Wunschliste, d.h.
+   *  von irgendeiner Auto-Sammlung benötigt (→ weißes Herz). Beides → geteilt. */
+  onAutoWishlist?: boolean;
+  /** Tap aufs Herz — öffnet i.d.R. den Wunschlisten-Auswahl-Drawer. Ohne
+   *  Handler ist das Herz nur ein (nicht klickbares) Statuskennzeichen. */
+  onHeartClick?: () => void;
   sublabel?: string;
   /** Überschreibt die Sublabel-Textfarbe — z.B. Preis-Blau bei Preis-Sortierung. */
   sublabelColor?: string;
@@ -132,8 +139,36 @@ const BORDER_COLORS: Record<'green' | 'yellow' | 'red', string> = {
   red: '#ef4444',
 };
 
+/** Wunschlisten-Herz mit 4 Zuständen: leer (Outline) / rot (manuell) / weiß
+ *  (automatisch benötigt) / geteilt (links rot, rechts weiß = beides). Der
+ *  geteilte Zustand nutzt einen Hart-Stopp-Verlauf bei 50 %. */
+function WishlistHeart({ manual, auto, width, height, gradId }: {
+  manual: boolean; auto: boolean; width: number; height: number; gradId: string;
+}) {
+  const both = manual && auto;
+  const fill = both ? `url(#${gradId})` : manual ? '#ef4444' : auto ? '#fff' : 'none';
+  const stroke = manual && !auto ? '#ef4444' : '#fff';
+  return (
+    <svg
+      width={width} height={height} viewBox="0 0 24 22"
+      fill={fill} stroke={stroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      style={{ filter: 'drop-shadow(0 1px 1.5px rgba(0,0,0,.45))' }}
+    >
+      {both && (
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="50%" stopColor="#ef4444" />
+            <stop offset="50%" stopColor="#fff" />
+          </linearGradient>
+        </defs>
+      )}
+      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+    </svg>
+  );
+}
+
 export function Card({
-  card, ownedCards = [], onCardClick, onWishlist, isWishlisted, sublabel, sublabelColor, sublabelLoading,
+  card, ownedCards = [], onCardClick, onManualWishlist = false, onAutoWishlist = false, onHeartClick, sublabel, sublabelColor, sublabelLoading,
   numberPrefixCode, numberPrefixSymbolUrl, setCode, price, border, size = 'sm', bare = false,
   missingStyle = getCardVisualTheme().missingStyle,
   cornerRadius = getCardVisualTheme().cornerRadius[size],
@@ -146,6 +181,7 @@ export function Card({
   // beim App-Start hydriert wird — der Rückgabewert selbst wird hier nicht
   // gebraucht (analog zu `useGlassTheme()` in `components/ui/button.tsx`).
   useCardVisualTheme();
+  const heartGradId = useId();
   const preset = CARD_SIZE_PRESETS[size];
   const radius = cornerRadius;
   // Rundung der abgerundeten Badge-Diagonal-Ecken = Karten-Radius: das Badge
@@ -310,22 +346,25 @@ export function Card({
           </CardBadge>
         )}
 
-        {/* Wishlist — nur Herzform, kein Button-Hintergrund. Sichtbar als
-            Hinzufügen-Affordanz bei nicht besessenen Karten UND (gefüllt) bei
-            allem, was auf irgendeiner Wunschliste steht — auch bei Besitz:
-            eine besessene Karte kann von einer Vorlagen-Sammlung weiterhin in
-            anderer Variante/Sprache gebraucht werden (z.B. EN besessen,
-            Pokédex will DE). Besessen + nicht gewünscht → kein Herz. */}
-        {!bare && (!isOwned || isWishlisted) && (
+        {/* Wunschlisten-Herz — nur Herzform, kein Button-Hintergrund. IMMER
+            sichtbar (4 Zustände): leer = auf keiner Liste, rot = manuell,
+            weiß = automatisch (von irgendeiner Auto-Sammlung benötigt),
+            geteilt (links rot/rechts weiß) = beides. Tap öffnet i.d.R. den
+            Auswahl-Drawer (`onHeartClick`). */}
+        {!bare && (
           <CardBadge
             size={preset.badgeSize} background={false}
             style={{ bottom: layout.wishlistBadge.bottom, right: layout.wishlistBadge.right }}
-            onClick={e => { e.stopPropagation(); onWishlist?.(); }} // stoppt Click-Bubbling zum Detail
-            ariaLabel="Zur Wunschliste"
+            onClick={onHeartClick ? (e => { e.stopPropagation(); onHeartClick(); }) : undefined} // stoppt Click-Bubbling zum Detail
+            ariaLabel="Wunschliste"
           >
-            <svg width={preset.badgeIconSize * 1.3} height={preset.badgeIconSize * 1.2} viewBox="0 0 24 22" fill={isWishlisted ? '#ef4444' : 'none'} stroke={isWishlisted ? '#ef4444' : '#fff'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-            </svg>
+            <WishlistHeart
+              manual={onManualWishlist}
+              auto={onAutoWishlist}
+              width={preset.badgeIconSize * 1.3}
+              height={preset.badgeIconSize * 1.2}
+              gradId={`${heartGradId}-heart`}
+            />
           </CardBadge>
         )}
 

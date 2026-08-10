@@ -1,33 +1,77 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { Heart, Lock } from 'lucide-react';
-import { getWishlists, ensureDefaultWishlist } from '@/lib/firestore/wishlists';
+import { Heart, Lock, Plus, Check, Pencil, Minus } from 'lucide-react';
+import {
+  DndContext, PointerSensor, TouchSensor, useSensor, useSensors, closestCenter,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { getWishlists, addWishlist, deleteWishlist, reorderWishlists } from '@/lib/firestore/wishlists';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
+import { Button } from '@/components/ui/button';
+import { Sheet } from '@/components/ui/modal';
+import { Input } from '@/components/ui/input';
+import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import type { WishlistDoc } from '@/types';
 
 /** Übersicht aller Wunschlisten — analog zur Sammlungsübersicht
- *  (app/(app)/binders/page.tsx), da es beliebig viele Vorlagen-Wunschlisten
- *  zusätzlich zur normalen geben kann (eine Tab-Leiste wäre damit schnell
- *  unübersichtlich). Freie Liste immer zuerst, danach Vorlagen-Listen. */
+ *  (app/(app)/binders/page.tsx): manuelle Listen zuerst (per DnD sortierbar,
+ *  löschbar, neu anlegbar), automatische (Vorlagen-)Listen danach und gesperrt
+ *  (Lock, nicht ziehbar/löschbar — Rolle wie der geschützte Default-Binder). */
 export default function WishlistOverviewPage() {
   const [lists, setLists] = useState<WishlistDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editMode, setEditMode] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newName, setNewName] = useState('');
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const fetched = await getWishlists();
-        const hasFree = fetched.some(l => !l.templateBinderId);
-        const all = hasFree ? fetched : [...fetched, await ensureDefaultWishlist()];
-        all.sort((a, b) => (a.templateBinderId ? 1 : 0) - (b.templateBinderId ? 1 : 0));
-        setLists(all);
-      } finally {
-        setLoading(false);
-      }
-    })();
+  const load = useCallback(async () => {
+    try { setLists(await getWishlists()); }
+    finally { setLoading(false); }
   }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 350, tolerance: 16 } }),
+  );
+  const handleDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const byId = new Map(lists.map(l => [l.id, l]));
+    // Automatische Listen sind nicht sortierbar.
+    if (byId.get(String(active.id))?.templateBinderId || byId.get(String(over.id))?.templateBinderId) return;
+    const manual = lists.filter(l => !l.templateBinderId);
+    const from = manual.findIndex(l => l.id === active.id);
+    const to = manual.findIndex(l => l.id === over.id);
+    if (from < 0 || to < 0) return;
+    const reordered = arrayMove(manual, from, to);
+    const auto = lists.filter(l => !!l.templateBinderId);
+    setLists([...reordered, ...auto]);   // optimistisch
+    reorderWishlists(reordered.map(l => l.id)).catch(err => {
+      console.error('[wishlists] reorder error', err);
+      load();
+    });
+  };
+
+  const handleDelete = async (list: WishlistDoc) => {
+    if (list.templateBinderId) return;   // automatische Listen sind gesperrt
+    if (list.items.length > 0 && !confirm(`Wunschliste „${list.name}" mit ${list.items.length} Karte(n) löschen?`)) return;
+    await deleteWishlist(list.id);
+    load();
+  };
+
+  const submitCreate = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    await addWishlist(name);
+    setNewName('');
+    setCreateOpen(false);
+    load();
+  };
 
   if (loading) {
     return (
@@ -39,38 +83,118 @@ export default function WishlistOverviewPage() {
 
   return (
     <div className="min-h-screen pb-24">
-      <div className="px-4 pt-4 pb-4">
-        <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Wunschlisten</h1>
-        <p className="text-role-body text-glass-muted">{lists.length} {lists.length === 1 ? 'Liste' : 'Listen'}</p>
+      <div className="sticky top-safe z-20 px-3 pt-3 pb-1">
+        <div className="glass rounded-[20px] px-4 pt-3 pb-3 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Wunschlisten</h1>
+            <p className="text-role-label text-glass-muted">{lists.length} {lists.length === 1 ? 'Liste' : 'Listen'}</p>
+          </div>
+          {editMode ? (
+            <Button variant="primary" accentColor="#2f855a" onClick={() => setEditMode(false)} icon={<Check />} aria-label="Fertig" className="shrink-0" />
+          ) : (
+            <div className="flex items-center gap-2 shrink-0">
+              <Button variant="primary" accentColor="#2f855a" onClick={() => setCreateOpen(true)} icon={<Plus strokeWidth={2.5} />} aria-label="Neue Wunschliste" />
+              <Button variant="secondary" onClick={() => setEditMode(true)} icon={<Pencil />} aria-label="Bearbeiten" />
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="px-4 grid grid-cols-2 gap-3">
-        {lists.map(list => (
-          <WishlistTile key={list.id} list={list} />
-        ))}
+      <div className="px-4 py-4">
+        {lists.length === 0 ? (
+          <div className="text-center pt-16 space-y-3">
+            <div className="flex justify-center"><Heart size={48} className="text-glass-muted" /></div>
+            <p className="text-role-title text-glass">Noch keine Wunschliste</p>
+            <button
+              onClick={() => setCreateOpen(true)}
+              className="mt-2 px-5 py-2.5 rounded-full text-sm font-semibold text-white"
+              style={tintedGlassStyle('#2f855a')}
+            >
+              Erste Wunschliste erstellen
+            </button>
+          </div>
+        ) : (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={lists.map(l => l.id)} strategy={rectSortingStrategy}>
+              <div className="grid grid-cols-2 gap-3">
+                {lists.map(list => (
+                  <SortableWishlistTile
+                    key={list.id}
+                    list={list}
+                    editMode={editMode}
+                    onDelete={() => handleDelete(list)}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        )}
       </div>
+
+      {createOpen && (
+        <Sheet open onClose={() => { setCreateOpen(false); setNewName(''); }} title="Neue Wunschliste">
+          <div className="flex items-center gap-2">
+            <Input value={newName} onChange={setNewName} placeholder="z.B. Flohmarkt, Cardmarket" autoFocus className="flex-1" />
+            <Button variant="primary" onClick={submitCreate} disabled={!newName.trim()}>Anlegen</Button>
+          </div>
+        </Sheet>
+      )}
 
       <ScrollToTopButton />
     </div>
   );
 }
 
-function WishlistTile({ list }: { list: WishlistDoc }) {
+function SortableWishlistTile({ list, editMode, onDelete }: { list: WishlistDoc; editMode: boolean; onDelete: () => void }) {
   const isTemplate = !!list.templateBinderId;
   const count = list.items.length;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: list.id,
+    disabled: !editMode || isTemplate,
+  });
+  const dragEnabled = editMode && !isTemplate;
+
   return (
-    <Link
-      href={`/wishlist/${list.id}`}
-      className="relative aspect-[3/4] rounded-2xl glass-inner flex flex-col items-center justify-center gap-2 px-3 text-center active:scale-[.98] transition-transform"
+    <div
+      ref={setNodeRef}
+      className="no-callout"
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.3 : 1,
+        touchAction: dragEnabled ? 'none' : undefined,
+        zIndex: isDragging ? 10 : undefined,
+      }}
+      {...(dragEnabled ? attributes : {})}
+      {...(dragEnabled ? listeners : {})}
     >
-      {isTemplate && (
-        <span className="absolute top-2.5 right-2.5 text-glass-muted">
-          <Lock size={13} />
-        </span>
-      )}
-      <Heart size={28} className="text-glass-muted" />
-      <span className="text-sm font-semibold text-glass truncate max-w-full">{list.name}</span>
-      <span className="text-xs text-glass-muted">{count} {count === 1 ? 'Karte' : 'Karten'}</span>
-    </Link>
+      <Link
+        href={`/wishlist/${list.id}`}
+        onClick={e => { if (editMode) e.preventDefault(); }}
+        onContextMenu={e => e.preventDefault()}
+        className="relative aspect-[3/4] rounded-2xl glass-inner flex flex-col items-center justify-center gap-2 px-3 text-center active:scale-[.98] transition-transform"
+      >
+        {isTemplate && (
+          <span className="absolute top-2.5 right-2.5 text-glass-muted">
+            <Lock size={13} />
+          </span>
+        )}
+        <Heart size={28} className="text-glass-muted" />
+        <span className="text-sm font-semibold text-glass truncate max-w-full">{list.name}</span>
+        <span className="text-xs text-glass-muted">{count} {count === 1 ? 'Karte' : 'Karten'}</span>
+
+        {editMode && !isTemplate && (
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
+            className="absolute -top-1 -left-1 w-11 h-11 rounded-full flex items-center justify-center text-white"
+            style={tintedGlassStyle('#c53030')}
+            aria-label="Wunschliste löschen"
+          >
+            <Minus size={20} strokeWidth={3} />
+          </button>
+        )}
+      </Link>
+    </div>
   );
 }

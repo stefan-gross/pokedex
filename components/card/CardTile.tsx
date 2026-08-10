@@ -13,8 +13,9 @@ interface Props {
   card: CardInfo;
   ownedCards?: CardDoc[];
   onCardClick?: () => void;
-  onWishlist?: () => void;
-  isWishlisted?: boolean;
+  onManualWishlist?: boolean;
+  onAutoWishlist?: boolean;
+  onHeartClick?: () => void;
   sublabel?: string;
   sublabelColor?: string;
   sublabelLoading?: boolean;

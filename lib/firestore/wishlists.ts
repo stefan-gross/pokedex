@@ -1,6 +1,6 @@
 import {
   collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc,
-  orderBy, query, Timestamp,
+  orderBy, query, Timestamp, writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import type { WishlistDoc, WishlistItem } from '@/types';
@@ -9,7 +9,20 @@ const COL = 'wishlists';
 
 export async function getWishlists(): Promise<WishlistDoc[]> {
   const snap = await getDocs(query(collection(db, COL), orderBy('createdAt', 'desc')));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as WishlistDoc));
+  const lists = snap.docs.map(d => ({ id: d.id, ...d.data() } as WishlistDoc));
+  // Manuelle Listen zuerst (nach nutzerdefinierter sortOrder, Altbestand ohne
+  // sortOrder ans Ende), automatische (Vorlagen-)Listen danach. `orderBy` auf
+  // sortOrder ginge nicht (Firestore würde Docs ohne das Feld ausschließen),
+  // daher clientseitig sortiert.
+  return lists.sort((a, b) => {
+    const at = a.templateBinderId ? 1 : 0;
+    const bt = b.templateBinderId ? 1 : 0;
+    if (at !== bt) return at - bt;
+    const as = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
+    const bs = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
+    if (as !== bs) return as - bs;
+    return (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0);
+  });
 }
 
 export async function getWishlist(id: string): Promise<WishlistDoc | null> {
@@ -17,11 +30,12 @@ export async function getWishlist(id: string): Promise<WishlistDoc | null> {
   return snap.exists() ? ({ id: snap.id, ...snap.data() } as WishlistDoc) : null;
 }
 
-export async function addWishlist(name: string, description?: string): Promise<string> {
+export async function addWishlist(name: string, description?: string, sortOrder?: number): Promise<string> {
   const ref = await addDoc(collection(db, COL), {
     name,
     description: description ?? '',
     items: [],
+    sortOrder: sortOrder ?? Date.now(),
     createdAt: Timestamp.now(),
   });
   return ref.id;
@@ -46,6 +60,17 @@ export async function updateWishlist(id: string, data: Partial<WishlistDoc>): Pr
 
 export async function deleteWishlist(id: string): Promise<void> {
   await deleteDoc(doc(db, COL, id));
+}
+
+/** Schreibt die neue Reihenfolge der (manuellen) Wunschlisten: `sortOrder`
+ *  = Position 0..n-1 in einem Batch-Write (gespiegelt von `reorderBinders`).
+ *  Automatische Listen werden NICHT übergeben und bleiben durch die
+ *  `getWishlists`-Sortierung hinter den manuellen. */
+export async function reorderWishlists(orderedIds: string[]): Promise<void> {
+  if (orderedIds.length === 0) return;
+  const batch = writeBatch(db);
+  orderedIds.forEach((id, i) => batch.update(doc(db, COL, id), { sortOrder: i }));
+  await batch.commit();
 }
 
 export async function addItemToWishlist(wishlistId: string, item: Omit<WishlistItem, 'id'>): Promise<WishlistItem | null> {

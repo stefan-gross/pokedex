@@ -97,7 +97,7 @@ function SetDetailContent() {
     measureDeps: [cards.length, pricesLoading],
   });
   const [search, setSearch]   = useState('');
-  const { wishlistIds, toggle: toggleWishlist } = useWishlist();
+  const { manualIds, autoIds, manualLists, memberManualListIds, toggleOnList, createList } = useWishlist();
   const [showCreateTemplate, setShowCreateTemplate] = useState(false);
 
   /* Set meta */
@@ -476,8 +476,12 @@ function SetDetailContent() {
               sortKey={sortField}
               priceMap={priceMap}
               onDetailClose={handleDetailClose}
-              wishlistIds={wishlistIds}
-              onToggleWishlist={toggleWishlist}
+              manualIds={manualIds}
+              autoIds={autoIds}
+              manualLists={manualLists}
+              memberIdsFor={memberManualListIds}
+              onToggleList={toggleOnList}
+              onCreateList={createList}
               pricesLoading={pricesLoading}
             />
           </div>

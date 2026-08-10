@@ -82,7 +82,13 @@ export default function WishlistDetailPage({ params }: Props) {
   const withTcgId = items.filter(i => i.tcgId);
   const freeText  = items.filter(i => !i.tcgId);
 
-  const tcgIds = useMemo(() => withTcgId.map(i => i.tcgId!).filter(Boolean), [withTcgId]);
+  // Auf `list` memoisieren (stabil), NICHT auf das bei jedem Render neu
+  // erzeugte `withTcgId` — sonst neuer `tcgIds`-Array-Ref pro Render →
+  // Katalog-Effekt (setCatById) läuft endlos → „Maximum update depth".
+  const tcgIds = useMemo(
+    () => (list?.items ?? []).map(i => i.tcgId).filter((x): x is string => !!x),
+    [list],
+  );
   const { prices } = usePricesBatch(tcgIds);
 
   // Bilder frisch aus dem Katalog auflösen (DE + EN), damit `CardImage` bei
@@ -278,8 +284,9 @@ export default function WishlistDetailPage({ params }: Props) {
                 onCardClick={() => openDetail(item)}
                 sublabel={item.setName ? `${item.setName}${item.number ? ` · ${item.number}` : ''}` : item.name}
                 price={price != null ? price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : undefined}
-                isWishlisted
-                onWishlist={isTemplateList ? undefined : () => handleRemove(item)}
+                onManualWishlist={!isTemplateList}
+                onAutoWishlist={isTemplateList}
+                onHeartClick={isTemplateList ? undefined : () => handleRemove(item)}
               />
             );
           })}

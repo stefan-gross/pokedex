@@ -14,7 +14,9 @@ import { deleteCard, getCardsByTcgId, markReviewed } from '@/lib/firestore/cards
 import { getBinders, removeCardFromBinderAndCleanup, ensureDefaultBinder, setCardExclusiveBinder } from '@/lib/firestore/binders';
 import { matchTemplateBinders } from '@/lib/template-binders/match-hint';
 import { syncTemplateBinders } from '@/lib/template-binders/sync';
-import { getWishlists, ensureDefaultWishlist, addItemToWishlist, removeItemFromWishlist } from '@/lib/firestore/wishlists';
+import { getWishlists } from '@/lib/firestore/wishlists';
+import { useWishlist } from '@/lib/hooks/use-wishlist';
+import { WishlistPickerSheet } from '@/components/wishlist/WishlistPickerSheet';
 import { getCardsByEvolutionFamily, getCardsByDexNumber } from '@/lib/firestore/catalog';
 import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
 import { CardVariantPrice } from '@/components/card/CardPriceDetail';
@@ -426,8 +428,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   const reloadWishlistState = useCallback(async () => {
     if (!card) return;
     try {
-      const { free, needed } = computeWishlistState(await getWishlists(), card.id);
-      setFreeWishlistItem(free);
+      const { needed } = computeWishlistState(await getWishlists(), card.id);
       setNeededByCollections(needed);
     } catch { /* Netzwerkfehler ignorieren, alter Stand bleibt */ }
   }, [card]);
@@ -437,8 +438,11 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   // Wunsch (freie Liste, vom Button gesteuert) und der automatische Bedarf
   // (Vorlagen-Sammlungen, die diese Karte noch brauchen — read-only, vom Sync
   // verwaltet). Beide unabhängig; der Button fasst NIE eine Auto-Liste an.
-  const [freeWishlistItem, setFreeWishlistItem] = useState<{ listId: string; itemId: string } | null>(null);
   const [neededByCollections, setNeededByCollections] = useState<{ binderId: string; name: string }[]>([]);
+  // Manuelle Wunschlisten (Drawer) — via geteiltem Hook, damit dieselbe Logik
+  // wie in den Grids greift (rot = manuell, weiß = auto/benötigt).
+  const { manualLists, memberManualListIds, manualIds, toggleOnList, createList } = useWishlist();
+  const [wishlistOpen, setWishlistOpen] = useState(false);
   const [sortingBinderId, setSortingBinderId] = useState<string | null>(null);
 
   // Besessene Exemplare synchron zur angezeigten Karte halten: Initial-Karte →
@@ -459,12 +463,10 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     // DE-Bild direkt aus Firestore, falls vorhanden (|| fängt auch leere Strings ab)
     setImgSrcDe(card.imgLargeDe || undefined);
     getBinders().then(setResolvedBinders).catch(() => {});
-    setFreeWishlistItem(null);
     setNeededByCollections([]);
     getWishlists().then(lists => {
       if (cancelled) return;
-      const { free, needed } = computeWishlistState(lists, card.id);
-      setFreeWishlistItem(free);
+      const { needed } = computeWishlistState(lists, card.id);
       setNeededByCollections(needed);
     }).catch(() => {});
 
@@ -607,30 +609,6 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     setOpenSec(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n; });
   }
   function handleClose() { setSheetOpen(false); setTimeout(onClose, 250); }
-
-  async function toggleWishlist() {
-    if (!card) return;
-    // Bezieht sich ausschließlich auf die freie Liste — Auto-Listen werden
-    // nie angefasst (Entfernen nutzt gezielt `freeWishlistItem`, Hinzufügen
-    // schreibt über `ensureDefaultWishlist()` nur in die freie Liste).
-    if (freeWishlistItem) {
-      await removeItemFromWishlist(freeWishlistItem.listId, freeWishlistItem.itemId);
-      setFreeWishlistItem(null);
-      return;
-    }
-    const list = await ensureDefaultWishlist();
-    const newItem = await addItemToWishlist(list.id, {
-      tcgId: card.id,
-      name: card.name,
-      setName: card.setName,
-      setId: card.setId,
-      number: card.number,
-      tcgImageUrl: imgSrcDe || card.imgLarge || card.imgSmall,
-      priority: 2,
-      acquired: false,
-    });
-    if (newItem) setFreeWishlistItem({ listId: list.id, itemId: newItem.id });
-  }
 
   // Verschiebt die Kopie exklusiv in den Ziel-Binder (`null` = „Unsortiert").
   // `setCardExclusiveBinder` entfernt sie aus allen anderen Sammlungen (inkl.
@@ -1143,21 +1121,31 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 </div>
               )
             )}
-            {/* Manueller Wunsch — steuert ausschließlich die freie („meine")
-                Liste; bleibt auch bei Besitz sichtbar (evtl. Zweit-Exemplar
-                nötig). Text bewusst „meine", um die Verwechslung mit der
-                automatischen „Benötigt für"-Liste zu vermeiden. */}
+            {/* Manuelle Wunschlisten — öffnet den Auswahl-Drawer (Mehrfach-
+                Toggle über alle manuellen Listen + Neuanlegen). Rotes Herz =
+                bereits auf mind. einer manuellen Liste. */}
             <Button
               variant="secondary"
               size="lg"
-              onClick={toggleWishlist}
-              icon={<Heart size={19} fill={freeWishlistItem ? '#ef4444' : 'none'} />}
+              onClick={() => setWishlistOpen(true)}
+              icon={<Heart size={19} fill={card && manualIds.has(card.id) ? '#ef4444' : 'none'} stroke={card && manualIds.has(card.id) ? '#ef4444' : 'currentColor'} />}
               className="w-full"
-              style={freeWishlistItem ? { color: '#ef4444' } : undefined}
+              style={card && manualIds.has(card.id) ? { color: '#ef4444' } : undefined}
             >
-              {freeWishlistItem ? 'Von meiner Wunschliste entfernen' : 'Auf meine Wunschliste'}
+              Auf Wunschliste
             </Button>
           </div>
+
+          {card && (
+            <WishlistPickerSheet
+              open={wishlistOpen}
+              onClose={() => setWishlistOpen(false)}
+              manualLists={manualLists}
+              memberIds={memberManualListIds(card.id)}
+              onToggle={(listId) => toggleOnList(card, listId)}
+              onCreate={(name) => createList(name, card)}
+            />
+          )}
       </Sheet>
 
       {/* ── Zoom-Overlay ──────────────────────────────────────── */}

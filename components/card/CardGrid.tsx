@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Card } from '@/components/card/Card';
 import { CardDetailSheet, type SetMeta } from '@/components/card/CardDetailSheet';
+import { WishlistPickerSheet } from '@/components/wishlist/WishlistPickerSheet';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardDoc, BinderDoc } from '@/types';
 import { PRICE_COLOR } from '@/lib/prices/value-tier';
@@ -30,10 +31,16 @@ interface Props {
    *  bleibt dabei offen (es aktualisiert sich selbst); früher wurde es hier
    *  fälschlich geschlossen. */
   onCardsChanged?: () => void;
-  /** tcgIds, die aktuell auf der Wunschliste stehen — für den Herz-Status. */
-  wishlistIds?: Set<string>;
-  /** Herz-Klick auf einer Kachel — togglet die Karte auf/von der Wunschliste. */
-  onToggleWishlist?: (card: CardInfo) => void;
+  /** tcgIds auf mind. einer MANUELLEN bzw. AUTOMATISCHEN Wunschliste — steuert
+   *  die Herz-Farbe (rot/weiß/geteilt/leer). */
+  manualIds?: Set<string>;
+  autoIds?: Set<string>;
+  /** Manuelle Wunschlisten + Mitgliedschaft/Mutation für den Herz-Drawer.
+   *  Nur wenn `onToggleList` gesetzt ist, wird das Herz zum Button. */
+  manualLists?: { id: string; name: string }[];
+  memberIdsFor?: (tcgId: string) => Set<string>;
+  onToggleList?: (card: CardInfo, listId: string) => void;
+  onCreateList?: (name: string, card: CardInfo) => void;
   /** Preise werden noch per Batch-Route nachgeladen — zeigt animierte
    *  Platzhalter statt "–", solange nach Preis sortiert wird. */
   pricesLoading?: boolean;
@@ -107,8 +114,12 @@ export function CardGrid({
   priceMap,
   onDetailClose,
   onCardsChanged,
-  wishlistIds,
-  onToggleWishlist,
+  manualIds,
+  autoIds,
+  manualLists,
+  memberIdsFor,
+  onToggleList,
+  onCreateList,
   pricesLoading,
   setsMeta,
   showSetBadge,
@@ -118,6 +129,9 @@ export function CardGrid({
   onToggleSelect,
 }: Props) {
   const [selected, setSelected] = useState<CardInfo | null>(null);
+  // Karte, für die der Wunschlisten-Drawer offen ist (CardGrid besitzt ihn
+  // zentral → Suche/Set-Detail/Auto-Grid bekommen ihn automatisch).
+  const [wishlistCard, setWishlistCard] = useState<CardInfo | null>(null);
 
   if (cards.length === 0 && emptyState) {
     return <>{emptyState}</>;
@@ -153,8 +167,9 @@ export function CardGrid({
             sublabel={getSublabel(card, sortKey, priceMap)}
             sublabelColor={isPriceSort ? PRICE_COLOR : undefined}
             sublabelLoading={isPriceSort && pricesLoading && priceMap?.get(card.id) == null}
-            isWishlisted={wishlistIds?.has(card.id)}
-            onWishlist={() => onToggleWishlist?.(card)}
+            onManualWishlist={manualIds?.has(card.id)}
+            onAutoWishlist={autoIds?.has(card.id)}
+            onHeartClick={onToggleList ? () => setWishlistCard(card) : undefined}
             setCode={numberPrefixCode}
             numberPrefixCode={showNumberPrefix && !numberPrefixSymbolUrl ? numberPrefixCode : undefined}
             numberPrefixSymbolUrl={showNumberPrefix ? numberPrefixSymbolUrl : undefined}
@@ -175,6 +190,17 @@ export function CardGrid({
         onClose={closeDetail}
         onSaved={() => onCardsChanged?.()}
       />
+
+      {onToggleList && (
+        <WishlistPickerSheet
+          open={!!wishlistCard}
+          onClose={() => setWishlistCard(null)}
+          manualLists={manualLists ?? []}
+          memberIds={wishlistCard ? (memberIdsFor?.(wishlistCard.id) ?? new Set()) : new Set()}
+          onToggle={(listId) => { if (wishlistCard) onToggleList(wishlistCard, listId); }}
+          onCreate={(name) => { if (wishlistCard) onCreateList?.(name, wishlistCard); }}
+        />
+      )}
     </>
   );
 }
