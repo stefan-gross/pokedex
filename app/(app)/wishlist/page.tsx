@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { Heart, Plus, Check, Pencil, Minus } from 'lucide-react';
 import {
@@ -10,13 +10,14 @@ import {
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { getWishlists, deleteWishlist, reorderWishlists } from '@/lib/firestore/wishlists';
+import { getBinders } from '@/lib/firestore/binders';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { Button } from '@/components/ui/button';
 import { BinderIcon } from '@/lib/binder-icons';
 import { AutomaticCornerBadge } from '@/components/binder/CollectionTypeBadge';
 import { CreateWishlistModal } from '@/components/wishlist/CreateWishlistModal';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
-import type { WishlistDoc } from '@/types';
+import type { WishlistDoc, BinderDoc } from '@/types';
 
 /** Übersicht aller Wunschlisten — analog zur Sammlungsübersicht
  *  (app/(app)/binders/page.tsx): manuelle Listen zuerst (per DnD sortierbar,
@@ -24,15 +25,31 @@ import type { WishlistDoc } from '@/types';
  *  (Lock, nicht ziehbar/löschbar — Rolle wie der geschützte Default-Binder). */
 export default function WishlistOverviewPage() {
   const [lists, setLists] = useState<WishlistDoc[]>([]);
+  const [binders, setBinders] = useState<BinderDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
   const load = useCallback(async () => {
-    try { setLists(await getWishlists()); }
-    finally { setLoading(false); }
+    try {
+      const [wl, bs] = await Promise.all([getWishlists(), getBinders()]);
+      setLists(wl);
+      setBinders(bs);
+    } finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  // Automatische Wunschlisten erben Name/Icon/Farbe von ihrer Vorlagen-Sammlung
+  // (templateBinderId) — Anzeige daher live aus dem Binder ableiten, nicht aus
+  // ggf. veralteten Wunschlisten-Feldern.
+  const binderById = useMemo(() => new Map(binders.map(b => [b.id, b])), [binders]);
+  const displayMeta = useCallback((list: WishlistDoc): { name: string; icon?: string; color?: string } => {
+    if (list.templateBinderId) {
+      const b = binderById.get(list.templateBinderId);
+      if (b) return { name: b.name, icon: b.icon, color: b.color };
+    }
+    return { name: list.name, icon: list.icon, color: list.color };
+  }, [binderById]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -112,6 +129,7 @@ export default function WishlistOverviewPage() {
                   <SortableWishlistTile
                     key={list.id}
                     list={list}
+                    meta={displayMeta(list)}
                     editMode={editMode}
                     onDelete={() => handleDelete(list)}
                   />
@@ -134,7 +152,13 @@ export default function WishlistOverviewPage() {
   );
 }
 
-function SortableWishlistTile({ list, editMode, onDelete }: { list: WishlistDoc; editMode: boolean; onDelete: () => void }) {
+function SortableWishlistTile({ list, meta, editMode, onDelete }: {
+  list: WishlistDoc;
+  /** Anzeige-Name/-Icon/-Farbe (bei Auto-Listen von der Sammlung geerbt). */
+  meta: { name: string; icon?: string; color?: string };
+  editMode: boolean;
+  onDelete: () => void;
+}) {
   const isTemplate = !!list.templateBinderId;
   const count = list.items.length;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -164,10 +188,10 @@ function SortableWishlistTile({ list, editMode, onDelete }: { list: WishlistDoc;
         className="relative aspect-[3/4] rounded-2xl glass-inner flex flex-col items-center justify-center gap-2 px-3 text-center active:scale-[.98] transition-transform"
       >
         {isTemplate && <AutomaticCornerBadge tlRadius={16} />}
-        {list.icon
-          ? <BinderIcon name={list.icon} size={28} style={list.color ? { color: list.color } : undefined} />
+        {meta.icon
+          ? <BinderIcon name={meta.icon} size={28} style={meta.color ? { color: meta.color } : undefined} />
           : <Heart size={28} className="text-glass-muted" />}
-        <span className="text-sm font-semibold text-glass truncate max-w-full">{list.name}</span>
+        <span className="text-sm font-semibold text-glass truncate max-w-full">{meta.name}</span>
         <span className="text-xs text-glass-muted">{count} {count === 1 ? 'Karte' : 'Karten'}</span>
 
         {editMode && !isTemplate && (

@@ -13,11 +13,12 @@ import { getBinder } from '@/lib/firestore/binders';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { Card } from '@/components/card/Card';
+import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
 import { pickTrendPrice } from '@/lib/prices/value-tier';
-import type { WishlistDoc, WishlistItem, CardDoc } from '@/types';
+import type { WishlistDoc, WishlistItem, CardDoc, BinderDoc } from '@/types';
 
 const EUR = (n: number) => n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
 
@@ -63,6 +64,9 @@ export default function WishlistDetailPage({ params }: Props) {
   const { id } = use(params);
   const router = useRouter();
   const [list, setList] = useState<WishlistDoc | null>(null);
+  // Zugehörige Vorlagen-Sammlung (nur bei Auto-Listen) — Name/Icon/Farbe werden
+  // von ihr geerbt (Auto-Listen sind nicht selbst anpassbar).
+  const [binder, setBinder] = useState<BinderDoc | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
   const [detailOwned, setDetailOwned] = useState<CardDoc[]>([]);
@@ -73,6 +77,7 @@ export default function WishlistDetailPage({ params }: Props) {
       const wl = await getWishlist(id);
       if (!wl) { router.push('/wishlist'); return; }
       setList(wl);
+      setBinder(wl.templateBinderId ? await getBinder(wl.templateBinderId) : null);
     } finally {
       setLoading(false);
     }
@@ -81,6 +86,10 @@ export default function WishlistDetailPage({ params }: Props) {
   useEffect(() => { load(); }, [id]);
 
   const isTemplateList = !!list?.templateBinderId;
+  // Auto-Listen erben Name/Icon/Farbe von der Sammlung; manuelle nutzen ihre eigenen.
+  const displayName  = (isTemplateList ? binder?.name : list?.name) ?? list?.name ?? '';
+  const displayIcon  = isTemplateList ? binder?.icon : list?.icon;
+  const displayColor = isTemplateList ? binder?.color : list?.color;
   const items = list?.items ?? [];
   const withTcgId = items.filter(i => i.tcgId);
   const freeText  = items.filter(i => !i.tcgId);
@@ -230,7 +239,10 @@ export default function WishlistDetailPage({ params }: Props) {
           />
           <div className="flex-1 min-w-0">
             <h1 className="text-role-h2 truncate text-glass flex items-center gap-1.5">
-              {list.name}
+              {displayIcon && (
+                <BinderIcon name={displayIcon} size={18} className="shrink-0" style={displayColor ? { color: displayColor } : undefined} />
+              )}
+              <span className="truncate">{displayName}</span>
               {isTemplateList && <AutomaticBadge size="sm" />}
             </h1>
             <p className="text-role-label text-glass-muted">{items.length} {items.length === 1 ? 'Karte' : 'Karten'}</p>
