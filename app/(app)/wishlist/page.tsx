@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { Heart, Plus, Check, Pencil, Minus } from 'lucide-react';
 import {
@@ -167,6 +167,19 @@ function SortableWishlistTile({ list, meta, editMode, onDelete }: {
     disabled: !editMode || isTemplate,
   });
   const dragEnabled = editMode && !isTemplate;
+  // Nach einem (Touch-)Drag synthetisiert der Browser einen `click` auf den
+  // <Link> — bei Touch greift das `preventDefault` im Link-onClick nicht
+  // zuverlässig, sodass die Wunschliste sich sofort öffnet. Wir merken uns ein
+  // gerade beendetes Ziehen und verschlucken den Folge-Klick in der
+  // Capture-Phase des Wrappers (läuft VOR dem Anchor → blockt Navigation sicher).
+  const justDraggedRef = useRef(false);
+  useEffect(() => {
+    if (isDragging) { justDraggedRef.current = true; return; }
+    if (justDraggedRef.current) {
+      const t = setTimeout(() => { justDraggedRef.current = false; }, 400);
+      return () => clearTimeout(t);
+    }
+  }, [isDragging]);
   // Sammlungsfarbe als Kachel-Hintergrund (geerbt bei Auto-Listen); Text/Icon
   // in kontrastierender Farbe. Ohne Farbe: neutrales Glas.
   const bg = meta.color;
@@ -189,6 +202,9 @@ function SortableWishlistTile({ list, meta, editMode, onDelete }: {
       }}
       {...(dragEnabled ? attributes : {})}
       {...(dragEnabled ? listeners : {})}
+      onClickCapture={e => {
+        if (justDraggedRef.current) { e.preventDefault(); e.stopPropagation(); justDraggedRef.current = false; }
+      }}
     >
       <Link
         href={`/wishlist/${list.id}`}

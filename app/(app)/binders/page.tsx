@@ -347,6 +347,18 @@ function BinderTile({ binder, binderCards, editMode, onDelete }: { binder: Binde
     disabled: !editMode || isProtected,
   });
   const dragEnabled = editMode && !isProtected;
+  // Nach einem (Touch-)Drag synthetisiert der Browser einen `click` auf den
+  // <Link>; bei Touch greift das `preventDefault` im Link-onClick nicht
+  // zuverlässig → die Sammlung öffnet sich sofort. Gerade beendetes Ziehen
+  // merken und den Folge-Klick in der Capture-Phase des Wrappers verschlucken.
+  const justDraggedRef = useRef(false);
+  useEffect(() => {
+    if (isDragging) { justDraggedRef.current = true; return; }
+    if (justDraggedRef.current) {
+      const t = setTimeout(() => { justDraggedRef.current = false; }, 400);
+      return () => clearTimeout(t);
+    }
+  }, [isDragging]);
 
   return (
     <div
@@ -361,6 +373,9 @@ function BinderTile({ binder, binderCards, editMode, onDelete }: { binder: Binde
       }}
       {...(dragEnabled ? attributes : {})}
       {...(dragEnabled ? listeners : {})}
+      onClickCapture={e => {
+        if (justDraggedRef.current) { e.preventDefault(); e.stopPropagation(); justDraggedRef.current = false; }
+      }}
     >
     <Link
       href={`/binders/${binder.id}`}
