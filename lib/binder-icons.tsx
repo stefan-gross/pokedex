@@ -74,6 +74,7 @@ export function BinderIcon({ name, size = 20, className, style, strokeWidth }: {
     return (
       <img
         src={pokemonArtworkUrl(dex)}
+        draggable={false}
         style={{ height: size, width: size, objectFit: 'contain', ...style }}
         className={className}
         alt={`#${dex}`}
@@ -99,6 +100,7 @@ export function BinderIcon({ name, size = 20, className, style, strokeWidth }: {
     return (
       <img
         src={src}
+        draggable={false}
         style={{ height: size, width: 'auto', maxWidth: size * 3, objectFit: 'contain', ...style }}
         className={className}
         alt=""
