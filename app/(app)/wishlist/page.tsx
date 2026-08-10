@@ -17,6 +17,7 @@ import { BinderIcon } from '@/lib/binder-icons';
 import { AutomaticCornerBadge } from '@/components/binder/CollectionTypeBadge';
 import { CreateWishlistModal } from '@/components/wishlist/CreateWishlistModal';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
+import { readableTextColor } from '@/lib/color-utils';
 import type { WishlistDoc, BinderDoc } from '@/types';
 
 /** Übersicht aller Wunschlisten — analog zur Sammlungsübersicht
@@ -166,6 +167,10 @@ function SortableWishlistTile({ list, meta, editMode, onDelete }: {
     disabled: !editMode || isTemplate,
   });
   const dragEnabled = editMode && !isTemplate;
+  // Sammlungsfarbe als Kachel-Hintergrund (geerbt bei Auto-Listen); Text/Icon
+  // in kontrastierender Farbe. Ohne Farbe: neutrales Glas.
+  const bg = meta.color;
+  const fg = bg ? readableTextColor(bg) : undefined;
 
   return (
     <div
@@ -185,14 +190,15 @@ function SortableWishlistTile({ list, meta, editMode, onDelete }: {
         href={`/wishlist/${list.id}`}
         onClick={e => { if (editMode) e.preventDefault(); }}
         onContextMenu={e => e.preventDefault()}
-        className="relative aspect-[3/4] rounded-2xl glass-inner flex flex-col items-center justify-center gap-2 px-3 text-center active:scale-[.98] transition-transform"
+        className={`relative aspect-[3/4] rounded-2xl flex flex-col items-center justify-center gap-2 px-3 text-center active:scale-[.98] transition-transform ${bg ? '' : 'glass-inner'}`}
+        style={bg ? { background: bg } : undefined}
       >
         {isTemplate && <AutomaticCornerBadge tlRadius={16} />}
         {meta.icon
-          ? <BinderIcon name={meta.icon} size={28} style={meta.color ? { color: meta.color } : undefined} />
-          : <Heart size={28} className="text-glass-muted" />}
-        <span className="text-sm font-semibold text-glass truncate max-w-full">{meta.name}</span>
-        <span className="text-xs text-glass-muted">{count} {count === 1 ? 'Karte' : 'Karten'}</span>
+          ? <BinderIcon name={meta.icon} size={64} style={fg ? { color: fg } : undefined} />
+          : <Heart size={64} style={fg ? { color: fg } : undefined} className={fg ? '' : 'text-glass-muted'} />}
+        <span className={`text-sm font-semibold truncate max-w-full ${fg ? '' : 'text-glass'}`} style={fg ? { color: fg } : undefined}>{meta.name}</span>
+        <span className={`text-xs ${fg ? '' : 'text-glass-muted'}`} style={fg ? { color: fg, opacity: 0.75 } : undefined}>{count} {count === 1 ? 'Karte' : 'Karten'}</span>
 
         {editMode && !isTemplate && (
           <button
