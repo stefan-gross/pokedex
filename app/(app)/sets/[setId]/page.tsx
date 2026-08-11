@@ -13,6 +13,7 @@ import type { PriceResult } from '@/lib/prices/types';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Button } from '@/components/ui/button';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
+import { LegendButton } from '@/components/ui/LegendButton';
 import { Grabber } from '@/components/ui/Grabber';
 import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { Input } from '@/components/ui/input';
@@ -487,6 +488,7 @@ function SetDetailContent() {
           </div>
 
           <ScrollToTopButton />
+          <LegendButton symbols={['wishlist-heart', 'unreviewed', 'count', 'foreign-lang', 'pending']} />
         </>
       )}
 

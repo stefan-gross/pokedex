@@ -12,6 +12,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { getWishlists, deleteWishlist, reorderWishlists, pruneOrphanTemplateWishlists } from '@/lib/firestore/wishlists';
 import { getBinders } from '@/lib/firestore/binders';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
+import { LegendButton } from '@/components/ui/LegendButton';
 import { Button } from '@/components/ui/button';
 import { BinderIcon } from '@/lib/binder-icons';
 import { AutomaticCornerBadge } from '@/components/binder/CollectionTypeBadge';
@@ -153,6 +154,7 @@ export default function WishlistOverviewPage() {
       )}
 
       <ScrollToTopButton />
+      <LegendButton symbols={['automatic']} />
     </div>
   );
 }

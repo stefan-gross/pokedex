@@ -12,6 +12,7 @@ import { SearchableSelect, MultiSelect, CustomSelect } from '@/components/ui/sel
 import { Switch } from '@/components/ui/switch';
 import { Grabber } from '@/components/ui/Grabber';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
+import { LegendButton } from '@/components/ui/LegendButton';
 import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { getCards } from '@/lib/firestore/cards';
 import { getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts } from '@/lib/firestore/catalog';
@@ -721,6 +722,7 @@ function CollectionContent() {
       </div>
 
       <ScrollToTopButton />
+      <LegendButton symbols={['wishlist-heart', 'unreviewed', 'count', 'foreign-lang', 'pending']} />
     </div>
   );
 }

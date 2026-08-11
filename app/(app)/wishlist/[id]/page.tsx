@@ -23,6 +23,7 @@ import { CardSortBar } from '@/components/card/CardSortBar';
 import { filterCardsByQuery } from '@/lib/search/card-query';
 import { getRarityGroup } from '@/lib/card-constants';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
+import { LegendButton } from '@/components/ui/LegendButton';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
 import { pickTrendPrice } from '@/lib/prices/value-tier';
 import type { WishlistDoc, WishlistItem, CardDoc, BinderDoc } from '@/types';
@@ -510,6 +511,7 @@ export default function WishlistDetailPage({ params }: Props) {
       )}
 
       <ScrollToTopButton />
+      <LegendButton symbols={['wishlist-heart', 'automatic', 'unreviewed', 'count', 'foreign-lang']} />
     </div>
   );
 }

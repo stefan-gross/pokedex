@@ -16,6 +16,7 @@ import { CreateTemplateBinderModal } from '@/components/binder/CreateTemplateBin
 import { BinderCover, BoxCover } from '@/components/binder/BinderCover';
 import { CollectionTypeCornerBadge } from '@/components/binder/CollectionTypeBadge';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
+import { LegendButton } from '@/components/ui/LegendButton';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/modal';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
@@ -249,6 +250,7 @@ export default function BindersPage() {
       )}
 
       <ScrollToTopButton />
+      <LegendButton symbols={['automatic']} />
     </div>
   );
 }

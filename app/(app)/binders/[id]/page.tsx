@@ -46,6 +46,7 @@ import { Grabber } from '@/components/ui/Grabber';
 import { Menu } from '@/components/ui/menu';
 import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
+import { LegendButton } from '@/components/ui/LegendButton';
 import { Sheet } from '@/components/ui/modal';
 import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
@@ -826,6 +827,7 @@ export default function BinderDetailPage({ params }: Props) {
       )}
 
       <ScrollToTopButton />
+      <LegendButton symbols={['wishlist-heart', 'unreviewed', 'count', 'foreign-lang', 'pending', 'automatic']} />
 
       {/* Export-Sheet: Listen-PDF (fehlend/besessen/beide). Proxy-Karten folgen. */}
       <Sheet open={showExport} onClose={() => setShowExport(false)} title="Exportieren">
