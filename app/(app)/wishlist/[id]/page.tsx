@@ -16,7 +16,6 @@ import { Card } from '@/components/card/Card';
 import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ButtonGroup } from '@/components/ui/button-group';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { filterCardsByQuery } from '@/lib/search/card-query';
@@ -30,14 +29,8 @@ const EUR = (n: number) => n.toLocaleString('de-DE', { style: 'currency', curren
 
 // Filter-/Sortier-Optionen des Info-Panels — identisch zur Grid-Ansicht der
 // Sammlungen (TemplateGridBrowser), damit sich beide Ansichten gleich anfühlen.
-type Filter    = 'all' | 'owned' | 'missing';
 type SortField = 'number' | 'name' | 'pokedex' | 'hp' | 'price';
 type SortDir   = 'asc' | 'desc';
-const FILTER_OPTIONS: { value: Filter; label: string }[] = [
-  { value: 'all',     label: 'Alle' },
-  { value: 'owned',   label: 'Vorhanden' },
-  { value: 'missing', label: 'Fehlen' },
-];
 const SORT_OPTIONS: { value: SortField; label: string }[] = [
   { value: 'number',  label: 'Nummer' },
   { value: 'name',    label: 'Name' },
@@ -98,7 +91,6 @@ export default function WishlistDetailPage({ params }: Props) {
   const [editOpen, setEditOpen] = useState(false);
   // Info-Panel-Zustand (wie Grid-Ansicht der Sammlungen)
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<Filter>('all');
   const [sortField, setSortField] = useState<SortField>('number');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [rarityFilter, setRarityFilter] = useState<Set<string>>(new Set());
@@ -194,8 +186,6 @@ export default function WishlistDetailPage({ params }: Props) {
 
   const displayedEntries = useMemo(() => {
     let rows = entries;
-    if (filter === 'owned')   rows = rows.filter(e => ownedTcgIds.has(e.info.id));
-    if (filter === 'missing') rows = rows.filter(e => !ownedTcgIds.has(e.info.id));
     const allowed = new Set(filterCardsByQuery(rows.map(e => e.info), search).map(c => c.id));
     rows = rows.filter(e => allowed.has(e.info.id));
     if (rarityFilter.size > 0) {
@@ -217,7 +207,7 @@ export default function WishlistDetailPage({ params }: Props) {
       else if (sortField === 'hp')      cmp = (x.hp ?? 0) - (y.hp ?? 0);
       return sortDir === 'desc' ? -cmp : cmp;
     });
-  }, [entries, filter, ownedTcgIds, search, rarityFilter, sortField, sortDir, priceMap]);
+  }, [entries, search, rarityFilter, sortField, sortDir, priceMap]);
 
   const toggleRarity = (label: string) =>
     setRarityFilter(prev => { const n = new Set(prev); if (n.has(label)) n.delete(label); else n.add(label); return n; });
@@ -400,7 +390,6 @@ export default function WishlistDetailPage({ params }: Props) {
                 placeholder="Suchen (Name, Nummer, Illustrator)"
                 size="sm"
               />
-              <ButtonGroup options={FILTER_OPTIONS} value={filter} onChange={setFilter} />
               <RarityFilterBar cards={cardInfos} ownedIds={ownedTcgIds} activeRarities={rarityFilter} onToggle={toggleRarity} />
             </div>
             <div className="mt-2">
