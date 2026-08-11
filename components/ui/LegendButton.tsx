@@ -199,8 +199,8 @@ export function LegendButton({ symbols, position = 'bottom-left' }: {
               {shown.map(k => {
                 const e = ENTRIES[k];
                 return (
-                  <div key={k} className="flex items-start gap-3.5 py-2.5 border-t border-[var(--border)]">
-                    <span className="w-24 shrink-0 flex items-center gap-1.5">{e.visual(`${gradBase}-${k}`)}</span>
+                  <div key={k} className="flex items-start gap-3 py-2.5 border-t border-[var(--border)]">
+                    <span className="shrink-0 flex items-center gap-1.5 pt-0.5">{e.visual(`${gradBase}-${k}`)}</span>
                     <span className="flex-1 min-w-0">
                       <span className="block text-role-body text-glass">{e.title}</span>
                       <span className="block text-role-label text-glass-muted leading-relaxed">{e.desc}</span>
