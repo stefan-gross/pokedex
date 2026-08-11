@@ -827,7 +827,7 @@ export default function BinderDetailPage({ params }: Props) {
       )}
 
       <ScrollToTopButton />
-      <LegendButton symbols={['wishlist-heart', 'unreviewed', 'count', 'foreign-lang', 'pending', 'automatic']} />
+      <LegendButton symbols={['wishlist-heart', 'unreviewed', 'count', 'foreign-lang', 'pending', 'automatic', 'system']} />
 
       {/* Export-Sheet: Listen-PDF (fehlend/besessen/beide). Proxy-Karten folgen. */}
       <Sheet open={showExport} onClose={() => setShowExport(false)} title="Exportieren">

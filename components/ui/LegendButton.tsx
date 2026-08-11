@@ -4,7 +4,7 @@ import { useId, useState, useEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { HelpCircle, Flag, X } from 'lucide-react';
 import { WishlistHeart } from '@/components/card/Card';
-import { AutomaticBadge } from '@/components/binder/CollectionTypeBadge';
+import { AutomaticBadge, SystemBadge } from '@/components/binder/CollectionTypeBadge';
 import { ExclamationMark } from '@/lib/binder-icons';
 
 /** Erklärbare Symbole der App. Jede Seite gibt an, welche sie zeigt →
@@ -13,6 +13,7 @@ export type LegendKey =
   | 'wishlist-heart'
   | 'unreviewed'
   | 'automatic'
+  | 'system'
   | 'count'
   | 'foreign-lang'
   | 'pending'
@@ -62,6 +63,11 @@ const ENTRIES: Record<LegendKey, Entry> = {
     title: 'Automatisch',
     desc: 'Sammlung bzw. Wunschliste wird per Regel gepflegt, nicht von Hand.',
     visual: () => <AutomaticBadge />,
+  },
+  'system': {
+    title: 'Unsortiert',
+    desc: 'Feste Standard-Sammlung für Karten ohne Zuordnung — nicht löschbar/umbenennbar.',
+    visual: () => <SystemBadge />,
   },
   'count': {
     title: 'Anzahl',
@@ -115,7 +121,7 @@ const ENTRIES: Record<LegendKey, Entry> = {
 };
 
 const ORDER: LegendKey[] = [
-  'wishlist-heart', 'unreviewed', 'automatic', 'count', 'foreign-lang', 'pending', 'scan-frame', 'fake-suspect',
+  'wishlist-heart', 'unreviewed', 'automatic', 'system', 'count', 'foreign-lang', 'pending', 'scan-frame', 'fake-suspect',
 ];
 
 /**

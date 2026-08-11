@@ -250,7 +250,7 @@ export default function BindersPage() {
       )}
 
       <ScrollToTopButton />
-      <LegendButton symbols={['automatic']} />
+      <LegendButton symbols={['automatic', 'system']} />
     </div>
   );
 }
