@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { ChevronLeft, Heart, Minus, Pencil, Download, Trash2 } from 'lucide-react';
 import { AutomaticBadge } from '@/components/binder/CollectionTypeBadge';
 import { CreateWishlistModal } from '@/components/wishlist/CreateWishlistModal';
+import { WishlistPickerSheet } from '@/components/wishlist/WishlistPickerSheet';
+import { useWishlist } from '@/lib/hooks/use-wishlist';
 import { getWishlist, removeItemFromWishlist, deleteWishlist } from '@/lib/firestore/wishlists';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { getCardsByTcgId, getCards } from '@/lib/firestore/cards';
@@ -95,6 +97,10 @@ export default function WishlistDetailPage({ params }: Props) {
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [rarityFilter, setRarityFilter] = useState<Set<string>>(new Set());
   const [ownedTcgIds, setOwnedTcgIds] = useState<Set<string>>(new Set());
+  // Herz öffnet — wie überall — den Auswahl-Drawer (statt sofort zu entfernen),
+  // damit man Karten nicht versehentlich mit einem Tipp aus einer Liste wirft.
+  const { manualIds, autoIds, manualLists, memberManualListIds, toggleOnList } = useWishlist();
+  const [wishlistCard, setWishlistCard] = useState<CardInfo | null>(null);
 
   const load = async () => {
     try {
@@ -422,7 +428,7 @@ export default function WishlistDetailPage({ params }: Props) {
 
       {withTcgId.length > 0 && (
         <div className="px-3 pt-4 grid grid-cols-2 gap-2">
-          {displayedEntries.map(({ item }) => {
+          {displayedEntries.map(({ item, info }) => {
             const price = pickTrendPrice(prices.get(item.tcgId!));
             const cc = catById.get(item.tcgId!);
             return (
@@ -441,9 +447,9 @@ export default function WishlistDetailPage({ params }: Props) {
                 onCardClick={() => openDetail(item)}
                 sublabel={item.setName ? `${item.setName}${item.number ? ` · ${item.number}` : ''}` : item.name}
                 price={price != null ? price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : undefined}
-                onManualWishlist={!isTemplateList}
-                onAutoWishlist={isTemplateList}
-                onHeartClick={isTemplateList ? undefined : () => handleRemove(item)}
+                onManualWishlist={manualIds.has(item.tcgId!)}
+                onAutoWishlist={autoIds.has(item.tcgId!)}
+                onHeartClick={() => setWishlistCard(info)}
               />
             );
           })}
@@ -481,6 +487,18 @@ export default function WishlistDetailPage({ params }: Props) {
           onSaved={load}
         />
       )}
+
+      {/* Auswahl-Drawer — identisch zu CardGrid/CardDetailSheet. Nach dem
+          Umschalten zusätzlich die aktuelle Liste neu laden, damit die Karte
+          hier verschwindet/erscheint, wenn sie diese Liste betrifft. */}
+      <WishlistPickerSheet
+        open={!!wishlistCard}
+        onClose={() => setWishlistCard(null)}
+        manualLists={manualLists}
+        memberIds={wishlistCard ? memberManualListIds(wishlistCard.id) : new Set()}
+        onToggle={(listId) => { if (wishlistCard) toggleOnList(wishlistCard, listId).then(load); }}
+        onCreated={(listId) => { if (wishlistCard) toggleOnList(wishlistCard, listId).then(load); }}
+      />
 
       {editOpen && !isTemplateList && (
         <CreateWishlistModal
