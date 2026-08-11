@@ -247,10 +247,11 @@ function CollectionContent() {
     loadingMore, hasMore, loadMore,
   } = useCardBrowser(browseSort, browserFilter, browseSortDir === 'desc');
 
-  const { manualIds, autoIds, manualLists, memberManualListIds, toggleOnList } = useWishlist();
+  const { manualIds, autoIds, manualLists, memberManualListIds, autoListsFor, toggleOnList } = useWishlist();
   const wishlistGridProps = {
     manualIds, autoIds, manualLists,
     memberIdsFor: memberManualListIds,
+    autoListsFor,
     onToggleList: toggleOnList,
   };
 

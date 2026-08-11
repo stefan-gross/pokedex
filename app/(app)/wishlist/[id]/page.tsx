@@ -99,7 +99,7 @@ export default function WishlistDetailPage({ params }: Props) {
   const [ownedTcgIds, setOwnedTcgIds] = useState<Set<string>>(new Set());
   // Herz öffnet — wie überall — den Auswahl-Drawer (statt sofort zu entfernen),
   // damit man Karten nicht versehentlich mit einem Tipp aus einer Liste wirft.
-  const { manualIds, autoIds, manualLists, memberManualListIds, toggleOnList } = useWishlist();
+  const { manualIds, autoIds, manualLists, memberManualListIds, autoListsFor, toggleOnList } = useWishlist();
   const [wishlistCard, setWishlistCard] = useState<CardInfo | null>(null);
 
   const load = async () => {
@@ -496,6 +496,7 @@ export default function WishlistDetailPage({ params }: Props) {
         onClose={() => setWishlistCard(null)}
         manualLists={manualLists}
         memberIds={wishlistCard ? memberManualListIds(wishlistCard.id) : new Set()}
+        autoLists={wishlistCard ? autoListsFor(wishlistCard.id) : []}
         onToggle={(listId) => { if (wishlistCard) toggleOnList(wishlistCard, listId).then(load); }}
         onCreated={(listId) => { if (wishlistCard) toggleOnList(wishlistCard, listId).then(load); }}
       />

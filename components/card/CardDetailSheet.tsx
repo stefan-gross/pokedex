@@ -442,7 +442,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   const [neededByCollections, setNeededByCollections] = useState<{ binderId: string; name: string }[]>([]);
   // Manuelle Wunschlisten (Drawer) — via geteiltem Hook, damit dieselbe Logik
   // wie in den Grids greift (rot = manuell, weiß = auto/benötigt).
-  const { manualLists, memberManualListIds, manualIds, autoIds, toggleOnList } = useWishlist();
+  const { manualLists, memberManualListIds, autoListsFor, manualIds, autoIds, toggleOnList } = useWishlist();
   const wlGradId = useId();
   const [wishlistOpen, setWishlistOpen] = useState(false);
   const [sortingBinderId, setSortingBinderId] = useState<string | null>(null);
@@ -1143,6 +1143,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
               onClose={() => setWishlistOpen(false)}
               manualLists={manualLists}
               memberIds={memberManualListIds(card.id)}
+              autoLists={autoListsFor(card.id)}
               onToggle={(listId) => toggleOnList(card, listId)}
               onCreated={(id) => toggleOnList(card, id)}
             />

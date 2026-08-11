@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import type { CardInfo } from '@/lib/card-info';
-import type { WishlistDoc } from '@/types';
+import type { WishlistDoc, BinderDoc } from '@/types';
 import { getWishlists, addWishlist, addItemToWishlist, removeItemFromWishlist } from '@/lib/firestore/wishlists';
+import { getBinders } from '@/lib/firestore/binders';
 
 /**
  * Lädt einmal alle Wunschlisten und liefert getrennte Status-Lookups für viele
@@ -31,16 +32,21 @@ function toItemInput(card: CardInfo) {
 
 export function useWishlist() {
   const [lists, setLists] = useState<WishlistDoc[]>([]);
+  const [binders, setBinders] = useState<BinderDoc[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   const reload = useCallback(async () => {
-    try { setLists(await getWishlists()); } finally { setLoaded(true); }
+    try {
+      const [l, b] = await Promise.all([getWishlists(), getBinders()]);
+      setLists(l);
+      setBinders(b);
+    } finally { setLoaded(true); }
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-    getWishlists()
-      .then(l => { if (!cancelled) { setLists(l); setLoaded(true); } })
+    Promise.all([getWishlists(), getBinders()])
+      .then(([l, b]) => { if (!cancelled) { setLists(l); setBinders(b); setLoaded(true); } })
       .catch(() => { if (!cancelled) setLoaded(true); });
     return () => { cancelled = true; };
   }, []);
@@ -77,6 +83,28 @@ export function useWishlist() {
     [manualMembership],
   );
 
+  // tcgId → automatische Listen, auf denen die Karte liegt (nur lesbar im
+  // Drawer). Name/Icon/Farbe werden von der Vorlagen-Sammlung geerbt (die
+  // Auto-Liste selbst speichert sie nicht), Fallback: eigene Felder/Name.
+  const binderById = useMemo(() => new Map(binders.map(b => [b.id, b])), [binders]);
+  const autoMembership = useMemo(() => {
+    const m = new Map<string, { id: string; name: string; icon?: string; color?: string }[]>();
+    for (const l of lists) if (l.templateBinderId) {
+      const b = binderById.get(l.templateBinderId);
+      const meta = { id: l.id, name: b?.name ?? l.name, icon: b?.icon ?? l.icon, color: b?.color ?? l.color };
+      for (const it of l.items) if (it.tcgId) {
+        const arr = m.get(it.tcgId) ?? [];
+        arr.push(meta);
+        m.set(it.tcgId, arr);
+      }
+    }
+    return m;
+  }, [lists, binderById]);
+  const autoListsFor = useCallback(
+    (tcgId: string) => autoMembership.get(tcgId) ?? [],
+    [autoMembership],
+  );
+
   /** Karte auf einer bestimmten manuellen Liste an-/abwählen. */
   const toggleOnList = useCallback(async (card: CardInfo, listId: string) => {
     const list = lists.find(l => l.id === listId);
@@ -95,5 +123,5 @@ export function useWishlist() {
     return id;
   }, [reload]);
 
-  return { loaded, manualIds, autoIds, manualLists, memberManualListIds, toggleOnList, createList, reload };
+  return { loaded, manualIds, autoIds, manualLists, memberManualListIds, autoListsFor, toggleOnList, createList, reload };
 }

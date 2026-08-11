@@ -39,6 +39,8 @@ interface Props {
    *  Nur wenn `onToggleList` gesetzt ist, wird das Herz zum Button. */
   manualLists?: ManualListMeta[];
   memberIdsFor?: (tcgId: string) => Set<string>;
+  /** Automatische Listen, auf denen die Karte liegt — nur lesbar im Drawer. */
+  autoListsFor?: (tcgId: string) => ManualListMeta[];
   onToggleList?: (card: CardInfo, listId: string) => void;
   /** Preise werden noch per Batch-Route nachgeladen — zeigt animierte
    *  Platzhalter statt "–", solange nach Preis sortiert wird. */
@@ -117,6 +119,7 @@ export function CardGrid({
   autoIds,
   manualLists,
   memberIdsFor,
+  autoListsFor,
   onToggleList,
   pricesLoading,
   setsMeta,
@@ -195,6 +198,7 @@ export function CardGrid({
           onClose={() => setWishlistCard(null)}
           manualLists={manualLists ?? []}
           memberIds={wishlistCard ? (memberIdsFor?.(wishlistCard.id) ?? new Set()) : new Set()}
+          autoLists={wishlistCard ? (autoListsFor?.(wishlistCard.id) ?? []) : []}
           onToggle={(listId) => { if (wishlistCard) onToggleList(wishlistCard, listId); }}
           onCreated={(listId) => { if (wishlistCard) onToggleList(wishlistCard, listId); }}
         />
