@@ -1,8 +1,8 @@
 'use client';
 
-import { useId, useState, type ReactNode } from 'react';
-import { HelpCircle, Flag } from 'lucide-react';
-import { Sheet } from '@/components/ui/modal';
+import { useId, useState, useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { HelpCircle, Flag, X } from 'lucide-react';
 import { WishlistHeart } from '@/components/card/Card';
 import { AutomaticBadge } from '@/components/binder/CollectionTypeBadge';
 import { ExclamationMark } from '@/lib/binder-icons';
@@ -129,43 +129,84 @@ export function LegendButton({ symbols, position = 'bottom-left' }: {
   position?: 'bottom-left' | 'top-left';
 }) {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const gradBase = useId();
+  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
   const shown = ORDER.filter(k => symbols.includes(k));
   if (shown.length === 0) return null;
 
-  const posStyle = position === 'top-left'
+  const top = position === 'top-left';
+  // FAB-Position (44px hoch); das Panel dockt mit 8px Abstand darüber (unten)
+  // bzw. darunter (Scanner/oben) an — klappt „aus dem Button" auf wie das
+  // „…"-Menü, statt als Bottom-Sheet.
+  const fabStyle = top
     ? { top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }
     : { bottom: 'calc(84px + env(safe-area-inset-bottom, 0px))' };
+  const panelStyle: React.CSSProperties = {
+    position: 'fixed',
+    left: 12,
+    width: 'min(360px, calc(100vw - 24px))',
+    maxHeight: '70vh',
+    overflowY: 'auto',
+    ...(top
+      ? { top: 'calc(env(safe-area-inset-top, 0px) + 64px)' }
+      : { bottom: 'calc(84px + env(safe-area-inset-bottom, 0px) + 52px)' }),
+  };
 
   return (
     <>
       <button
         type="button"
         aria-label="Legende / Hilfe"
-        onClick={() => setOpen(true)}
+        aria-expanded={open}
+        onClick={() => setOpen(o => !o)}
         className="glass fixed left-3 z-40 flex items-center justify-center w-11 h-11 rounded-full text-glass shadow-[0_6px_20px_rgba(0,0,0,0.28)]"
-        style={posStyle}
+        style={fabStyle}
       >
         <HelpCircle size={22} strokeWidth={2.2} />
       </button>
 
-      <Sheet open={open} onClose={() => setOpen(false)} title="Legende" dragToClose elevated>
-        <p className="text-role-label text-glass-muted px-1 pb-1">Symbole auf dieser Seite</p>
-        <div className="flex flex-col">
-          {shown.map(k => {
-            const e = ENTRIES[k];
-            return (
-              <div key={k} className="flex items-start gap-4 py-3 border-t border-[var(--border)]">
-                <span className="w-24 shrink-0 flex items-center gap-1.5">{e.visual(`${gradBase}-${k}`)}</span>
-                <span className="flex-1 min-w-0">
-                  <span className="block text-role-body text-glass">{e.title}</span>
-                  <span className="block text-role-label text-glass-muted leading-relaxed">{e.desc}</span>
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </Sheet>
+      {mounted && open && createPortal(
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div
+            role="dialog"
+            aria-label="Legende"
+            className={`menu-goo-open z-50 glass rounded-2xl shadow-xl p-3 ${top ? 'origin-top-left' : 'origin-bottom-left'}`}
+            style={panelStyle}
+          >
+            <div className="flex items-center justify-between px-1 pb-0.5">
+              <span className="text-role-title text-glass">Legende</span>
+              <button type="button" onClick={() => setOpen(false)} aria-label="Schließen" className="text-glass-muted -mr-1 p-1">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-role-label text-glass-muted px-1 pb-1">Symbole auf dieser Seite</p>
+            <div className="flex flex-col">
+              {shown.map(k => {
+                const e = ENTRIES[k];
+                return (
+                  <div key={k} className="flex items-start gap-3.5 py-2.5 border-t border-[var(--border)]">
+                    <span className="w-24 shrink-0 flex items-center gap-1.5">{e.visual(`${gradBase}-${k}`)}</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-role-body text-glass">{e.title}</span>
+                      <span className="block text-role-label text-glass-muted leading-relaxed">{e.desc}</span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>,
+        document.body,
+      )}
     </>
   );
 }
