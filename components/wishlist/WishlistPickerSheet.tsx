@@ -63,7 +63,7 @@ export function WishlistPickerSheet({
               type="button"
               onClick={() => setCreateOpen(true)}
               className="inline-flex items-center gap-1.5 min-h-11 px-3.5 rounded-full text-role-label text-glass-muted"
-              style={{ border: '1px dashed var(--border-strong)' }}
+              style={{ border: '1.5px dashed currentColor' }}
             >
               <Plus size={16} className="shrink-0" />
               Neu
