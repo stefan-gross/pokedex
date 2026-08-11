@@ -7,7 +7,7 @@ import { AutomaticBadge } from '@/components/binder/CollectionTypeBadge';
 import { CreateWishlistModal } from '@/components/wishlist/CreateWishlistModal';
 import { getWishlist, removeItemFromWishlist, deleteWishlist } from '@/lib/firestore/wishlists';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
-import { getCardsByTcgId } from '@/lib/firestore/cards';
+import { getCardsByTcgId, getCards } from '@/lib/firestore/cards';
 import { getAllSets } from '@/lib/firestore/sets';
 import { getBinder } from '@/lib/firestore/binders';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
@@ -15,12 +15,37 @@ import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { Card } from '@/components/card/Card';
 import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { ButtonGroup } from '@/components/ui/button-group';
+import { RarityFilterBar } from '@/components/card/RarityFilterBar';
+import { CardSortBar } from '@/components/card/CardSortBar';
+import { filterCardsByQuery } from '@/lib/search/card-query';
+import { getRarityGroup } from '@/lib/card-constants';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { usePricesBatch } from '@/lib/hooks/use-prices-batch';
 import { pickTrendPrice } from '@/lib/prices/value-tier';
 import type { WishlistDoc, WishlistItem, CardDoc, BinderDoc } from '@/types';
 
 const EUR = (n: number) => n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+
+// Filter-/Sortier-Optionen des Info-Panels — identisch zur Grid-Ansicht der
+// Sammlungen (TemplateGridBrowser), damit sich beide Ansichten gleich anfühlen.
+type Filter    = 'all' | 'owned' | 'missing';
+type SortField = 'number' | 'name' | 'pokedex' | 'hp' | 'price';
+type SortDir   = 'asc' | 'desc';
+const FILTER_OPTIONS: { value: Filter; label: string }[] = [
+  { value: 'all',     label: 'Alle' },
+  { value: 'owned',   label: 'Vorhanden' },
+  { value: 'missing', label: 'Fehlen' },
+];
+const SORT_OPTIONS: { value: SortField; label: string }[] = [
+  { value: 'number',  label: 'Nummer' },
+  { value: 'name',    label: 'Name' },
+  { value: 'pokedex', label: 'Pokédex-Nr.' },
+  { value: 'hp',      label: 'KP' },
+  { value: 'price',   label: 'Preis' },
+];
+const pluralKarten = (n: number) => (n === 1 ? '1 Karte' : `${n} Karten`);
 
 /** Set-Logo als kleine data:-URL laden (für den PDF-Header). Wird per Canvas
  *  auf max. 240px herunterskaliert — das Logo wird im PDF ohnehin nur ~96px
@@ -71,6 +96,13 @@ export default function WishlistDetailPage({ params }: Props) {
   const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
   const [detailOwned, setDetailOwned] = useState<CardDoc[]>([]);
   const [editOpen, setEditOpen] = useState(false);
+  // Info-Panel-Zustand (wie Grid-Ansicht der Sammlungen)
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<Filter>('all');
+  const [sortField, setSortField] = useState<SortField>('number');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [rarityFilter, setRarityFilter] = useState<Set<string>>(new Set());
+  const [ownedTcgIds, setOwnedTcgIds] = useState<Set<string>>(new Set());
 
   const load = async () => {
     try {
@@ -126,6 +158,69 @@ export default function WishlistDetailPage({ params }: Props) {
       .catch(() => {});
     return () => { cancelled = true; };
   }, [tcgIds]);
+
+  // Besitzstand (für „Vorhanden/Fehlen" + Rarity-Owned-Counts) — ein Read wie
+  // in der Grid-Ansicht (dort via getCards()).
+  useEffect(() => {
+    let cancelled = false;
+    getCards()
+      .then(cards => { if (!cancelled) setOwnedTcgIds(new Set(cards.map(c => c.tcgId).filter((x): x is string => !!x))); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // Karten der Liste als CardInfo (DE-Namen/-Bilder aus dem Katalog, sonst
+  // Fallback aus den gespeicherten Item-Feldern) — Basis für Filter/Sortierung.
+  const entries = useMemo(() => {
+    const its = (list?.items ?? []).filter(i => i.tcgId);
+    return its.map(item => {
+      const cc = catById.get(item.tcgId!);
+      const info: CardInfo = cc ? catalogCardToInfo(cc) : {
+        id: item.tcgId!, name: item.name, number: item.number ?? '',
+        setId: item.setId ?? '', setName: item.setName ?? '',
+        imgSmall: item.tcgImageUrl ?? '', imgLarge: item.tcgImageUrl ?? '',
+      } as CardInfo;
+      return { item, info };
+    });
+  }, [list, catById]);
+
+  const priceMap = useMemo(() => {
+    const m = new Map<string, number>();
+    prices.forEach((pr, id) => { const v = pickTrendPrice(pr); if (v != null) m.set(id, v); });
+    return m;
+  }, [prices]);
+
+  const cardInfos = useMemo(() => entries.map(e => e.info), [entries]);
+
+  const displayedEntries = useMemo(() => {
+    let rows = entries;
+    if (filter === 'owned')   rows = rows.filter(e => ownedTcgIds.has(e.info.id));
+    if (filter === 'missing') rows = rows.filter(e => !ownedTcgIds.has(e.info.id));
+    const allowed = new Set(filterCardsByQuery(rows.map(e => e.info), search).map(c => c.id));
+    rows = rows.filter(e => allowed.has(e.info.id));
+    if (rarityFilter.size > 0) {
+      rows = rows.filter(e => rarityFilter.has((e.info.rarity ? getRarityGroup(e.info.rarity) : null)?.label ?? 'Sonstige'));
+    }
+    return [...rows].sort((a, b) => {
+      const x = a.info, y = b.info;
+      if (sortField === 'price') {
+        const pa = priceMap.get(x.id), pb = priceMap.get(y.id);
+        if (pa == null && pb == null) return 0;
+        if (pa == null) return 1;
+        if (pb == null) return -1;
+        return sortDir === 'desc' ? pb - pa : pa - pb;
+      }
+      let cmp = 0;
+      if (sortField === 'number')       cmp = (parseInt(x.number) || 0) - (parseInt(y.number) || 0) || x.number.localeCompare(y.number);
+      else if (sortField === 'name')    cmp = x.name.localeCompare(y.name);
+      else if (sortField === 'pokedex') cmp = (x.nationalDexNumber ?? 0) - (y.nationalDexNumber ?? 0);
+      else if (sortField === 'hp')      cmp = (x.hp ?? 0) - (y.hp ?? 0);
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
+  }, [entries, filter, ownedTcgIds, search, rarityFilter, sortField, sortDir, priceMap]);
+
+  const toggleRarity = (label: string) =>
+    setRarityFilter(prev => { const n = new Set(prev); if (n.has(label)) n.delete(label); else n.add(label); return n; });
 
   async function handleRemove(item: WishlistItem) {
     if (!list || isTemplateList) return;
@@ -238,24 +333,27 @@ export default function WishlistDetailPage({ params }: Props) {
 
   return (
     <div className="min-h-screen pb-24">
-      <div className="sticky top-safe z-20 mx-3 mt-2 glass rounded-[20px] px-4 pt-4 pb-3">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            icon={<ChevronLeft />}
-            onClick={() => router.push('/wishlist')}
-            aria-label="Zurück"
-            className="shrink-0"
-          />
+      {/* Sticky Header-/Info-Panel — gleicher Aufbau wie die Grid-Ansicht der
+          Sammlungen (Kopf + Suche/Filter/Rarity + Sortierleiste in EINEM Panel),
+          nur ohne Fortschrittsbalken. */}
+      <div className="sticky top-safe z-20 mx-3 mt-3 mb-2 glass rounded-[20px] px-4 pt-2 pb-2">
+        <Button variant="ghost" onClick={() => router.push('/wishlist')} className="px-0 -ml-1" icon={<ChevronLeft size={18} strokeWidth={2} />}>
+          Wunschlisten
+        </Button>
+        <div className="flex items-center gap-3 mt-1">
+          {displayIcon ? (
+            <BinderIcon name={displayIcon} size={40} className="shrink-0" style={displayColor ? { color: displayColor } : undefined} />
+          ) : (
+            <Heart size={40} className="shrink-0" style={displayColor ? { color: displayColor } : undefined} />
+          )}
           <div className="flex-1 min-w-0">
             <h1 className="text-role-h2 truncate text-glass flex items-center gap-1.5">
-              {displayIcon && (
-                <BinderIcon name={displayIcon} size={18} className="shrink-0" style={displayColor ? { color: displayColor } : undefined} />
-              )}
               <span className="truncate">{displayName}</span>
               {isTemplateList && <AutomaticBadge size="sm" />}
             </h1>
-            <p className="text-role-label text-glass-muted">{items.length} {items.length === 1 ? 'Karte' : 'Karten'}</p>
+            <p className="text-role-label text-glass-muted">
+              {isTemplateList ? 'Automatisch verwaltet — fehlende Karten' : `${items.length} ${items.length === 1 ? 'Karte' : 'Karten'}`}
+            </p>
           </div>
           {!isTemplateList && (
             <Button
@@ -288,10 +386,34 @@ export default function WishlistDetailPage({ params }: Props) {
             />
           )}
         </div>
-        {isTemplateList && (
-          <p className="text-role-label text-glass-muted mt-2">
-            Automatisch verwaltet — fehlende Karten dieser Vorlage
-          </p>
+
+        {/* Suche + Vorhanden/Fehlen + Seltenheit, darunter Sortierung + Anzahl —
+            dieselben Bausteine wie in TemplateGridBrowser. */}
+        {withTcgId.length > 0 && (
+          <>
+            <div className="space-y-2 mt-3">
+              <Input
+                variant="search"
+                value={search}
+                onChange={setSearch}
+                onClear={() => setSearch('')}
+                placeholder="Suchen (Name, Nummer, Illustrator)"
+                size="sm"
+              />
+              <ButtonGroup options={FILTER_OPTIONS} value={filter} onChange={setFilter} />
+              <RarityFilterBar cards={cardInfos} ownedIds={ownedTcgIds} activeRarities={rarityFilter} onToggle={toggleRarity} />
+            </div>
+            <div className="mt-2">
+              <CardSortBar
+                options={SORT_OPTIONS}
+                sortField={sortField}
+                onSortFieldChange={setSortField}
+                sortDir={sortDir}
+                onSortDirChange={() => setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))}
+                resultLabel={pluralKarten(displayedEntries.length)}
+              />
+            </div>
+          </>
         )}
       </div>
 
@@ -311,7 +433,7 @@ export default function WishlistDetailPage({ params }: Props) {
 
       {withTcgId.length > 0 && (
         <div className="px-3 pt-4 grid grid-cols-2 gap-2">
-          {withTcgId.map(item => {
+          {displayedEntries.map(({ item }) => {
             const price = pickTrendPrice(prices.get(item.tcgId!));
             const cc = catById.get(item.tcgId!);
             return (
