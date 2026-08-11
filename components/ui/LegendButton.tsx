@@ -34,21 +34,27 @@ function SquareBadge({ color, textColor = '#fff', children }: { color: string; t
   );
 }
 
-interface Entry { title: string; desc: string; visual: (gradId: string) => ReactNode; }
+interface Entry {
+  title: string;
+  desc: string;
+  visual: (gradId: string) => ReactNode;
+  /** Mehrere Unter-Zustände untereinander (je Symbol + Kurzbedeutung) statt
+   *  einer Sammel-Beschreibung — z.B. die vier Herz-Zustände. */
+  states?: (gradId: string) => { node: ReactNode; label: string }[];
+}
 
 /** Registry aller Symbole (feste, sinnvolle Reihenfolge). */
 const ENTRIES: Record<LegendKey, Entry> = {
   'wishlist-heart': {
     title: 'Wunschlisten-Herz',
-    desc: 'Rot = auf manueller Liste · schwarz/weiß = auf automatischer Liste · zweifarbig = auf beiden · leer = auf keiner.',
-    visual: (g) => (
-      <span className="inline-flex items-center gap-1.5">
-        <WishlistHeart manual auto={false} width={22} height={20} gradId={`${g}-m`} />
-        <WishlistHeart manual={false} auto width={22} height={20} gradId={`${g}-a`} />
-        <WishlistHeart manual auto width={22} height={20} gradId={`${g}-b`} />
-        <WishlistHeart manual={false} auto={false} width={22} height={20} gradId={`${g}-n`} />
-      </span>
-    ),
+    desc: '',
+    visual: (g) => <WishlistHeart manual auto={false} width={22} height={20} gradId={`${g}-m`} />,
+    states: (g) => [
+      { node: <WishlistHeart manual auto={false} width={22} height={20} gradId={`${g}-m`} />, label: 'Auf manueller Liste' },
+      { node: <WishlistHeart manual={false} auto width={22} height={20} gradId={`${g}-a`} />, label: 'Auf automatischer Liste' },
+      { node: <WishlistHeart manual auto width={22} height={20} gradId={`${g}-b`} />, label: 'Auf manueller und automatischer' },
+      { node: <WishlistHeart manual={false} auto={false} width={22} height={20} gradId={`${g}-n`} />, label: 'Auf keiner Liste' },
+    ],
   },
   'unreviewed': {
     title: 'Ungeprüft',
@@ -198,6 +204,23 @@ export function LegendButton({ symbols, position = 'bottom-left' }: {
             <div className="flex flex-col">
               {shown.map(k => {
                 const e = ENTRIES[k];
+                const states = e.states?.(`${gradBase}-${k}`);
+                if (states) {
+                  // Mehrere Zustände untereinander: je Symbol + Kurzbedeutung.
+                  return (
+                    <div key={k} className="py-2.5 border-t border-[var(--border)]">
+                      <span className="block text-role-body text-glass">{e.title}</span>
+                      <div className="flex flex-col gap-1.5 mt-1.5">
+                        {states.map((s, i) => (
+                          <span key={i} className="flex items-center gap-2.5">
+                            <span className="shrink-0 flex items-center">{s.node}</span>
+                            <span className="text-role-label text-glass-muted">{s.label}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
                 return (
                   <div key={k} className="flex items-start gap-3 py-2.5 border-t border-[var(--border)]">
                     <span className="shrink-0 flex items-center gap-1.5 pt-0.5">{e.visual(`${gradBase}-${k}`)}</span>
