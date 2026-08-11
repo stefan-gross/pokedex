@@ -181,11 +181,11 @@ export function LegendButton({ symbols, position = 'bottom-left' }: {
 
       {mounted && open && createPortal(
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div className="glass-sheet-backdrop fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden="true" />
           <div
             role="dialog"
             aria-label="Legende"
-            className={`menu-goo-open z-50 glass rounded-2xl shadow-xl p-3 ${top ? 'origin-top-left' : 'origin-bottom-left'}`}
+            className={`menu-goo-open z-50 glass-sheet rounded-2xl p-3 ${top ? 'origin-top-left' : 'origin-bottom-left'}`}
             style={panelStyle}
           >
             <div className="flex items-center justify-between px-1 pb-0.5">
