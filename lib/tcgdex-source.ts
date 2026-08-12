@@ -17,7 +17,7 @@
  */
 
 import type { CatalogCard } from '@/lib/firestore/catalog';
-import type { CardVariant } from '@/types';
+import type { CardVariant, CardAttack, CardAbility, CardWeakRes } from '@/types';
 
 const GRAPHQL = 'https://api.tcgdex.net/v2/graphql';
 const REST = 'https://api.tcgdex.net/v2';
@@ -49,13 +49,6 @@ export interface TcgdexCardFull {
     firstEdition?: boolean; wPromo?: boolean;
   } | null;
   set: { id: string; name: string } | null;
-  effect: string | null;
-  trainerType: string | null;
-  retreat: number | null;
-  abilities: { name: string; effect: string | null; type: string | null }[] | null;
-  attacks: { name: string; effect: string | null; damage: string | null; cost: string[] | null }[] | null;
-  weaknesses: { type: string; value: string }[] | null;
-  resistances: { type: string; value: string }[] | null;
 }
 
 // ── GraphQL ─────────────────────────────────────────────────────────────────
@@ -75,11 +68,6 @@ async function graphql<T>(query: string): Promise<T> {
 const CARD_FIELDS = `
   id localId name category rarity stage suffix hp types illustrator image
   dexId evolveFrom regulationMark
-  effect trainerType retreat
-  abilities { name effect type }
-  attacks { name effect damage cost }
-  weaknesses { type value }
-  resistances { type value }
   variants { normal holo reverse firstEdition wPromo }
   set { id name }
 `;
@@ -137,31 +125,70 @@ export async function fetchDeCardsForSet(setId: string): Promise<Map<string, DeC
   return map;
 }
 
-/** Deutsche Kartentexte EINER Karte (REST /de/cards/{id}) — nur die Textteile,
- *  die im /de/sets-Brief fehlen: Effekt (Trainer/Energie) sowie Name+Effekt je
- *  Attacke/Fähigkeit. Energietypen/Kosten/Schaden bleiben bewusst EN (dort sind
- *  DE-Werte lokalisiert wie „Feuer" und würden die Energie-Icons brechen) und
- *  werden separat aus den EN-Daten übernommen. `{}` = keine DE-Karte (404). */
-export interface DeCardMechanics {
-  effect?: string;
-  attacks?: { name?: string; effect?: string }[];
-  abilities?: { name?: string; effect?: string }[];
+// DE-/EN-Energienamen → kanonisch EN (für EnergyIcon). Der Bulk-GraphQL bricht
+// bei Karten mit null-Attackennamen ("non-nullable field"), daher wird die
+// gesamte Kartenmechanik pro Karte per REST geholt (null-tolerant) — bevorzugt
+// aus /de/ (deutsche Texte), mit /en/ als Fallback. Energietypen normalisieren
+// wir auf EN, damit die Icons unabhängig von der Quellsprache stimmen.
+const ENERGY_TO_EN: Record<string, string> = {
+  Colorless: 'Colorless', Fire: 'Fire', Water: 'Water', Grass: 'Grass', Lightning: 'Lightning',
+  Psychic: 'Psychic', Fighting: 'Fighting', Darkness: 'Darkness', Metal: 'Metal', Dragon: 'Dragon', Fairy: 'Fairy',
+  Farblos: 'Colorless', Feuer: 'Fire', Wasser: 'Water', Pflanze: 'Grass', Elektro: 'Lightning',
+  Psycho: 'Psychic', Kampf: 'Fighting', Finsternis: 'Darkness', Metall: 'Metal', Stahl: 'Metal', Drache: 'Dragon', Fee: 'Fairy',
+};
+const toEnergyEn = (t: string) => ENERGY_TO_EN[t] ?? t;
+const TRAINER_TO_EN: Record<string, string> = {
+  Item: 'Item', Supporter: 'Supporter', Stadium: 'Stadium', Tool: 'Tool',
+  Itemkarte: 'Item', Unterstützerkarte: 'Supporter', Unterstützer: 'Supporter',
+  Stadionkarte: 'Stadium', 'Pokémon-Werkzeug': 'Tool', Werkzeug: 'Tool',
+};
+
+/** Volle TCG-Mechanik EINER Karte (Effekt/Trainer-Typ/Attacken/Fähigkeiten/
+ *  Schwäche/Resistenz/Rückzug), Texte deutsch (REST /de/, Fallback /en/),
+ *  Energietypen kanonisch EN. `{}` = Karte ohne Mechanik/nicht vorhanden. */
+export interface CardMechanicsData {
+  effect?: string; trainerType?: string;
+  attacks?: CardAttack[]; abilities?: CardAbility[];
+  weaknesses?: CardWeakRes[]; resistances?: CardWeakRes[]; retreat?: number;
 }
-export async function fetchDeCardMechanics(id: string): Promise<DeCardMechanics | null> {
+interface RawRestCard {
+  effect?: string | null; trainerType?: string | null; retreat?: number | null;
+  abilities?: { type?: string | null; name?: string | null; effect?: string | null }[] | null;
+  attacks?: { cost?: string[] | null; name?: string | null; effect?: string | null; damage?: string | number | null }[] | null;
+  weaknesses?: { type?: string | null; value?: string | null }[] | null;
+  resistances?: { type?: string | null; value?: string | null }[] | null;
+}
+function parseMechanics(d: RawRestCard): CardMechanicsData {
+  const out: CardMechanicsData = {};
+  if (d.effect) out.effect = d.effect;
+  if (d.trainerType) out.trainerType = TRAINER_TO_EN[d.trainerType] ?? d.trainerType;
+  if (d.retreat != null) out.retreat = d.retreat;
+  if (d.abilities?.length) {
+    out.abilities = d.abilities.map(a => ({
+      name: a.name ?? '', ...(a.effect ? { effect: a.effect } : {}), ...(a.type ? { type: a.type } : {}),
+    }));
+  }
+  if (d.attacks?.length) {
+    out.attacks = d.attacks.map(a => ({
+      name: a.name ?? '',
+      ...(a.effect ? { effect: a.effect } : {}),
+      ...(a.damage != null && a.damage !== '' ? { damage: String(a.damage) } : {}),
+      ...(a.cost?.length ? { cost: a.cost.map(toEnergyEn) } : {}),
+    }));
+  }
+  const wr = (arr: { type?: string | null; value?: string | null }[] | null | undefined) =>
+    (arr ?? []).filter(x => x.type && x.value).map(x => ({ type: toEnergyEn(x.type as string), value: x.value as string }));
+  const w = wr(d.weaknesses); if (w.length) out.weaknesses = w;
+  const r = wr(d.resistances); if (r.length) out.resistances = r;
+  return out;
+}
+export async function fetchCardMechanics(id: string): Promise<CardMechanicsData | null> {
   try {
-    const res = await fetch(`${REST}/de/cards/${id}`);
-    if (res.status === 404) return {};                // kein DE → nichts zu übernehmen
+    let res = await fetch(`${REST}/de/cards/${id}`);
+    if (res.status === 404) res = await fetch(`${REST}/en/cards/${id}`);
+    if (res.status === 404) return {};                // existiert nicht → nichts
     if (!res.ok) return null;                          // transient
-    const d = await res.json() as {
-      effect?: string | null;
-      attacks?: { name?: string; effect?: string }[] | null;
-      abilities?: { name?: string; effect?: string }[] | null;
-    };
-    return {
-      ...(d.effect ? { effect: d.effect } : {}),
-      ...(d.attacks?.length ? { attacks: d.attacks.map(a => ({ ...(a.name ? { name: a.name } : {}), ...(a.effect ? { effect: a.effect } : {}) })) } : {}),
-      ...(d.abilities?.length ? { abilities: d.abilities.map(a => ({ ...(a.name ? { name: a.name } : {}), ...(a.effect ? { effect: a.effect } : {}) })) } : {}),
-    };
+    return parseMechanics(await res.json() as RawRestCard);
   } catch { return null; }
 }
 
@@ -280,14 +307,5 @@ export function toCatalogCard(
     // einem Re-Sync NIE überschrieben werden. Siehe Projekt-Memory tcgdex_golive.
     variants: mapVariants(en.variants),
     ...(en.illustrator ? { artist: en.illustrator, artistTokens: en.illustrator.toLowerCase().split(/\s+/) } : {}),
-    // TCG-Mechanik — nur setzen, wenn vorhanden (Firestore mag kein undefined;
-    // nested Objekte/Arrays werden ohne leere/undefined-Felder gespeichert).
-    ...(en.effect ? { effect: en.effect } : {}),
-    ...(en.trainerType ? { trainerType: en.trainerType } : {}),
-    ...(en.retreat != null ? { retreat: en.retreat } : {}),
-    ...(en.abilities?.length ? { abilities: en.abilities.map(a => ({ name: a.name, ...(a.effect ? { effect: a.effect } : {}), ...(a.type ? { type: a.type } : {}) })) } : {}),
-    ...(en.attacks?.length ? { attacks: en.attacks.map(a => ({ name: a.name, ...(a.effect ? { effect: a.effect } : {}), ...(a.damage ? { damage: a.damage } : {}), ...(a.cost?.length ? { cost: a.cost } : {}) })) } : {}),
-    ...(en.weaknesses?.length ? { weaknesses: en.weaknesses.map(w => ({ type: w.type, value: w.value })) } : {}),
-    ...(en.resistances?.length ? { resistances: en.resistances.map(r => ({ type: r.type, value: r.value })) } : {}),
   };
 }

@@ -48,7 +48,7 @@ export interface CatalogCard {
   weaknesses?: CardWeakRes[];  // Pokémon: Schwächen
   resistances?: CardWeakRes[]; // Pokémon: Resistenzen
   retreat?: number;            // Pokémon: Rückzugskosten (Anzahl Energie)
-  deTextDone?: boolean;        // enrichDeMechanics gelaufen (DE-Texte übernommen ODER kein DE vorhanden)
+  mechanicsDone?: boolean;     // enrichCardMechanics gelaufen (Mechanik gesetzt ODER Karte ohne Mechanik)
 }
 
 export interface SyncMeta {

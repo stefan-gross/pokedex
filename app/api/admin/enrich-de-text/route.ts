@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionToken, SESSION_COOKIE } from '@/lib/auth';
-import { enrichDeMechanics } from '@/lib/sync-catalog';
+import { enrichCardMechanics } from '@/lib/sync-catalog';
 
 // Pro Aufruf werden Karten einzeln gegen /de/cards/{id} geholt → etwas langsamer,
 // daher kleinere Batches + volle Zeitbudget-Ausschöpfung.
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Nicht eingeloggt' }, { status: 401 });
   }
   try {
-    return NextResponse.json(await enrichDeMechanics(150));
+    return NextResponse.json(await enrichCardMechanics(150));
   } catch (e) {
     console.error('[enrich-de-text]', e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
