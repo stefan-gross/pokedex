@@ -806,7 +806,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 <div className="px-4 pb-4 pt-3 flex flex-col gap-3">
                   {/* Trainer-/Energie-Effekt */}
                   {card.effect && (
-                    <div>
+                    <div className="glass-inner rounded-[12px] px-3 py-2.5">
                       {card.trainerType && (
                         <div className="text-role-label text-glass-muted mb-1">{TRAINER_TYPE_DE[card.trainerType] ?? card.trainerType}</div>
                       )}
@@ -843,7 +843,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
 
                   {/* Schwäche · Resistenz · Rückzug */}
                   {(card.weaknesses?.length || card.resistances?.length || card.retreat != null) && (
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-role-label">
+                    <div className="glass-inner rounded-[12px] px-3 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-role-label">
                       {card.weaknesses?.length ? (
                         <span className="flex items-center gap-1.5">
                           <span className="text-glass-muted">Schwäche</span>
