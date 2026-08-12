@@ -559,7 +559,7 @@ function CollectionContent() {
             Sonderformen + Set — per Griff/Scroll ein-/ausklappbar. Suchfeld,
             Owned und Sortierung/Anzahl bleiben immer sichtbar. */}
         <div style={regionStyle(0)} className="overflow-hidden">
-          <div ref={registerRegion(0)} className="flex flex-col gap-2 pt-0.5">
+          <div ref={registerRegion(0)} className="flex flex-col gap-2 pt-0.5 pb-2">
             {/* Supertyp (Alle|Pokémon|Trainer|Energie) als Einfach-Auswahl-Dropdown */}
             <CustomSelect
               value={activeSupertype}
