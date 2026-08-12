@@ -803,76 +803,6 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
             />
             {openSec.has('details') && (
               <div className="px-4 pb-4">
-                {/* Kartentext / Attacken & Fähigkeiten — als Glas-auf-Glas-Panels
-                    IM Details-Panel (kein eigener Abschnitt mehr). */}
-                {(card.effect || card.attacks?.length || card.abilities?.length || card.weaknesses?.length || card.resistances?.length || card.retreat != null) && (
-                  <div className="pt-3">
-                    <div className="text-role-label text-glass-muted mb-1.5">
-                      {(card.attacks?.length || card.abilities?.length) ? 'Attacken & Fähigkeiten' : 'Kartentext'}
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      {card.effect && (
-                        <div className="glass-inner rounded-[12px] px-3 py-2.5">
-                          {card.trainerType && (
-                            <div className="text-role-label text-glass-muted mb-1">{TRAINER_TYPE_DE[card.trainerType] ?? card.trainerType}</div>
-                          )}
-                          <p className="text-role-body text-glass leading-relaxed whitespace-pre-line">{card.effect}</p>
-                        </div>
-                      )}
-                      {card.abilities?.map((ab, i) => (
-                        <div key={`ab-${i}`} className="glass-inner rounded-[12px] px-3 py-2.5">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <span className="text-role-badge px-2 py-0.5 rounded-full shrink-0" style={{ background: 'rgba(234,179,8,.15)', color: '#ca9a04' }}>
-                              {ABILITY_TYPE_DE[ab.type ?? ''] ?? ab.type ?? 'Fähigkeit'}
-                            </span>
-                            <span className="text-role-title text-glass">{ab.name}</span>
-                          </div>
-                          {ab.effect && <p className="text-role-body text-glass-muted leading-relaxed whitespace-pre-line">{ab.effect}</p>}
-                        </div>
-                      ))}
-                      {card.attacks?.map((at, i) => (
-                        <div key={`at-${i}`} className="glass-inner rounded-[12px] px-3 py-2.5">
-                          <div className="flex items-center gap-2">
-                            <span className="flex items-center gap-0.5 shrink-0">
-                              {(at.cost ?? []).map((c, j) => <EnergyIcon key={j} type={c as EnergyType} size={18} />)}
-                            </span>
-                            <span className="text-role-title text-glass flex-1 min-w-0">{at.name}</span>
-                            {at.damage && <span className="text-role-title font-bold text-glass tabular-nums shrink-0">{at.damage}</span>}
-                          </div>
-                          {at.effect && <p className="text-role-body text-glass-muted leading-relaxed mt-1 whitespace-pre-line">{at.effect}</p>}
-                        </div>
-                      ))}
-                      {(card.weaknesses?.length || card.resistances?.length || card.retreat != null) && (
-                        <div className="glass-inner rounded-[12px] px-3 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-role-label">
-                          {card.weaknesses?.length ? (
-                            <span className="flex items-center gap-1.5">
-                              <span className="text-glass-muted">Schwäche</span>
-                              {card.weaknesses.map((w, i) => (
-                                <span key={i} className="flex items-center gap-1"><EnergyIcon type={w.type as EnergyType} size={18} /><span className="text-glass">{w.value}</span></span>
-                              ))}
-                            </span>
-                          ) : null}
-                          {card.resistances?.length ? (
-                            <span className="flex items-center gap-1.5">
-                              <span className="text-glass-muted">Resistenz</span>
-                              {card.resistances.map((r, i) => (
-                                <span key={i} className="flex items-center gap-1"><EnergyIcon type={r.type as EnergyType} size={18} /><span className="text-glass">{r.value}</span></span>
-                              ))}
-                            </span>
-                          ) : null}
-                          {card.retreat != null && (
-                            <span className="flex items-center gap-1.5">
-                              <span className="text-glass-muted">Rückzug</span>
-                              <span className="flex items-center gap-0.5">
-                                {Array.from({ length: card.retreat }).map((_, i) => <EnergyIcon key={i} type="Colorless" size={18} />)}
-                              </span>
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
                 {card.artist && (
                   <p className="text-role-body text-glass-muted pt-3">
                     Illustration: <span className="font-medium text-glass">{card.artist}</span>
@@ -976,6 +906,77 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                   <div className={`flex items-center gap-2 ${card.artist ? '' : 'pt-3'}`}>
                     <div className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin shrink-0" />
                     <p className="text-role-body text-glass-muted">Lade Details…</p>
+                  </div>
+                )}
+
+                {/* Kartentext / Attacken & Fähigkeiten — Glas-auf-Glas UNTER dem
+                    bisherigen Steckbrief. */}
+                {(card.effect || card.attacks?.length || card.abilities?.length || card.weaknesses?.length || card.resistances?.length || card.retreat != null) && (
+                  <div className="mt-4 pt-3 border-t border-[var(--border)]">
+                    <div className="text-role-label text-glass-muted mb-1.5">
+                      {(card.attacks?.length || card.abilities?.length) ? 'Attacken & Fähigkeiten' : 'Kartentext'}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {card.effect && (
+                        <div className="glass-inner rounded-[12px] px-3 py-2.5">
+                          {card.trainerType && (
+                            <div className="text-role-label text-glass-muted mb-1">{TRAINER_TYPE_DE[card.trainerType] ?? card.trainerType}</div>
+                          )}
+                          <p className="text-role-body text-glass leading-relaxed whitespace-pre-line">{card.effect}</p>
+                        </div>
+                      )}
+                      {card.abilities?.map((ab, i) => (
+                        <div key={`ab-${i}`} className="glass-inner rounded-[12px] px-3 py-2.5">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-role-badge px-2 py-0.5 rounded-full shrink-0" style={{ background: 'rgba(234,179,8,.15)', color: '#ca9a04' }}>
+                              {ABILITY_TYPE_DE[ab.type ?? ''] ?? ab.type ?? 'Fähigkeit'}
+                            </span>
+                            <span className="text-role-title text-glass">{ab.name}</span>
+                          </div>
+                          {ab.effect && <p className="text-role-body text-glass-muted leading-relaxed whitespace-pre-line">{ab.effect}</p>}
+                        </div>
+                      ))}
+                      {card.attacks?.map((at, i) => (
+                        <div key={`at-${i}`} className="glass-inner rounded-[12px] px-3 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="flex items-center gap-0.5 shrink-0">
+                              {(at.cost ?? []).map((c, j) => <EnergyIcon key={j} type={c as EnergyType} size={18} />)}
+                            </span>
+                            <span className="text-role-title text-glass flex-1 min-w-0">{at.name}</span>
+                            {at.damage && <span className="text-role-title font-bold text-glass tabular-nums shrink-0">{at.damage}</span>}
+                          </div>
+                          {at.effect && <p className="text-role-body text-glass-muted leading-relaxed mt-1 whitespace-pre-line">{at.effect}</p>}
+                        </div>
+                      ))}
+                      {(card.weaknesses?.length || card.resistances?.length || card.retreat != null) && (
+                        <div className="glass-inner rounded-[12px] px-3 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-role-label">
+                          {card.weaknesses?.length ? (
+                            <span className="flex items-center gap-1.5">
+                              <span className="text-glass-muted">Schwäche</span>
+                              {card.weaknesses.map((w, i) => (
+                                <span key={i} className="flex items-center gap-1"><EnergyIcon type={w.type as EnergyType} size={18} /><span className="text-glass">{w.value}</span></span>
+                              ))}
+                            </span>
+                          ) : null}
+                          {card.resistances?.length ? (
+                            <span className="flex items-center gap-1.5">
+                              <span className="text-glass-muted">Resistenz</span>
+                              {card.resistances.map((r, i) => (
+                                <span key={i} className="flex items-center gap-1"><EnergyIcon type={r.type as EnergyType} size={18} /><span className="text-glass">{r.value}</span></span>
+                              ))}
+                            </span>
+                          ) : null}
+                          {card.retreat != null && (
+                            <span className="flex items-center gap-1.5">
+                              <span className="text-glass-muted">Rückzug</span>
+                              <span className="flex items-center gap-0.5">
+                                {Array.from({ length: card.retreat }).map((_, i) => <EnergyIcon key={i} type="Colorless" size={18} />)}
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
