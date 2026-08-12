@@ -322,14 +322,13 @@ export function Card({
             Deutsch besorgen/ersetzen". `elevated` = weißer Ring + Schatten für
             Ablesbarkeit über dem Artwork. */}
         {!bare && ownedForeignOnly && !needsReview && (
-          <span
-            className="absolute"
-            style={{ top: layout.reviewBadge.top, left: layout.reviewBadge.left }}
-            aria-label={`Nur in ${foreignLangCode} vorhanden — noch nicht auf Deutsch`}
-            title="Nicht auf Deutsch"
+          <CardBadge
+            size={preset.badgeSize} background={false} corner="tl" cornerRadius={badgeCornerRadius}
+            style={{ top: layout.reviewBadge.top, left: layout.reviewBadge.left, overflow: 'hidden' }}
+            ariaLabel={`Nur in ${foreignLangCode} vorhanden — noch nicht auf Deutsch`} title="Nicht auf Deutsch"
           >
-            <LanguageFlag lang={ownedLanguages[0]} size={preset.badgeSize} elevated />
-          </span>
+            <LanguageFlag lang={ownedLanguages[0]} cover />
+          </CardBadge>
         )}
 
         {/* Anzahl-Badge — grün, oben rechts. Nur ab 2 Exemplaren; bei genau

@@ -6,10 +6,18 @@ import type { ReactNode } from 'react';
  * Karten-Artwork sauber ablesbar ist (sonst dezenter Innen-Rand wie im
  * Kartendetail). Unbekannte Sprache → Kürzel als Text.
  */
-export function LanguageFlag({ lang, size = 14, elevated = false }: { lang: string; size?: number; elevated?: boolean }) {
+export function LanguageFlag({ lang, size = 14, elevated = false, cover = false }: {
+  lang: string; size?: number; elevated?: boolean;
+  /** Füllt die gesamte Elternfläche (z.B. ein CardBadge-Chip) statt einer
+   *  eigenen Flaggen-Box — Seitenverhältnis via slice beschnitten. Form/Schatten
+   *  übernimmt dann der Container. */
+  cover?: boolean;
+}) {
   const w = Math.round(size * 1.4);
   const h = size;
-  const wrap = (children: ReactNode) => (
+  const wrap = (children: ReactNode) => cover ? (
+    <svg viewBox="0 0 30 18" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" style={{ display: 'block' }}>{children}</svg>
+  ) : (
     <span
       style={{
         display: 'inline-block', width: w, height: h, borderRadius: 2,
@@ -50,7 +58,9 @@ export function LanguageFlag({ lang, size = 14, elevated = false }: { lang: stri
       <rect width="30" height="18" fill="#fff" />
       <circle cx="15" cy="9" r="4.5" fill="#BC002D" />
     </>);
-    default: return (
+    default: return cover ? (
+      <span style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.5, fontWeight: 700, textTransform: 'uppercase' }}>{lang}</span>
+    ) : (
       <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }}>{lang}</span>
     );
   }
