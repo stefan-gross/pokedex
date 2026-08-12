@@ -557,6 +557,11 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   const stage       = getStage(card.subtypes ?? []);
   const energyTypes = (card.types ?? []).map(toEnergy).filter(Boolean) as EnergyType[];
   const setCode     = card.setCode ?? card.setId.toUpperCase();
+  // Turnier-Legalität (TCGdex): Standard hat Vorrang vor Expanded; nicht-legale
+  // Karten bekommen keine Pill.
+  const legalInfo   = card.legal?.standard ? { label: 'Standard', color: '#2f855a' }
+                    : card.legal?.expanded ? { label: 'Expanded', color: '#b7791f' }
+                    : null;
   // Promo-Karten (egal ob Nummer alphanumerisch wie "SWSH092" oder rein
   // numerisch wie "028") tragen auf dem echten Aufdruck nie eine Gesamtzahl —
   // die Promo-Reihe ist offen/fortlaufend, "215" wäre nur die interne
@@ -776,18 +781,29 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 )}
               </div>
 
-              {/* Unten: Nummer + Rarity-Pill */}
+              {/* Unten: Nummer + (Legalität links neben) Rarity-Pill */}
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[14px] font-bold tabular-nums">{numFmt}</span>
-                {rarityInfo && (
-                  <div
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[12px] font-bold shrink-0"
-                    style={{ background: 'var(--secondary)', borderColor: 'var(--border)' }}
-                  >
-                    <span style={{ color: rarityInfo.color }}>{rarityInfo.symbol}</span>
-                    {rarityInfo.label}
-                  </div>
-                )}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {legalInfo && (
+                    <span
+                      className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border shrink-0"
+                      style={{ color: legalInfo.color, borderColor: legalInfo.color }}
+                      title={`Turnier-legal: ${legalInfo.label}`}
+                    >
+                      {legalInfo.label}
+                    </span>
+                  )}
+                  {rarityInfo && (
+                    <div
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[12px] font-bold shrink-0"
+                      style={{ background: 'var(--secondary)', borderColor: 'var(--border)' }}
+                    >
+                      <span style={{ color: rarityInfo.color }}>{rarityInfo.symbol}</span>
+                      {rarityInfo.label}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

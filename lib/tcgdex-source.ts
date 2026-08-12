@@ -49,6 +49,7 @@ export interface TcgdexCardFull {
     firstEdition?: boolean; wPromo?: boolean;
   } | null;
   set: { id: string; name: string } | null;
+  legal: { standard: boolean | null; expanded: boolean | null } | null;
 }
 
 // ── GraphQL ─────────────────────────────────────────────────────────────────
@@ -68,6 +69,7 @@ async function graphql<T>(query: string): Promise<T> {
 const CARD_FIELDS = `
   id localId name category rarity stage suffix hp types illustrator image
   dexId evolveFrom regulationMark
+  legal { standard expanded }
   variants { normal holo reverse firstEdition wPromo }
   set { id name }
 `;
@@ -307,5 +309,6 @@ export function toCatalogCard(
     // einem Re-Sync NIE überschrieben werden. Siehe Projekt-Memory tcgdex_golive.
     variants: mapVariants(en.variants),
     ...(en.illustrator ? { artist: en.illustrator, artistTokens: en.illustrator.toLowerCase().split(/\s+/) } : {}),
+    ...(en.legal ? { legal: { standard: !!en.legal.standard, expanded: !!en.legal.expanded } } : {}),
   };
 }
