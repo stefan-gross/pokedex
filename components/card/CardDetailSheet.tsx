@@ -557,11 +557,12 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   const stage       = getStage(card.subtypes ?? []);
   const energyTypes = (card.types ?? []).map(toEnergy).filter(Boolean) as EnergyType[];
   const setCode     = card.setCode ?? card.setId.toUpperCase();
-  // Turnier-Legalität (TCGdex): Standard hat Vorrang vor Expanded; nicht-legale
-  // Karten bekommen keine Pill.
-  const legalInfo   = card.legal?.standard ? { label: 'Standard', color: '#2f855a' }
-                    : card.legal?.expanded ? { label: 'Expanded', color: '#b7791f' }
-                    : null;
+  // Reguliermarke (Format-Buchstabe wie „G"/„H") als Pill; Farbe kodiert die
+  // Turnier-Legalität: grün = Standard, amber = nur Expanded, grau = nicht legal.
+  // Ohne Marke (ältere Karten) keine Pill.
+  const legalColor  = card.legal?.standard ? '#2f855a' : card.legal?.expanded ? '#b7791f' : 'var(--text-muted)';
+  const legalWord   = card.legal?.standard ? 'Standard-legal' : card.legal?.expanded ? 'nur Expanded' : 'nicht legal';
+  const regMark     = card.regulationMark;
   // Promo-Karten (egal ob Nummer alphanumerisch wie "SWSH092" oder rein
   // numerisch wie "028") tragen auf dem echten Aufdruck nie eine Gesamtzahl —
   // die Promo-Reihe ist offen/fortlaufend, "215" wäre nur die interne
@@ -785,13 +786,13 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[14px] font-bold tabular-nums">{numFmt}</span>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {legalInfo && (
+                  {regMark && (
                     <span
-                      className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border shrink-0"
-                      style={{ color: legalInfo.color, borderColor: legalInfo.color }}
-                      title={`Turnier-legal: ${legalInfo.label}`}
+                      className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded-md border shrink-0 leading-none"
+                      style={{ color: legalColor, borderColor: legalColor }}
+                      title={`Reguliermarke ${regMark} · ${legalWord}`}
                     >
-                      {legalInfo.label}
+                      {regMark}
                     </span>
                   )}
                   {rarityInfo && (

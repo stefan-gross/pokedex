@@ -46,6 +46,7 @@ export interface CardInfo {
   weaknesses?: CardWeakRes[];
   resistances?: CardWeakRes[];
   retreat?: number;
+  regulationMark?: string;
   legal?: { standard: boolean; expanded: boolean };
   /** true = vorläufige Karte ohne Katalog-Eintrag (kein Bild). Rendert einen
    *  Platzhalter (CardImage → CardPlaceholder) und ein rotes „?"-Badge. */
@@ -97,6 +98,7 @@ export function catalogCardToInfo(c: CatalogCard): CardInfo {
     weaknesses: c.weaknesses,
     resistances: c.resistances,
     retreat: c.retreat,
+    regulationMark: c.regulationMark,
     legal: c.legal,
   };
 }

@@ -309,6 +309,7 @@ export function toCatalogCard(
     // einem Re-Sync NIE überschrieben werden. Siehe Projekt-Memory tcgdex_golive.
     variants: mapVariants(en.variants),
     ...(en.illustrator ? { artist: en.illustrator, artistTokens: en.illustrator.toLowerCase().split(/\s+/) } : {}),
+    ...(en.regulationMark ? { regulationMark: en.regulationMark } : {}),
     ...(en.legal ? { legal: { standard: !!en.legal.standard, expanded: !!en.legal.expanded } } : {}),
   };
 }

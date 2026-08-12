@@ -48,6 +48,7 @@ export interface CatalogCard {
   weaknesses?: CardWeakRes[];  // Pokémon: Schwächen
   resistances?: CardWeakRes[]; // Pokémon: Resistenzen
   retreat?: number;            // Pokémon: Rückzugskosten (Anzahl Energie)
+  regulationMark?: string;     // Reguliermarke (Format-Buchstabe, z.B. „G"/„H")
   legal?: { standard: boolean; expanded: boolean }; // Turnier-Legalität (TCGdex)
   mechanicsDone?: boolean;     // enrichCardMechanics gelaufen (Mechanik gesetzt ODER Karte ohne Mechanik)
 }
