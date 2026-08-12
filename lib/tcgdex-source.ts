@@ -137,6 +137,34 @@ export async function fetchDeCardsForSet(setId: string): Promise<Map<string, DeC
   return map;
 }
 
+/** Deutsche Kartentexte EINER Karte (REST /de/cards/{id}) — nur die Textteile,
+ *  die im /de/sets-Brief fehlen: Effekt (Trainer/Energie) sowie Name+Effekt je
+ *  Attacke/Fähigkeit. Energietypen/Kosten/Schaden bleiben bewusst EN (dort sind
+ *  DE-Werte lokalisiert wie „Feuer" und würden die Energie-Icons brechen) und
+ *  werden separat aus den EN-Daten übernommen. `{}` = keine DE-Karte (404). */
+export interface DeCardMechanics {
+  effect?: string;
+  attacks?: { name?: string; effect?: string }[];
+  abilities?: { name?: string; effect?: string }[];
+}
+export async function fetchDeCardMechanics(id: string): Promise<DeCardMechanics | null> {
+  try {
+    const res = await fetch(`${REST}/de/cards/${id}`);
+    if (res.status === 404) return {};                // kein DE → nichts zu übernehmen
+    if (!res.ok) return null;                          // transient
+    const d = await res.json() as {
+      effect?: string | null;
+      attacks?: { name?: string; effect?: string }[] | null;
+      abilities?: { name?: string; effect?: string }[] | null;
+    };
+    return {
+      ...(d.effect ? { effect: d.effect } : {}),
+      ...(d.attacks?.length ? { attacks: d.attacks.map(a => ({ ...(a.name ? { name: a.name } : {}), ...(a.effect ? { effect: a.effect } : {}) })) } : {}),
+      ...(d.abilities?.length ? { abilities: d.abilities.map(a => ({ ...(a.name ? { name: a.name } : {}), ...(a.effect ? { effect: a.effect } : {}) })) } : {}),
+    };
+  } catch { return null; }
+}
+
 /** Alle Karten-IDs EINES Sets (leichtgewichtig, REST /en/sets/{id} → Briefs). */
 export async function fetchSetCardIds(setId: string): Promise<string[]> {
   try {

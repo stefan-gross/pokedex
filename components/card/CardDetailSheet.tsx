@@ -326,6 +326,11 @@ type Section = 'tcg' | 'details' | 'evo' | 'cards';
 const TRAINER_TYPE_DE: Record<string, string> = {
   Item: 'Item', Supporter: 'Unterstützer', Stadium: 'Stadion', Tool: 'Pokémon-Werkzeug',
 };
+/** TCGdex-Fähigkeitstyp → deutsche Bezeichnung (Typ bleibt bei TCGdex englisch). */
+const ABILITY_TYPE_DE: Record<string, string> = {
+  Ability: 'Fähigkeit', 'Pokemon Power': 'Pokémon-Power', 'Pokémon Power': 'Pokémon-Power',
+  'Poké-Power': 'Poké-Power', 'Poké-Body': 'Poké-Body',
+};
 
 /* ── Accordion Header ────────────────────────────────────────── */
 function AccHeader({
@@ -814,7 +819,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                     <div key={`ab-${i}`} className="glass-inner rounded-[12px] px-3 py-2.5">
                       <div className="flex items-center gap-2 mb-0.5">
                         <span className="text-role-badge px-2 py-0.5 rounded-full shrink-0" style={{ background: 'rgba(234,179,8,.15)', color: '#ca9a04' }}>
-                          {ab.type || 'Fähigkeit'}
+                          {ABILITY_TYPE_DE[ab.type ?? ''] ?? ab.type ?? 'Fähigkeit'}
                         </span>
                         <span className="text-role-title text-glass">{ab.name}</span>
                       </div>

@@ -2,7 +2,9 @@ import { getAdminDb } from './firebase/admin';
 import { FieldPath } from 'firebase-admin/firestore';
 import type { CatalogCard, SyncMeta } from './firestore/catalog';
 import { CATEGORIES, PAGE_SIZE, fetchEnCardsPage, fetchDeCardsForSet, toCatalogCard,
-         fetchSetCardIds, fetchEnCardsByIds, tcgdexImage, type DeCardInfo } from './tcgdex-source';
+         fetchSetCardIds, fetchEnCardsByIds, fetchDeCardMechanics, tcgdexImage,
+         type DeCardInfo, type DeCardMechanics } from './tcgdex-source';
+import type { CardAttack, CardAbility } from '@/types';
 
 const MAX_PAGES_PER_REQUEST = 4;   // ~1000 Karten pro Aufruf — resumierbar via Meta-Cursor
 const COL = 'tcg_catalog';
@@ -554,6 +556,91 @@ export async function enrichSpeciesData(batchSize = 500): Promise<EnrichSpeciesR
       ? `📥 ${toEnrich.length} Artdaten angereichert — weitere vorhanden`
       : `✅ Pokémon-Artdaten vollständig (${toEnrich.length} Karten angereichert)`,
     enriched: toEnrich.length,
+    remaining: hasMore ? -1 : 0,
+  };
+}
+
+/**
+ * DE-Kartentexte (Effekt/Attacken/Fähigkeiten) für bestehende Katalogkarten
+ * nachziehen: pro Karte `/de/cards/{id}` holen und die deutschen TEXTE über die
+ * (englischen) Mechanik-Felder legen — Energietypen/Kosten/Schaden/Rückzug
+ * bleiben EN (sonst brechen die Energie-Icons). Läuft NACH dem EN-Katalog-Sync.
+ * Cursor über Karten-IDs; überspringt Karten ohne Mechanik; `deTextDone`
+ * verhindert erneute Abrufe. Transienter Fehler (fetch → null) → nächster Lauf.
+ */
+export async function enrichDeMechanics(batchSize = 150): Promise<EnrichSpeciesResult> {
+  const db = getAdminDb();
+  const cursorRef = db.doc('tcg_catalog_meta/de_text_cursor');
+  const cursorSnap = await cursorRef.get();
+  const lastDocId: string = cursorSnap.exists ? (cursorSnap.data()?.lastDocId ?? '') : '';
+
+  let q = db.collection(COL).orderBy(FieldPath.documentId()).limit(batchSize + 1);
+  if (lastDocId) {
+    const lastDoc = await db.doc(`${COL}/${lastDocId}`).get();
+    if (lastDoc.exists) q = q.startAfter(lastDoc) as typeof q;
+  }
+  const snap = await q.get();
+  if (snap.empty) {
+    await cursorRef.delete();
+    return { status: 'complete', message: '✅ Alle deutschen Kartentexte sind übernommen', enriched: 0, remaining: 0 };
+  }
+
+  const hasMore = snap.docs.length > batchSize;
+  const pageDocs = snap.docs.slice(0, batchSize);
+  const todo = pageDocs.filter(d => {
+    const x = d.data();
+    return !x.deTextDone && (x.effect || x.attacks?.length || x.abilities?.length);
+  });
+
+  let enriched = 0;
+  if (todo.length > 0) {
+    const CONCURRENCY = 8;
+    const deById = new Map<string, DeCardMechanics | null>();
+    for (let i = 0; i < todo.length; i += CONCURRENCY) {
+      const chunk = todo.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(chunk.map(d => fetchDeCardMechanics(d.id)));
+      chunk.forEach((d, j) => deById.set(d.id, results[j]));
+    }
+
+    for (let i = 0; i < todo.length; i += 400) {
+      const batch = db.batch();
+      todo.slice(i, i + 400).forEach(doc => {
+        const de = deById.get(doc.id);
+        if (de === null) return;                        // transient → beim nächsten Voll-Lauf erneut
+        const data = doc.data();
+        const update: Record<string, unknown> = { deTextDone: true };
+        if (de?.effect) update.effect = de.effect;
+        if (de?.attacks?.length && Array.isArray(data.attacks)) {
+          update.attacks = (data.attacks as CardAttack[]).map((a, idx) => ({
+            ...a,
+            ...(de.attacks![idx]?.name ? { name: de.attacks![idx]!.name } : {}),
+            ...(de.attacks![idx]?.effect ? { effect: de.attacks![idx]!.effect } : {}),
+          }));
+        }
+        if (de?.abilities?.length && Array.isArray(data.abilities)) {
+          update.abilities = (data.abilities as CardAbility[]).map((a, idx) => ({
+            ...a,
+            ...(de.abilities![idx]?.name ? { name: de.abilities![idx]!.name } : {}),
+            ...(de.abilities![idx]?.effect ? { effect: de.abilities![idx]!.effect } : {}),
+          }));
+        }
+        batch.update(doc.ref, update);
+        enriched++;
+      });
+      await batch.commit();
+    }
+  }
+
+  const lastDoc = pageDocs[pageDocs.length - 1];
+  if (hasMore) await cursorRef.set({ lastDocId: lastDoc.id });
+  else await cursorRef.delete();
+
+  return {
+    status: hasMore ? 'in-progress' : 'complete',
+    message: hasMore
+      ? `📥 ${enriched} DE-Kartentexte übernommen — weitere vorhanden`
+      : `✅ DE-Kartentexte vollständig (${enriched} in diesem Lauf)`,
+    enriched,
     remaining: hasMore ? -1 : 0,
   };
 }
