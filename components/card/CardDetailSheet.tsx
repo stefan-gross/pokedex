@@ -28,55 +28,12 @@ import { CardImage } from '@/components/card/CardImage';
 import { CardPlaceholder } from '@/components/card/CardPlaceholder';
 import { EvolutionTree } from '@/components/card/EvolutionTree';
 import { CardNameLabel } from '@/components/card/CardNameLabel';
+import { LanguageFlag } from '@/components/card/LanguageFlag';
 import type { CardDoc, BinderDoc, CardVariant, WishlistDoc } from '@/types';
 
 /* ── Helpers ─────────────────────────────────────────────────── */
 
 /** Schlichte SVG-Flag-Swatches statt Emoji-Flaggen — konsistent über Plattformen. */
-function LanguageFlag({ lang, size = 14 }: { lang: string; size?: number }) {
-  const w = Math.round(size * 1.4);
-  const h = size;
-  const wrap = (children: React.ReactNode) => (
-    <span
-      style={{
-        display: 'inline-block', width: w, height: h, borderRadius: 2,
-        overflow: 'hidden', flexShrink: 0, lineHeight: 0,
-        boxShadow: 'inset 0 0 0 0.5px rgba(0,0,0,0.2)',
-      }}
-    >
-      <svg viewBox="0 0 30 18" width={w} height={h}>{children}</svg>
-    </span>
-  );
-  switch (lang) {
-    case 'de': return wrap(<>
-      <rect width="30" height="6" fill="#000" />
-      <rect y="6" width="30" height="6" fill="#DD0000" />
-      <rect y="12" width="30" height="6" fill="#FFCE00" />
-    </>);
-    case 'en': return wrap(<>
-      <rect width="30" height="18" fill="#012169" />
-      <path d="M0 0 L30 18 M30 0 L0 18" stroke="#fff" strokeWidth="2.5" />
-      <path d="M0 0 L30 18 M30 0 L0 18" stroke="#C8102E" strokeWidth="1" />
-      <rect x="13" width="4" height="18" fill="#fff" />
-      <rect y="7" width="30" height="4" fill="#fff" />
-      <rect x="14" width="2" height="18" fill="#C8102E" />
-      <rect y="8" width="30" height="2" fill="#C8102E" />
-    </>);
-    case 'fr': return wrap(<>
-      <rect width="10" height="18" fill="#002654" />
-      <rect x="10" width="10" height="18" fill="#fff" />
-      <rect x="20" width="10" height="18" fill="#ED2939" />
-    </>);
-    case 'jp': return wrap(<>
-      <rect width="30" height="18" fill="#fff" />
-      <circle cx="15" cy="9" r="4.5" fill="#BC002D" />
-    </>);
-    default: return (
-      <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }}>{lang}</span>
-    );
-  }
-}
-
 const STAT_ROWS: { key: keyof PokemonStats; label: string }[] = [
   { key: 'hp',        label: 'KP' },
   { key: 'attack',    label: 'Angriff' },

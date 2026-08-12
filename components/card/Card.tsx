@@ -2,6 +2,7 @@
 
 import { useId } from 'react';
 import { ExclamationMark } from '@/lib/binder-icons';
+import { LanguageFlag } from '@/components/card/LanguageFlag';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardDoc } from '@/types';
 import { inherentFoilVariant, holoShimmerClass } from '@/lib/card-constants';
@@ -315,18 +316,20 @@ export function Card({
           </CardBadge>
         )}
 
-        {/* Sprach-Badge — amber, oben links (gleiche Ecke wie „Prüfen", per
-            !needsReview kollisionsfrei). Nur wenn die Karte ausschließlich in
+        {/* Sprach-Badge — Länderflagge, oben links (gleiche Ecke wie „Prüfen",
+            per !needsReview kollisionsfrei). Nur wenn die Karte ausschließlich in
             einer anderen Sprache als Deutsch besessen wird → Signal „noch auf
-            Deutsch besorgen/ersetzen". */}
+            Deutsch besorgen/ersetzen". `elevated` = weißer Ring + Schatten für
+            Ablesbarkeit über dem Artwork. */}
         {!bare && ownedForeignOnly && !needsReview && (
-          <CardBadge
-            size={preset.badgeSize} shape="pill" color="#f59e0b" textColor="#422006" corner="tl" cornerRadius={badgeCornerRadius}
+          <span
+            className="absolute"
             style={{ top: layout.reviewBadge.top, left: layout.reviewBadge.left }}
-            ariaLabel={`Nur in ${foreignLangCode} vorhanden — noch nicht auf Deutsch`} title="Nicht auf Deutsch"
+            aria-label={`Nur in ${foreignLangCode} vorhanden — noch nicht auf Deutsch`}
+            title="Nicht auf Deutsch"
           >
-            {foreignLangCode}
-          </CardBadge>
+            <LanguageFlag lang={ownedLanguages[0]} size={preset.badgeSize} elevated />
+          </span>
         )}
 
         {/* Anzahl-Badge — grün, oben rechts. Nur ab 2 Exemplaren; bei genau

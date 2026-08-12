@@ -6,6 +6,7 @@ import { HelpCircle, Flag, X } from 'lucide-react';
 import { WishlistHeart } from '@/components/card/Card';
 import { AutomaticBadge, SystemBadge } from '@/components/binder/CollectionTypeBadge';
 import { ExclamationMark } from '@/lib/binder-icons';
+import { LanguageFlag } from '@/components/card/LanguageFlag';
 
 /** Erklärbare Symbole der App. Jede Seite gibt an, welche sie zeigt →
  *  kontextbasierte Legende. */
@@ -89,15 +90,8 @@ const ENTRIES: Record<LegendKey, Entry> = {
   },
   'foreign-lang': {
     title: 'Fremdsprachig',
-    desc: 'Nur in einer anderen Sprache vorhanden — noch nicht auf Deutsch.',
-    visual: () => (
-      <span
-        className="inline-flex items-center font-bold shrink-0"
-        style={{ height: 24, paddingInline: 7, borderRadius: '7px 2px 7px 2px', background: '#f59e0b', color: '#422006', fontSize: 12 }}
-      >
-        EN
-      </span>
-    ),
+    desc: 'Karte nur in einer anderen Sprache vorhanden — auf Deutsch fehlt sie dir noch. Die Flagge zeigt die Sprache.',
+    visual: () => <LanguageFlag lang="en" size={18} elevated />,
   },
   'pending': {
     title: 'Vorläufig',
