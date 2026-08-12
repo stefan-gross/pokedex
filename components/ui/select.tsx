@@ -160,7 +160,18 @@ function computePanelPos(rect: DOMRect): PanelPos {
     right = Math.max(PANEL_MARGIN, viewportW - rect.right);
   }
 
-  const spaceBelow = viewportH - rect.bottom - PANEL_MARGIN;
+  // Untere Grenze ist normalerweise der Viewport-Rand — aber eine fix am unteren
+  // Rand klebende BottomNav verdeckt sonst die untersten Optionen. Klebt eine
+  // solche Nav da, endet das Panel oberhalb ihrer Oberkante.
+  let bottomLimit = viewportH - PANEL_MARGIN;
+  const nav = typeof document !== 'undefined' ? document.querySelector('nav') : null;
+  if (nav) {
+    const nr = nav.getBoundingClientRect();
+    if (nr.height > 0 && nr.bottom >= viewportH - 120 && nr.top < bottomLimit) {
+      bottomLimit = nr.top - PANEL_MARGIN;
+    }
+  }
+  const spaceBelow = bottomLimit - rect.bottom;
   const spaceAbove = rect.top - PANEL_MARGIN;
   let top: number | undefined;
   let bottom: number | undefined;
