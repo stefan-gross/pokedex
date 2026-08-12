@@ -5,7 +5,7 @@
  */
 
 import type { CatalogCard } from '@/lib/firestore/catalog';
-import type { CardVariant, CardDoc, CardCondition, CardLanguage } from '@/types';
+import type { CardVariant, CardDoc, CardCondition, CardLanguage, CardAttack, CardAbility, CardWeakRes } from '@/types';
 
 export interface CardInfo {
   id: string;
@@ -38,6 +38,14 @@ export interface CardInfo {
   nationalDexNumber?: number;
   evolutionFamily?: number[];
   artist?: string;
+  // TCG-Kartenmechanik (von TCGdex, nur wenn im Katalog vorhanden)
+  effect?: string;
+  trainerType?: string;
+  attacks?: CardAttack[];
+  abilities?: CardAbility[];
+  weaknesses?: CardWeakRes[];
+  resistances?: CardWeakRes[];
+  retreat?: number;
   /** true = vorläufige Karte ohne Katalog-Eintrag (kein Bild). Rendert einen
    *  Platzhalter (CardImage → CardPlaceholder) und ein rotes „?"-Badge. */
   pendingCatalog?: boolean;
@@ -81,6 +89,13 @@ export function catalogCardToInfo(c: CatalogCard): CardInfo {
     nationalDexNumber: c.nationalDexNumber,
     evolutionFamily: c.evolutionFamily,
     artist: c.artist,
+    effect: c.effect,
+    trainerType: c.trainerType,
+    attacks: c.attacks,
+    abilities: c.abilities,
+    weaknesses: c.weaknesses,
+    resistances: c.resistances,
+    retreat: c.retreat,
   };
 }
 

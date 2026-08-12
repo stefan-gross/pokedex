@@ -5,7 +5,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import { RARITY_GROUPS, SPECIAL_MECHANIC_KEYS, rarityMatchValues } from '../card-constants';
-import type { CardVariant } from '@/types';
+import type { CardVariant, CardAttack, CardAbility, CardWeakRes } from '@/types';
 
 export interface CatalogCard {
   id: string;
@@ -40,6 +40,14 @@ export interface CatalogCard {
   variants?: CardVariant[];    // mögliche Varianten, abgeleitet aus rarity
   artist?: string;             // Illustrator, direkt von pokemontcg.io (kein separates Enrichment nötig)
   artistTokens?: string[];     // artist.toLowerCase().split(/\s+/) — für Nachnamen-Suche (z.B. "Morii" → "Yuka Morii")
+  // TCG-Kartenmechanik (von TCGdex, ab entsprechendem Sync — nur wenn vorhanden)
+  effect?: string;             // Trainer/Energie: Kartentext (EN)
+  trainerType?: string;        // Item | Supporter | Stadium | Tool
+  attacks?: CardAttack[];      // Pokémon: Attacken
+  abilities?: CardAbility[];   // Pokémon: Fähigkeiten/Pokémon-Power
+  weaknesses?: CardWeakRes[];  // Pokémon: Schwächen
+  resistances?: CardWeakRes[]; // Pokémon: Resistenzen
+  retreat?: number;            // Pokémon: Rückzugskosten (Anzahl Energie)
 }
 
 export interface SyncMeta {

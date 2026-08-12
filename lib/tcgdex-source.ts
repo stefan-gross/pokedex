@@ -49,6 +49,13 @@ export interface TcgdexCardFull {
     firstEdition?: boolean; wPromo?: boolean;
   } | null;
   set: { id: string; name: string } | null;
+  effect: string | null;
+  trainerType: string | null;
+  retreat: number | null;
+  abilities: { name: string; effect: string | null; type: string | null }[] | null;
+  attacks: { name: string; effect: string | null; damage: string | null; cost: string[] | null }[] | null;
+  weaknesses: { type: string; value: string }[] | null;
+  resistances: { type: string; value: string }[] | null;
 }
 
 // ── GraphQL ─────────────────────────────────────────────────────────────────
@@ -68,6 +75,11 @@ async function graphql<T>(query: string): Promise<T> {
 const CARD_FIELDS = `
   id localId name category rarity stage suffix hp types illustrator image
   dexId evolveFrom regulationMark
+  effect trainerType retreat
+  abilities { name effect type }
+  attacks { name effect damage cost }
+  weaknesses { type value }
+  resistances { type value }
   variants { normal holo reverse firstEdition wPromo }
   set { id name }
 `;
@@ -240,5 +252,14 @@ export function toCatalogCard(
     // einem Re-Sync NIE überschrieben werden. Siehe Projekt-Memory tcgdex_golive.
     variants: mapVariants(en.variants),
     ...(en.illustrator ? { artist: en.illustrator, artistTokens: en.illustrator.toLowerCase().split(/\s+/) } : {}),
+    // TCG-Mechanik — nur setzen, wenn vorhanden (Firestore mag kein undefined;
+    // nested Objekte/Arrays werden ohne leere/undefined-Felder gespeichert).
+    ...(en.effect ? { effect: en.effect } : {}),
+    ...(en.trainerType ? { trainerType: en.trainerType } : {}),
+    ...(en.retreat != null ? { retreat: en.retreat } : {}),
+    ...(en.abilities?.length ? { abilities: en.abilities.map(a => ({ name: a.name, ...(a.effect ? { effect: a.effect } : {}), ...(a.type ? { type: a.type } : {}) })) } : {}),
+    ...(en.attacks?.length ? { attacks: en.attacks.map(a => ({ name: a.name, ...(a.effect ? { effect: a.effect } : {}), ...(a.damage ? { damage: a.damage } : {}), ...(a.cost?.length ? { cost: a.cost } : {}) })) } : {}),
+    ...(en.weaknesses?.length ? { weaknesses: en.weaknesses.map(w => ({ type: w.type, value: w.value })) } : {}),
+    ...(en.resistances?.length ? { resistances: en.resistances.map(r => ({ type: r.type, value: r.value })) } : {}),
   };
 }

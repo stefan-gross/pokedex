@@ -4,6 +4,14 @@ export type CardCondition = 'NM' | 'LP' | 'MP' | 'HP' | 'Poor';
 export type CardLanguage = 'de' | 'en' | 'jp' | 'fr' | 'es';
 export type CardVariant = 'standard' | 'holo' | 'reverse' | 'alt-art' | '1st-ed' | 'promo';
 
+// ── TCG-Karten-Mechanik (von TCGdex, nur wenn vorhanden) ────────────────────
+/** Attacke einer Pokémon-Karte. `cost` = Energiesymbole (EN-Namen, z.B. "Fire"). */
+export interface CardAttack { name: string; effect?: string; damage?: string; cost?: string[]; }
+/** Fähigkeit/Pokémon-Power einer Karte. `type` z.B. "Ability" | "Pokemon Power". */
+export interface CardAbility { name: string; effect?: string; type?: string; }
+/** Schwäche/Resistenz: `type` = Energietyp (EN-Name), `value` z.B. "×2" | "-30". */
+export interface CardWeakRes { type: string; value: string; }
+
 export interface CardDoc {
   id: string;
   tcgId?: string;
