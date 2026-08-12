@@ -856,7 +856,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                     )}
                     {species.stats && (
                       <div className="mb-3">
-                        <div className="text-role-label text-glass-muted mb-1.5">Basiswerte</div>
+                        <div className="text-role-label text-glass-muted mb-1.5">Basiswerte (Spiel)</div>
                         <div className="flex flex-col gap-1.5">
                           {STAT_ROWS.map(({ key, label }) => {
                             const value = species.stats![key];
