@@ -19,9 +19,8 @@ export function HeaderPill({ children, icon, color, mono = false, title, classNa
   return (
     <span
       title={title}
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[12px] font-bold leading-none shrink-0 ${mono ? 'font-mono ' : ''}${className}`}
+      className={`glass-inner-clear inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[12px] font-bold leading-none shrink-0 ${mono ? 'font-mono ' : ''}${className}`}
       style={{
-        background: 'var(--secondary)',
         color: color ?? 'var(--foreground)',
         borderColor: color ?? 'var(--border)',
       }}
