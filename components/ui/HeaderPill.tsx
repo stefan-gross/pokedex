@@ -19,10 +19,12 @@ export function HeaderPill({ children, icon, color, mono = false, title, classNa
   return (
     <span
       title={title}
-      className={`glass-inner-clear inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[12px] font-bold leading-none shrink-0 ${mono ? 'font-mono ' : ''}${className}`}
+      className={`glass-inner inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-bold leading-none shrink-0 ${mono ? 'font-mono ' : ''}${className}`}
       style={{
         color: color ?? 'var(--foreground)',
-        borderColor: color ?? 'var(--border)',
+        // Akzentfarbe → Rahmen einfärben (z.B. Reguliermarke/Legalität); sonst
+        // bleibt der dezente .glass-inner-Rand (Glas-auf-Glas-Panel-Look).
+        ...(color ? { borderColor: color } : {}),
       }}
     >
       {icon}
