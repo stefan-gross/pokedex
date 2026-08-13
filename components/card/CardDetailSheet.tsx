@@ -788,8 +788,8 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 <div className="flex items-center gap-1.5 shrink-0">
                   {regMark && (
                     <span
-                      className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded-md border shrink-0 leading-none"
-                      style={{ color: legalColor, borderColor: legalColor }}
+                      className="inline-flex items-center px-2.5 py-1 rounded-full border text-[12px] font-bold shrink-0"
+                      style={{ background: 'var(--secondary)', color: legalColor, borderColor: legalColor }}
                       title={`Reguliermarke ${regMark} · ${legalWord}`}
                     >
                       {regMark}

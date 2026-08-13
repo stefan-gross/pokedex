@@ -4,6 +4,8 @@
  * Dunkle Symbole auf farbigem Kreis-Hintergrund.
  */
 
+import { normalizeEnergy } from '@/lib/energy';
+
 export type EnergyType =
   | 'Fire' | 'Water' | 'Grass' | 'Lightning' | 'Psychic'
   | 'Fighting' | 'Darkness' | 'Metal' | 'Dragon' | 'Fairy' | 'Colorless';
@@ -182,17 +184,22 @@ interface Props {
 }
 
 export function EnergyIcon({ type, size = 24, className = '', color }: Props) {
-  const { bg } = ENERGY_META[type];
+  // Gespeicherte Mechanik kann deutsche Energienamen enthalten (z.B. „Unlicht")
+  // → auf EN normalisieren; unbekannte Werte → kein Icon (kein Crash).
+  const t = normalizeEnergy(type) as EnergyType;
+  const meta = ENERGY_META[t];
+  if (!meta) return null;
+  const { bg } = meta;
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 24 24"
       className={className}
-      aria-label={ENERGY_META[type].de}
+      aria-label={meta.de}
     >
       {!color && <circle cx="12" cy="12" r="11.5" fill={bg} />}
-      <InnerSymbol type={type} color={color} />
+      <InnerSymbol type={t} color={color} />
     </svg>
   );
 }

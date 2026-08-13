@@ -18,6 +18,7 @@
 
 import type { CatalogCard } from '@/lib/firestore/catalog';
 import type { CardVariant, CardAttack, CardAbility, CardWeakRes } from '@/types';
+import { normalizeEnergy } from '@/lib/energy';
 
 const GRAPHQL = 'https://api.tcgdex.net/v2/graphql';
 const REST = 'https://api.tcgdex.net/v2';
@@ -127,18 +128,12 @@ export async function fetchDeCardsForSet(setId: string): Promise<Map<string, DeC
   return map;
 }
 
-// DE-/EN-Energienamen → kanonisch EN (für EnergyIcon). Der Bulk-GraphQL bricht
-// bei Karten mit null-Attackennamen ("non-nullable field"), daher wird die
-// gesamte Kartenmechanik pro Karte per REST geholt (null-tolerant) — bevorzugt
-// aus /de/ (deutsche Texte), mit /en/ als Fallback. Energietypen normalisieren
-// wir auf EN, damit die Icons unabhängig von der Quellsprache stimmen.
-const ENERGY_TO_EN: Record<string, string> = {
-  Colorless: 'Colorless', Fire: 'Fire', Water: 'Water', Grass: 'Grass', Lightning: 'Lightning',
-  Psychic: 'Psychic', Fighting: 'Fighting', Darkness: 'Darkness', Metal: 'Metal', Dragon: 'Dragon', Fairy: 'Fairy',
-  Farblos: 'Colorless', Feuer: 'Fire', Wasser: 'Water', Pflanze: 'Grass', Elektro: 'Lightning',
-  Psycho: 'Psychic', Kampf: 'Fighting', Finsternis: 'Darkness', Metall: 'Metal', Stahl: 'Metal', Drache: 'Dragon', Fee: 'Fairy',
-};
-const toEnergyEn = (t: string) => ENERGY_TO_EN[t] ?? t;
+// Der Bulk-GraphQL bricht bei Karten mit null-Attackennamen ("non-nullable
+// field"), daher wird die gesamte Kartenmechanik pro Karte per REST geholt
+// (null-tolerant) — bevorzugt aus /de/ (deutsche Texte), mit /en/ als Fallback.
+// Energietypen normalisieren wir auf EN (zentrale Map in lib/energy), damit die
+// Icons unabhängig von der Quellsprache stimmen.
+const toEnergyEn = normalizeEnergy;
 const TRAINER_TO_EN: Record<string, string> = {
   Item: 'Item', Supporter: 'Supporter', Stadium: 'Stadium', Tool: 'Tool',
   Itemkarte: 'Item', Unterstützerkarte: 'Supporter', Unterstützer: 'Supporter',
