@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { LegendButton } from '@/components/ui/LegendButton';
 import { Grabber } from '@/components/ui/Grabber';
+import { HeaderPill } from '@/components/ui/HeaderPill';
 import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
@@ -371,10 +372,7 @@ function SetDetailContent() {
                       /* eslint-disable-next-line @next/next/no-img-element */
                       <img src={symbolUrl} alt={ptcgoCode ?? ''} className="w-[21px] h-[21px] object-contain" />
                     ) : ptcgoCode && (
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border text-glass"
-                            style={{ borderColor: 'currentcolor' }}>
-                        {ptcgoCode}
-                      </span>
+                      <HeaderPill mono>{ptcgoCode}</HeaderPill>
                     )}
                   </div>
                 </div>
