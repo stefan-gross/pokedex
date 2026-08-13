@@ -11,6 +11,7 @@ import { Tabs } from '@/components/ui/tabs';
 import { Select, CustomSelect } from '@/components/ui/select';
 import { BinderIcon } from '@/lib/binder-icons';
 import { Chip } from '@/components/ui/chip';
+import { HeaderPill } from '@/components/ui/HeaderPill';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Sheet, Dialog } from '@/components/ui/modal';
@@ -676,6 +677,21 @@ export default function DesignSystemPreviewPage() {
           textGray={glassTextGray} setTextGray={setGlassTextGray}
           textColor={glassTextColor} mutedTextColor={glassMutedTextColor}
         />
+      </Section>
+
+      <Section title="Header-Pills">
+        <p className="text-role-body text-glass-muted">
+          Eine Komponente (<code>HeaderPill</code>) für Setkürzel, Rarity und Reguliermarke —
+          gleiche Form, über Props mit Akzentfarbe und/oder Icon nutzbar.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <HeaderPill mono title="Setkürzel">PFL</HeaderPill>
+          <HeaderPill icon={<span style={{ color: '#f6c944' }}>◆</span>}>Illustration Rare</HeaderPill>
+          <HeaderPill color="#2f855a" title="Standard-legal">H</HeaderPill>
+          <HeaderPill color="#b7791f" title="nur Expanded">F</HeaderPill>
+          <HeaderPill color="var(--text-muted)" title="nicht legal">D</HeaderPill>
+          <HeaderPill color="#e53e3e" icon={<Star size={12} className="fill-current" />}>Promo</HeaderPill>
+        </div>
       </Section>
 
       <Section title="Button">

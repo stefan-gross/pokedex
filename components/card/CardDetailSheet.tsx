@@ -29,6 +29,7 @@ import { CardPlaceholder } from '@/components/card/CardPlaceholder';
 import { EvolutionTree } from '@/components/card/EvolutionTree';
 import { CardNameLabel } from '@/components/card/CardNameLabel';
 import { LanguageFlag } from '@/components/card/LanguageFlag';
+import { HeaderPill } from '@/components/ui/HeaderPill';
 import type { CardDoc, BinderDoc, CardVariant, WishlistDoc } from '@/types';
 
 /* ── Helpers ─────────────────────────────────────────────────── */
@@ -767,12 +768,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img src={resolvedMeta.symbolUrl} alt={setCode} className="w-[21px] h-[21px] object-contain shrink-0" />
                   ) : (
-                    <span
-                      className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border shrink-0"
-                      style={{ color: 'var(--foreground)', borderColor: 'var(--foreground)' }}
-                    >
-                      {setCode}
-                    </span>
+                    <HeaderPill mono title={setNameDe}>{setCode}</HeaderPill>
                   )}
                 </div>
                 {card.series && (
@@ -787,22 +783,14 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 <span className="text-[14px] font-bold tabular-nums">{numFmt}</span>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {regMark && (
-                    <span
-                      className="inline-flex items-center px-2.5 py-1 rounded-full border text-[12px] font-bold shrink-0"
-                      style={{ background: 'var(--secondary)', color: legalColor, borderColor: legalColor }}
-                      title={`Reguliermarke ${regMark} · ${legalWord}`}
-                    >
+                    <HeaderPill color={legalColor} title={`Reguliermarke ${regMark} · ${legalWord}`}>
                       {regMark}
-                    </span>
+                    </HeaderPill>
                   )}
                   {rarityInfo && (
-                    <div
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[12px] font-bold shrink-0"
-                      style={{ background: 'var(--secondary)', borderColor: 'var(--border)' }}
-                    >
-                      <span style={{ color: rarityInfo.color }}>{rarityInfo.symbol}</span>
+                    <HeaderPill icon={<span style={{ color: rarityInfo.color }}>{rarityInfo.symbol}</span>}>
                       {rarityInfo.label}
-                    </div>
+                    </HeaderPill>
                   )}
                 </div>
               </div>
