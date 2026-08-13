@@ -141,17 +141,26 @@ const BORDER_COLORS: Record<'green' | 'yellow' | 'red', string> = {
 };
 
 /** Wunschlisten-Herz mit 4 Zuständen: leer (Outline) / rot (manuell) /
- *  theme-adaptiv (automatisch benötigt — schwarz im Hellen, weiß im Dunklen via
- *  `var(--foreground)`) / geteilt (links rot, rechts theme-adaptiv = beides).
+ *  „auto" (automatisch benötigt) / geteilt (links rot, rechts auto = beides).
  *  Der geteilte Zustand nutzt einen Hart-Stopp-Verlauf bei 50 %. Exportiert,
- *  damit der Wunschlisten-Button im Kartendetail dasselbe Icon nutzt. */
-export function WishlistHeart({ manual, auto, width, height, gradId }: {
-  manual: boolean; auto: boolean; width: number; height: number; gradId: string;
+ *  damit der Wunschlisten-Button im Kartendetail dasselbe Icon nutzt.
+ *
+ *  `onImage`: das Herz sitzt auf einem bunten Kartenbild (Kachel) → die
+ *  „auto"-Farbe ist dann IMMER weiß (theme-unabhängig, egal ob Light/Dark),
+ *  statt theme-adaptiv (`var(--foreground)`) wie in Legende/Detail-Button auf
+ *  hellem Glas-Grund. Zusätzlich ist das halb ausgefüllte (geteilte) Herz auf
+ *  dem Bild RANDLOS: Stroke = Füll-Verlauf → kein sichtbarer Rahmen, aber die
+ *  Stroke-Breite hält die Größe exakt gleich wie ein Herz mit Rahmen. */
+export function WishlistHeart({ manual, auto, width, height, gradId, onImage = false }: {
+  manual: boolean; auto: boolean; width: number; height: number; gradId: string; onImage?: boolean;
 }) {
   const both = manual && auto;
-  const AUTO = 'var(--foreground)';
+  const AUTO = onImage ? '#fff' : 'var(--foreground)';
   const fill = both ? `url(#${gradId})` : manual ? '#ef4444' : auto ? AUTO : 'none';
-  const stroke = manual && !auto ? '#ef4444' : AUTO;
+  // Geteilt + auf Bild: Stroke = derselbe Verlauf wie die Füllung → randlos,
+  // aber gleiche Außenmaße wie mit Rahmen. Sonst normaler Rahmen (rot bei rein
+  // manuell, AUTO-Farbe bei leer/auto) für Lesbarkeit auf hellem Grund.
+  const stroke = both ? (onImage ? `url(#${gradId})` : AUTO) : manual ? '#ef4444' : AUTO;
   return (
     <svg
       width={width} height={height} viewBox="0 0 24 22"
@@ -366,6 +375,7 @@ export function Card({
             <WishlistHeart
               manual={onManualWishlist}
               auto={onAutoWishlist}
+              onImage
               width={preset.badgeIconSize * 1.3}
               height={preset.badgeIconSize * 1.2}
               gradId={`${heartGradId}-heart`}
