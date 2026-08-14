@@ -362,15 +362,6 @@ export default function WishlistDetailPage({ params }: Props) {
               className="shrink-0"
             />
           )}
-          <Button
-            variant="secondary"
-            icon={<Download />}
-            onClick={handleExportPdf}
-            disabled={exporting || items.length === 0}
-            aria-label="Als PDF exportieren"
-            title="Als PDF exportieren"
-            className="shrink-0"
-          />
           {!isTemplateList && (
             <Button
               variant="primary"
@@ -382,6 +373,15 @@ export default function WishlistDetailPage({ params }: Props) {
               className="shrink-0"
             />
           )}
+          <Button
+            variant="secondary"
+            icon={<Download />}
+            onClick={handleExportPdf}
+            disabled={exporting || items.length === 0}
+            aria-label="Als PDF exportieren"
+            title="Als PDF exportieren"
+            className="shrink-0"
+          />
         </div>
 
         {/* Suche + Vorhanden/Fehlen + Seltenheit, darunter Sortierung + Anzahl —
