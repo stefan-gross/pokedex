@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { BottomNav } from '@/components/BottomNav';
 import AuthRefresh from '@/components/AuthRefresh';
 import { GlassBackground } from '@/components/GlassBackground';
+import { ColdStartSplash } from '@/components/ColdStartSplash';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -13,6 +14,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <>
+      <ColdStartSplash />
       <AuthRefresh />
       {!isScanner && <GlassBackground />}
       {/* Covers iPhone status bar / Dynamic Island area */}

@@ -4,7 +4,8 @@ import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { signInWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '@/lib/firebase/client'
-import { GlassBackground } from '@/components/GlassBackground'
+import { PokemonWall } from '@/components/PokemonWall'
+import { PokedexWordmark } from '@/components/PokedexWordmark'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -48,51 +49,15 @@ function LoginForm() {
   }
 
   return (
-    <div className="relative min-h-screen flex">
-      <GlassBackground />
+    <div className="relative min-h-screen flex items-center justify-center p-6 bg-[#f4f6fb] dark:bg-[#0f1117]">
+      <PokemonWall />
 
-      {/* Left panel — desktop only, sitzt direkt auf dem Verlauf */}
-      <div className="hidden lg:flex w-2/5 flex-col justify-between p-14">
-        <div className="flex flex-col gap-2">
-          <span className="text-8xl">🎴</span>
-          <span className="text-glass font-bold text-6xl leading-none mt-2 dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.25)]">Pokédex</span>
-        </div>
-        <div>
-          <h1 className="text-4xl font-semibold text-glass leading-snug mb-5 dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">
-            Deine Sammlung.<br />Immer dabei.
-          </h1>
-          <p className="text-glass-muted text-base leading-relaxed">
-            Karten scannen, in Mappen verwalten,<br />Marktpreise im Blick.
-          </p>
-          <div className="mt-10 flex flex-col gap-4">
-            {[
-              'Karten per Kamera scannen',
-              'Mappen & Boxen verwalten',
-              'Marktpreise & Wunschlisten',
-            ].map(f => (
-              <div key={f} className="flex items-center gap-3 text-base text-[#3a3d42] dark:text-white/85">
-                <div className="w-6 h-6 rounded-full bg-[rgba(30,40,80,0.08)] dark:bg-white/20 flex items-center justify-center flex-shrink-0">
-                  <div className="w-2 h-2 rounded-full bg-[#1E2024] dark:bg-white" />
-                </div>
-                {f}
-              </div>
-            ))}
-          </div>
-        </div>
-        <a href="https://hub.smartfamilyzone.de" className="text-glass-muted hover:text-[#1E2024] dark:text-white/60 dark:hover:text-white/85 text-sm transition-colors">
-          ← Smart Family Zone
-        </a>
-      </div>
+      <div className="relative w-full max-w-sm flex flex-col items-center">
+        {/* Schriftzug + Tagline über der Login-Karte */}
+        <PokedexWordmark className="text-6xl mb-2" />
+        <p className="text-black/60 dark:text-white/70 text-role-body mb-8">Deine Sammlung. Immer dabei.</p>
 
-      {/* Right panel / Login form — Glas-Karte auf dem Verlauf */}
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="glass w-full max-w-sm rounded-[28px] p-8">
-          {/* Mobile logo */}
-          <div className="flex items-center gap-3 mb-10 lg:hidden">
-            <span className="text-3xl">🎴</span>
-            <span className="font-semibold text-glass text-lg">Pokédex</span>
-          </div>
-
+        <div className="glass w-full rounded-[28px] p-8">
           <h2 className="text-role-h1 text-glass mb-2 dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">Willkommen zurück</h2>
           <p className="text-role-body text-glass-muted mb-8">Melde dich mit deinem Familienkonto an.</p>
 
