@@ -5,11 +5,28 @@ import { computeImageHash, hammingDistance, classifyPHashDistance } from '@/lib/
 // Browser-Canvas die Pixel eines fremden Origins ohne CORS nicht auslesen darf.
 export const maxDuration = 30;
 
+// SSRF-Schutz: nur unsere bekannten Bild-CDNs über https zulassen. Ohne diese
+// Prüfung könnte ein eingeloggter Nutzer den Server beliebige (auch interne,
+// z.B. 169.254.169.254) URLs abrufen lassen.
+const ALLOWED_IMAGE_HOSTS = new Set([
+  'assets.tcgdex.net',
+  'images.pokemontcg.io',
+]);
+
+function isAllowedImageUrl(raw: string): boolean {
+  let u: URL;
+  try { u = new URL(raw); } catch { return false; }
+  return u.protocol === 'https:' && ALLOWED_IMAGE_HOSTS.has(u.hostname);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { imageBase64, catalogImageUrl } = await req.json();
     if (!imageBase64 || !catalogImageUrl) {
       return NextResponse.json({ error: 'imageBase64 and catalogImageUrl required' }, { status: 400 });
+    }
+    if (!isAllowedImageUrl(catalogImageUrl)) {
+      return NextResponse.json({ error: 'catalogImageUrl host not allowed' }, { status: 400 });
     }
 
     const scannedBuffer = Buffer.from(imageBase64, 'base64');

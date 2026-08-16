@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySessionToken, SESSION_COOKIE } from '@/lib/auth';
+import { isAdminRequest } from '@/lib/admin-auth';
 import { getAdminDb } from '@/lib/firebase/admin';
 import type { Firestore } from 'firebase-admin/firestore';
 
 export const maxDuration = 60;
 
-async function verifySession(req: NextRequest) {
-  const token = req.cookies.get(SESSION_COOKIE)?.value;
-  if (!token) return false;
-  return !!(await verifySessionToken(token));
-}
 
 /** Löscht eine Collection gebatcht bis leer ODER Zeitbudget erreicht. */
 async function deleteCollection(db: Firestore, name: string, budgetEndMs: number): Promise<{ deleted: number; remaining: boolean }> {
@@ -34,8 +29,8 @@ async function deleteCollection(db: Firestore, name: string, budgetEndMs: number
  * bis `done: true` (bei sehr großen Collections greift das Zeitbudget).
  */
 export async function POST(req: NextRequest) {
-  if (!(await verifySession(req))) {
-    return NextResponse.json({ error: 'Nicht eingeloggt' }, { status: 401 });
+  if (!(await isAdminRequest(req))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const all = req.nextUrl.searchParams.get('scope') === 'all';
   const cols = all

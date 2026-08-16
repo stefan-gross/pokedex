@@ -52,11 +52,12 @@ Pokémon-Kartensammlung PWA für Stefan Gross.
 - 🔲 Phase 6: Marktpreise (Cardmarket)
 - 🔲 Phase 7: PDF-Export
 
-## Offene Vercel Env Vars (noch nicht eingetragen)
+## Vercel Env Vars (Secrets NICHT hier hinterlegen!)
 - `FIREBASE_ADMIN_PROJECT_ID`
 - `FIREBASE_ADMIN_CLIENT_EMAIL`
 - `FIREBASE_ADMIN_PRIVATE_KEY`
-- `CRON_SECRET=sfz-cron-2026-pokedex`
+- `CRON_SECRET` — nur in Vercel/`.env.local`, **niemals im Repo**. (Der alte Wert war hier im Klartext eingecheckt → muss rotiert + aus der Git-Historie entfernt werden.)
+- `ADMIN_UIDS` — kommagetrennte Firebase-uids, die Admin-/Sync-Routen auslösen dürfen (siehe `lib/admin-auth.ts`). Ohne diese Var ist der Session-Weg zu den Admin-Routen gesperrt.
 
 ## UI-Regeln
 - Icons werden ausschließlich als SVG-Dateien eingebunden — kein Icon-Font, keine Emoji

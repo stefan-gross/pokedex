@@ -24,11 +24,16 @@ service cloud.firestore {
 
     // Pokémon-Kartenkatalog — öffentliche Daten, kein Auth nötig
     // Schreibzugriff nur vom Server (geschützt durch API-Route + Session)
+    // Öffentlich lesbar; Schreibzugriff NUR serverseitig (Admin-SDK umgeht
+    // Rules). Vorher `write: if true` → jeder Browser konnte den Katalog
+    // überschreiben/löschen.
     match /tcg_catalog/{id} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if false;
     }
     match /tcg_catalog_meta/{id} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if false;
     }
     // Set-Metadaten (Name DE, Logo, Kürzel, Totals) — öffentliche Katalogdaten.
     // Client liest sie u.a. im Dashboard (getSetById) und Kartendetail; ohne
