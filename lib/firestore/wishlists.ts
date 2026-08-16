@@ -2,7 +2,7 @@ import {
   collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc,
   orderBy, query, Timestamp, writeBatch, arrayUnion, runTransaction,
 } from 'firebase/firestore';
-import { db } from '../firebase/client';
+import { db, currentUid } from '../firebase/client';
 import type { WishlistDoc, WishlistItem } from '@/types';
 
 const COL = 'wishlists';
@@ -36,6 +36,7 @@ export async function addWishlist(
 ): Promise<string> {
   const ref = await addDoc(collection(db, COL), {
     name,
+    ownerUid: currentUid(),
     description: opts?.description ?? '',
     items: [],
     sortOrder: opts?.sortOrder ?? Date.now(),

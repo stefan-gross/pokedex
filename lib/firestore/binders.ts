@@ -2,7 +2,7 @@ import {
   collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc,
   orderBy, query, Timestamp, arrayUnion, arrayRemove, writeBatch,
 } from 'firebase/firestore';
-import { db } from '../firebase/client';
+import { db, currentUid } from '../firebase/client';
 import { deleteWishlistsForBinder } from './wishlists';
 import type { BinderDoc, BinderPage } from '@/types';
 
@@ -48,6 +48,7 @@ export async function getBinder(id: string): Promise<BinderDoc | null> {
 export async function addBinder(data: Omit<BinderDoc, 'id' | 'createdAt' | 'cardIds' | 'wishlistCardIds'>): Promise<string> {
   const ref = await addDoc(collection(db, COL), {
     ...data,
+    ownerUid: currentUid(),
     cardIds: [],
     wishlistCardIds: [],
     createdAt: Timestamp.now(),

@@ -14,6 +14,9 @@ export interface CardWeakRes { type: string; value: string; }
 
 export interface CardDoc {
   id: string;
+  /** Firebase-uid des Besitzers (IDOR-Härtung). Optional, bis der Bestand
+   *  gebackfillt ist; danach auf allen Docs gesetzt. */
+  ownerUid?: string;
   tcgId?: string;
   name: string;
   setId: string;
@@ -72,6 +75,8 @@ export type BinderTemplate =
 
 export interface BinderDoc {
   id: string;
+  /** Firebase-uid des Besitzers (IDOR-Härtung, siehe CardDoc.ownerUid). */
+  ownerUid?: string;
   name: string;
   description?: string;
   color?: string;
@@ -120,6 +125,8 @@ export interface WishlistItem {
 
 export interface WishlistDoc {
   id: string;
+  /** Firebase-uid des Besitzers (IDOR-Härtung, siehe CardDoc.ownerUid). */
+  ownerUid?: string;
   name: string;
   description?: string;
   /** Vorhanden = automatisch generierte Wunschliste eines Vorlagen-Binders

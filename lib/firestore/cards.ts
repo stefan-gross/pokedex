@@ -2,7 +2,7 @@ import {
   collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc,
   query, where, orderBy, Timestamp,
 } from 'firebase/firestore';
-import { db } from '../firebase/client';
+import { db, currentUid } from '../firebase/client';
 import type { CardDoc } from '@/types';
 
 const COL = 'cards';
@@ -25,6 +25,7 @@ export async function getCardsBySet(setId: string): Promise<CardDoc[]> {
 export async function addCard(data: Omit<CardDoc, 'id' | 'addedAt' | 'updatedAt'>): Promise<string> {
   const ref = await addDoc(collection(db, COL), {
     ...data,
+    ownerUid: currentUid(),
     addedAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   });

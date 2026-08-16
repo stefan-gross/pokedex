@@ -4,7 +4,7 @@ import {
   collection, addDoc, getDocs, deleteDoc, query, orderBy, limit,
   getCountFromServer,
 } from 'firebase/firestore';
-import { db } from '../firebase/client';
+import { db, currentUid } from '../firebase/client';
 
 /**
  * Scan-Historie in FIRESTORE (Collection `scan_history`): die zuletzt an Gemini
@@ -20,6 +20,7 @@ import { db } from '../firebase/client';
 
 export interface ScanHistoryEntry {
   id: string;          // Firestore-Doc-ID
+  ownerUid?: string;   // Firebase-uid des Besitzers (IDOR-Härtung)
   imageBase64: string; // exakt das an Gemini gesendete Bild (ohne data:-Präfix)
   mimeType: string;
   label: string;       // Kartenname, „Kein Treffer", „Fehler" …
@@ -37,6 +38,7 @@ export async function saveScan(entry: Omit<ScanHistoryEntry, 'id' | 'ts'> & { ts
   try {
     const ts = entry.ts ?? Date.now();
     await addDoc(collection(db, COL), {
+      ownerUid: currentUid(),
       imageBase64: entry.imageBase64,
       mimeType: entry.mimeType,
       label: entry.label,

@@ -14,6 +14,14 @@ const isNew = getApps().length === 0
 const app   = isNew ? initializeApp(firebaseConfig) : getApps()[0]
 
 export const auth = getAuth(app)
+
+/** Firebase-uid des aktuell eingeloggten Nutzers (oder undefined). Wird beim
+ *  Anlegen von Nutzer-Dokumenten als `ownerUid` gesetzt (IDOR-Härtung: Daten
+ *  gehören einem Nutzer, nicht „irgendeiner Session"). Dank
+ *  `ignoreUndefinedProperties` ist ein undefined-Wert beim Write unkritisch. */
+export function currentUid(): string | undefined {
+  return auth.currentUser?.uid ?? undefined
+}
 // ignoreUndefinedProperties: Felder mit Wert undefined werden stillschweigend weggelassen
 // experimentalAutoDetectLongPolling: der Firestore-Client nutzt sonst WebChannel-
 // Streaming; wird das vom Netz/Proxy (z.B. Mobilfunk, iOS-PWA) blockiert, HÄNGT
