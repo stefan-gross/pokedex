@@ -24,13 +24,20 @@ export default function AuthRefresh() {
     getSyncMeta().catch(() => {})
 
     const unsubscribe = onIdTokenChanged(auth, async (user) => {
-      if (user) {
+      if (!user) return
+      // Kein try/catch = unhandled rejection + still fehlgeschlagene
+      // Cookie-Erneuerung (offline/Reconnect, ~alle 55min). Fehler schlucken
+      // wir bewusst leise (nächster Token-Event versucht es erneut), aber
+      // sichtbar geloggt statt als unhandledrejection.
+      try {
         const idToken = await user.getIdToken()
         await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ idToken }),
         })
+      } catch (e) {
+        console.warn('[auth] Session-Cookie-Refresh fehlgeschlagen', e)
       }
     })
     return () => unsubscribe()

@@ -1,6 +1,6 @@
 import {
   collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc,
-  orderBy, query, Timestamp, writeBatch,
+  orderBy, query, Timestamp, writeBatch, arrayUnion, runTransaction,
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import type { WishlistDoc, WishlistItem } from '@/types';
@@ -114,23 +114,35 @@ export async function reorderWishlists(orderedIds: string[]): Promise<void> {
   await batch.commit();
 }
 
+// Alle drei Mutationen sind atomar, damit parallele Toggles (schnelles
+// Herz-Tippen über mehrere Listen) sich nicht per Read-Modify-Write des ganzen
+// `items`-Arrays gegenseitig überschreiben (Lost-Update). Hinzufügen nutzt
+// `arrayUnion` (neue UUID → eindeutig), Ändern/Entfernen eine Transaction.
 export async function addItemToWishlist(wishlistId: string, item: Omit<WishlistItem, 'id'>): Promise<WishlistItem | null> {
-  const wl = await getWishlist(wishlistId);
-  if (!wl) return null;
+  const ref = doc(db, COL, wishlistId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
   const newItem: WishlistItem = { ...item, id: crypto.randomUUID() };
-  await updateDoc(doc(db, COL, wishlistId), { items: [...wl.items, newItem] });
+  await updateDoc(ref, { items: arrayUnion(newItem) });
   return newItem;
 }
 
 export async function updateWishlistItem(wishlistId: string, itemId: string, data: Partial<WishlistItem>): Promise<void> {
-  const wl = await getWishlist(wishlistId);
-  if (!wl) return;
-  const items = wl.items.map(i => i.id === itemId ? { ...i, ...data } : i);
-  await updateDoc(doc(db, COL, wishlistId), { items });
+  const ref = doc(db, COL, wishlistId);
+  await runTransaction(db, async tx => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) return;
+    const items = ((snap.data().items ?? []) as WishlistItem[]).map(i => i.id === itemId ? { ...i, ...data } : i);
+    tx.update(ref, { items });
+  });
 }
 
 export async function removeItemFromWishlist(wishlistId: string, itemId: string): Promise<void> {
-  const wl = await getWishlist(wishlistId);
-  if (!wl) return;
-  await updateDoc(doc(db, COL, wishlistId), { items: wl.items.filter(i => i.id !== itemId) });
+  const ref = doc(db, COL, wishlistId);
+  await runTransaction(db, async tx => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) return;
+    const items = ((snap.data().items ?? []) as WishlistItem[]).filter(i => i.id !== itemId);
+    tx.update(ref, { items });
+  });
 }

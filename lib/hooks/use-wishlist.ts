@@ -47,7 +47,7 @@ export function useWishlist() {
     let cancelled = false;
     Promise.all([getWishlists(), getBinders()])
       .then(([l, b]) => { if (!cancelled) { setLists(l); setBinders(b); setLoaded(true); } })
-      .catch(() => { if (!cancelled) setLoaded(true); });
+      .catch(e => { console.error('[useWishlist] Laden fehlgeschlagen', e); if (!cancelled) setLoaded(true); });
     return () => { cancelled = true; };
   }, []);
 
