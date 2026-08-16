@@ -3,7 +3,7 @@
 import {
   collection, addDoc, getDocs, deleteDoc, query, where,
 } from 'firebase/firestore';
-import { db, currentUid } from '../firebase/client';
+import { db, currentUid, waitForUid } from '../firebase/client';
 
 /**
  * Scan-Historie in FIRESTORE (Collection `scan_history`): die zuletzt an Gemini
@@ -62,7 +62,7 @@ export async function saveScan(entry: Omit<ScanHistoryEntry, 'id' | 'ts'> & { ts
 /** Letzte MAX_ENTRIES, neueste zuerst. */
 export async function listScans(): Promise<ScanHistoryEntry[]> {
   try {
-    const uid = currentUid();
+    const uid = await waitForUid();
     if (!uid) return [];
     const snap = await getDocs(query(collection(db, COL), where('ownerUid', '==', uid)));
     return snap.docs

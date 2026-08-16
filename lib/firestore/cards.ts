@@ -2,7 +2,7 @@ import {
   collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc,
   query, where, Timestamp,
 } from 'firebase/firestore';
-import { db, currentUid } from '../firebase/client';
+import { db, currentUid, waitForUid } from '../firebase/client';
 import type { CardDoc } from '@/types';
 
 const COL = 'cards';
@@ -13,7 +13,7 @@ const COL = 'cards';
 // Firestore automatisch an). Ohne diesen Filter würden die neuen Rules
 // (ownerUid == auth.uid) die ganze Query ablehnen.
 export async function getCards(): Promise<CardDoc[]> {
-  const uid = currentUid();
+  const uid = await waitForUid();
   if (!uid) return [];
   const snap = await getDocs(query(collection(db, COL), where('ownerUid', '==', uid)));
   return snap.docs

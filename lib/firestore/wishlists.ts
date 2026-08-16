@@ -2,13 +2,13 @@ import {
   collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc,
   where, query, Timestamp, writeBatch, arrayUnion, runTransaction,
 } from 'firebase/firestore';
-import { db, currentUid } from '../firebase/client';
+import { db, currentUid, waitForUid } from '../firebase/client';
 import type { WishlistDoc, WishlistItem } from '@/types';
 
 const COL = 'wishlists';
 
 export async function getWishlists(): Promise<WishlistDoc[]> {
-  const uid = currentUid();
+  const uid = await waitForUid();
   if (!uid) return [];
   // Nur eigene (ownerUid); die manuell-vor-automatisch + createdAt-Sortierung
   // unten läuft ohnehin in-memory (kein Composite-Index nötig).

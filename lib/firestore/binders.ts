@@ -2,7 +2,7 @@ import {
   collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc,
   where, query, Timestamp, arrayUnion, arrayRemove, writeBatch,
 } from 'firebase/firestore';
-import { db, currentUid } from '../firebase/client';
+import { db, currentUid, waitForUid } from '../firebase/client';
 import { deleteWishlistsForBinder } from './wishlists';
 import type { BinderDoc, BinderPage } from '@/types';
 
@@ -36,7 +36,7 @@ export function cardIdsToPages(cardIds: string[], size: number): BinderPage[] {
 }
 
 export async function getBinders(): Promise<BinderDoc[]> {
-  const uid = currentUid();
+  const uid = await waitForUid();
   if (!uid) return [];
   // Nur eigene (ownerUid); Sortierung nach sortOrder in-memory (kein Composite-
   // Index nötig, siehe cards.ts).

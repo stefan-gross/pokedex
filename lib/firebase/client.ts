@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app'
-import { getAuth } from 'firebase/auth'
+import { getAuth, onIdTokenChanged } from 'firebase/auth'
 import { initializeFirestore, getFirestore } from 'firebase/firestore'
 
 const firebaseConfig = {
@@ -21,6 +21,34 @@ export const auth = getAuth(app)
  *  `ignoreUndefinedProperties` ist ein undefined-Wert beim Write unkritisch. */
 export function currentUid(): string | undefined {
   return auth.currentUser?.uid ?? undefined
+}
+
+// uid für owner-gescopte READS: direkt nach dem Login/Seitenladen ist
+// `auth.currentUser` oft noch `null` (Session-Restore aus IndexedDB läuft
+// async). Ein sofortiges `currentUid()` → undefined → Reads liefern `[]`
+// („0 Sammlungen", lädt endlos). `waitForUid` wartet auf den ersten echten
+// User (oder bis Timeout wirklich ausgeloggt) — analog zu `waitForAuthUser`
+// in rest-shared.ts. Ein `null`-Ergebnis wird NICHT gecacht, damit ein
+// späterer Read einen inzwischen wiederhergestellten Login aufgreift.
+const UID_WAIT_MS = 5000
+let uidReadyPromise: Promise<string | null> | null = null
+export function waitForUid(): Promise<string | null> {
+  if (auth.currentUser) return Promise.resolve(auth.currentUser.uid)
+  if (!uidReadyPromise) {
+    uidReadyPromise = new Promise<string | null>(resolve => {
+      let settled = false
+      const finish = (u: string | null) => {
+        if (settled) return
+        settled = true
+        unsubscribe()
+        resolve(u)
+      }
+      const unsubscribe = onIdTokenChanged(auth, user => { if (user) finish(user.uid) })
+      setTimeout(() => finish(auth.currentUser?.uid ?? null), UID_WAIT_MS)
+    })
+    uidReadyPromise.then(u => { if (!u) uidReadyPromise = null })
+  }
+  return uidReadyPromise
 }
 // ignoreUndefinedProperties: Felder mit Wert undefined werden stillschweigend weggelassen
 // experimentalAutoDetectLongPolling: der Firestore-Client nutzt sonst WebChannel-
