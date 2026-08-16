@@ -1,6 +1,6 @@
 'use client';
 
-import { useId } from 'react';
+import { useId, memo } from 'react';
 import { ExclamationMark } from '@/lib/binder-icons';
 import { LanguageFlag } from '@/components/card/LanguageFlag';
 import type { CardInfo } from '@/lib/card-info';
@@ -180,7 +180,11 @@ export function WishlistHeart({ manual, auto, width, height, gradId, onImage = f
   );
 }
 
-export function Card({
+// `memo` (unten): große Grids (Set-Detail 250+, Sammlung) rendern sonst bei
+// jedem Preis-Chunk / Detail-Öffnen ALLE Karten neu. Props sind überwiegend
+// primitiv/stabil; wo Aufrufer Inline-Callbacks übergeben, bringt memo nichts,
+// schadet aber nicht.
+function CardImpl({
   card, ownedCards = [], onCardClick, onManualWishlist = false, onAutoWishlist = false, onHeartClick, sublabel, sublabelColor, sublabelLoading,
   numberPrefixCode, numberPrefixSymbolUrl, setCode, price, border, size = 'sm', bare = false,
   missingStyle = getCardVisualTheme().missingStyle,
@@ -428,3 +432,5 @@ export function Card({
     </div>
   );
 }
+
+export const Card = memo(CardImpl);

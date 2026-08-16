@@ -1,6 +1,9 @@
 'use client';
 
-import { pokemonArtworkUrl } from '@/lib/binder-icons';
+// Lokale, vorab optimierte Sprites (public/wall/<dex>.webp, je ~96px, ~4KB) —
+// bewusst NICHT das große GitHub-Artwork (pokemonArtworkUrl), das ~6–12 MB auf
+// den Login-/Splash-Pfad zog. Erzeugt mit scripts (siehe Commit).
+const wallSprite = (dex: number) => `/wall/${dex}.webp`;
 
 /** Kuratierte, quer über alle Generationen bekannte Pokémon (nationale
  *  Dex-Nummern) für die Hintergrund-Wand von Startbildschirm/Splash. Bewusst
@@ -42,7 +45,7 @@ export function PokemonWall({ className = '' }: { className?: string }) {
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 key={ri}
-                src={pokemonArtworkUrl(dex)}
+                src={wallSprite(dex)}
                 alt=""
                 loading="lazy"
                 className="w-full aspect-square object-contain p-1.5 select-none"
