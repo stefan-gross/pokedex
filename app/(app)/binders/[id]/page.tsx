@@ -18,7 +18,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   getBinder, deleteBinderCascade, setBinderPages, cardIdsToPages,
-  ensureDefaultBinder, addCardToBinder, addCardsToBinder, removeCardFromOtherBinders,
+  ensureDefaultBinder, addCardsToBinder, removeCardFromOtherBinders,
   setCardExclusiveBinder, moveCardsToBinderExclusive,
 } from '@/lib/firestore/binders';
 import { syncTemplateBinders } from '@/lib/template-binders/sync';
@@ -514,9 +514,7 @@ export default function BinderDetailPage({ params }: Props) {
     if (cardIdsOnSheet.length > 0) {
       try {
         const defaultId = await ensureDefaultBinder();
-        for (const cid of cardIdsOnSheet) {
-          await addCardToBinder(defaultId, cid);
-        }
+        await addCardsToBinder(defaultId, cardIdsOnSheet);
       } catch (e) {
         console.error('[binder] cascade to default failed', e);
       }

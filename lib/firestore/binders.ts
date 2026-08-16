@@ -181,9 +181,9 @@ export async function deleteBinderCascade(binder: BinderDoc): Promise<void> {
   if (binder.cardIds.length > 0) {
     const defaultId = await ensureDefaultBinder();
     if (defaultId !== binder.id) {
-      for (const cid of binder.cardIds) {
-        await addCardToBinder(defaultId, cid);
-      }
+      // Ein gebatchter arrayUnion-Write statt N sequentieller Einzel-Writes
+      // auf dasselbe Doc.
+      await addCardsToBinder(defaultId, binder.cardIds);
     }
   }
   // Ist es eine automatische (Vorlagen-)Sammlung, auch ihre gekoppelte
