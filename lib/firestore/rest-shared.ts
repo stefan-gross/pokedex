@@ -60,6 +60,14 @@ function waitForAuthUser(): Promise<User | null> {
   return authReadyPromise;
 }
 
+/** uid des eingeloggten Nutzers für owner-scoped REST-Queries (IDOR-Härtung).
+ *  Wartet wie `getAuthHeader` auf den Auth-Restore, damit der erste
+ *  Dashboard-Read nicht token-/uid-los ins Leere läuft. */
+export async function restOwnerUid(): Promise<string | null> {
+  const u = auth.currentUser ?? await waitForAuthUser();
+  return u?.uid ?? null;
+}
+
 /** Firebase-ID-Token holen, falls eingeloggt — sonst leerer Header (Rule
  *  entscheidet dann serverseitig, ob der Request trotzdem durchgeht). */
 export async function getAuthHeader(): Promise<Record<string, string>> {

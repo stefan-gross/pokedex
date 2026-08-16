@@ -1,6 +1,6 @@
 import {
   collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc,
-  orderBy, query, Timestamp, writeBatch, arrayUnion, runTransaction,
+  where, query, Timestamp, writeBatch, arrayUnion, runTransaction,
 } from 'firebase/firestore';
 import { db, currentUid } from '../firebase/client';
 import type { WishlistDoc, WishlistItem } from '@/types';
@@ -8,7 +8,11 @@ import type { WishlistDoc, WishlistItem } from '@/types';
 const COL = 'wishlists';
 
 export async function getWishlists(): Promise<WishlistDoc[]> {
-  const snap = await getDocs(query(collection(db, COL), orderBy('createdAt', 'desc')));
+  const uid = currentUid();
+  if (!uid) return [];
+  // Nur eigene (ownerUid); die manuell-vor-automatisch + createdAt-Sortierung
+  // unten läuft ohnehin in-memory (kein Composite-Index nötig).
+  const snap = await getDocs(query(collection(db, COL), where('ownerUid', '==', uid)));
   const lists = snap.docs.map(d => ({ id: d.id, ...d.data() } as WishlistDoc));
   // Manuelle Listen zuerst (nach nutzerdefinierter sortOrder, Altbestand ohne
   // sortOrder ans Ende), automatische (Vorlagen-)Listen danach. `orderBy` auf

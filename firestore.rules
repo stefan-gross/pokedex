@@ -2,24 +2,38 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Nutzer-Sammlung — nur eingeloggte User
+    // IDOR-Härtung: Nutzer-Dokumente gehören genau einer uid (`ownerUid`).
+    // Lesen/Ändern/Löschen nur für den Besitzer; beim Anlegen muss ownerUid die
+    // eigene uid sein. Queries MÜSSEN nach ownerUid filtern (siehe lib/firestore/*),
+    // sonst lehnt Firestore die List-Query komplett ab. Bestand ist per
+    // /api/admin/backfill-owner gestempelt.
+    function signedIn() { return request.auth != null; }
+    function owns(res)  { return signedIn() && res.data.ownerUid == request.auth.uid; }
+    function createsOwn() { return signedIn() && request.resource.data.ownerUid == request.auth.uid; }
+
     match /cards/{id} {
-      allow read, write: if request.auth != null;
+      allow read, update, delete: if owns(resource);
+      allow create: if createsOwn();
     }
+    // Preis-Historie (Unter-Collection): an den Besitz der Elternkarte gebunden.
     match /cards/{cardId}/priceHistory/{id} {
-      allow read, write: if request.auth != null;
+      allow read, write: if signedIn()
+        && get(/databases/$(database)/documents/cards/$(cardId)).data.ownerUid == request.auth.uid;
     }
     match /binders/{id} {
-      allow read, write: if request.auth != null;
+      allow read, update, delete: if owns(resource);
+      allow create: if createsOwn();
     }
     match /wishlists/{id} {
-      allow read, write: if request.auth != null;
+      allow read, update, delete: if owns(resource);
+      allow create: if createsOwn();
     }
 
     // Scan-Historie (Testmodus): zuletzt gesendete Scan-Bilder + Ergebnis,
-    // geteilt über alle Geräte des Nutzers (iPhone ↔ localhost).
+    // geteilt über alle Geräte DESSELBEN Nutzers (iPhone ↔ localhost).
     match /scan_history/{id} {
-      allow read, write: if request.auth != null;
+      allow read, update, delete: if owns(resource);
+      allow create: if createsOwn();
     }
 
     // Pokémon-Kartenkatalog — öffentliche Daten, kein Auth nötig

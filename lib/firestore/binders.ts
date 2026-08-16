@@ -1,6 +1,6 @@
 import {
   collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc,
-  orderBy, query, Timestamp, arrayUnion, arrayRemove, writeBatch,
+  where, query, Timestamp, arrayUnion, arrayRemove, writeBatch,
 } from 'firebase/firestore';
 import { db, currentUid } from '../firebase/client';
 import { deleteWishlistsForBinder } from './wishlists';
@@ -36,8 +36,14 @@ export function cardIdsToPages(cardIds: string[], size: number): BinderPage[] {
 }
 
 export async function getBinders(): Promise<BinderDoc[]> {
-  const snap = await getDocs(query(collection(db, COL), orderBy('sortOrder')));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as BinderDoc));
+  const uid = currentUid();
+  if (!uid) return [];
+  // Nur eigene (ownerUid); Sortierung nach sortOrder in-memory (kein Composite-
+  // Index nötig, siehe cards.ts).
+  const snap = await getDocs(query(collection(db, COL), where('ownerUid', '==', uid)));
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() } as BinderDoc))
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 }
 
 export async function getBinder(id: string): Promise<BinderDoc | null> {

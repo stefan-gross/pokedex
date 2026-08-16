@@ -1,8 +1,7 @@
 'use client';
 
 import {
-  collection, addDoc, getDocs, deleteDoc, query, orderBy, limit,
-  getCountFromServer,
+  collection, addDoc, getDocs, deleteDoc, query, where,
 } from 'firebase/firestore';
 import { db, currentUid } from '../firebase/client';
 
@@ -36,9 +35,10 @@ const MAX_ENTRIES = 20;
  *  geschluckt (Historie ist reiner Test-Komfort, nie geschäftskritisch). */
 export async function saveScan(entry: Omit<ScanHistoryEntry, 'id' | 'ts'> & { ts?: number }): Promise<void> {
   try {
+    const uid = currentUid();
     const ts = entry.ts ?? Date.now();
     await addDoc(collection(db, COL), {
-      ownerUid: currentUid(),
+      ownerUid: uid,
       imageBase64: entry.imageBase64,
       mimeType: entry.mimeType,
       label: entry.label,
@@ -46,13 +46,15 @@ export async function saveScan(entry: Omit<ScanHistoryEntry, 'id' | 'ts'> & { ts
       cardId: entry.cardId,
       ts,
     });
-    // Kürzen: Anzahl serverseitig zählen (billig, ohne Bilder zu laden), dann die
-    // ältesten Überzähligen löschen.
-    const cntSnap = await getCountFromServer(collection(db, COL));
-    const excess = cntSnap.data().count - MAX_ENTRIES;
-    if (excess > 0) {
-      const oldest = await getDocs(query(collection(db, COL), orderBy('ts', 'asc'), limit(excess)));
-      await Promise.all(oldest.docs.map(d => deleteDoc(d.ref)));
+    // Kürzen: nur eigene Scans (ownerUid), älteste Überzählige löschen.
+    // In-Memory sortiert → kein Composite-Index (ownerUid+ts) nötig.
+    if (uid) {
+      const own = await getDocs(query(collection(db, COL), where('ownerUid', '==', uid)));
+      const docs = own.docs
+        .map(d => ({ ref: d.ref, ts: (d.get('ts') as number) ?? 0 }))
+        .sort((a, b) => a.ts - b.ts);
+      const excess = docs.length - MAX_ENTRIES;
+      if (excess > 0) await Promise.all(docs.slice(0, excess).map(d => deleteDoc(d.ref)));
     }
   } catch { /* Historie ist optional */ }
 }
@@ -60,11 +62,13 @@ export async function saveScan(entry: Omit<ScanHistoryEntry, 'id' | 'ts'> & { ts
 /** Letzte MAX_ENTRIES, neueste zuerst. */
 export async function listScans(): Promise<ScanHistoryEntry[]> {
   try {
-    const snap = await getDocs(query(collection(db, COL), orderBy('ts', 'desc'), limit(MAX_ENTRIES)));
-    return snap.docs.map(d => {
-      const data = d.data() as Omit<ScanHistoryEntry, 'id'>;
-      return { id: d.id, ...data };
-    });
+    const uid = currentUid();
+    if (!uid) return [];
+    const snap = await getDocs(query(collection(db, COL), where('ownerUid', '==', uid)));
+    return snap.docs
+      .map(d => ({ id: d.id, ...(d.data() as Omit<ScanHistoryEntry, 'id'>) }))
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, MAX_ENTRIES);
   } catch {
     return [];
   }
@@ -72,7 +76,9 @@ export async function listScans(): Promise<ScanHistoryEntry[]> {
 
 export async function clearScans(): Promise<void> {
   try {
-    const snap = await getDocs(collection(db, COL));
+    const uid = currentUid();
+    if (!uid) return;
+    const snap = await getDocs(query(collection(db, COL), where('ownerUid', '==', uid)));
     await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
   } catch { /* egal */ }
 }
