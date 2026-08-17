@@ -126,7 +126,7 @@ export default function BindersPage() {
         <div className="glass rounded-[20px] px-4 pt-3 pb-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Sammlungen</h1>
-            <p className="text-role-label text-glass-muted">{binders.length} {binders.length === 1 ? 'Sammlung' : 'Sammlungen'}</p>
+            <p className="text-role-label text-glass-muted">{loading ? '…' : `${binders.length} ${binders.length === 1 ? 'Sammlung' : 'Sammlungen'}`}</p>
           </div>
           {/* Rechts: im Bearbeiten-Modus „Fertig", sonst zwei icon-only Buttons —
               „+“ (neue Sammlung) und ein Stift (Bearbeiten-Modus starten;

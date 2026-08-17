@@ -38,6 +38,7 @@ import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { CardImage } from '@/components/card/CardImage';
 import { Card } from '@/components/card/Card';
 import { Button } from '@/components/ui/button';
+import { ErrorRetry } from '@/components/ui/ErrorRetry';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Progress } from '@/components/ui/progress';
 import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal';
@@ -130,6 +131,7 @@ export default function BinderDetailPage({ params }: Props) {
   }, [cards]);
   const [pages, setPages] = useState<BinderPage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [view, setView] = useState<View>('binder');
   const [pageIdx, setPageIdx] = useState<number>(0);
@@ -192,6 +194,7 @@ export default function BinderDetailPage({ params }: Props) {
   const isBox = binder?.collectionType === 'box';
 
   const load = useCallback(async () => {
+    setError(false);
     try {
       // Binder + ALLE eigenen Karten in nur ZWEI Reads laden und die
       // enthaltenen Karten per Map auflösen — statt (früher) ein getDoc PRO
@@ -211,6 +214,7 @@ export default function BinderDetailPage({ params }: Props) {
       if (b.collectionType === 'box') setView('grid');
     } catch (e) {
       console.error('[binder] load error', e);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -538,6 +542,13 @@ export default function BinderDetailPage({ params }: Props) {
     persistPages(sheetsToPages(arrayMove(sheets, from, to)));
   };
 
+  if (error) {
+    return (
+      <div className="min-h-screen">
+        <ErrorRetry onRetry={load} message="Sammlung konnte nicht geladen werden." />
+      </div>
+    );
+  }
   if (loading || !binder) {
     return (
       <div className="flex items-center justify-center min-h-screen">

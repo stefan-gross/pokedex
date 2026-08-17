@@ -37,6 +37,7 @@ export default function DashboardPage() {
   const [setView, setSetView]       = useState<SetView>('recent');
   const [cards, setCards]           = useState<CardDoc[] | null>(null);
   const [binders, setBinders]       = useState<BinderDoc[]>([]);
+  const [bindersLoaded, setBindersLoaded] = useState(false);
   const [wishlistCount, setWishlistCount] = useState<number | null>(null);
   const [setTotals, setSetTotals]   = useState<Record<string, number>>({});
   const [setMeta,   setSetMeta]     = useState<Record<string, { nameDe?: string; logoDe?: string; ptcgoCode?: string; symbolUrl?: string; series?: string }>>({});
@@ -61,7 +62,7 @@ export default function DashboardPage() {
         if (linked > 0) getCardsRest().then(setCards).catch(() => {});
       }
     }).catch(() => setCards([]));
-    getBindersRest().then(setBinders).catch(() => {});
+    getBindersRest().then(bs => { setBinders(bs); setBindersLoaded(true); }).catch(() => {});
     // (catalogById wird in eigenem Effekt aus `cards` aufgebaut, s.u.)
     getWishlistsRest()
       .then(wls => setWishlistCount(wls.reduce((s, w) => s + w.items.filter(i => !i.acquired).length, 0)))
@@ -237,7 +238,7 @@ export default function DashboardPage() {
             </>
           ) : (
             <>
-              <StatChip label="Sammlungen" value={String(binders.length)} />
+              <StatChip label="Sammlungen" value={bindersLoaded ? String(binders.length) : '—'} />
               <StatChip label="Sets" value={String(uniqueSets ?? 0)} />
               <StatChip label="Wunschliste" value={wishlistCount == null ? '—' : String(wishlistCount)} />
             </>

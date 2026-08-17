@@ -14,6 +14,7 @@ import { getBinders } from '@/lib/firestore/binders';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { LegendButton } from '@/components/ui/LegendButton';
 import { Button } from '@/components/ui/button';
+import { ErrorRetry } from '@/components/ui/ErrorRetry';
 import { BinderIcon } from '@/lib/binder-icons';
 import { AutomaticCornerBadge } from '@/components/binder/CollectionTypeBadge';
 import { CreateWishlistModal } from '@/components/wishlist/CreateWishlistModal';
@@ -29,10 +30,12 @@ export default function WishlistOverviewPage() {
   const [lists, setLists] = useState<WishlistDoc[]>([]);
   const [binders, setBinders] = useState<BinderDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
   const load = useCallback(async () => {
+    setError(false);
     try {
       const [wl, bs] = await Promise.all([getWishlists(), getBinders()]);
       // Verwaiste Auto-Wunschlisten (Vorlagen-Sammlung gelöscht/umbenannt)
@@ -41,6 +44,9 @@ export default function WishlistOverviewPage() {
       const pruned = await pruneOrphanTemplateWishlists(wl, bs);
       setLists(pruned);
       setBinders(bs);
+    } catch (e) {
+      console.error('[wishlist] load error', e);
+      setError(true);
     } finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -115,7 +121,9 @@ export default function WishlistOverviewPage() {
       </div>
 
       <div className="px-4 py-4">
-        {lists.length === 0 ? (
+        {error ? (
+          <ErrorRetry onRetry={load} message="Wunschlisten konnten nicht geladen werden." />
+        ) : lists.length === 0 ? (
           <div className="text-center pt-16 space-y-3">
             <div className="flex justify-center"><Heart size={48} className="text-glass-muted" /></div>
             <p className="text-role-title text-glass">Noch keine Wunschliste</p>

@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { ChevronLeft, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ErrorRetry } from '@/components/ui/ErrorRetry';
 import { getCards } from '@/lib/firestore/cards';
 import { SERIES_NAMES_DE } from '@/lib/set-names-de';
 import { SetListItem } from '@/components/set/SetListItem';
@@ -41,17 +42,24 @@ export default function SetsPage() {
   const [sets, setSets]   = useState<TcgSet[]>([]);
   const [owned, setOwned] = useState<CardDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(false);
     Promise.all([
-      fetch('/api/sets').then(r => r.json()),
+      fetch('/api/sets').then(r => { if (!r.ok) throw new Error(`sets ${r.status}`); return r.json(); }),
       getCards(),
     ]).then(([setsData, ownedCards]) => {
       setSets(setsData.data ?? []);
       setOwned(ownedCards);
+    }).catch(e => {
+      console.error('[sets] load error', e);
+      setError(true);
     }).finally(() => setLoading(false));
   }, []);
+  useEffect(() => { load(); }, [load]);
 
   // EINDEUTIGE Karten pro setId (Duplikate/Varianten zählen als eine Karte —
   // Dedupe über tcgId; vorläufige Karten ohne tcgId über die Doc-ID).
@@ -114,6 +122,10 @@ export default function SetsPage() {
         <div className="flex justify-center pt-16">
           <div className="w-8 h-8 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
         </div>
+      ) : error ? (
+        <ErrorRetry onRetry={load} message="Sets konnten nicht geladen werden." />
+      ) : groups.length === 0 ? (
+        <p className="text-role-body text-glass-muted text-center pt-16">Keine Sets gefunden.</p>
       ) : (
         <div className="px-4 py-4 space-y-4 pb-8">
           {groups.map(group => {
