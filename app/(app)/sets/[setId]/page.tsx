@@ -20,7 +20,7 @@ import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { CreateTemplateBinderModal } from '@/components/binder/CreateTemplateBinderModal';
-import { CardGrid } from '@/components/card/CardGrid';
+import { CardGrid, CardGridSkeleton } from '@/components/card/CardGrid';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { getRarityGroup, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
@@ -259,6 +259,14 @@ function SetDetailContent() {
     result.sort((a, b) => {
       // Preis: Karten ohne Preisdaten immer ans Ende, unabhängig von der Richtung.
       if (sortField === 'price') {
+        // Während Preise noch chunkweise laden: stabil nach Nummer sortieren,
+        // damit die Karten nicht bei jedem eintreffenden Chunk umspringen. Die
+        // eigentliche Preis-Sortierung greift EINMAL, sobald alles geladen ist.
+        if (pricesLoading) {
+          const na = parseInt(a.number) || 0;
+          const nb = parseInt(b.number) || 0;
+          return na !== nb ? na - nb : a.number.localeCompare(b.number);
+        }
         const pa = priceMap.get(a.id);
         const pb = priceMap.get(b.id);
         if (pa == null && pb == null) return 0;
@@ -282,7 +290,7 @@ function SetDetailContent() {
       return sortDir === 'desc' ? -cmp : cmp;
     });
     return result;
-  }, [cards, filter, search, sortField, sortDir, priceMap, rarityFilter, ownedTcgIds, getRarityGroup]);
+  }, [cards, filter, search, sortField, sortDir, priceMap, pricesLoading, rarityFilter, ownedTcgIds, getRarityGroup]);
 
   const ownedCount = useMemo(() => cards.filter(c => ownedTcgIds.has(c.id)).length, [cards, ownedTcgIds]);
   const totalCount = cards.length;
@@ -460,8 +468,8 @@ function SetDetailContent() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center pt-16">
-          <div className="w-8 h-8 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
+        <div className="px-3 py-3">
+          <CardGridSkeleton />
         </div>
       ) : (
         <>
