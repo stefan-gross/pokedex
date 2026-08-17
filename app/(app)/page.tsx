@@ -127,7 +127,11 @@ export default function DashboardPage() {
     cur.latestAt  = Math.max(cur.latestAt, c.addedAt?.seconds ?? 0);
     setMap.set(c.setId, cur);
   });
-  const allSets = [...setMap.values()];
+  // Karten ohne echte Set-Zuordnung (leere setId = vorläufige/Pending-Scan-
+  // Karten) NICHT als „?"-Set mit kaputtem Link zeigen — separat als klare
+  // „Nicht zugeordnet"-Zeile.
+  const allSets = [...setMap.values()].filter(s => s.setId !== '');
+  const unassignedCount = setMap.get('')?.owned ?? 0;
 
   // Lade Catalog-Totals für die angezeigten Sets
   const displayedSets: SetEntry[] = (() => {
@@ -306,6 +310,20 @@ export default function DashboardPage() {
               >
                 Alle Zyklen & Sets ansehen
               </Link>
+            </div>
+          )}
+
+          {/* Vorläufige Scan-Karten ohne Set-Zuordnung — klar benannt statt als
+              „?"-Set mit kaputtem Link. Nicht klickbar. */}
+          {unassignedCount > 0 && (
+            <div className="glass rounded-[20px] px-4 py-3 mt-2 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-glass">Nicht zugeordnet</p>
+                <p className="text-role-label text-glass-muted">Scan-Karten ohne Set</p>
+              </div>
+              <span className="text-role-label text-glass-muted shrink-0 tabular-nums">
+                {unassignedCount} {unassignedCount === 1 ? 'Karte' : 'Karten'}
+              </span>
             </div>
           )}
         </section>
