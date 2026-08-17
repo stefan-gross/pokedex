@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { verifySessionToken, SESSION_COOKIE } from '@/lib/auth';
+import { verifySession, SESSION_COOKIE } from '@/lib/auth';
 
 /** Erlaubte Admin-uids (Firebase `sub`) aus `ADMIN_UIDS` (kommagetrennt). */
 function adminUids(): string[] {
@@ -27,7 +27,7 @@ export async function isAdminRequest(req: NextRequest): Promise<boolean> {
 
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   if (!token) return false;
-  const payload = await verifySessionToken(token);
+  const payload = await verifySession(token);
   if (!payload) return false;
   const uid = (payload.sub as string | undefined) ?? (payload.user_id as string | undefined) ?? '';
   const allow = adminUids();

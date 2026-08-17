@@ -1,5 +1,6 @@
 import { initializeApp, getApps, cert, App } from 'firebase-admin/app';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
+import { getAuth as getAdminAuthSdk, type Auth } from 'firebase-admin/auth';
 
 let app: App;
 let adminDb: Firestore;
@@ -21,6 +22,13 @@ function getAdminApp(): App {
     }
   }
   return app;
+}
+
+/** Admin-Auth (für createSessionCookie im Login-Handler). Wirft, wenn die
+ *  Admin-Env-Vars fehlen (z.B. auf Vercel ohne gesetzte Credentials) — der
+ *  Aufrufer fängt das ab und fällt auf den ID-Token-Cookie zurück. */
+export function getAdminAuth(): Auth {
+  return getAdminAuthSdk(getAdminApp());
 }
 
 export function getAdminDb(): Firestore {

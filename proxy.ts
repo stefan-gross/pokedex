@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifySessionToken, SESSION_COOKIE } from '@/lib/auth'
+import { verifySession, SESSION_COOKIE } from '@/lib/auth'
 
 // /api/cron/* prüft selbst CRON_SECRET — Middleware muss durchlassen,
 // damit Vercel-Cron-Jobs (kein Session-Cookie) den Handler erreichen.
@@ -20,7 +20,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
-  const payload = await verifySessionToken(token)
+  const payload = await verifySession(token)
   if (!payload) {
     const loginUrl = new URL('/login', request.url)
     const response = NextResponse.redirect(loginUrl)
