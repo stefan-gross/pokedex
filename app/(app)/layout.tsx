@@ -14,7 +14,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <ColdStartSplash />
+      {/* Splash NICHT auf dem Scanner: der hat eigenes dunkles Kamera-Chrome,
+          und iOS lädt die PWA bei Kamera-Nutzung gern neu (neue Session) → der
+          Splash würde sonst mitten im Scannen auftauchen. */}
+      {!isScanner && <ColdStartSplash />}
       <AuthRefresh />
       {!isScanner && <GlassBackground />}
       {/* Covers iPhone status bar / Dynamic Island area */}
