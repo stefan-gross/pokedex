@@ -10,6 +10,7 @@ import {
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { getBinders, deleteBinderCascade, updateBinder, reorderBinders } from '@/lib/firestore/binders';
+import { formatEUR } from '@/lib/format';
 import { getCards } from '@/lib/firestore/cards';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { CreateTemplateBinderModal } from '@/components/binder/CreateTemplateBinderModal';
@@ -485,7 +486,7 @@ function BinderTile({ binder, binderCards, cardsLoaded, editMode, onDelete }: { 
         >
           <span className="font-sans font-bold truncate" style={{ fontSize: 13, color: bandTextColor }}>
             {!totalValue.loading && totalValue.withPrice > 0
-              ? `≈ ${totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
+              ? `≈ ${formatEUR(totalValue.total)}`
               : ''}
           </span>
           <span className="font-sans font-bold shrink-0 tabular-nums" style={{ fontSize: 13, color: bandTextColor }}>

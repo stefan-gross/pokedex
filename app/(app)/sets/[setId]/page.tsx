@@ -22,9 +22,10 @@ import { Progress } from '@/components/ui/progress';
 import { CreateTemplateBinderModal } from '@/components/binder/CreateTemplateBinderModal';
 import { CardGrid, CardGridSkeleton } from '@/components/card/CardGrid';
 import { ErrorRetry } from '@/components/ui/ErrorRetry';
+import { formatEUR } from '@/lib/format';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
-import { getRarityGroup, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
+import { rarityLabelOf, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { filterCardsByQuery } from '@/lib/search/card-query';
 import { useWishlist } from '@/lib/hooks/use-wishlist';
@@ -255,8 +256,7 @@ function SetDetailContent() {
 
     if (rarityFilter.size > 0) {
       result = result.filter(c => {
-        const g = c.rarity ? getRarityGroup(c.rarity) : null;
-        return rarityFilter.has(g?.label ?? 'Sonstige');
+        return rarityFilter.has(rarityLabelOf(c.rarity));
       });
     }
 
@@ -294,7 +294,7 @@ function SetDetailContent() {
       return sortDir === 'desc' ? -cmp : cmp;
     });
     return result;
-  }, [cards, filter, search, sortField, sortDir, priceMap, pricesLoading, rarityFilter, ownedTcgIds, getRarityGroup]);
+  }, [cards, filter, search, sortField, sortDir, priceMap, pricesLoading, rarityFilter, ownedTcgIds]);
 
   const ownedCount = useMemo(() => cards.filter(c => ownedTcgIds.has(c.id)).length, [cards, ownedTcgIds]);
   const totalCount = cards.length;
@@ -314,7 +314,7 @@ function SetDetailContent() {
   }, [cards, ownedTcgIds, priceMap]);
   // Gesamtwert des kompletten Sets = besessen + fehlend.
   const fullValue = ownedValue + missingValue;
-  const eur = (n: number) => n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+  const eur = (n: number) => formatEUR(n);
 
   // Gibt es für dieses Set bereits eine automatische (Master-Set-)Sammlung?
   // Dann keinen „Sammlung erstellen"-Button anbieten.

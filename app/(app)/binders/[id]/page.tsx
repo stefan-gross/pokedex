@@ -39,6 +39,7 @@ import { CardImage } from '@/components/card/CardImage';
 import { Card } from '@/components/card/Card';
 import { Button } from '@/components/ui/button';
 import { ErrorRetry } from '@/components/ui/ErrorRetry';
+import { formatEUR } from '@/lib/format';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Progress } from '@/components/ui/progress';
 import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal';
@@ -624,8 +625,8 @@ export default function BinderDetailPage({ params }: Props) {
                 {templateProgress.owned} / {templateProgress.total} Karten
                 {!totalValue.loading && (totalValue.withPrice > 0 || missingValue > 0) && (
                   <span className="text-role-label text-glass-muted">
-                    {' · ≈'}{totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
-                    {' (≈'}{(totalValue.total + missingValue).toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}{')'}
+                    {' · ≈'}{formatEUR(totalValue.total)}
+                    {' (≈'}{formatEUR(totalValue.total + missingValue)}{')'}
                   </span>
                 )}
               </span>
@@ -707,7 +708,7 @@ export default function BinderDetailPage({ params }: Props) {
             ) : (
               <span className="text-role-label font-semibold text-right shrink-0" style={{ color: binderColor }}>
                 {!totalValue.loading && totalValue.withPrice > 0
-                  ? `≈${totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}`
+                  ? `≈${formatEUR(totalValue.total)}`
                   : ''}
                 {' · '}{cards.length} Karten
               </span>
@@ -1808,7 +1809,7 @@ function CardInfoOverlay({
         <span className="truncate">{[number, variantLabel].filter(Boolean).join(' · ')}</span>
         {price != null && (
           <span className="font-semibold shrink-0">
-            {price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: price < 10 ? 2 : 0 })}
+            {formatEUR(price, price < 10 ? 2 : 0)}
           </span>
         )}
       </div>

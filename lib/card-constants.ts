@@ -288,6 +288,13 @@ export function getRarityGroup(rarity: string): RarityGroup | undefined {
   return RARITY_GROUPS.find(g => g.keys.some(k => lower === k));
 }
 
+/** Gruppen-Label einer Rarity, „Sonstige" als Fallback (auch für leere/fehlende
+ *  Rarity) — vorher an ~5 Stellen als `getRarityGroup(r)?.label ?? 'Sonstige'`
+ *  dupliziert. */
+export function rarityLabelOf(rarity: string | null | undefined): string {
+  return (rarity ? getRarityGroup(rarity) : undefined)?.label ?? 'Sonstige';
+}
+
 /** Firestore-`in`-Werte für eine Rarity-Gruppe (per Label). Die `keys` sind
  *  kleingeschrieben (für den case-insensitiven getRarityGroup-Abgleich), der
  *  Katalog speichert `rarity` aber in Originalschreibweise ("Common"/"Rare Holo")

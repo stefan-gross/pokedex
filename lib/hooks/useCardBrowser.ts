@@ -12,7 +12,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { browseCatalog, getCatalogCardsByIds, type BrowseSortKey, type BrowseFilter, type CatalogCard } from '@/lib/firestore/catalog';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
-import { getRarityGroup, rarityMatchValues } from '@/lib/card-constants';
+import { rarityLabelOf, rarityMatchValues } from '@/lib/card-constants';
 import type { QueryDocumentSnapshot } from 'firebase/firestore';
 
 export type CardBrowserFilter = {
@@ -64,7 +64,7 @@ function applyClientFilters(cards: CatalogCard[], f: CardBrowserFilter): Catalog
     r = r.filter(c => f.specialMechanics!.some(s => c.subtypes?.includes(s)));
   }
   if (f.rarity) {
-    r = r.filter(c => (getRarityGroup(c.rarity ?? '')?.label ?? 'Sonstige') === f.rarity);
+    r = r.filter(c => rarityLabelOf(c.rarity) === f.rarity);
   }
   if (f.ownedFilter === 'owned')   r = r.filter(c => f.ownedIds?.has(c.id));
   if (f.ownedFilter === 'missing') r = r.filter(c => !f.ownedIds?.has(c.id));

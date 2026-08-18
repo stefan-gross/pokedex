@@ -1,6 +1,6 @@
 import type { CardInfo } from '@/lib/card-info';
 import type { TcgType } from '@/lib/hooks/useCardBrowser';
-import { getRarityGroup } from '@/lib/card-constants';
+import { rarityLabelOf } from '@/lib/card-constants';
 
 /** Owned-Filter (Alle/Vorhanden/Fehlen) — geteilt zwischen Suche- und
  *  Set-Detailseite. */
@@ -50,7 +50,7 @@ export function applyFacetFilters(cards: CardInfo[], f: FacetState, skip?: Facet
     r = r.filter(c => c.subtypes?.some(s => f.activeSpecialMechanics.has(s)));
   }
   if (skip !== 'rarity' && f.activeRarity) {
-    r = r.filter(c => (getRarityGroup(c.rarity ?? '')?.label ?? 'Sonstige') === f.activeRarity);
+    r = r.filter(c => rarityLabelOf(c.rarity) === f.activeRarity);
   }
   return r;
 }

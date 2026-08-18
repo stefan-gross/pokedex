@@ -9,6 +9,7 @@ import { useTotalValue } from '@/lib/hooks/use-total-value';
 import { getBindersRest } from '@/lib/firestore/binders-rest';
 import { getWishlistsRest } from '@/lib/firestore/wishlists-rest';
 import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
+import { formatEUR } from '@/lib/format';
 import { getSetById } from '@/lib/firestore/sets';
 import { getRarityGroup } from '@/lib/card-constants';
 import { catalogCardToInfo, pendingCardInfo, ownedCardToInfo, type CardInfo } from '@/lib/card-info';
@@ -391,7 +392,7 @@ function ValueHero({ totalOwned, thisWeek, totalValue, heroImgSrc }: {
   const valueLabel = totalValue.loading
     ? '—'
     : totalValue.withPrice > 0
-      ? totalValue.total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
+      ? formatEUR(totalValue.total)
       : '—';
 
   return (

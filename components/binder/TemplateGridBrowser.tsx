@@ -5,7 +5,7 @@ import { getCards } from '@/lib/firestore/cards';
 import { getBinders } from '@/lib/firestore/binders';
 import { resolveTemplateSlots } from '@/lib/template-binders/resolve';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
-import { getRarityGroup } from '@/lib/card-constants';
+import { rarityLabelOf } from '@/lib/card-constants';
 import { filterCardsByQuery } from '@/lib/search/card-query';
 import { pickTrendPrice } from '@/lib/prices/value-tier';
 import { useWishlist } from '@/lib/hooks/use-wishlist';
@@ -158,7 +158,7 @@ export function useTemplateGrid({
     if (filter === 'missing') result = result.filter(c => !ownedTcgIds.has(c.id));
     result = filterCardsByQuery(result, search);
     if (rarityFilter.size > 0) {
-      result = result.filter(c => rarityFilter.has((c.rarity ? getRarityGroup(c.rarity) : null)?.label ?? 'Sonstige'));
+      result = result.filter(c => rarityFilter.has(rarityLabelOf(c.rarity)));
     }
     result.sort((a, b) => {
       if (sortField === 'price') {
