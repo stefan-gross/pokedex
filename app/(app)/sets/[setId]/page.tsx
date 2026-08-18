@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { CreateTemplateBinderModal } from '@/components/binder/CreateTemplateBinderModal';
 import { CardGrid, CardGridSkeleton } from '@/components/card/CardGrid';
+import { ErrorRetry } from '@/components/ui/ErrorRetry';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { getRarityGroup, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
@@ -71,6 +72,7 @@ function SetDetailContent() {
   const [owned, setOwned]           = useState<CardDoc[]>([]);
   const [binders, setBinders]       = useState<BinderDoc[]>([]);
   const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState(false);
 
   // CatalogCard → CardInfo normalisieren — printedTotal/total fehlt am einzelnen
   // Katalog-Dokument, wird hier aus der Set-Kartenzahl ergänzt (für führende
@@ -109,37 +111,39 @@ function SetDetailContent() {
   const [ptcgoCode, setPtcgoCode]   = useState<string | undefined>(undefined);
   const [symbolUrl, setSymbolUrl]   = useState<string | undefined>(undefined);
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      try {
-        const [catalogCards, ownedCards, setsData, bindersData] = await Promise.all([
-          loadSetCards(setId),
-          getCards(),
-          fetch('/api/sets').then(r => r.json()),
-          getBinders(),
-        ]);
-        setRawCards(catalogCards);
-        setOwned(ownedCards);
-        setBinders(bindersData);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const [catalogCards, ownedCards, setsData, bindersData] = await Promise.all([
+        loadSetCards(setId),
+        getCards(),
+        fetch('/api/sets').then(r => { if (!r.ok) throw new Error(`sets ${r.status}`); return r.json(); }),
+        getBinders(),
+      ]);
+      setRawCards(catalogCards);
+      setOwned(ownedCards);
+      setBinders(bindersData);
 
-        const set = (setsData.data ?? []).find((s: {
-          id: string; name: string; nameDe?: string; logoUrl?: string;
-          releaseDate?: string; ptcgoCode?: string; symbolUrl?: string;
-        }) => s.id === setId);
-        if (set) {
-          setNameDe(set.nameDe ?? set.name);
-          if (set.logoUrl)     setLogoDe(set.logoUrl);
-          if (set.releaseDate) setReleaseYear(set.releaseDate.slice(0, 4));
-          if (set.ptcgoCode)   setPtcgoCode(set.ptcgoCode);
-          if (set.symbolUrl)   setSymbolUrl(set.symbolUrl);
-        }
-      } finally {
-        setLoading(false);
+      const set = (setsData.data ?? []).find((s: {
+        id: string; name: string; nameDe?: string; logoUrl?: string;
+        releaseDate?: string; ptcgoCode?: string; symbolUrl?: string;
+      }) => s.id === setId);
+      if (set) {
+        setNameDe(set.nameDe ?? set.name);
+        if (set.logoUrl)     setLogoDe(set.logoUrl);
+        if (set.releaseDate) setReleaseYear(set.releaseDate.slice(0, 4));
+        if (set.ptcgoCode)   setPtcgoCode(set.ptcgoCode);
+        if (set.symbolUrl)   setSymbolUrl(set.symbolUrl);
       }
+    } catch (e) {
+      console.error('[set-detail] load error', e);
+      setError(true);
+    } finally {
+      setLoading(false);
     }
-    load();
   }, [setId]);
+  useEffect(() => { load(); }, [load]);
 
   // Preise beim Öffnen des Sets laden — zweiphasig & nicht-blockierend, damit
   // sich die Liste OHNE erneutes Öffnen füllt: Phase 1 merged sofort den
@@ -467,7 +471,9 @@ function SetDetailContent() {
         </div>
       </div>
 
-      {loading ? (
+      {error ? (
+        <ErrorRetry onRetry={load} message="Set konnte nicht geladen werden." />
+      ) : loading ? (
         <div className="px-3 py-3">
           <CardGridSkeleton />
         </div>

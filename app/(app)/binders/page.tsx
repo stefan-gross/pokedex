@@ -28,6 +28,7 @@ import type { BinderDoc, CardDoc } from '@/types';
 export default function BindersPage() {
   const [binders, setBinders] = useState<BinderDoc[]>([]);
   const [cards, setCards] = useState<CardDoc[]>([]);
+  const [cardsLoaded, setCardsLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [createMode, setCreateMode] = useState<'closed' | 'choose' | 'manual' | 'template'>('closed');
   const [templateKind, setTemplateKind] = useState<'pokedex' | 'pokemon' | 'masterSet' | 'artist' | null>(null);
@@ -69,7 +70,7 @@ export default function BindersPage() {
     }
     // Karten separat und NICHT blockierend nachladen — nur für Kartenzähler/Wert
     // in der Banderole. Die Cover stehen davon unabhängig sofort.
-    getCards().then(setCards).catch(() => {});
+    getCards().then(cs => { setCards(cs); setCardsLoaded(true); }).catch(() => {});
   };
 
   useEffect(() => { load(); }, []);
@@ -176,6 +177,7 @@ export default function BindersPage() {
                     key={binder.id}
                     binder={binder}
                     binderCards={binderCards}
+                    cardsLoaded={cardsLoaded}
                     editMode={editMode}
                     onDelete={() => handleDeleteBinder(binder)}
                   />
@@ -299,7 +301,7 @@ function banderoleClipPath(tileWidthPx: number): string {
  *  Wert/Kartenanzahl als Banderole (eigene Farbfläche, etwas heller als der
  *  Binder, mit Leder-Körnung) unten. Boxen nutzen automatisch das Box-Icon
  *  statt des Ordner-Icons (binder.icon-Fallback), sehen sonst identisch aus. */
-function BinderTile({ binder, binderCards, editMode, onDelete }: { binder: BinderDoc; binderCards: CardDoc[]; editMode: boolean; onDelete: () => void }) {
+function BinderTile({ binder, binderCards, cardsLoaded, editMode, onDelete }: { binder: BinderDoc; binderCards: CardDoc[]; cardsLoaded: boolean; editMode: boolean; onDelete: () => void }) {
   const isBox     = binder.collectionType === 'box';
   // Vorlagen-Sammlung: ein Slot = eine Karte → eindeutig nach tcgId zählen
   // (Duplikate/Varianten als eine Karte, wie die Set-Übersicht). Sonst alle
@@ -488,7 +490,7 @@ function BinderTile({ binder, binderCards, editMode, onDelete }: { binder: Binde
           </span>
           <span className="font-sans font-bold shrink-0 tabular-nums" style={{ fontSize: 13, color: bandTextColor }}>
             {templateTotal != null
-              ? `${cardCount} / ${templateTotal} Karten`
+              ? `${(binder.template && !cardsLoaded) ? '…' : cardCount} / ${templateTotal} Karten`
               : `${cardCount} ${cardCount === 1 ? 'Karte' : 'Karten'}`}
           </span>
         </div>

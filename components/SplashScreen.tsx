@@ -18,7 +18,9 @@ export function SplashScreen({ visible = true }: { visible?: boolean }) {
       style={{
         opacity: visible ? 1 : 0,
         transition: 'opacity 450ms ease-out',
-        pointerEvents: visible ? 'auto' : 'none',
+        // Reine Deko (aria-hidden) → NIE Taps schlucken, auch nicht während der
+        // ~1s Sichtbarkeit beim Cold-Start.
+        pointerEvents: 'none',
       }}
       aria-hidden={!visible}
     >
