@@ -77,6 +77,9 @@ export interface BinderDoc {
   id: string;
   /** Firebase-uid des Besitzers (IDOR-Härtung, siehe CardDoc.ownerUid). */
   ownerUid?: string;
+  /** Vorlagen-Sammlungen: persistierte Gesamt-Slotzahl (beim Sync geschrieben),
+   *  damit die Übersichts-Kachel „x / N" ohne eigenen Katalog-Scan zeigt (A1). */
+  slotTotal?: number;
   name: string;
   description?: string;
   color?: string;

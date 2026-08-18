@@ -23,6 +23,10 @@ export interface BinderSyncPlan {
   loserCardIds: string[];
   wishlistItems: WishlistItem[];
   changedCardEvents: SlotChangeEvent[];
+  /** Gesamtzahl der Vorlagen-Slots (= resolveTemplateSlots().length). Wird auf
+   *  dem Binder-Doc persistiert, damit die Übersichts-Kachel die Zahl NICHT per
+   *  eigenem ~1025-Query-Scan nachladen muss (A1). */
+  slotTotal: number;
 }
 
 /** Baut das Seiten-Layout eines Vorlagen-Binders direkt aus der geordneten
@@ -109,5 +113,5 @@ export async function computeBinderSyncPlan(
     });
   });
 
-  return { pages, pagesChanged, winnerCardIds, loserCardIds, wishlistItems, changedCardEvents };
+  return { pages, pagesChanged, winnerCardIds, loserCardIds, wishlistItems, changedCardEvents, slotTotal: slots.length };
 }

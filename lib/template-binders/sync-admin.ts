@@ -66,6 +66,11 @@ export async function syncTemplateBindersAdmin(opts?: { binderIds?: string[] }):
 
       const plan = await computeBinderSyncPlan(binder, candidateCards, wishlist.items);
 
+      // Slot-Gesamtzahl persistieren (A1) — siehe sync.ts.
+      if (binder.slotTotal !== plan.slotTotal) {
+        await db.collection('binders').doc(binder.id).update({ slotTotal: plan.slotTotal });
+      }
+
       // Ein Vorlagen-Binder hält immer genau EIN Exemplar je Karte (den Slot-
       // Gewinner) — alles andere im Pool (verdrängte Varianten, Duplikate) wird
       // nach „Unsortiert" ausgeräumt UND aus dem Binder entfernt (siehe sync.ts).

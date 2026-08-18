@@ -313,16 +313,22 @@ function BinderTile({ binder, binderCards, cardsLoaded, editMode, onDelete }: { 
   const totalValue = useTotalValue(binderCards);
   // Automatische Sammlung: Gesamt-Slotzahl (max. Karten) auflösen, damit die
   // Banderole „besessen / max" zeigt statt nur der besessenen Anzahl.
-  const [templateTotal, setTemplateTotal] = useState<number | null>(null);
+  // A1: persistierte Slot-Gesamtzahl direkt nutzen (beim Sync geschrieben) →
+  // KEIN ~1025-Query-Katalog-Scan pro Kachel. Nur Legacy-Binder ohne
+  // persistierten Wert lösen einmalig per resolveTemplateSlots auf.
+  const [templateTotal, setTemplateTotal] = useState<number | null>(
+    binder.template ? (binder.slotTotal ?? null) : null,
+  );
   useEffect(() => {
     const template = binder.template;
     if (!template) { setTemplateTotal(null); return; }
+    if (binder.slotTotal != null) { setTemplateTotal(binder.slotTotal); return; }
     let cancelled = false;
     resolveTemplateSlots(template)
       .then(slots => { if (!cancelled) setTemplateTotal(slots.length); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [binder.template]);
+  }, [binder.template, binder.slotTotal]);
   const wishlistCount = binder.wishlistCardIds?.length ?? 0;
   const grainUid = useId().replace(/:/g, '');
   const bandColor = lightenColor(binder.color ?? '#e53e3e', 0.14);

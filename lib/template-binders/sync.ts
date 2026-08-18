@@ -1,6 +1,6 @@
 import { Timestamp } from 'firebase/firestore';
 import {
-  getBinders, ensureDefaultBinder, addCardToBinder, removeCardFromBinder, setBinderPages,
+  getBinders, ensureDefaultBinder, addCardToBinder, removeCardFromBinder, setBinderPages, updateBinder,
 } from '@/lib/firestore/binders';
 import { getCards } from '@/lib/firestore/cards';
 import { getWishlists, addWishlist, updateWishlist } from '@/lib/firestore/wishlists';
@@ -39,6 +39,10 @@ async function syncOneBinder(
   }
 
   const plan = await computeBinderSyncPlan(binder, ownedCards, wl.items);
+
+  // Slot-Gesamtzahl auf dem Binder-Doc persistieren (A1) → die Übersichts-Kachel
+  // liest sie direkt statt selbst ~1025 Katalog-Queries zu fahren.
+  if (binder.slotTotal !== plan.slotTotal) await updateBinder(binder.id, { slotTotal: plan.slotTotal });
 
   // Ein Vorlagen-Binder hält immer genau EIN Exemplar je Karte (den Slot-
   // Gewinner). Alles andere im Pool — verdrängte Varianten, Duplikate, evtl.
