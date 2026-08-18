@@ -4,9 +4,20 @@ import {
 } from 'firebase/firestore';
 import { db, currentUid, waitForUid } from '../firebase/client';
 import { deleteWishlistsForBinder } from './wishlists';
+import { createUidCache } from './uid-cache';
 import type { BinderDoc, BinderPage } from '@/types';
 
 const COL = 'binders';
+
+const bindersCache = createUidCache<BinderDoc[]>(async uid => {
+  const snap = await getDocs(query(collection(db, COL), where('ownerUid', '==', uid)));
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() } as BinderDoc))
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+});
+
+/** Leert den `binders`-Cache — nach JEDER Mutation an `binders` aufzurufen (A4). */
+export function invalidateBindersCache() { bindersCache.invalidate(); }
 
 /** Schreibt das positionale Seitenlayout + synchronisiert `cardIds` (derived).
  *  cardIds bleibt für Dashboard/useTotalValue/Collection-Lookups die Source of Truth
@@ -14,6 +25,7 @@ const COL = 'binders';
 export async function setBinderPages(binderId: string, pages: BinderPage[]): Promise<void> {
   const cardIds = pagesToCardIds(pages);
   await updateDoc(doc(db, COL, binderId), { pages, cardIds });
+  invalidateBindersCache();
 }
 
 /** Reine Helper-Funktionen — keine Firestore-Calls. */
@@ -35,15 +47,12 @@ export function cardIdsToPages(cardIds: string[], size: number): BinderPage[] {
   return pages;
 }
 
+// A4: einmal je uid lesen, danach aus dem Cache. Kopie zurückgeben (Schutz vor
+// In-Place-Mutation durch Aufrufer).
 export async function getBinders(): Promise<BinderDoc[]> {
   const uid = await waitForUid();
   if (!uid) return [];
-  // Nur eigene (ownerUid); Sortierung nach sortOrder in-memory (kein Composite-
-  // Index nötig, siehe cards.ts).
-  const snap = await getDocs(query(collection(db, COL), where('ownerUid', '==', uid)));
-  return snap.docs
-    .map(d => ({ id: d.id, ...d.data() } as BinderDoc))
-    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  return [...(await bindersCache.get(uid))];
 }
 
 export async function getBinder(id: string): Promise<BinderDoc | null> {
@@ -59,11 +68,13 @@ export async function addBinder(data: Omit<BinderDoc, 'id' | 'createdAt' | 'card
     wishlistCardIds: [],
     createdAt: Timestamp.now(),
   });
+  invalidateBindersCache();
   return ref.id;
 }
 
 export async function updateBinder(id: string, data: Partial<BinderDoc>): Promise<void> {
   await updateDoc(doc(db, COL, id), data);
+  invalidateBindersCache();
 }
 
 /** Schreibt die neue Reihenfolge der (nicht-Default-)Sammlungen: `sortOrder`
@@ -75,14 +86,17 @@ export async function reorderBinders(orderedIds: string[]): Promise<void> {
   const batch = writeBatch(db);
   orderedIds.forEach((id, i) => batch.update(doc(db, COL, id), { sortOrder: i }));
   await batch.commit();
+  invalidateBindersCache();
 }
 
 export async function deleteBinder(id: string): Promise<void> {
   await deleteDoc(doc(db, COL, id));
+  invalidateBindersCache();
 }
 
 export async function addCardToBinder(binderId: string, cardId: string): Promise<void> {
   await updateDoc(doc(db, COL, binderId), { cardIds: arrayUnion(cardId) });
+  invalidateBindersCache();
 }
 
 /** Fügt mehrere Karten in EINEM Write hinzu (arrayUnion mit mehreren Werten) —
@@ -90,14 +104,17 @@ export async function addCardToBinder(binderId: string, cardId: string): Promise
 export async function addCardsToBinder(binderId: string, cardIds: string[]): Promise<void> {
   if (cardIds.length === 0) return;
   await updateDoc(doc(db, COL, binderId), { cardIds: arrayUnion(...cardIds) });
+  invalidateBindersCache();
 }
 
 export async function removeCardFromBinder(binderId: string, cardId: string): Promise<void> {
   await updateDoc(doc(db, COL, binderId), { cardIds: arrayRemove(cardId) });
+  invalidateBindersCache();
 }
 
 export async function addWishlistCardToBinder(binderId: string, wishlistCardId: string): Promise<void> {
   await updateDoc(doc(db, COL, binderId), { wishlistCardIds: arrayUnion(wishlistCardId) });
+  invalidateBindersCache();
 }
 
 /** „Unsortiert" (früher „Meine Sammlung"): Standard-Ablage für alle Karten
@@ -170,6 +187,7 @@ export async function moveCardsToBinderExclusive(cardIds: string[], targetBinder
   }
   batch.update(doc(db, COL, targetBinderId), { cardIds: arrayUnion(...cardIds) });
   await batch.commit();
+  invalidateBindersCache();
 }
 
 /** Entfernt eine Karte aus einem Binder. „Unsortiert" (isDefault) ist der

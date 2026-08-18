@@ -3,15 +3,12 @@ import {
   where, query, Timestamp, writeBatch, arrayUnion, runTransaction,
 } from 'firebase/firestore';
 import { db, currentUid, waitForUid } from '../firebase/client';
+import { createUidCache } from './uid-cache';
 import type { WishlistDoc, WishlistItem } from '@/types';
 
 const COL = 'wishlists';
 
-export async function getWishlists(): Promise<WishlistDoc[]> {
-  const uid = await waitForUid();
-  if (!uid) return [];
-  // Nur eigene (ownerUid); die manuell-vor-automatisch + createdAt-Sortierung
-  // unten läuft ohnehin in-memory (kein Composite-Index nötig).
+const wishlistsCache = createUidCache<WishlistDoc[]>(async uid => {
   const snap = await getDocs(query(collection(db, COL), where('ownerUid', '==', uid)));
   const lists = snap.docs.map(d => ({ id: d.id, ...d.data() } as WishlistDoc));
   // Manuelle Listen zuerst (nach nutzerdefinierter sortOrder, Altbestand ohne
@@ -27,6 +24,16 @@ export async function getWishlists(): Promise<WishlistDoc[]> {
     if (as !== bs) return as - bs;
     return (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0);
   });
+});
+
+/** Leert den `wishlists`-Cache — nach JEDER Mutation an `wishlists` (A4). */
+export function invalidateWishlistsCache() { wishlistsCache.invalidate(); }
+
+// A4: einmal je uid lesen, danach aus dem Cache. Kopie zurückgeben.
+export async function getWishlists(): Promise<WishlistDoc[]> {
+  const uid = await waitForUid();
+  if (!uid) return [];
+  return [...(await wishlistsCache.get(uid))];
 }
 
 export async function getWishlist(id: string): Promise<WishlistDoc | null> {
@@ -48,6 +55,7 @@ export async function addWishlist(
     ...(opts?.color ? { color: opts.color } : {}),
     createdAt: Timestamp.now(),
   });
+  invalidateWishlistsCache();
   return ref.id;
 }
 
@@ -66,10 +74,12 @@ export async function ensureDefaultWishlist(): Promise<WishlistDoc> {
 
 export async function updateWishlist(id: string, data: Partial<WishlistDoc>): Promise<void> {
   await updateDoc(doc(db, COL, id), data);
+  invalidateWishlistsCache();
 }
 
 export async function deleteWishlist(id: string): Promise<void> {
   await deleteDoc(doc(db, COL, id));
+  invalidateWishlistsCache();
 }
 
 /** Löscht die automatische Wunschliste(n), die an einen bestimmten
@@ -81,6 +91,7 @@ export async function deleteWishlistsForBinder(binderId: string, known?: Wishlis
   for (const w of lists) {
     if (w.templateBinderId === binderId) await deleteDoc(doc(db, COL, w.id));
   }
+  invalidateWishlistsCache();
 }
 
 /** Räumt verwaiste automatische Wunschlisten auf: solche mit `templateBinderId`,
@@ -104,6 +115,7 @@ export async function pruneOrphanTemplateWishlists(
     catch (e) { console.error('[wishlists] prune orphan error', o.id, e); }
   }
   if (orphans.length === 0) return lists;
+  invalidateWishlistsCache();
   const removed = new Set(orphans.map(o => o.id));
   return lists.filter(l => !removed.has(l.id));
 }
@@ -117,6 +129,7 @@ export async function reorderWishlists(orderedIds: string[]): Promise<void> {
   const batch = writeBatch(db);
   orderedIds.forEach((id, i) => batch.update(doc(db, COL, id), { sortOrder: i }));
   await batch.commit();
+  invalidateWishlistsCache();
 }
 
 // Alle drei Mutationen sind atomar, damit parallele Toggles (schnelles
@@ -129,6 +142,7 @@ export async function addItemToWishlist(wishlistId: string, item: Omit<WishlistI
   if (!snap.exists()) return null;
   const newItem: WishlistItem = { ...item, id: crypto.randomUUID() };
   await updateDoc(ref, { items: arrayUnion(newItem) });
+  invalidateWishlistsCache();
   return newItem;
 }
 
@@ -140,6 +154,7 @@ export async function updateWishlistItem(wishlistId: string, itemId: string, dat
     const items = ((snap.data().items ?? []) as WishlistItem[]).map(i => i.id === itemId ? { ...i, ...data } : i);
     tx.update(ref, { items });
   });
+  invalidateWishlistsCache();
 }
 
 export async function removeItemFromWishlist(wishlistId: string, itemId: string): Promise<void> {
@@ -150,4 +165,5 @@ export async function removeItemFromWishlist(wishlistId: string, itemId: string)
     const items = ((snap.data().items ?? []) as WishlistItem[]).filter(i => i.id !== itemId);
     tx.update(ref, { items });
   });
+  invalidateWishlistsCache();
 }
