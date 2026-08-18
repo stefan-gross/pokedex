@@ -346,8 +346,10 @@ function CardImpl({
 
         {/* Anzahl-Badge — grün, oben rechts. Nur ab 2 Exemplaren; bei genau
             einer Karte reicht die Voll-Farbe (fehlende sind ausgegraut) als
-            Besitz-Anzeige, ein „×1" wäre redundant. */}
-        {!bare && totalOwned > 1 && (
+            Besitz-Anzeige, ein „×1" wäre redundant. Im Auswahl-Modus
+            ausgeblendet: es säße exakt unter dem Auswahl-Häkchen (oben rechts)
+            und verdeckte die Auswahl-Rückmeldung. */}
+        {!bare && !selectMode && totalOwned > 1 && (
           <CardBadge size={preset.badgeSize} color="rgba(53,209,90,.9)" corner="tr" cornerRadius={badgeCornerRadius} style={{ top: layout.ownedBadge.top, right: layout.ownedBadge.right }}>
             ×{totalOwned}
           </CardBadge>
@@ -368,8 +370,10 @@ function CardImpl({
             sichtbar (4 Zustände): leer = auf keiner Liste, rot = manuell,
             weiß = automatisch (von irgendeiner Auto-Sammlung benötigt),
             geteilt (links rot/rechts weiß) = beides. Tap öffnet i.d.R. den
-            Auswahl-Drawer (`onHeartClick`). */}
-        {!bare && (
+            Auswahl-Drawer (`onHeartClick`). Im Auswahl-Modus ausgeblendet:
+            ein Tap aufs Herz öffnete sonst den Wunschlisten-Drawer
+            (stopPropagation) statt die Karte auszuwählen. */}
+        {!bare && !selectMode && (
           <CardBadge
             size={preset.badgeSize} background={false}
             style={{ bottom: layout.wishlistBadge.bottom, right: layout.wishlistBadge.right }}
