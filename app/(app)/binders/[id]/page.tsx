@@ -631,11 +631,12 @@ export default function BinderDetailPage({ params }: Props) {
         {/* Ansichts-Switch + Seiten-Sprung (nur "Seite"-Ansicht) + Preis in
             EINER Zeile statt drei separaten — spart auf 3x3-Bindern genug
             Höhe, damit die Seiten-Ansicht ohne Scrollen passt. */}
-        <div className="flex items-center justify-between gap-2 mt-3">
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center justify-between gap-1.5 mt-3">
+          <div className="flex items-center gap-1.5 min-w-0">
             {!isBox && (
               <ButtonGroup
                 iconOnly
+                size="sm"
                 className="shrink-0"
                 value={view}
                 onChange={(v) => { setView(v); exitEditMode(); }}
@@ -651,7 +652,7 @@ export default function BinderDetailPage({ params }: Props) {
                 <select
                   value={Math.floor(pageIdx / 2)}
                   onChange={e => setPageIdx(Number(e.target.value) * 2)}
-                  className="appearance-none pl-2.5 pr-6 h-11 rounded-full text-[12px] font-bold tabular-nums glass-inner text-glass focus:outline-none"
+                  className="appearance-none pl-2.5 pr-6 h-9 rounded-full text-[12px] font-bold tabular-nums glass-inner text-glass focus:outline-none"
                   aria-label="Blatt auswählen"
                 >
                   {Array.from({ length: Math.ceil(pages.length / 2) }, (_, i) => (
@@ -667,7 +668,7 @@ export default function BinderDetailPage({ params }: Props) {
               „Bearbeiten"-Button (Karten entfernen); im Modus wird daraus
               „Fertig". Manuelle Sammlungen starten den Modus weiterhin per
               Long-Press auf eine Kachel und zeigen sonst den Sammlungswert. */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
             {!isBox && view === 'page' && (
               // Zusatzinfo-Toggle als iconOnly-ButtonGroup (Toggle-Modus) —
               // nutzt deren Gooey-Gleit-Indikator (goo-squish) statt eines
@@ -675,6 +676,7 @@ export default function BinderDetailPage({ params }: Props) {
               <ButtonGroup
                 iconOnly
                 toggle
+                size="sm"
                 className="shrink-0"
                 value={showCardInfo ? 'on' : 'off'}
                 onChange={(v) => setShowCardInfo(v === 'on')}
@@ -689,14 +691,14 @@ export default function BinderDetailPage({ params }: Props) {
               // textlos, damit die Kopfzeile in der Seiten-Ansicht (View-
               // Switch + Info-Schalter + Blatt-Dropdown) nicht überläuft —
               // iOS-typisches Bearbeiten↔Fertig.
-              <Button variant="primary" accentColor="#2f855a" onClick={exitEditMode} icon={<Check />} aria-label="Fertig" className="shrink-0" />
+              <Button variant="primary" size="sm" accentColor="#2f855a" onClick={exitEditMode} icon={<Check />} aria-label="Fertig" className="shrink-0" />
             ) : !isProtected && !isBox ? (
               // Bearbeiten-Modus-Einstieg als Icon-only Stift — für alle
               // Ordner-Sammlungen außer „Unsortiert" (Boxen nutzen die Grid-
               // Ansicht ohne Bearbeiten-UI). Einziger Einstieg (kein Long-Press
               // mehr): automatische Sammlungen wählen Karten zum Entfernen,
               // manuelle sortieren/löschen wie gehabt.
-              <Button variant="secondary" onClick={() => setEditMode(true)} icon={<Pencil />} aria-label="Bearbeiten" className="shrink-0" />
+              <Button variant="secondary" size="sm" onClick={() => setEditMode(true)} icon={<Pencil />} aria-label="Bearbeiten" className="shrink-0" />
             ) : (
               <span className="text-role-label font-semibold text-right shrink-0" style={{ color: binderColor }}>
                 {!totalValue.loading && totalValue.withPrice > 0
