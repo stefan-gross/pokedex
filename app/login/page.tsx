@@ -13,10 +13,6 @@ function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const returnTo = searchParams.get('return') || '/'
-  // Ein `return`-Param bedeutet: proxy.ts hat von einer geschützten Seite
-  // hierher umgeleitet (Session abgelaufen/fehlt) — dann klar machen, dass es
-  // ein Re-Login ist und kein „Splash"/Fehler.
-  const wasBounced = !!searchParams.get('return')
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -64,12 +60,6 @@ function LoginForm() {
         <div className="glass w-full rounded-[28px] p-8">
           <h2 className="text-role-h1 text-glass mb-2 dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)]">Willkommen zurück</h2>
           <p className="text-role-body text-glass-muted mb-8">Melde dich mit deinem Familienkonto an.</p>
-
-          {wasBounced && (
-            <div className="text-role-body text-[#7a5a14] dark:text-white mb-6 px-4 py-3 rounded-xl" style={{ background: 'rgba(234,179,8,0.16)', border: '1px solid rgba(234,179,8,0.35)' }}>
-              Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.
-            </div>
-          )}
 
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
