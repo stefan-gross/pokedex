@@ -584,6 +584,18 @@
   .dark .text-glass-muted {
     color: rgba(255,255,255,0.7);
   }
+
+  /* Icon/Logo auf dem frosted-glass Header (z.B. Wunschlisten-Detail): Farbe
+     kommt aus zwei per Inline-CSS-Var gesetzten, aus dem Listen-Hex berechneten
+     Werten (lib/color-utils.ts `glassIconColors`). So bleibt ein sehr dunkles
+     Listen-Icon (Schwarz) im Dark Mode sichtbar, ohne das Theme im Render zu
+     lesen (kein Hydration-Mismatch). */
+  .wl-glass-icon {
+    color: var(--wl-icon-light, var(--foreground));
+  }
+  .dark .wl-glass-icon {
+    color: var(--wl-icon-dark, var(--foreground));
+  }
 }
 
 /* Binder Edit-Mode: dezentes Wackeln à la iOS Home-Screen */

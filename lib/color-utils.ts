@@ -66,6 +66,24 @@ export function darkenColor(hex: string, amount: number): string {
   return `#${[mix(r), mix(g), mix(b)].map(v => v.toString(16).padStart(2, '0')).join('')}`;
 }
 
+/** Icon-/Logo-Farbe, die auf dem frosted-glass Header in BEIDEN Themes lesbar
+ *  bleibt. Bewusst eine REINE Funktion des Hex (kein DOM-/Theme-Read → kein
+ *  Hydration-Mismatch, vgl. `readableTextColorBlended`); die Theme-Auswahl
+ *  trifft CSS über die zwei zurückgegebenen Werte (`.wl-glass-icon` /
+ *  `.dark .wl-glass-icon` in globals.css). Sehr dunkle Farben (z.B. Schwarz
+ *  einer „Hort/Freunde"-Liste) werden für den Dark Mode aufgehellt, sehr helle
+ *  für den Light Mode abgedunkelt — mittlere Töne (Rot, Gold …) bleiben
+ *  unverändert. Ohne Hex (CSS-Var/rgba) → theme-adaptive `--foreground`. */
+export function glassIconColors(hex?: string): { light: string; dark: string } {
+  if (!hex?.startsWith('#')) return { light: 'var(--foreground)', dark: 'var(--foreground)' };
+  const [r, g, b] = hexToRgbTuple(hex);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return {
+    light: lum > 0.82 ? darkenColor(hex, 0.4)  : hex,
+    dark:  lum < 0.4  ? lightenColor(hex, 0.85) : hex,
+  };
+}
+
 /** Sättigt eine Hex-Farbe stärker (HSL-Sättigung Richtung 100%, `amount`
  *  0–1 = Anteil der Strecke zum Maximum). Bei sehr niedriger Deckkraft
  *  (z.B. 0.07) macht sich der Farbton kaum bemerkbar — ein kräftiger

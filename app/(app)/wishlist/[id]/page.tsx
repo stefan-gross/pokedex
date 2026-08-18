@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useMemo } from 'react';
+import { use, useState, useEffect, useMemo, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Heart, Minus, Pencil, Download, Trash2 } from 'lucide-react';
 import { AutomaticBadge } from '@/components/binder/CollectionTypeBadge';
@@ -13,6 +13,7 @@ import { getCardsByTcgId, getCards } from '@/lib/firestore/cards';
 import { getAllSets } from '@/lib/firestore/sets';
 import { getBinder } from '@/lib/firestore/binders';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
+import { glassIconColors } from '@/lib/color-utils';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { Card } from '@/components/card/Card';
 import { BinderIcon } from '@/lib/binder-icons';
@@ -338,11 +339,20 @@ export default function WishlistDetailPage({ params }: Props) {
           Wunschlisten
         </Button>
         <div className="flex items-center gap-3 mt-1">
-          {displayIcon ? (
-            <BinderIcon name={displayIcon} size={40} className="shrink-0" style={displayColor ? { color: displayColor } : undefined} />
-          ) : (
-            <Heart size={40} className="shrink-0" style={displayColor ? { color: displayColor } : undefined} />
-          )}
+          {(() => {
+            // Icon-Farbe theme-sicher: dunkle Listen-Farben (z.B. Schwarz von
+            // „Hort/Freunde") wären im Dark Mode auf dem Glas-Header unsichtbar.
+            // `glassIconColors` liefert zwei aus dem Hex berechnete Töne, CSS
+            // (`.wl-glass-icon`) wählt je Theme — Set-Logo/Pokémon-Bild-Icons
+            // (kein currentColor) bleiben davon unberührt.
+            const { light, dark } = glassIconColors(displayColor);
+            const iconVars = { '--wl-icon-light': light, '--wl-icon-dark': dark } as CSSProperties;
+            return displayIcon ? (
+              <BinderIcon name={displayIcon} size={40} className="shrink-0 wl-glass-icon" style={iconVars} />
+            ) : (
+              <Heart size={40} className="shrink-0 wl-glass-icon" style={iconVars} />
+            );
+          })()}
           <div className="flex-1 min-w-0">
             <h1 className="text-role-h2 truncate text-glass flex items-center gap-1.5">
               <span className="truncate">{displayName}</span>
