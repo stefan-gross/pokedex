@@ -26,7 +26,7 @@ import { getCard, getCards } from '@/lib/firestore/cards';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { resolveTemplateSlots } from '@/lib/template-binders/resolve';
 import { resolveSlotWinners } from '@/lib/template-binders/slot-winner';
-import { catalogCardToInfo, pendingCardInfo, ownedCardToInfo, type CardInfo } from '@/lib/card-info';
+import { catalogCardToInfo, pendingCardInfo, ownedCardToInfo, resolveCardImage, type CardInfo } from '@/lib/card-info';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { CollectionTypeBadge } from '@/components/binder/CollectionTypeBadge';
 import { BinderIcon } from '@/lib/binder-icons';
@@ -371,7 +371,7 @@ export default function BinderDetailPage({ params }: Props) {
         // die Proxy-Karte direkt dem passenden Slot zuordnen kann.
         const slotNo = pIdx * binderSize + sIdx + 1;
         return {
-          imgUrl: info.imgLargeDe || info.imgLarge || undefined,
+          imgUrl: resolveCardImage(info),
           name: info.name, number: info.number, setCode: cc.setCode,
           label: `Blatt ${sheet} · ${side} · Slot ${slotNo}`,
         };
@@ -1630,7 +1630,7 @@ function SinglePageView({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={activeCardInfo?.imgLargeDe || activeCardInfo?.imgLarge || undefined}
+                  src={activeCardInfo ? resolveCardImage(activeCardInfo) : undefined}
                   alt={activeCard.name}
                   className="w-full h-full object-cover"
                   onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
@@ -1869,7 +1869,7 @@ function DraggableCardSlot({
         // Skeleton rendern statt eines <img> ohne src (das zeigte sonst den
         // alt-Text = Kartenname). Erst mit URL das echte Bild (mit eigenem
         // Skeleton bis onLoad).
-        const src = cardInfo.imgLargeDe || cardInfo.imgLarge || undefined;
+        const src = resolveCardImage(cardInfo);
         return src ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img

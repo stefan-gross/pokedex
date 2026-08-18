@@ -23,6 +23,7 @@ import { CreateTemplateBinderModal } from '@/components/binder/CreateTemplateBin
 import { CardGrid, CardGridSkeleton } from '@/components/card/CardGrid';
 import { ErrorRetry } from '@/components/ui/ErrorRetry';
 import { formatEUR } from '@/lib/format';
+import { compareCardInfo } from '@/lib/card-sort';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { rarityLabelOf, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
@@ -260,39 +261,7 @@ function SetDetailContent() {
       });
     }
 
-    result.sort((a, b) => {
-      // Preis: Karten ohne Preisdaten immer ans Ende, unabhängig von der Richtung.
-      if (sortField === 'price') {
-        // Während Preise noch chunkweise laden: stabil nach Nummer sortieren,
-        // damit die Karten nicht bei jedem eintreffenden Chunk umspringen. Die
-        // eigentliche Preis-Sortierung greift EINMAL, sobald alles geladen ist.
-        if (pricesLoading) {
-          const na = parseInt(a.number) || 0;
-          const nb = parseInt(b.number) || 0;
-          return na !== nb ? na - nb : a.number.localeCompare(b.number);
-        }
-        const pa = priceMap.get(a.id);
-        const pb = priceMap.get(b.id);
-        if (pa == null && pb == null) return 0;
-        if (pa == null) return 1;
-        if (pb == null) return -1;
-        return sortDir === 'desc' ? pb - pa : pa - pb;
-      }
-
-      let cmp = 0;
-      if (sortField === 'number') {
-        const na = parseInt(a.number) || 0;
-        const nb = parseInt(b.number) || 0;
-        cmp = na !== nb ? na - nb : a.number.localeCompare(b.number);
-      } else if (sortField === 'name') {
-        cmp = a.name.localeCompare(b.name);
-      } else if (sortField === 'pokedex') {
-        cmp = (a.nationalDexNumber ?? 0) - (b.nationalDexNumber ?? 0);
-      } else if (sortField === 'hp') {
-        cmp = (a.hp ?? 0) - (b.hp ?? 0);
-      }
-      return sortDir === 'desc' ? -cmp : cmp;
-    });
+    result.sort((a, b) => compareCardInfo(a, b, { field: sortField, dir: sortDir, priceMap, pricesLoading }));
     return result;
   }, [cards, filter, search, sortField, sortDir, priceMap, pricesLoading, rarityFilter, ownedTcgIds]);
 

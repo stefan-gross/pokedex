@@ -13,7 +13,7 @@ import { formatEUR } from '@/lib/format';
 import { useCatalogInfoMap } from '@/lib/hooks/use-catalog-info-map';
 import { getSetById } from '@/lib/firestore/sets';
 import { getRarityGroup } from '@/lib/card-constants';
-import { catalogCardToInfo, pendingCardInfo, ownedCardToInfo, type CardInfo } from '@/lib/card-info';
+import { catalogCardToInfo, pendingCardInfo, ownedCardToInfo, resolveCardImage, type CardInfo } from '@/lib/card-info';
 import { getCountFromServer, collection, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { SetListItem } from '@/components/set/SetListItem';
@@ -181,7 +181,7 @@ export default function DashboardPage() {
   const heroCard = totalValue.loading ? null : (totalValue.topCard ?? rarestCard);
   // Bild des Hero live aus dem Katalog auflösen (DE bevorzugt) statt eingefroren.
   const heroInfo = heroCard ? ownedCardToInfo(heroCard, catalogById) : null;
-  const heroImgSrc = heroInfo ? (heroInfo.imgLargeDe || heroInfo.imgLarge) : '';
+  const heroImgSrc = heroInfo ? (resolveCardImage(heroInfo) ?? '') : '';
 
   return (
     <div className="relative min-h-screen">

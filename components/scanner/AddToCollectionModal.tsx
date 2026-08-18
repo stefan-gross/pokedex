@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Plus, ChevronDown } from 'lucide-react';
-import { cardInfoToAddInput, type CardInfo } from '@/lib/card-info';
+import { cardInfoToAddInput, resolveCardImage, type CardInfo } from '@/lib/card-info';
 import type { CardCondition, CardLanguage, CardVariant, CardDoc, BinderDoc } from '@/types';
 import { addCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { getBinders, addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
@@ -156,7 +156,7 @@ export function AddToCollectionModal({
           <div className="flex items-center gap-3 pb-[14px] mb-4 border-b border-[rgba(46,46,50,0.1)] dark:border-white/10">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={card.imgSmallDe || card.imgSmall}
+              src={resolveCardImage(card, 'small')}
               alt={card.name}
               className="w-10 h-14 rounded-[3px] object-cover shrink-0"
             />

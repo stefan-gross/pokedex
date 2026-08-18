@@ -23,7 +23,7 @@ import { ValueBadge } from '@/components/card/ValueBadge';
 import { CardPrice } from '@/components/card/CardPrice';
 import { CardBadge } from '@/components/card/CardBadge';
 import { CardPlaceholder } from '@/components/card/CardPlaceholder';
-import { catalogCardToInfo, cardInfoToAddInput } from '@/lib/card-info';
+import { catalogCardToInfo, cardInfoToAddInput, resolveCardImage } from '@/lib/card-info';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition as PersistedCondition, CardDoc, CardLanguage, CardVariant } from '@/types';
 import { CONDITIONS, VARIANT_LABELS, SERIES_NAMES_DE, SYMBOL_ONLY_SERIES, inherentFoilVariant, holoShimmerClass } from '@/lib/card-constants';
@@ -3649,7 +3649,7 @@ function RecognizedCardLarge({
           <div className="flex gap-2 overflow-x-auto pb-1">
             {job.result!.candidates!.map(cand => {
               const selected = cand.id === card.id;
-              const thumb = cand.imgSmallDe || cand.imgSmall;
+              const thumb = resolveCardImage(cand, 'small');
               return (
                 <button
                   key={cand.id}

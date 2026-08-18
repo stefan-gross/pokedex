@@ -3,7 +3,7 @@ import { ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getCard } from '@/lib/firestore/cards';
 import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
-import { catalogCardToInfo } from '@/lib/card-info';
+import { catalogCardToInfo, resolveCardImage } from '@/lib/card-info';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { CardPriceDetail } from '@/components/card/CardPriceDetail';
 
@@ -22,7 +22,7 @@ export default async function CardDetailPage({ params }: Props) {
     ? (await getCatalogCardsByIds([card.tcgId]))[0]
     : undefined;
   const info = catalogCard ? catalogCardToInfo(catalogCard) : undefined;
-  const imgSrc = info ? (info.imgLargeDe || info.imgLarge) : '';
+  const imgSrc = info ? (resolveCardImage(info) ?? '') : '';
 
   return (
     <div className="min-h-screen">

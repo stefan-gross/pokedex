@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Loader2, X } from 'lucide-react';
 import { getCards } from '@/lib/firestore/cards';
 import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
-import { catalogCardToInfo, ownedCardToInfo, type CardInfo } from '@/lib/card-info';
+import { catalogCardToInfo, ownedCardToInfo, resolveCardImage, type CardInfo } from '@/lib/card-info';
 import { VARIANT_LABELS } from '@/lib/card-constants';
 import { Sheet } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
@@ -97,7 +97,7 @@ export function BinderSlotPickerModal({ onClose, onPick }: Props) {
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={info.imgLargeDe || info.imgLarge || undefined}
+                    src={resolveCardImage(info)}
                     alt={c.name}
                     className="w-9 h-12 rounded object-cover shrink-0"
                     onError={e => { e.currentTarget.style.visibility = 'hidden'; }}

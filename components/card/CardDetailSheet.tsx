@@ -10,6 +10,7 @@ import { CollectionPickerSheet } from '@/components/collection/CollectionPickerS
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe, SYMBOL_ONLY_SERIES, inherentFoilVariant, holoShimmerClass } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
+import { formatCardNumber } from '@/lib/format';
 import { deleteCard, getCardsByTcgId, markReviewed } from '@/lib/firestore/cards';
 import { getBinders, removeCardFromBinderAndCleanup, ensureDefaultBinder, setCardExclusiveBinder } from '@/lib/firestore/binders';
 import { matchTemplateBinders } from '@/lib/template-binders/match-hint';
@@ -569,11 +570,8 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   // die Promo-Reihe ist offen/fortlaufend, "215" wäre nur die interne
   // Firestore-Katalogzahl, kein echter Aufdruck. Also nie ein "/Total" anhängen.
   const isPromo     = rarityInfo?.order === 99;
-  const numRaw      = card.number.split('/')[0];
-  const isPlainNum  = /^\d+$/.test(numRaw);
-  const numBase     = isPlainNum ? numRaw.padStart(3, '0') : numRaw;
-  const numTotal    = !isPromo && isPlainNum && resolvedMeta?.printedTotal ? String(resolvedMeta.printedTotal).padStart(3, '0') : null;
-  const numFmt      = numTotal ? `${numBase}/${numTotal}` : numBase;
+  // Promos: nie „/Total" anhängen (offene Reihe, interne Katalogzahl ≠ Aufdruck).
+  const numFmt      = formatCardNumber(card.number, isPromo ? undefined : resolvedMeta?.printedTotal);
   const logoUrl     = resolvedMeta?.logoUrl ?? "";
   const setNameDe   = resolvedMeta?.nameDe ?? card.setName;
   // Sets vor Scarlet & Violet tragen keinen echten Kürzel-Aufdruck — nur ein

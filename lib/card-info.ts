@@ -53,6 +53,20 @@ export interface CardInfo {
   pendingCatalog?: boolean;
 }
 
+/** DE-bevorzugte Bild-URL einer Karte (DE → EN-Fallback), `undefined` wenn
+ *  keine vorhanden. Ersetzt das an vielen Stellen inline duplizierte
+ *  `imgLargeDe || imgLarge`-Muster (B6). Für die abweichenden Fälle
+ *  (CardDetailSheet mit separatem DE-State, sprach-abhängiger Scanner-Picker)
+ *  bewusst nicht genutzt. */
+export function resolveCardImage(
+  c: { imgLargeDe?: string; imgLarge?: string; imgSmallDe?: string; imgSmall?: string },
+  size: 'large' | 'small' = 'large',
+): string | undefined {
+  return size === 'large'
+    ? (c.imgLargeDe || c.imgLarge || undefined)
+    : (c.imgSmallDe || c.imgSmall || undefined);
+}
+
 /** Leitet die deutsche TCGdex-Bild-URL aus der englischen ab (/en/ → /de/).
  *  Nur für TCGdex-CDN-URLs; selbst gehostete/Backfill-URLs bleiben unangetastet.
  *  So wird die DE-URL beim Lesen konstruiert (nicht im Sync gespeichert), damit
