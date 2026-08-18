@@ -82,22 +82,6 @@ export async function fetchEnCardsPage(category: TcgdexCategory, page: number): 
   return data.cards ?? [];
 }
 
-/** Holt ALLE Karten (volle EN-Daten) — je `category` seitenweise. */
-export async function fetchAllEnCards(
-  onProgress?: (loaded: number) => void,
-): Promise<TcgdexCardFull[]> {
-  const all: TcgdexCardFull[] = [];
-  for (const category of CATEGORIES) {
-    for (let page = 1; ; page++) {
-      const batch = await fetchEnCardsPage(category, page);
-      all.push(...batch);
-      onProgress?.(all.length);
-      if (batch.length < PAGE_SIZE) break;
-    }
-  }
-  return all;
-}
-
 /** DE-Info EINER Karte: deutscher Name + (falls vorhanden) echtes DE-Bild. Das
  *  `image`-Feld liefert der /de/sets-Endpunkt NUR, wenn TCGdex ein echtes deutsches
  *  Bild hat (alte Sets ohne DE-Bild → kein `image`). */
@@ -213,29 +197,10 @@ export async function fetchEnCardsByIds(ids: string[]): Promise<TcgdexCardFull[]
   return out;
 }
 
-/** DE-Name je Karten-ID (REST-Briefs, paginiert; Briefs haben KEIN Bild). */
-export async function fetchDeNameMap(): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
-  for (let page = 1; ; page++) {
-    const res = await fetch(`${REST}/de/cards?pagination:page=${page}&pagination:itemsPerPage=${PAGE_SIZE}`);
-    if (!res.ok) throw new Error(`TCGdex REST /de/cards HTTP ${res.status}`);
-    const batch = await res.json() as { id: string; name: string }[];
-    if (!Array.isArray(batch)) break;
-    for (const b of batch) if (b.name) map.set(b.id, b.name);
-    if (batch.length < PAGE_SIZE) break;
-  }
-  return map;
-}
-
 // ── Mapping-Helfer ───────────────────────────────────────────────────────────
 /** TCGdex-Bild-Basis → konkrete URL. `size`: 'low' (klein) | 'high' (groß). */
 export function tcgdexImage(base: string | null | undefined, size: 'low' | 'high'): string {
   return base ? `${base}/${size}.webp` : '';
-}
-
-/** EN-Bild-Basis → DE-Bild-Basis (nur Sprach-Segment im Pfad unterscheidet sich). */
-export function deImageBase(enBase: string | null | undefined): string | null {
-  return enBase ? enBase.replace('/en/', '/de/') : null;
 }
 
 /** TCGdex-`category` → unser `supertype` (mit Akzent wie im bestehenden Filter). */
