@@ -40,6 +40,7 @@ import { Card } from '@/components/card/Card';
 import { Button } from '@/components/ui/button';
 import { ErrorRetry } from '@/components/ui/ErrorRetry';
 import { formatEUR } from '@/lib/format';
+import { useCatalogInfoMap } from '@/lib/hooks/use-catalog-info-map';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Progress } from '@/components/ui/progress';
 import { BinderSlotPickerModal } from '@/components/binder/BinderSlotPickerModal';
@@ -150,7 +151,7 @@ export default function BinderDetailPage({ params }: Props) {
   const [missingCards, setMissingCards] = useState<Map<string, CatalogCard>>(new Map());
   // Katalog-Infos der eigenen Karten (per tcgId) — Bild/Metadaten live aus dem
   // Katalog statt eingefrorenem CardDoc-Bild (siehe ownedCardToInfo).
-  const [catalogInfoById, setCatalogInfoById] = useState<Map<string, CardInfo>>(new Map());
+  const catalogInfoById = useCatalogInfoMap(cards.map(c => c.tcgId));
   // Fortschritt eines Vorlagen-Binders (besessene / gesamt Slots) — aus
   // derselben Auflösung wie `missingCards`, damit beide konsistent bleiben.
   const [templateProgress, setTemplateProgress] = useState<{ owned: number; total: number } | null>(null);
@@ -168,15 +169,6 @@ export default function BinderDetailPage({ params }: Props) {
     return Array.from(new Set([...ids, ...missingIds]));
   }, [cards, missingCards]);
 
-  // Katalog-Infos der eigenen Karten laden (per tcgId) → Bild/Metadaten für
-  // Grid/Blatt/Overlay. Läuft bei jeder Änderung von `cards`.
-  useEffect(() => {
-    const ids = [...new Set(cards.map(c => c.tcgId).filter((x): x is string => !!x))];
-    // getCatalogCardsByIds([]) → [] → leere Map; setState nur async im then.
-    getCatalogCardsByIds(ids)
-      .then(ccs => setCatalogInfoById(new Map(ccs.map(cc => [cc.id, catalogCardToInfo(cc)]))))
-      .catch(() => {});
-  }, [cards]);
   const { prices: cardPrices } = usePricesBatch(cardTcgIds);
   // Preis-Summe der noch fehlenden Karten (ein Preis pro Platzhalter-Katalog-
   // eintrag, wie beim Preis-Sortieren auf der Set-Detailseite) — addiert auf

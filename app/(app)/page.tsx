@@ -10,6 +10,7 @@ import { getBindersRest } from '@/lib/firestore/binders-rest';
 import { getWishlistsRest } from '@/lib/firestore/wishlists-rest';
 import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
 import { formatEUR } from '@/lib/format';
+import { useCatalogInfoMap } from '@/lib/hooks/use-catalog-info-map';
 import { getSetById } from '@/lib/firestore/sets';
 import { getRarityGroup } from '@/lib/card-constants';
 import { catalogCardToInfo, pendingCardInfo, ownedCardToInfo, type CardInfo } from '@/lib/card-info';
@@ -46,7 +47,7 @@ export default function DashboardPage() {
   const [detailOwned, setDetailOwned] = useState<CardDoc[]>([]);
   // Katalog-Bilder/-Metadaten der eigenen Karten (per tcgId) — Quelle der
   // Wahrheit statt eingefrorenem CardDoc-Bild. Einmal pro Kartenmenge geladen.
-  const [catalogById, setCatalogById] = useState<Map<string, CardInfo>>(new Map());
+  const catalogById = useCatalogInfoMap(cards?.map(c => c.tcgId) ?? []);
   const { updateAvailable } = useUpdateAvailable();
 
   useEffect(() => {
@@ -71,16 +72,6 @@ export default function DashboardPage() {
   }, []);
 
   // Katalog-Infos der eigenen Karten laden (per tcgId) — für Bild/Metadaten in
-  // „Zuletzt hinzugefügt" + Wert-Hero. Läuft bei jeder Änderung von `cards`
-  // (inkl. nach Pending-Reconcile-Reload).
-  useEffect(() => {
-    if (!cards) return;
-    const ids = [...new Set(cards.map(c => c.tcgId).filter((x): x is string => !!x))];
-    // getCatalogCardsByIds([]) → [] → leere Map; setState nur async im then.
-    getCatalogCardsByIds(ids)
-      .then(ccs => setCatalogById(new Map(ccs.map(cc => [cc.id, catalogCardToInfo(cc)]))))
-      .catch(() => {});
-  }, [cards]);
 
   async function openDetail(cardDoc: CardDoc) {
     // Vorläufige Karte (kein Katalog-Eintrag): Platzhalter aus manualData zeigen.
