@@ -5,6 +5,7 @@
  */
 
 import { normalizeEnergy } from '@/lib/energy';
+import { readableTextColor } from '@/lib/color-utils';
 
 export type EnergyType =
   | 'Fire' | 'Water' | 'Grass' | 'Lightning' | 'Psychic'
@@ -24,14 +25,13 @@ export const ENERGY_META: Record<EnergyType, { bg: string; de: string }> = {
   Fairy:     { bg: '#E050A0', de: 'Fee'        },
 };
 
-const SYM = 'rgba(0,0,0,0.82)';
-
-function InnerSymbol({ type, color }: { type: EnergyType; color?: string }) {
-  // `color` erzwingt einfarbige Darstellung (Symbol + Akzente in derselben
-  // Farbe statt Typ-eigenem SYM-Dunkel bzw. Akzentfarben) — für den
-  // "geprägt wie Text"-Modus (siehe EnergyIcon-Props).
-  const sym = color ?? SYM;
-  const accent = color ?? undefined; // undefined → Aufrufer nutzt ENERGY_META-Akzent weiter unten
+function InnerSymbol({ type, sym, accent }: { type: EnergyType; sym: string; accent: string }) {
+  // `sym`   = Farbe des eigentlichen Symbols (weiß auf dunkler Scheibe, dunkel
+  //           auf heller — vom Aufrufer via readableTextColor bestimmt; im
+  //           „geprägt wie Text"-Modus die Prägefarbe).
+  // `accent` = Füllung der ausgesparten Innenformen (Auge-Iris, Unlicht-Sichel,
+  //           Mutter-Loch, Fee-Herz): im Default die Scheibenfarbe (wirkt
+  //           durchbrochen), im Prägemodus dieselbe Prägefarbe (Vollform).
   switch (type) {
 
     case 'Colorless':
@@ -105,29 +105,26 @@ function InnerSymbol({ type, color }: { type: EnergyType; color?: string }) {
             C17 16 20 12 20 12
             C20 12 17 8 12 8 Z
           " />
-          <circle cx="12" cy="12" r="3.5" fill={accent ?? ENERGY_META['Psychic'].bg} />
+          <circle cx="12" cy="12" r="3.5" fill={accent} />
           <circle cx="12" cy="12" r="2"   fill={sym} />
           <circle cx="11" cy="11" r="0.7" fill="white" opacity="0.6" />
         </g>
       );
 
     case 'Fighting':
-      // Faust (vereinfacht)
+      // Faust von vorn: kompakter Handblock mit vier Knöchel-Kuppen oben und
+      // angedeutetem Daumen links — klarer lesbar als die frühere Blob-Form.
       return (
-        <path fill={sym} d="
-          M8.5 10.5
-          C8.5 9 9.5 8 10.5 8 L13.5 8
-          C14.5 8 15.5 9 15.5 10.5 L15.5 12
-          L16.5 12 C17.2 12 17.5 12.5 17.5 13
-          L17.5 13.5 C17.5 14 17 14.5 16.5 14.5
-          L15.5 14.5 L15.5 15.5
-          C15.5 17 14.5 18 13 18
-          L11.5 18
-          C9.5 18 8 16.5 8 14.5
-          L8 13.5
-          C7.2 13.3 7 12.8 7 12.5
-          C7 12 7.5 11.5 8 11.5 Z
-        " />
+        <g fill={sym}>
+          {/* Handfläche/Faustblock */}
+          <path d="M8 12.5 C8 11.6 8.7 11 9.6 11 L15.4 11 C16.3 11 17 11.6 17 12.5 L17 15 C17 17.2 15.2 19 13 19 L11.7 19 C9.7 19 8 17.3 8 15.3 Z" />
+          {/* Vier Knöchel-Kuppen */}
+          <circle cx="9.7"  cy="11" r="1.35" />
+          <circle cx="12"   cy="10.7" r="1.5" />
+          <circle cx="14.3" cy="11" r="1.35" />
+          {/* Daumen */}
+          <path d="M8 13.2 C7.1 13.2 6.6 13.8 6.6 14.5 C6.6 15.2 7.1 15.8 8 15.8 Z" />
+        </g>
       );
 
     case 'Darkness':
@@ -135,18 +132,18 @@ function InnerSymbol({ type, color }: { type: EnergyType; color?: string }) {
       return (
         <>
           <circle cx="12" cy="12" r="5.5" fill={sym} />
-          <circle cx="10" cy="10" r="4"   fill={accent ?? ENERGY_META['Darkness'].bg} />
+          <circle cx="10" cy="10" r="4"   fill={accent} />
         </>
       );
 
     case 'Metal':
-      // Stahl-Dreieck mit innerer Zeichnung
+      // Sechskant-Mutter (Schraubmutter) — deutlich als „Metall/Stahl"
+      // lesbar. Loch nimmt die Scheibenfarbe (default) → wirkt durchbrochen;
+      // im color-Modus (accent = color) füllt es sich zu einer Vollmutter.
       return (
         <g fill={sym}>
-          <path d="M12 6 L18.5 17 L5.5 17 Z" />
-          <path d="M12 9 L16.5 17 L7.5 17 Z" fill={accent ?? ENERGY_META['Metal'].bg} />
-          <line x1="10" y1="14" x2="14" y2="14" stroke={sym} strokeWidth="1.5" />
-          <line x1="10.8" y1="16" x2="13.2" y2="16" stroke={sym} strokeWidth="1.5" />
+          <path d="M12 4.2 L18.75 8.1 L18.75 15.9 L12 19.8 L5.25 15.9 L5.25 8.1 Z" />
+          <circle cx="12" cy="12" r="3.6" fill={accent} />
         </g>
       );
 
@@ -166,7 +163,7 @@ function InnerSymbol({ type, color }: { type: EnergyType; color?: string }) {
           <ellipse cx="12" cy="8"  rx="2.8" ry="4" transform="rotate(270 12 12)" />
           {/* Herz in der Mitte */}
           <path d="M12 14.5 C11 13.5 9.5 13 9.5 11.5 C9.5 10.5 10.5 10 12 11.5 C13.5 10 14.5 10.5 14.5 11.5 C14.5 13 13 13.5 12 14.5Z"
-            fill={accent ?? ENERGY_META['Fairy'].bg} />
+            fill={accent} />
         </g>
       );
   }
@@ -189,34 +186,18 @@ export function EnergyIcon({ type, size = 24, className = '', color }: Props) {
   const t = normalizeEnergy(type) as EnergyType;
   const meta = ENERGY_META[t];
   if (!meta) return null;
-
-  // „Geprägt wie Text"-Modus (color): monochromes Inline-Glyph in der
-  // gewünschten Farbe OHNE farbige Scheibe (z.B. BinderCover-Prägung). Nutzt
-  // weiterhin die eigenen Glyph-Pfade — die offiziellen Datei-Symbole (unten)
-  // sind farbig gebacken und ließen sich nicht sauber einfärben.
-  if (color) {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-label={meta.de}>
-        <InnerSymbol type={t} color={color} />
-      </svg>
-    );
-  }
-
-  // Standard: offizielles, farbiges Typ-Symbol (partywhale/pokemon-type-icons,
-  // MIT — siehe public/type-icons/ATTRIBUTION.md). Als eigenständige SVG-Datei
-  // eingebunden statt inline: die Quell-SVGs benennen ihre Füllungen über
-  // `.cls-*`-Klassen, die bei mehreren Inline-Symbolen auf einer Seite
-  // kollidieren würden (alle bekämen dieselbe Farbe). Der Dateiname entspricht
-  // dem TCG-Energietyp (lowercase), z.B. Lightning → lightning.svg.
+  const { bg } = meta;
+  // Eigene, TCG-Stil Inline-Glyphen (Pflanze = Blatt, Feuer = Flamme …) auf
+  // farbiger Scheibe. Symbol WEISS auf dunklen Scheiben (Pflanze/Feuer/…),
+  // dunkel auf hellen (Elektro-Gelb, Farblos-Grau, Metall) — via
+  // readableTextColor, damit es überall lesbar bleibt (offizieller Look).
+  // `color` (BinderCover-Prägung) → monochromes Glyph ohne Scheibe.
+  const sym = color ?? readableTextColor(bg, '#ffffff');
+  const accent = color ?? bg; // Aussparungen zeigen im Default die Scheibenfarbe
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={`/type-icons/${t.toLowerCase()}.svg`}
-      width={size}
-      height={size}
-      className={className}
-      alt={meta.de}
-      draggable={false}
-    />
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-label={meta.de}>
+      {!color && <circle cx="12" cy="12" r="11.5" fill={bg} />}
+      <InnerSymbol type={t} sym={sym} accent={accent} />
+    </svg>
   );
 }
