@@ -189,17 +189,34 @@ export function EnergyIcon({ type, size = 24, className = '', color }: Props) {
   const t = normalizeEnergy(type) as EnergyType;
   const meta = ENERGY_META[t];
   if (!meta) return null;
-  const { bg } = meta;
+
+  // „Geprägt wie Text"-Modus (color): monochromes Inline-Glyph in der
+  // gewünschten Farbe OHNE farbige Scheibe (z.B. BinderCover-Prägung). Nutzt
+  // weiterhin die eigenen Glyph-Pfade — die offiziellen Datei-Symbole (unten)
+  // sind farbig gebacken und ließen sich nicht sauber einfärben.
+  if (color) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-label={meta.de}>
+        <InnerSymbol type={t} color={color} />
+      </svg>
+    );
+  }
+
+  // Standard: offizielles, farbiges Typ-Symbol (partywhale/pokemon-type-icons,
+  // MIT — siehe public/type-icons/ATTRIBUTION.md). Als eigenständige SVG-Datei
+  // eingebunden statt inline: die Quell-SVGs benennen ihre Füllungen über
+  // `.cls-*`-Klassen, die bei mehreren Inline-Symbolen auf einer Seite
+  // kollidieren würden (alle bekämen dieselbe Farbe). Der Dateiname entspricht
+  // dem TCG-Energietyp (lowercase), z.B. Lightning → lightning.svg.
   return (
-    <svg
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`/type-icons/${t.toLowerCase()}.svg`}
       width={size}
       height={size}
-      viewBox="0 0 24 24"
       className={className}
-      aria-label={meta.de}
-    >
-      {!color && <circle cx="12" cy="12" r="11.5" fill={bg} />}
-      <InnerSymbol type={t} color={color} />
-    </svg>
+      alt={meta.de}
+      draggable={false}
+    />
   );
 }
