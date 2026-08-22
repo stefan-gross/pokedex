@@ -54,17 +54,24 @@ export function hammingDistance(a: bigint, b: bigint): number {
 }
 
 /**
- * Grob rekalibriert an zwei realen Foto-vs-Katalogbild-Vergleichen (Handy-Foto
- * bei Umgebungslicht gegen sauberes Produktbild streut mehr als bei zwei
- * digitalen Bildern): korrekter Match (Bidiza/CRZ) lag bei Distanz 20, ein
- * echter Fehlmatch (Bidiza fälschlich als Sharfax/BRS) bei 28. Dunkle
- * Reverse-/Holo-Karten streuen höher (Folienschimmer im Foto, den das flache
- * Katalogbild nicht hat): korrekte Morpeko-Scans lagen bei 16–20. Deshalb die
- * Match-Decke von 22 → 24 (Luft für Holos), Mismatch-Linie bei 28 belassen
- * (schützt den bekannten Fehlmatch). Weiter nachjustieren bei mehr realen Scans.
+ * Datenbasiert kalibriert an den realen `scan_history`-Fotos (2026-08-23,
+ * n=7 korrekte Treffer mit Katalogbild): Distanzen [4,14,15,17,18,18,34] →
+ * 6/7 liegen ≤18, ein Ausreißer bei 34 (schlechtes Foto). Der bekannte
+ * Fehltreffer (Bidiza fälschlich als Sharfax/BRS) lag bei 28.
+ *
+ * Konsequenz: die frühere Mismatch-Linie bei 28 färbte korrekte (aber schlecht
+ * fotografierte) Scans rot. Neue Bänder:
+ *  - match ≤ 20: grün nur bei echter Sicherheit (deckt das beobachtete Cluster
+ *    ≤18 mit etwas Luft),
+ *  - unsure 21–31: gelb „bitte prüfen" — fängt auch den Fehltreffer@28 als
+ *    Warnung, ohne korrekte Grenzfälle hart abzulehnen,
+ *  - mismatch ≥ 32: rot nur „schlechter als Zufall" (32 = Erwartungswert der
+ *    Hamming-Distanz zweier zufälliger 64-Bit-Hashes).
+ * Der Rahmen ist nur ein Hinweis (kein Auto-Löschen). Weiter nachjustieren bei
+ * mehr realen Scans.
  */
 export function classifyPHashDistance(distance: number): PHashClass {
-  if (distance <= 24) return 'match';
-  if (distance <= 27) return 'unsure';
+  if (distance <= 20) return 'match';
+  if (distance <= 31) return 'unsure';
   return 'mismatch';
 }

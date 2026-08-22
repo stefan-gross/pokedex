@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import sharp from 'sharp';
 import { GoogleGenerativeAI, SchemaType, Part } from '@google/generative-ai';
 import { getReferenceSheets, getValidSymbolSetCodes } from '@/lib/scan/reference-sheets';
 import { getAdminDb } from '@/lib/firebase/admin';
@@ -286,6 +287,35 @@ const MODEL_FALLBACKS = [
   'gemini-flash-latest',
 ];
 
+/** Zusatz-Hinweis, wenn dem Modell der vergrößerte Identifier-Ausschnitt
+ *  (untere Kartenzeile) als ZWEITES Bild mitgegeben wird. */
+const IDENTIFIER_CROP_NOTE = `
+
+ADDITIONAL IMAGE: A SECOND image follows the full card — a magnified, sharpened crop of the card's BOTTOM strip, where the identifier line ("<RegMark> <CODE> <LANG> <NNN>/<TTT>", e.g. "J MEP DE 035/XXX") is printed on modern cards. Read setCode, number and printedTotal PRIMARILY from this magnified crop (the tiny stamp is far more legible there); use the full card image for everything else and as a fallback. If the crop does not show an identifier line (older cards place the stamp elsewhere), ignore it and read from the full image.`;
+
+/** Vergrößert die untere Kartenzeile (Set-Code + Sammelnummer) zu einem eigenen,
+ *  geschärften Bild. Der Lite-Modell-Blick auf den winzigen Original-Stempel
+ *  reicht meist nicht → als zweites Bild deutlich besser lesbar. `null` bei
+ *  Fehler (dann läuft der Scan wie bisher nur mit dem Vollbild). */
+async function buildIdentifierCrop(base64: string): Promise<string | null> {
+  try {
+    const buf = Buffer.from(base64, 'base64');
+    const meta = await sharp(buf, { failOn: 'none' }).metadata();
+    const w = meta.width, h = meta.height;
+    if (!w || !h) return null;
+    const stripH = Math.max(1, Math.round(h * 0.22));   // untere ~22 %
+    const out = await sharp(buf, { failOn: 'none' })
+      .extract({ left: 0, top: h - stripH, width: w, height: stripH })
+      .resize({ width: Math.min(1600, w * 3), withoutEnlargement: false })
+      .sharpen()
+      .jpeg({ quality: 90 })
+      .toBuffer();
+    return out.toString('base64');
+  } catch {
+    return null;
+  }
+}
+
 interface FallbackAttempt {
   model: string;
   ms: number;
@@ -557,13 +587,21 @@ export async function POST(req: NextRequest) {
     // Default sonst. Kein frei übergebener Prompt → keine Injection.
     const activePrompt = PROMPT_VARIANTS[req.headers.get('x-prompt-variant') ?? 'default'] ?? PROMPT;
 
+    // Vergrößerter Ausschnitt der unteren Identifier-Zeile als zweites Bild →
+    // deutlich bessere setCode-/Nummer-Lesbarkeit (der Original-Stempel ist zu
+    // klein für das Lite-Modell). Fehlschlag = still, dann nur Vollbild.
+    const idCrop = await buildIdentifierCrop(imageBase64);
+    const step1Parts: (string | Part)[] = idCrop
+      ? [
+          { inlineData: { data: imageBase64, mimeType } },
+          { inlineData: { data: idCrop, mimeType: 'image/jpeg' } },
+          activePrompt + IDENTIFIER_CROP_NOTE,
+        ]
+      : [{ inlineData: { data: imageBase64, mimeType } }, activePrompt];
+
     let step1: GenerateResult;
     try {
-      step1 = await generateWithFallback(
-        [{ inlineData: { data: imageBase64, mimeType } }, activePrompt],
-        SCHEMA,
-        0,
-      );
+      step1 = await generateWithFallback(step1Parts, SCHEMA, 0);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('All Gemini models failed:', msg);

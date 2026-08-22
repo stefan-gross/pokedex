@@ -337,6 +337,8 @@ export interface SyncSetsResult {
   status: 'complete' | 'error';
   message: string;
   synced: number;
+  prunedSets?: number;
+  prunedCards?: number;
 }
 
 interface TcgdexFullSet {
@@ -432,7 +434,44 @@ export async function syncSets(): Promise<SyncSetsResult> {
     await batch.commit();
   }
 
-  return { status: 'complete', message: `✅ ${docs.length} Sets synchronisiert`, synced: docs.length };
+  // 5. Veraltete Sets prunen: alles in tcg_sets, das TCGdex NICHT mehr listet
+  //    (z.B. das alte Duplikat swsh12.5tg). `ids` = alle aktuell von TCGdex
+  //    gelieferten Set-IDs (inkl. ausgeschlossener Serien → die gelten als
+  //    „existiert", werden also NICHT gelöscht; nur wirklich Entferntes fliegt).
+  let prunedSets = 0, prunedCards = 0;
+  const validIds = new Set(ids);
+  if (validIds.size > 0) {                                  // leere Liste = kaputte Antwort → nie prunen
+    const existing = await db.collection('tcg_sets').select().get();
+    const stale = existing.docs.map(d => d.id).filter(id => !validIds.has(id));
+    // Sicherheitskappe: eine legitime Bereinigung betrifft 0–2 Sets. Viele
+    // „verwaiste" IDs deuten auf eine unvollständige TCGdex-Antwort → NICHT löschen.
+    if (stale.length > 10) {
+      console.warn(`[syncSets] Prune übersprungen: ${stale.length} Sets gälten als veraltet (verdächtig viel) → [${stale.join(', ')}]`);
+    } else {
+      for (const setId of stale) {
+        for (;;) {
+          const snap = await db.collection('tcg_catalog').where('setId', '==', setId).limit(400).get();
+          if (snap.empty) break;
+          const b = db.batch();
+          snap.docs.forEach(d => b.delete(d.ref));
+          await b.commit();
+          prunedCards += snap.size;
+          if (snap.size < 400) break;
+        }
+        await db.collection('tcg_sets').doc(setId).delete();
+        prunedSets++;
+        console.log(`[syncSets] veraltetes Set gelöscht: ${setId}`);
+      }
+    }
+  }
+
+  const pruneMsg = prunedSets ? ` · ${prunedSets} veraltete Sets (${prunedCards} Karten) entfernt` : '';
+  return {
+    status: 'complete',
+    message: `✅ ${docs.length} Sets synchronisiert${pruneMsg}`,
+    synced: docs.length,
+    prunedSets, prunedCards,
+  };
 }
 
 // ── Pokémon-Artdaten-Anreicherung via PokéAPI ──────────────────────────────

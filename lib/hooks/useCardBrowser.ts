@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { browseCatalog, browseUnpriced, getCatalogCardsByIds, type BrowseSortKey, type BrowseFilter, type CatalogCard } from '@/lib/firestore/catalog';
+import { browseCatalog, browseUnpriced, getBrowseCount, getCatalogCardsByIds, type BrowseSortKey, type BrowseFilter, type CatalogCard } from '@/lib/firestore/catalog';
 import { trendFromCached } from '@/lib/prices/trend-from-cached';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { rarityLabelOf, rarityMatchValues } from '@/lib/card-constants';
@@ -28,6 +28,12 @@ export type CardBrowserFilter = {
 };
 
 const PAGE_SIZE = 50;
+// Bei aktivem Filter mit überschaubarer Treffermenge: alle Treffer laden und
+// komplett clientseitig sortieren (globale Sortierung statt nur der Seite).
+// Größere gefilterte Mengen (breite Typ-/Rarity-Filter) bleiben paginiert
+// (seiten-lokale Sortierung) — ein globaler Server-Sort bräuchte dort je einen
+// Composite-Index (Index-Explosion). Cap deckt Sets + selektive Filter ab.
+const LOAD_ALL_CAP = 800;
 
 function sortCatalogCards(cards: CatalogCard[], sort: BrowseSortKey, desc: boolean): CatalogCard[] {
   const d = desc ? -1 : 1;
@@ -169,7 +175,32 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
           setHasMore(false);
           return;
         }
-        const page = await browseCatalog(makeBrowseFilter(filter), null, PAGE_SIZE, sort, desc);
+        const serverFilter = makeBrowseFilter(filter);
+
+        // Aktiver (server-seitiger) Filter mit überschaubarer Treffermenge →
+        // ALLE Treffer laden + global clientseitig sortieren (statt nur die
+        // geladene Seite). Bounded via Count; darüber bleibt es paginiert.
+        if (Object.keys(serverFilter).length > 0) {
+          const total = await getBrowseCount(serverFilter);
+          if (cancelled) return;
+          if (total >= 0 && total <= LOAD_ALL_CAP) {
+            const all: CatalogCard[] = [];
+            let cur: QueryDocumentSnapshot | null = null;
+            for (let guard = 0; guard < 20; guard++) {
+              const p = await browseCatalog(serverFilter, cur, 300, sort, desc);
+              if (cancelled) return;
+              all.push(...p.cards);
+              cur = p.cursor;
+              if (!p.hasMore || !cur) break;
+            }
+            const sortedAll = sortCatalogCards(applyClientFilters(all, filter), sort, desc);
+            setCards(sortedAll.map(catalogCardToInfo));
+            setHasMore(false);
+            return;
+          }
+        }
+
+        const page = await browseCatalog(serverFilter, null, PAGE_SIZE, sort, desc);
         if (cancelled) return;
         const sorted = sortCatalogCards(applyClientFilters(page.cards, filter), sort, desc);
         cursorRef.current = page.cursor;
