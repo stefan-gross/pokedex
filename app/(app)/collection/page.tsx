@@ -15,7 +15,7 @@ import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { LegendButton } from '@/components/ui/LegendButton';
 import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { getCards } from '@/lib/firestore/cards';
-import { getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts } from '@/lib/firestore/catalog';
+import { getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getPricedCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts } from '@/lib/firestore/catalog';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
@@ -106,6 +106,7 @@ function CollectionContent() {
   const [sets,          setSets]          = useState<{ id: string; name: string; count: number }[]>([]);
   const [catalogCount,  setCatalogCount]  = useState(0);
   const catalogCountRef = useRef(0);
+  const [pricedCount,   setPricedCount]   = useState(0);
   const [searchVisibleCount, setSearchVisibleCount] = useState(20);
   const searchSentinelRef = useRef<HTMLDivElement>(null);
 
@@ -123,6 +124,7 @@ function CollectionContent() {
   useEffect(() => {
     getCards().then(setOwnedCards).catch(() => {});
     getCatalogCount().then(n => { setCatalogCount(n); catalogCountRef.current = n; }).catch(() => {});
+    getPricedCount().then(setPricedCount).catch(() => {});
     getCatalogFilterCounts().then(setFilterCounts).catch(() => {});
     getAllSets().then(setAllSets).catch(() => {});
   }, []);
@@ -444,6 +446,11 @@ function CollectionContent() {
   const resultCount = isBrowseMode
     ? browseTotal != null
       ? fmt(browseTotal)
+      // Ungefilterter Preis-Sort: serverseitiges orderBy('priceEur') blendet
+      // Karten ohne Preis aus → nicht den Gesamt-Katalog, sondern die Zahl der
+      // Karten MIT Preis anzeigen.
+      : !hasActiveFilterForCount && browseSort === 'price' && pricedCount > 0
+        ? fmt(pricedCount)
       : !hasActiveFilterForCount && catalogCount > 0
         ? fmt(catalogCount)
         : browseCards.length > 0 ? `${browseCards.length}${hasMore ? '+' : ''}` : null

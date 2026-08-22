@@ -160,7 +160,7 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
           setHasMore(false);
           return;
         }
-        const page = await browseCatalog(makeBrowseFilter(filter), null, PAGE_SIZE);
+        const page = await browseCatalog(makeBrowseFilter(filter), null, PAGE_SIZE, sort, desc);
         if (cancelled) return;
         const sorted = sortCatalogCards(applyClientFilters(page.cards, filter), sort, desc);
         cursorRef.current = page.cursor;
@@ -180,7 +180,7 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
     if (loadingMore || !hasMore || !cursorRef.current) return;
     setLoadingMore(true);
     try {
-      const page = await browseCatalog(makeBrowseFilter(filter), cursorRef.current, PAGE_SIZE);
+      const page = await browseCatalog(makeBrowseFilter(filter), cursorRef.current, PAGE_SIZE, sort, desc);
       const sorted = sortCatalogCards(applyClientFilters(page.cards, filter), sort, desc);
       cursorRef.current = page.cursor;
       setCards(prev => [...prev, ...sorted.map(catalogCardToInfo)]);
@@ -189,7 +189,7 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
       setLoadingMore(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingMore, hasMore, filter, sort]);
+  }, [loadingMore, hasMore, filter, sort, desc]);
 
   return { cards, loading, loadMore, loadingMore, hasMore, hasAnyFilter };
 }

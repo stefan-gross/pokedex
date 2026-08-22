@@ -1,7 +1,8 @@
-import { Timestamp } from 'firebase-admin/firestore';
+import { Timestamp, FieldValue } from 'firebase-admin/firestore';
 import { activeProvider } from '@/lib/prices';
 import { fetchPricesForSet } from './tcgdex';
 import { getAdminDb } from '@/lib/firebase/admin';
+import { pickTrendPrice } from './value-tier';
 import { TransientPriceError, type PriceResult, type PriceProvider, type PriceCurrency } from './types';
 
 /** TTL: nach 7 Tagen gilt der gecachte Preis als stale → Live-Refresh.
@@ -202,6 +203,10 @@ export async function refreshAndCache(tcgId: string): Promise<PriceResult | null
   try {
     const cachedAt = Timestamp.now();
     if (live) {
+      // Denormalisierter numerischer Trendpreis (EUR) fürs serverseitige
+      // Sortieren im Browse (`orderBy('priceEur')`). Fehlt der Wert, wird das
+      // Feld entfernt, damit die Karte aus der preissortierten Liste fällt.
+      const priceEur = pickTrendPrice(live);
       await docRef.set({
         prices: {
           cachedAt,
@@ -211,10 +216,12 @@ export async function refreshAndCache(tcgId: string): Promise<PriceResult | null
           variants: live.variants,
           empty: false,
         },
+        priceEur: priceEur != null ? priceEur : FieldValue.delete(),
       }, { merge: true });
     } else {
       await docRef.set({
         prices: { cachedAt, empty: true },
+        priceEur: FieldValue.delete(),
       }, { merge: true });
     }
   } catch (e) {
@@ -261,10 +268,12 @@ export async function refreshAndCacheSet(setId: string, tcgIds: string[]): Promi
     if (!live.has(tcgId)) { out.set(tcgId, null); continue; } // fehlt in Antwort → nicht als "empty" cachen
     const result = live.get(tcgId) ?? null;
     const docRef = db.collection('tcg_catalog').doc(tcgId);
+    const priceEur = result ? pickTrendPrice(result) : undefined;
     batch.set(docRef, {
       prices: result
         ? { cachedAt, provider: result.provider, currency: result.currency, updatedAt: result.updatedAt ?? null, variants: result.variants, empty: false }
         : { cachedAt, empty: true },
+      priceEur: priceEur != null ? priceEur : FieldValue.delete(),
     }, { merge: true });
     out.set(tcgId, result);
   }

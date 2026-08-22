@@ -1,6 +1,6 @@
 import {
   collection, doc, getDocs, setDoc, getDoc, documentId,
-  query, where, limit, startAfter, writeBatch, getCountFromServer,
+  query, where, orderBy, limit, startAfter, writeBatch, getCountFromServer,
   type QueryDocumentSnapshot, type QueryConstraint,
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
@@ -40,6 +40,7 @@ export interface CatalogCard {
   region?: string;             // z.B. "Kanto", "Johto"
   variants?: CardVariant[];    // mögliche Varianten, abgeleitet aus rarity
   prices?: CachedPricesLike;   // inline gecachte Preise (Preis-Sortierung/-Anzeige ohne Extra-Fetch)
+  priceEur?: number;           // denormalisierter Trendpreis (EUR) für serverseitiges orderBy im Browse
   artist?: string;             // Illustrator, direkt von pokemontcg.io (kein separates Enrichment nötig)
   artistTokens?: string[];     // artist.toLowerCase().split(/\s+/) — für Nachnamen-Suche (z.B. "Morii" → "Yuka Morii")
   // TCG-Kartenmechanik (von TCGdex, ab entsprechendem Sync — nur wenn vorhanden)
@@ -236,6 +237,18 @@ export async function getCatalogCount(): Promise<number> {
   return meta?.syncedTotal ?? 0;
 }
 
+/** Anzahl Karten mit gecachtem Preis (`priceEur` gesetzt) — für den Header-
+ *  Zähler im preissortierten Browse, da `orderBy('priceEur')` Karten ohne Preis
+ *  ausblendet. `orderBy` im Count-Query zählt nur Docs, die das Feld besitzen. */
+export async function getPricedCount(): Promise<number> {
+  try {
+    const snap = await getCountFromServer(query(collection(db, COL), orderBy('priceEur')));
+    return snap.data().count;
+  } catch {
+    return 0;
+  }
+}
+
 /**
  * Counts pro Typ und Supertype — dynamisch basierend auf aktivem Filter.
  * Wenn z.B. supertype='Pokémon' aktiv → Typ-Counts zeigen nur Pokémon-Karten.
@@ -361,6 +374,8 @@ export async function browseCatalog(
   filter: BrowseFilter = {},
   cursor: QueryDocumentSnapshot | null = null,
   pageSize = 50,
+  sort: BrowseSortKey = 'name',
+  desc = false,
 ): Promise<BrowsePage> {
   const constraints: QueryConstraint[] = [];
 
@@ -386,6 +401,16 @@ export async function browseCatalog(
     constraints.push(where('subtypes', 'array-contains', filter.evolutionStage));
   } else if (filter.supertype) {
     constraints.push(where('supertype', '==', filter.supertype));
+  }
+
+  // Serverseitige Preis-Sortierung nur ohne aktive `where`-Klausel (der
+  // ungefilterte "Alle"-Browse): `orderBy('priceEur')` allein braucht nur den
+  // automatischen Single-Field-Index. Mit einem where-Filter kombiniert wäre je
+  // ein Composite-Index nötig (Index-Explosion) → dort bleibt es clientseitig
+  // (unverändert). Karten ohne `priceEur` fallen bei orderBy naturgemäß raus.
+  const priceSortServerSide = sort === 'price' && constraints.length === 0;
+  if (priceSortServerSide) {
+    constraints.push(orderBy('priceEur', desc ? 'desc' : 'asc'));
   }
 
   if (cursor) constraints.push(startAfter(cursor));
