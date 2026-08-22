@@ -217,11 +217,16 @@ export async function refreshAndCache(tcgId: string): Promise<PriceResult | null
           empty: false,
         },
         priceEur: priceEur != null ? priceEur : FieldValue.delete(),
+        // hasPrice macht die „ohne Preis"-Karten abfragbar (where hasPrice==false),
+        // damit sie im preissortierten Browse als Schluss-Block angehängt werden
+        // können statt bei orderBy('priceEur') ganz zu verschwinden.
+        hasPrice: priceEur != null,
       }, { merge: true });
     } else {
       await docRef.set({
         prices: { cachedAt, empty: true },
         priceEur: FieldValue.delete(),
+        hasPrice: false,
       }, { merge: true });
     }
   } catch (e) {
@@ -274,6 +279,7 @@ export async function refreshAndCacheSet(setId: string, tcgIds: string[]): Promi
         ? { cachedAt, provider: result.provider, currency: result.currency, updatedAt: result.updatedAt ?? null, variants: result.variants, empty: false }
         : { cachedAt, empty: true },
       priceEur: priceEur != null ? priceEur : FieldValue.delete(),
+      hasPrice: priceEur != null,
     }, { merge: true });
     out.set(tcgId, result);
   }

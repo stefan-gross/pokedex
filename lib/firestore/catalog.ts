@@ -435,3 +435,23 @@ export async function browseCatalog(
     hasMore: snap.docs.length === pageSize,
   };
 }
+
+/** Karten OHNE gecachten Preis (`hasPrice == false`), paginiert nach Doc-ID.
+ *  Wird im ungefilterten preissortierten Browse als Schluss-Block hinter die
+ *  Karten MIT Preis gehängt, damit weiterhin ALLE Karten sichtbar sind (die
+ *  ohne Preis am Ende) statt bei `orderBy('priceEur')` ganz zu verschwinden.
+ *  Gleichungsfilter + orderBy(__name__) → kein Composite-Index nötig. */
+export async function browseUnpriced(
+  cursor: QueryDocumentSnapshot | null = null,
+  pageSize = 50,
+): Promise<BrowsePage> {
+  const constraints: QueryConstraint[] = [where('hasPrice', '==', false), orderBy(documentId())];
+  if (cursor) constraints.push(startAfter(cursor));
+  constraints.push(limit(pageSize));
+  const snap = await getDocs(query(collection(db, COL), ...constraints));
+  return {
+    cards:   snap.docs.map(d => d.data() as CatalogCard),
+    cursor:  snap.docs[snap.docs.length - 1] ?? null,
+    hasMore: snap.docs.length === pageSize,
+  };
+}

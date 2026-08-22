@@ -51,12 +51,16 @@ export async function POST(req: NextRequest) {
         const prices = data.prices as CachedPrices | undefined;
         const val = prices ? pickTrendPrice(toResult(prices)) : undefined;
         const current = typeof data.priceEur === 'number' ? data.priceEur : undefined;
+        const currentHasPrice = data.hasPrice === true;
 
         if (val != null) {
-          if (current !== val) { batch.update(d.ref, { priceEur: val }); writes++; updated++; }
-          else skipped++;
-        } else if (current !== undefined) {
-          batch.update(d.ref, { priceEur: FieldValue.delete() }); writes++; cleared++;
+          // priceEur setzen (falls abweichend) + hasPrice sicherstellen
+          if (current !== val || !currentHasPrice) {
+            batch.update(d.ref, { priceEur: val, hasPrice: true }); writes++; updated++;
+          } else skipped++;
+        } else if (current !== undefined || data.hasPrice !== false) {
+          // Preis weg ODER hasPrice fehlt/ist falsch → auf „ohne Preis" normalisieren
+          batch.update(d.ref, { priceEur: FieldValue.delete(), hasPrice: false }); writes++; cleared++;
         } else {
           skipped++;
         }

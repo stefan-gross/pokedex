@@ -106,9 +106,10 @@ function CollectionContent() {
   const [sets,          setSets]          = useState<{ id: string; name: string; count: number }[]>([]);
   const [catalogCount,  setCatalogCount]  = useState(0);
   const catalogCountRef = useRef(0);
-  // Anzahl Karten je Sortierfeld (price/pokedex/hp blenden Karten ohne das Feld
-  // aus) — für den Header-Zähler im serverseitig sortierten Browse.
-  const [sortCounts,    setSortCounts]    = useState<{ price: number; pokedex: number; hp: number }>({ price: 0, pokedex: 0, hp: 0 });
+  // Anzahl Karten je (inhärentem) Sortierfeld — Pokédex-Nr./KP blenden Karten
+  // ohne das Feld aus (Trainer/Energie). Für den Header-Zähler. (Preis lädt
+  // zweiphasig alle Karten → braucht hier keinen Sonder-Zähler.)
+  const [sortCounts,    setSortCounts]    = useState<{ pokedex: number; hp: number }>({ pokedex: 0, hp: 0 });
   const [searchVisibleCount, setSearchVisibleCount] = useState(20);
   const searchSentinelRef = useRef<HTMLDivElement>(null);
 
@@ -127,10 +128,9 @@ function CollectionContent() {
     getCards().then(setOwnedCards).catch(() => {});
     getCatalogCount().then(n => { setCatalogCount(n); catalogCountRef.current = n; }).catch(() => {});
     Promise.all([
-      getSortableCount('priceEur'),
       getSortableCount('nationalDexNumber'),
       getSortableCount('hp'),
-    ]).then(([price, pokedex, hp]) => setSortCounts({ price, pokedex, hp })).catch(() => {});
+    ]).then(([pokedex, hp]) => setSortCounts({ pokedex, hp })).catch(() => {});
     getCatalogFilterCounts().then(setFilterCounts).catch(() => {});
     getAllSets().then(setAllSets).catch(() => {});
   }, []);
@@ -452,10 +452,12 @@ function CollectionContent() {
   const resultCount = isBrowseMode
     ? browseTotal != null
       ? fmt(browseTotal)
-      // Ungefilterter Browse: serverseitiges orderBy(feld) blendet Karten ohne
-      // das Sortierfeld aus (Preis/Pokédex-Nr./KP) → statt des Gesamt-Katalogs
-      // die Zahl der Karten MIT diesem Feld anzeigen. Name → voller Katalog.
-      : !hasActiveFilterForCount && browseSort !== 'name' && sortCounts[browseSort] > 0
+      // Ungefilterter Browse nach Pokédex-Nr./KP: serverseitiges orderBy blendet
+      // Karten ohne dieses (inhärente) Feld aus — Trainer/Energie haben keine
+      // Pokédex-Nr./KP → die Zahl der Karten MIT diesem Feld anzeigen.
+      // Preis dagegen lädt zweiphasig ALLE Karten (ohne Preis ans Ende) → voller
+      // Katalog. Name → voller Katalog.
+      : !hasActiveFilterForCount && (browseSort === 'pokedex' || browseSort === 'hp') && sortCounts[browseSort] > 0
         ? fmt(sortCounts[browseSort])
       : !hasActiveFilterForCount && catalogCount > 0
         ? fmt(catalogCount)

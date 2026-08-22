@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { browseCatalog, getCatalogCardsByIds, type BrowseSortKey, type BrowseFilter, type CatalogCard } from '@/lib/firestore/catalog';
+import { browseCatalog, browseUnpriced, getCatalogCardsByIds, type BrowseSortKey, type BrowseFilter, type CatalogCard } from '@/lib/firestore/catalog';
 import { trendFromCached } from '@/lib/prices/trend-from-cached';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { rarityLabelOf, rarityMatchValues } from '@/lib/card-constants';
@@ -121,6 +121,14 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
   const [hasMore,     setHasMore]     = useState(false);
 
   const cursorRef = useRef<QueryDocumentSnapshot | null>(null);
+  // Ladephase für den ungefilterten Preis-Sort: erst Karten MIT Preis
+  // (serverseitig sortiert), dann als Schluss-Block die Karten OHNE Preis.
+  const phaseRef = useRef<'main' | 'tail' | 'done'>('main');
+
+  // Ungefilterter Preis-Sort → zweiphasiges Laden (Karten ohne Preis ans Ende),
+  // damit ALLE Karten sichtbar bleiben statt bei orderBy('priceEur') zu fehlen.
+  const noServerWhere = Object.keys(makeBrowseFilter(filter)).length === 0;
+  const unfilteredPriceSort = sort === 'price' && noServerWhere && filter.ownedFilter !== 'owned';
 
   const hasAnyFilter = !!(
     filter.types?.length ||
@@ -143,6 +151,7 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
   useEffect(() => {
     let cancelled = false;
     cursorRef.current = null;
+    phaseRef.current = 'main';
     setCards([]);
     setLoading(true);
 
@@ -165,7 +174,11 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
         const sorted = sortCatalogCards(applyClientFilters(page.cards, filter), sort, desc);
         cursorRef.current = page.cursor;
         setCards(sorted.map(catalogCardToInfo));
-        setHasMore(page.hasMore);
+        // Preis-Sort: nach den Karten MIT Preis noch die ohne Preis anhängen →
+        // hasMore bleibt true, nächster loadMore lädt den „tail".
+        if (page.hasMore) setHasMore(true);
+        else if (unfilteredPriceSort) { phaseRef.current = 'tail'; cursorRef.current = null; setHasMore(true); }
+        else setHasMore(false);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -177,19 +190,34 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
   }, [filter.setId, typesKey, filter.supertype, evolutionStagesKey, specialMechanicsKey, filter.rarity, filter.ownedFilter, ownedKey, sort, desc]);
 
   const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore || !cursorRef.current) return;
+    if (loadingMore || !hasMore) return;
+    // In der Haupt-Phase braucht es einen Cursor; in der Tail-Phase startet der
+    // erste Aufruf bewusst ohne Cursor (cursorRef wurde auf null gesetzt).
+    if (phaseRef.current === 'main' && !cursorRef.current) return;
     setLoadingMore(true);
     try {
+      if (phaseRef.current === 'tail') {
+        const page = await browseUnpriced(cursorRef.current, PAGE_SIZE);
+        cursorRef.current = page.cursor;
+        // Karten ohne Preis: Client-Filter (z.B. „Fehlen") respektieren, aber
+        // nicht nach Preis sortieren (keiner vorhanden) → Doc-ID-Reihenfolge.
+        setCards(prev => [...prev, ...applyClientFilters(page.cards, filter).map(catalogCardToInfo)]);
+        if (page.hasMore) setHasMore(true);
+        else { phaseRef.current = 'done'; setHasMore(false); }
+        return;
+      }
       const page = await browseCatalog(makeBrowseFilter(filter), cursorRef.current, PAGE_SIZE, sort, desc);
       const sorted = sortCatalogCards(applyClientFilters(page.cards, filter), sort, desc);
       cursorRef.current = page.cursor;
       setCards(prev => [...prev, ...sorted.map(catalogCardToInfo)]);
-      setHasMore(page.hasMore);
+      if (page.hasMore) setHasMore(true);
+      else if (unfilteredPriceSort) { phaseRef.current = 'tail'; cursorRef.current = null; setHasMore(true); }
+      else setHasMore(false);
     } finally {
       setLoadingMore(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingMore, hasMore, filter, sort, desc]);
+  }, [loadingMore, hasMore, filter, sort, desc, unfilteredPriceSort]);
 
   return { cards, loading, loadMore, loadingMore, hasMore, hasAnyFilter };
 }
