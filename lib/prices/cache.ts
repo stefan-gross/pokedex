@@ -60,6 +60,11 @@ export async function refreshAllOwnedAndStale(): Promise<{
   const db = getAdminDb();
   const start = Date.now();
   const BUDGET_MS = 50_000; // Endpunkt hat maxDuration=60 → vorher sauber abbrechen
+  // Der priorisierte Pro-Karten-Refresh (eigene Karten etc.) darf NICHT das ganze
+  // Budget fressen — sonst startet der rollierende Katalog-Sweep nie und die
+  // Gesamt-Abdeckung wächst nicht. Deshalb hart deckeln; der Rest gehört dem
+  // (deutlich schnelleren, set-batchweisen) Sweep.
+  const PRIORITY_BUDGET_MS = 18_000;
   const tcgIds = new Set<string>();
   const previousProvider = new Map<string, PriceProvider | undefined>();
 
@@ -82,18 +87,18 @@ export async function refreshAllOwnedAndStale(): Promise<{
       tcgIds.add(doc.id);
       previousProvider.set(doc.id, 'tcgplayer');
     }
-    const emptySnap = await db
-      .collection('tcg_catalog')
-      .where('prices.empty', '==', true)
-      .get();
-    for (const doc of emptySnap.docs) tcgIds.add(doc.id);
+    // „Leere" Karten (prices.empty) NICHT mehr einzeln in die Prioritätsliste:
+    // sie haben eine kurze 1h-TTL und waren dadurch bei JEDEM Lauf stale → alle
+    // (zuletzt ~570) wurden pro Karte neu geholt und blockierten den Sweep. Der
+    // rollierende Set-Sweep deckt sie set-batchweise mit ab; on-demand werden sie
+    // beim Ansehen ohnehin erneut versucht.
   } catch (e) {
     console.warn('[refresh-prices] tcg_catalog query failed', e);
   }
 
   let refreshed = 0, upgraded = 0, errored = 0;
   for (const tcgId of tcgIds) {
-    if (Date.now() - start > BUDGET_MS) break;
+    if (Date.now() - start > PRIORITY_BUDGET_MS) break;
     try {
       const result = await refreshAndCache(tcgId);
       refreshed++;
