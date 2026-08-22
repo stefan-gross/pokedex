@@ -316,12 +316,12 @@ async function generateWithFallback(
         // (Thinking dort standardmäßig AN) mehrere hundert ms. Das Feld ist in der
         // (veralteten) SDK nicht typisiert, wird aber unverändert an die REST-API
         // durchgereicht (siehe SDK: generationConfig wird 1:1 in den Body gelegt).
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         generationConfig: {
           responseMimeType: 'application/json',
           temperature: 0,
           thinkingConfig: { thinkingBudget: 0 },
           responseSchema: schema,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any,
       });
       const result = await model.generateContent(parts);
@@ -356,7 +356,8 @@ async function generateWithFallback(
 interface PreLookupResult {
   attempted: boolean;
   matched: boolean;
-  via?: 'number+dex' | 'number+dex+printedTotal' | 'printedTotal+number' | 'printedTotal+number+dex';
+  /** Debug-Herkunft des Treffers (z.B. "printedTotal+number", "…(swap)"). */
+  via?: string;
   cardId?: string;
   candidateCount?: number;
   /** Fertig aufgelöstes Katalog-Dokument ({ id, ...data }) — reicht der Client
@@ -400,96 +401,102 @@ async function tryDirectCatalogLookup(parsed: Record<string, unknown>): Promise<
 
   try {
     const db: Firestore = getAdminDb();
-    const numberVariants = new Set([number]);
-    numberVariants.add(/^\d+$/.test(number) ? String(parseInt(number, 10)) : number.padStart(3, '0'));
 
-    // ── A) number + dex (mit printedTotal-Feinauflösung bei Mehrdeutigkeit) ──
-    if (dexNumber != null) {
-      let candidates: QueryDocumentSnapshot[] = [];
-      for (const num of numberVariants) {
-        const snap = await db.collection('tcg_catalog')
-          .where('nationalDexNumber', '==', dexNumber)
-          .where('number', '==', num)
-          .limit(10)
-          .get();
-        if (!snap.empty) { candidates = snap.docs; break; }
-      }
+    // Ein Treffer-Dokument → PreLookupResult (nur mit gültigem setCode).
+    const asMatch = (d: QueryDocumentSnapshot, via: string, candidateCount?: number): PreLookupResult | null => {
+      const setCode = d.data().setCode;
+      if (typeof setCode !== 'string') return null;
+      parsed.setCode = setCode;
+      return { attempted: true, matched: true, via, cardId: d.id, card: snapToCard(d), candidateCount };
+    };
+    // Kandidaten → Treffer: 1 Kandidat ODER mehrere, die dieselbe Karte sind
+    // (gleiche Dex+Nummer+Name — z.B. dieselbe Karte in einem doppelt
+    // angelegten/veralteten Set) → eindeutig. Echte verschiedene Karten → null.
+    const cardKey = (d: QueryDocumentSnapshot) =>
+      `${d.data().nationalDexNumber ?? ''}|${d.data().number ?? ''}|${d.data().nameLower ?? d.data().nameDeLower ?? ''}`;
+    const resolveHits = (docs: QueryDocumentSnapshot[], via: string): PreLookupResult | null => {
+      if (!docs.length) return null;
+      const uniq = new Set(docs.map(cardKey));
+      if (docs.length === 1 || uniq.size === 1) return asMatch(docs[0], via, docs.length);
+      return null;
+    };
 
-      if (candidates.length === 1) {
-        const setCode = candidates[0].data().setCode;
-        if (typeof setCode === 'string') {
-          parsed.setCode = setCode;
-          return { attempted: true, matched: true, via: 'number+dex', cardId: candidates[0].id, card: snapToCard(candidates[0]) };
+    // Ein Lese-Versuch für ein konkretes (number, printedTotal)-Paar. `null` =
+    // kein sicherer Treffer (inkl. „Name widerspricht allen Kandidaten").
+    const attempt = async (num: string, total: number | null, tag: string): Promise<PreLookupResult | null> => {
+      const numberVariants = new Set([num]);
+      numberVariants.add(/^\d+$/.test(num) ? String(parseInt(num, 10)) : num.padStart(3, '0'));
+
+      // ── A) number + dex ──
+      if (dexNumber != null) {
+        let candidates: QueryDocumentSnapshot[] = [];
+        for (const n of numberVariants) {
+          const snap = await db.collection('tcg_catalog')
+            .where('nationalDexNumber', '==', dexNumber).where('number', '==', n).limit(10).get();
+          if (!snap.empty) { candidates = snap.docs; break; }
         }
-      } else if (candidates.length > 1 && printedTotal != null) {
-        for (const c of candidates) {
-          const setId = c.data().setId;
-          if (typeof setId !== 'string') continue;
-          const setDoc = await db.collection('tcg_sets').doc(setId).get();
-          if (setDoc.data()?.printedTotal === printedTotal) {
-            const setCode = c.data().setCode;
-            if (typeof setCode === 'string') {
-              parsed.setCode = setCode;
-              return { attempted: true, matched: true, via: 'number+dex+printedTotal', cardId: c.id, candidateCount: candidates.length, card: snapToCard(c) };
+        const r = resolveHits(candidates, `number+dex${tag}`);
+        if (r) return r;
+        // Mehrere echte Kandidaten → per printedTotal feinauflösen.
+        if (candidates.length > 1 && total != null) {
+          for (const c of candidates) {
+            const setId = c.data().setId;
+            if (typeof setId !== 'string') continue;
+            const setDoc = await db.collection('tcg_sets').doc(setId).get();
+            if (setDoc.data()?.printedTotal === total) {
+              const m = asMatch(c, `number+dex+printedTotal${tag}`, candidates.length);
+              if (m) return m;
             }
           }
         }
       }
-    }
 
-    // ── B) printedTotal + number (greift v.a. wenn dex fehlt) ────────────────
-    // printedTotal ist der Set-Fingerabdruck; number grenzt die Karte ein.
-    // Gemini liest beide Zahlen am „NNN/TTT"-Stempel zuverlässig — deutlich
-    // robuster als das winzige Set-Kürzel oder der (fehleranfällige) Symbolabgleich.
-    if (printedTotal != null) {
-      const setSnap = await db.collection('tcg_sets').where('printedTotal', '==', printedTotal).get();
-      const setIds = setSnap.docs.map(d => d.id);
-      if (setIds.length) {
-        const hitsById = new Map<string, QueryDocumentSnapshot>();
-        for (const setId of setIds) {
-          for (const num of numberVariants) {
-            const snap = await db.collection('tcg_catalog')
-              .where('setId', '==', setId)
-              .where('number', '==', num)
-              .limit(2)
-              .get();
-            for (const d of snap.docs) hitsById.set(d.id, d);
-          }
-        }
-        let hits = [...hitsById.values()];
-        // Namensfilter: eine andere Karte mit gleicher Nummer in einem Set mit
-        // gleichem printedTotal fällt so raus. FUZZY (Levenshtein-Toleranz),
-        // damit ein OCR-Tippfehler (z.B. „Mopeko" statt „Morpeko") die sonst
-        // eindeutige Zahlen-Auflösung nicht blockiert.
-        if (nameLower) {
-          const tol = nameLower.length >= 6 ? 2 : nameLower.length >= 4 ? 1 : 0;
-          const nameClose = (cand: unknown) =>
-            typeof cand === 'string' && (cand === nameLower || levenshtein(cand, nameLower) <= tol);
-          const byName = hits.filter(h => nameClose(h.data().nameLower) || nameClose(h.data().nameDeLower));
-          if (byName.length) hits = byName;
-        }
-        // Noch mehrdeutig (zwei Sets teilen printedTotal + Nummer)? Per dex nachfiltern.
-        if (hits.length > 1 && dexNumber != null) {
-          const byDex = hits.filter(h => h.data().nationalDexNumber === dexNumber);
-          if (byDex.length === 1) {
-            const setCode = byDex[0].data().setCode;
-            if (typeof setCode === 'string') {
-              parsed.setCode = setCode;
-              return { attempted: true, matched: true, via: 'printedTotal+number+dex', cardId: byDex[0].id, candidateCount: hits.length, card: snapToCard(byDex[0]) };
+      // ── B) printedTotal + number (greift v.a. wenn dex fehlt) ──
+      if (total != null) {
+        const setSnap = await db.collection('tcg_sets').where('printedTotal', '==', total).get();
+        const setIds = setSnap.docs.map(d => d.id);
+        if (setIds.length) {
+          const hitsById = new Map<string, QueryDocumentSnapshot>();
+          for (const setId of setIds) {
+            for (const n of numberVariants) {
+              const snap = await db.collection('tcg_catalog')
+                .where('setId', '==', setId).where('number', '==', n).limit(2).get();
+              for (const d of snap.docs) hitsById.set(d.id, d);
             }
           }
-          if (byDex.length >= 1) hits = byDex; // zumindest eingegrenzt
-        }
-        if (hits.length === 1) {
-          const setCode = hits[0].data().setCode;
-          if (typeof setCode === 'string') {
-            parsed.setCode = setCode;
-            return { attempted: true, matched: true, via: 'printedTotal+number', cardId: hits[0].id, card: snapToCard(hits[0]) };
+          let hits = [...hitsById.values()];
+          // Namensfilter FUZZY (OCR-tolerant). NEU: Wurde ein Name gelesen, der zu
+          // KEINEM Kandidaten passt, ist das ein Widerspruch → KEIN Treffer auf
+          // dieser Lesart (verhindert Fehltreffer, z.B. jap. Karte → falsche DE-Karte).
+          if (nameLower) {
+            const tol = nameLower.length >= 6 ? 2 : nameLower.length >= 4 ? 1 : 0;
+            const nameClose = (cand: unknown) =>
+              typeof cand === 'string' && (cand === nameLower || levenshtein(cand, nameLower) <= tol);
+            const byName = hits.filter(h => nameClose(h.data().nameLower) || nameClose(h.data().nameDeLower));
+            if (byName.length) hits = byName;
+            else if (hits.length) return null; // Name widerspricht → nicht sicher
           }
+          if (hits.length > 1 && dexNumber != null) {
+            const byDex = hits.filter(h => h.data().nationalDexNumber === dexNumber);
+            if (byDex.length) hits = byDex;
+          }
+          const r = resolveHits(hits, `printedTotal+number${tag}`);
+          if (r) return r;
         }
-        if (hits.length > 1) return { attempted: true, matched: false, via: 'printedTotal+number', candidateCount: hits.length };
       }
+      return null;
+    };
+
+    // Primärer Versuch mit der gelesenen Lesart …
+    let result = await attempt(number, printedTotal, '');
+    // … sonst Swap-Retry: Bei Secret Rares (Nummer > Gesamtzahl, z.B. „175/91")
+    // vertauscht Gemini number/printedTotal gern („091/175"). Nur akzeptiert,
+    // wenn die vertauschte Lesart einen namens-passenden eindeutigen Treffer
+    // liefert (der Name-Guard in `attempt` schützt vor Fehltreffern).
+    if (!result && /^\d+$/.test(number) && printedTotal != null) {
+      result = await attempt(String(printedTotal), parseInt(number, 10), '(swap)');
     }
+    if (result) return result;
 
     return { attempted: true, matched: false };
   } catch (err) {
