@@ -6,6 +6,7 @@ import {
 import { db } from '../firebase/client';
 import { RARITY_GROUPS, SPECIAL_MECHANIC_KEYS, rarityMatchValues } from '../card-constants';
 import type { CardVariant, CardAttack, CardAbility, CardWeakRes } from '@/types';
+import type { CachedPricesLike } from '../prices/trend-from-cached';
 
 export interface CatalogCard {
   id: string;
@@ -38,6 +39,7 @@ export interface CatalogCard {
   weightHg?: number;           // Gewicht in Hektogramm (60 = 6,0 kg)
   region?: string;             // z.B. "Kanto", "Johto"
   variants?: CardVariant[];    // mögliche Varianten, abgeleitet aus rarity
+  prices?: CachedPricesLike;   // inline gecachte Preise (Preis-Sortierung/-Anzeige ohne Extra-Fetch)
   artist?: string;             // Illustrator, direkt von pokemontcg.io (kein separates Enrichment nötig)
   artistTokens?: string[];     // artist.toLowerCase().split(/\s+/) — für Nachnamen-Suche (z.B. "Morii" → "Yuka Morii")
   // TCG-Kartenmechanik (von TCGdex, ab entsprechendem Sync — nur wenn vorhanden)
@@ -299,7 +301,7 @@ export async function getCatalogFilterCounts(activeFilter: BrowseFilter = {}): P
  * (Kombination mehrerer would brauchen Composite-Indexes)
  * Restliche Filter (rarity, owned, client-supertype) laufen im Hook
  */
-export type BrowseSortKey = 'name' | 'hp' | 'pokedex';
+export type BrowseSortKey = 'name' | 'hp' | 'pokedex' | 'price';
 
 export interface BrowseFilter {
   /** Set-ID (z.B. 'sv04') — equality, hoch selektiv → server-seitig zuerst */

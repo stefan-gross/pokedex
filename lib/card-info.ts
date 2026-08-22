@@ -5,6 +5,7 @@
  */
 
 import type { CatalogCard } from '@/lib/firestore/catalog';
+import type { CachedPricesLike } from '@/lib/prices/trend-from-cached';
 import type { CardVariant, CardDoc, CardCondition, CardLanguage, CardAttack, CardAbility, CardWeakRes } from '@/types';
 
 export interface CardInfo {
@@ -51,6 +52,9 @@ export interface CardInfo {
   /** true = vorläufige Karte ohne Katalog-Eintrag (kein Bild). Rendert einen
    *  Platzhalter (CardImage → CardPlaceholder) und ein rotes „?"-Badge. */
   pendingCatalog?: boolean;
+  /** Inline gecachte Preise (aus dem Katalog-Doc) — für Preis-Sortierung/-Anzeige
+   *  ohne Extra-Fetch (z.B. Sammlung/Suche). */
+  prices?: CachedPricesLike;
 }
 
 /** DE-bevorzugte Bild-URL einer Karte (DE → EN-Fallback), `undefined` wenn
@@ -114,6 +118,7 @@ export function catalogCardToInfo(c: CatalogCard): CardInfo {
     retreat: c.retreat,
     regulationMark: c.regulationMark,
     legal: c.legal,
+    prices: c.prices,
   };
 }
 

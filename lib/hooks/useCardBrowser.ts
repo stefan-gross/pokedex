@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { browseCatalog, getCatalogCardsByIds, type BrowseSortKey, type BrowseFilter, type CatalogCard } from '@/lib/firestore/catalog';
+import { trendFromCached } from '@/lib/prices/trend-from-cached';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { rarityLabelOf, rarityMatchValues } from '@/lib/card-constants';
 import type { QueryDocumentSnapshot } from 'firebase/firestore';
@@ -33,6 +34,15 @@ function sortCatalogCards(cards: CatalogCard[], sort: BrowseSortKey, desc: boole
   return [...cards].sort((a, b) => {
     if (sort === 'hp')      return d * ((a.hp ?? 0) - (b.hp ?? 0));
     if (sort === 'pokedex') return d * ((a.nationalDexNumber ?? 9999) - (b.nationalDexNumber ?? 9999));
+    if (sort === 'price') {
+      // Preis aus dem inline gecachten `prices`-Feld; Karten OHNE Preis immer ans
+      // Ende (unabhängig von der Richtung).
+      const pa = trendFromCached(a.prices), pb = trendFromCached(b.prices);
+      if (pa == null && pb == null) return 0;
+      if (pa == null) return 1;
+      if (pb == null) return -1;
+      return d * (pa - pb);
+    }
     return d * (a.nameLower ?? a.name.toLowerCase()).localeCompare(b.nameLower ?? b.name.toLowerCase());
   });
 }

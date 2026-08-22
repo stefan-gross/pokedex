@@ -27,9 +27,10 @@ import { EnergyIcon, ENERGY_META } from '@/components/ui/EnergyIcon';
 import { getAllSets, type TcgSet } from '@/lib/firestore/sets';
 import type { CardDoc } from '@/types';
 import type { BrowseSortKey } from '@/lib/firestore/catalog';
+import { trendFromCached } from '@/lib/prices/trend-from-cached';
 
 type OwnedFilter   = 'all' | 'owned' | 'missing';
-type SearchSortKey = 'number' | 'name' | 'pokedex' | 'hp';
+type SearchSortKey = 'number' | 'name' | 'pokedex' | 'hp' | 'price';
 type Supertype     = 'Pokémon' | 'Trainer' | 'Energy';
 
 // Mindestlänge pro Wort für Mehrwort- bzw. reine Illustrator-Suche — vermeidet
@@ -61,6 +62,7 @@ const BROWSE_SORT_OPTIONS: { value: BrowseSortKey; label: string }[] = [
   { value: 'name',    label: 'A–Z'          },
   { value: 'hp',      label: 'KP (höchste)' },
   { value: 'pokedex', label: 'Pokédex-Nr.'  },
+  { value: 'price',   label: 'Preis'        },
 ];
 
 const SEARCH_SORT_OPTIONS: { value: SearchSortKey; label: string }[] = [
@@ -68,6 +70,7 @@ const SEARCH_SORT_OPTIONS: { value: SearchSortKey; label: string }[] = [
   { value: 'name',    label: 'Name'        },
   { value: 'pokedex', label: 'Pokédex-Nr.' },
   { value: 'hp',      label: 'KP'          },
+  { value: 'price',   label: 'Preis'       },
 ];
 
 function fmt(n: number) { return n.toLocaleString('de'); }
@@ -381,17 +384,35 @@ function CollectionContent() {
   const displayed = useMemo(() => {
     const r = [...applyFacetFilters(results, facetState)];
     const d = searchSortDir === 'desc' ? -1 : 1;
-    r.sort((a, b) =>
-      searchSort === 'name'
-        ? d * a.name.localeCompare(b.name)
-        : searchSort === 'pokedex'
-          ? d * ((a.nationalDexNumber ?? 9999) - (b.nationalDexNumber ?? 9999))
-          : searchSort === 'hp'
-            ? d * ((a.hp ?? 0) - (b.hp ?? 0))
-            : d * ((parseInt(a.number) || 0) - (parseInt(b.number) || 0)),
-    );
+    r.sort((a, b) => {
+      if (searchSort === 'name')    return d * a.name.localeCompare(b.name);
+      if (searchSort === 'pokedex') return d * ((a.nationalDexNumber ?? 9999) - (b.nationalDexNumber ?? 9999));
+      if (searchSort === 'hp')      return d * ((a.hp ?? 0) - (b.hp ?? 0));
+      if (searchSort === 'price') {
+        // Preis aus inline gecachtem `prices`-Feld; ohne Preis immer ans Ende.
+        const pa = trendFromCached(a.prices), pb = trendFromCached(b.prices);
+        if (pa == null && pb == null) return 0;
+        if (pa == null) return 1;
+        if (pb == null) return -1;
+        return d * (pa - pb);
+      }
+      return d * ((parseInt(a.number) || 0) - (parseInt(b.number) || 0));
+    });
     return r;
   }, [results, facetState, searchSort, searchSortDir]);
+
+  // Preis-Maps (id → Trendpreis) aus den inline gecachten Preisen — für die
+  // Preis-Anzeige unter den Kacheln bei „Preis"-Sortierung (kein Extra-Fetch).
+  const browsePriceMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of browseCards) { const p = trendFromCached(c.prices); if (p != null) m.set(c.id, p); }
+    return m;
+  }, [browseCards]);
+  const searchPriceMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of displayed) { const p = trendFromCached(c.prices); if (p != null) m.set(c.id, p); }
+    return m;
+  }, [displayed]);
 
   const isBrowseMode = !inputValue;
   // Zeigt an, ob die Suchergebnisse mehrere unterschiedliche Sets enthalten —
@@ -672,7 +693,7 @@ function CollectionContent() {
                   Keine Karten für diesen Filter.
                 </p>
               )}
-              <CardGrid cards={browseCards} ownedMap={ownedMap} sortKey={browseSort} {...wishlistGridProps} onCardsChanged={() => getCards().then(setOwnedCards).catch(() => {})} />
+              <CardGrid cards={browseCards} ownedMap={ownedMap} sortKey={browseSort} priceMap={browsePriceMap} {...wishlistGridProps} onCardsChanged={() => getCards().then(setOwnedCards).catch(() => {})} />
               <div ref={sentinelRef} className="h-1" />
               {loadingMore && (
                 <div className="flex justify-center py-4">
@@ -709,6 +730,7 @@ function CollectionContent() {
                   cards={displayed.slice(0, searchVisibleCount)}
                   ownedMap={ownedMap}
                   sortKey={searchSort}
+                  priceMap={searchPriceMap}
                   {...wishlistGridProps}
                   onCardsChanged={() => getCards().then(setOwnedCards).catch(() => {})}
                   setsMeta={setsMetaMap}
