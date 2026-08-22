@@ -237,12 +237,13 @@ export async function getCatalogCount(): Promise<number> {
   return meta?.syncedTotal ?? 0;
 }
 
-/** Anzahl Karten mit gecachtem Preis (`priceEur` gesetzt) — für den Header-
- *  Zähler im preissortierten Browse, da `orderBy('priceEur')` Karten ohne Preis
- *  ausblendet. `orderBy` im Count-Query zählt nur Docs, die das Feld besitzen. */
-export async function getPricedCount(): Promise<number> {
+/** Anzahl Karten, die ein bestimmtes Sortierfeld besitzen — für den Header-
+ *  Zähler im serverseitig sortierten Browse, da `orderBy(field)` Karten ohne
+ *  dieses Feld ausblendet (z.B. Trainer/Energie ohne Pokédex-Nr./KP, Karten
+ *  ohne Preis). `orderBy` im Count-Query zählt nur Docs, die das Feld besitzen. */
+export async function getSortableCount(field: string): Promise<number> {
   try {
-    const snap = await getCountFromServer(query(collection(db, COL), orderBy('priceEur')));
+    const snap = await getCountFromServer(query(collection(db, COL), orderBy(field)));
     return snap.data().count;
   } catch {
     return 0;
@@ -315,6 +316,15 @@ export async function getCatalogFilterCounts(activeFilter: BrowseFilter = {}): P
  * Restliche Filter (rarity, owned, client-supertype) laufen im Hook
  */
 export type BrowseSortKey = 'name' | 'hp' | 'pokedex' | 'price';
+
+/** Firestore-Feld je Sortierschlüssel — für serverseitiges `orderBy` im
+ *  ungefilterten Browse (globale Sortierung über den ganzen Katalog). */
+export const BROWSE_SORT_FIELD: Record<BrowseSortKey, string> = {
+  name:    'nameLower',
+  hp:      'hp',
+  pokedex: 'nationalDexNumber',
+  price:   'priceEur',
+};
 
 export interface BrowseFilter {
   /** Set-ID (z.B. 'sv04') — equality, hoch selektiv → server-seitig zuerst */
@@ -403,14 +413,16 @@ export async function browseCatalog(
     constraints.push(where('supertype', '==', filter.supertype));
   }
 
-  // Serverseitige Preis-Sortierung nur ohne aktive `where`-Klausel (der
-  // ungefilterte "Alle"-Browse): `orderBy('priceEur')` allein braucht nur den
-  // automatischen Single-Field-Index. Mit einem where-Filter kombiniert wäre je
-  // ein Composite-Index nötig (Index-Explosion) → dort bleibt es clientseitig
-  // (unverändert). Karten ohne `priceEur` fallen bei orderBy naturgemäß raus.
-  const priceSortServerSide = sort === 'price' && constraints.length === 0;
-  if (priceSortServerSide) {
-    constraints.push(orderBy('priceEur', desc ? 'desc' : 'asc'));
+  // Serverseitige Sortierung nur ohne aktive `where`-Klausel (der ungefilterte
+  // "Alle"-Browse): ein einzelnes `orderBy` braucht nur den automatischen
+  // Single-Field-Index. Mit einem where-Filter kombiniert wäre je ein
+  // Composite-Index nötig (Index-Explosion) → dort bleibt es clientseitig
+  // (unverändert, sortiert nur die geladene Seite). Karten OHNE das Sortierfeld
+  // fallen bei orderBy naturgemäß raus (z.B. Trainer/Energie haben keine
+  // Pokédex-Nr./KP, Karten ohne gecachten Preis kein priceEur) — der Header-
+  // Zähler wird passend über `getSortableCount` angeglichen.
+  if (constraints.length === 0) {
+    constraints.push(orderBy(BROWSE_SORT_FIELD[sort], desc ? 'desc' : 'asc'));
   }
 
   if (cursor) constraints.push(startAfter(cursor));

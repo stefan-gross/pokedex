@@ -15,7 +15,7 @@ import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { LegendButton } from '@/components/ui/LegendButton';
 import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { getCards } from '@/lib/firestore/cards';
-import { getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getPricedCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts } from '@/lib/firestore/catalog';
+import { getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getSortableCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts } from '@/lib/firestore/catalog';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
@@ -106,7 +106,9 @@ function CollectionContent() {
   const [sets,          setSets]          = useState<{ id: string; name: string; count: number }[]>([]);
   const [catalogCount,  setCatalogCount]  = useState(0);
   const catalogCountRef = useRef(0);
-  const [pricedCount,   setPricedCount]   = useState(0);
+  // Anzahl Karten je Sortierfeld (price/pokedex/hp blenden Karten ohne das Feld
+  // aus) — für den Header-Zähler im serverseitig sortierten Browse.
+  const [sortCounts,    setSortCounts]    = useState<{ price: number; pokedex: number; hp: number }>({ price: 0, pokedex: 0, hp: 0 });
   const [searchVisibleCount, setSearchVisibleCount] = useState(20);
   const searchSentinelRef = useRef<HTMLDivElement>(null);
 
@@ -124,7 +126,11 @@ function CollectionContent() {
   useEffect(() => {
     getCards().then(setOwnedCards).catch(() => {});
     getCatalogCount().then(n => { setCatalogCount(n); catalogCountRef.current = n; }).catch(() => {});
-    getPricedCount().then(setPricedCount).catch(() => {});
+    Promise.all([
+      getSortableCount('priceEur'),
+      getSortableCount('nationalDexNumber'),
+      getSortableCount('hp'),
+    ]).then(([price, pokedex, hp]) => setSortCounts({ price, pokedex, hp })).catch(() => {});
     getCatalogFilterCounts().then(setFilterCounts).catch(() => {});
     getAllSets().then(setAllSets).catch(() => {});
   }, []);
@@ -446,11 +452,11 @@ function CollectionContent() {
   const resultCount = isBrowseMode
     ? browseTotal != null
       ? fmt(browseTotal)
-      // Ungefilterter Preis-Sort: serverseitiges orderBy('priceEur') blendet
-      // Karten ohne Preis aus → nicht den Gesamt-Katalog, sondern die Zahl der
-      // Karten MIT Preis anzeigen.
-      : !hasActiveFilterForCount && browseSort === 'price' && pricedCount > 0
-        ? fmt(pricedCount)
+      // Ungefilterter Browse: serverseitiges orderBy(feld) blendet Karten ohne
+      // das Sortierfeld aus (Preis/Pokédex-Nr./KP) → statt des Gesamt-Katalogs
+      // die Zahl der Karten MIT diesem Feld anzeigen. Name → voller Katalog.
+      : !hasActiveFilterForCount && browseSort !== 'name' && sortCounts[browseSort] > 0
+        ? fmt(sortCounts[browseSort])
       : !hasActiveFilterForCount && catalogCount > 0
         ? fmt(catalogCount)
         : browseCards.length > 0 ? `${browseCards.length}${hasMore ? '+' : ''}` : null
