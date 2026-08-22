@@ -41,12 +41,16 @@ number — the COLLECTOR number: 1–3 digits IMMEDIATELY before the slash in th
     POKÉDEX number → it goes in nationalDexNumber, NEVER in number.
   - A 4-digit value (e.g. "0877", "1025") is virtually never a collector number
     (those are ≤3 digits and paired with "/TTT") — it is the Pokédex number.
+  - Trainer Gallery / Galarian Gallery cards use a LETTER-PREFIXED number, e.g.
+    "TG04/TG30" or "GG04/GG70". KEEP the prefix in the number field → "TG04" / "GG04".
 
 printedTotal — the digits AFTER the slash in the SAME "NNN/TTT" group (the set's
   total card count as printed on the card, e.g. "053/172" → printedTotal = 172).
   Read it as a plain integer, drop leading zeros. This is a SEPARATE, independent
   reading from "number" — do not derive one from the other, read both digit
   groups directly from the stamp. null if no slash-number exists.
+  - Trainer/Galarian Gallery "TG04/TG30" or "GG04/GG70": printedTotal is the
+    DIGITS after the slash WITHOUT the letter prefix → 30 (for TG30) / 70 (GG70).
 
 language — German cards have "KP" (HP) and "Fähigkeit" (Ability).
   English cards have "HP" and "Ability". French has "PV" and "Talent" etc.
@@ -124,6 +128,11 @@ I) Morpeko — banner "Nr. 0877 Alter-Ego-Pokémon Größe 0,3 m Gewicht 3,0 kg"
    "Nr.") is the Pokédex number → nationalDexNumber: 877. NEVER put 0877 into
    the number field.)
 
+J) Trainer-Gallery card (Jynx/Rossana), bottom-LEFT stamp "TG04/TG30" + symbol
+   → { setCode: null, number: "TG04", printedTotal: 30, language: "de", confidence: "high" }
+   (KEEP the "TG" prefix in number; printedTotal is the digits after the slash
+   without the prefix → 30. Same for Galarian Gallery "GG04/GG70" → "GG04" / 70.)
+
 name — the LARGE card title in the TOP row (Pokémon name, Trainer card name, or
   Energy card name), printed next to the KP/HP value. Return it verbatim
   including hyphens and language-specific spelling: "Galar-Flunschlik",
@@ -148,8 +157,8 @@ Read the corner stamp "NNN/TTT" and the Pokédex number carefully — scan the w
 
 Fields:
 - setCode: 2–4 uppercase letters between the regulation-mark and the language marker on Scarlet&Violet (2023+) cards, e.g. "J ASC DE 005/217" → "ASC". ALL older eras (SWSH, SM, XY, …) have only a graphical symbol → null. Never return a single letter, a language marker (DE/EN), or a symbol description.
-- number: the 1–3 digits BEFORE the "/" in "NNN/TTT" (e.g. "121/182" → "121"). No slash pair → null. A value after "Nr."/"NO."/"#" is the Pokédex number, NOT the collector number.
-- printedTotal: the digits AFTER the "/" (e.g. "053/172" → 172), read directly, drop leading zeros; null if no slash.
+- number: the 1–3 digits BEFORE the "/" in "NNN/TTT" (e.g. "121/182" → "121"). No slash pair → null. A value after "Nr."/"NO."/"#" is the Pokédex number, NOT the collector number. Trainer/Galarian Gallery "TG04/TG30" or "GG04/GG70": keep the prefix → "TG04"/"GG04".
+- printedTotal: the digits AFTER the "/" (e.g. "053/172" → 172), read directly, drop leading zeros; null if no slash. For "TG04/TG30"/"GG04/GG70": digits after slash without the prefix → 30 / 70.
 - nationalDexNumber: digits after "Nr."/"NO."/"#" (DE: small italic banner between name and artwork, or description block; EN "NO."/"#"), parse as int (drop leading zeros: "0271"→271). Search the WHOLE card. A 4-digit value after that prefix is ALWAYS the dex number. null for Trainer/Energy or if absent.
 - language: DE "KP"/"Fähigkeit", EN "HP"/"Ability", FR "PV"/"Talent".
 - hp: the KP/HP integer next to the name; null for Trainer/Energy.
