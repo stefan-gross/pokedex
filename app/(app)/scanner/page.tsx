@@ -419,6 +419,9 @@ export default function ScannerPage() {
   const scannerDebugFlags = useScannerDebug();
   const aiFlagRef = useRef(false);
   useEffect(() => { aiFlagRef.current = scannerDebugFlags.ai; }, [scannerDebugFlags.ai]);
+  // „Nur Fehlversuche speichern" — im Handler staleness-sicher über Ref lesen.
+  const failOnlyRef = useRef(false);
+  useEffect(() => { failOnlyRef.current = scannerDebugFlags.failonly; }, [scannerDebugFlags.failonly]);
   const autoDebugOpenedRef = useRef<string | null>(null);
   const [debugCopied, setDebugCopied] = useState(false);
   const [previewImage, setPreviewImage] = useState<
@@ -1240,13 +1243,27 @@ export default function ScannerPage() {
 
       // Scan-Historie (Testmodus): das gesendete Bild + Ergebnis lokal ablegen,
       // damit sich falsch/nicht erkannte Karten später mit demselben Bild
-      // nachstellen lassen. Nicht bei Testmodus-Läufen selbst.
-      if (!fromTest) {
+      // nachstellen lassen. Nicht bei Testmodus-Läufen selbst. Bei „Nur
+      // Fehlversuche speichern" nur nicht-erkannte Karten ablegen (hält die
+      // gedeckelten 20 Plätze für die Debug-relevanten Fälle frei).
+      if (!fromTest && !(failOnlyRef.current && finalCard)) {
         void saveScan({
           imageBase64, mimeType,
           label: finalCard ? finalCard.name : 'Kein Treffer',
           ok: !!finalCard,
           cardId: finalCard?.id,
+          // Kompakte Debug-Ausgabe für die spätere Fehleranalyse.
+          debug: {
+            geminiParsed: {
+              name: gemini.name, setCode: gemini.setCode, number: gemini.number,
+              printedTotal: gemini.printedTotal, nationalDexNumber: gemini.nationalDexNumber,
+              hp: gemini.hp, language: gemini.language, confidence: gemini.confidence,
+              error: gemini.error,
+            },
+            via: gemini._preLookup?.via,
+            model: gemini._debug?.model,
+            ms: gemini._debug?.ms,
+          },
         });
       }
 
@@ -1369,7 +1386,8 @@ export default function ScannerPage() {
         <button
           onClick={() => setTestPanelOpen(true)}
           className="absolute z-40 flex items-center gap-1.5 px-3 h-9 rounded-full glass-overlay text-white text-xs font-semibold"
-          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)', right: 14 }}
+          // Links neben dem Schließen-Button (46px breit, px-4 rechts) statt darüber.
+          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)', right: 70 }}
         >
           <ScanLine size={15} /> Testbild
         </button>

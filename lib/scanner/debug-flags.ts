@@ -10,28 +10,32 @@
 
 import { useEffect, useState } from 'react';
 
-export type ScannerDebugStage = 'scan' | 'ai' | 'test';
+export type ScannerDebugStage = 'scan' | 'ai' | 'test' | 'failonly';
 
 export interface ScannerDebugFlags {
   scan: boolean;
   ai: boolean;
   test: boolean;
+  /** Nur Fehlversuche (nicht erkannte Karten) in die Scan-Historie speichern —
+   *  hält die gedeckelten 20 Plätze für Debug-relevante Fälle frei. */
+  failonly: boolean;
 }
 
 const KEYS: Record<ScannerDebugStage, string> = {
   scan: 'scanner-debug-scan',
   ai: 'scanner-debug-ai',
   test: 'scanner-debug-test',
+  failonly: 'scanner-debug-failonly',
 };
 
 const CHANGE_EVENT = 'scanner-debug-changed';
 
 function readFlags(): ScannerDebugFlags {
-  if (typeof window === 'undefined') return { scan: false, ai: false, test: false };
+  if (typeof window === 'undefined') return { scan: false, ai: false, test: false, failonly: false };
   const g = (s: ScannerDebugStage) => {
     try { return localStorage.getItem(KEYS[s]) === '1'; } catch { return false; }
   };
-  return { scan: g('scan'), ai: g('ai'), test: g('test') };
+  return { scan: g('scan'), ai: g('ai'), test: g('test'), failonly: g('failonly') };
 }
 
 export function getScannerDebug(): ScannerDebugFlags {
@@ -47,7 +51,7 @@ export function setScannerDebug(stage: ScannerDebugStage, on: boolean): void {
 /** Reaktiver Hook. Startet mit `false` (SSR-sicher, keine Hydration-Mismatch),
  *  liest die echten Werte erst nach dem Mount. */
 export function useScannerDebug(): ScannerDebugFlags {
-  const [flags, setFlags] = useState<ScannerDebugFlags>({ scan: false, ai: false, test: false });
+  const [flags, setFlags] = useState<ScannerDebugFlags>({ scan: false, ai: false, test: false, failonly: false });
   useEffect(() => {
     const update = () => setFlags(readFlags());
     update();

@@ -17,6 +17,15 @@ import { db, currentUid, waitForUid } from '../firebase/client';
  * Gedeckelt auf die letzten MAX_ENTRIES.
  */
 
+/** Kompakte Debug-Ausgabe je Scan (für die Fehleranalyse im Testmodus) —
+ *  bewusst schlank (das base64-Bild dominiert die Dokumentgröße). */
+export interface ScanDebug {
+  geminiParsed?: Record<string, unknown>; // von Gemini gelesene Felder (name/number/…)
+  via?: string;                           // Lookup-Herkunft ("printedTotal+number(swap)" …)
+  model?: string;                         // genutztes Gemini-Modell
+  ms?: number;                            // Gemini-Latenz
+}
+
 export interface ScanHistoryEntry {
   id: string;          // Firestore-Doc-ID
   ownerUid?: string;   // Firebase-uid des Besitzers (IDOR-Härtung)
@@ -25,6 +34,7 @@ export interface ScanHistoryEntry {
   label: string;       // Kartenname, „Kein Treffer", „Fehler" …
   ok: boolean;         // true = Karte erkannt
   cardId?: string;
+  debug?: ScanDebug;   // optionale Debug-Ausgabe (v.a. bei Fehlversuchen)
   ts: number;          // Zeitstempel (ms)
 }
 
@@ -37,15 +47,19 @@ export async function saveScan(entry: Omit<ScanHistoryEntry, 'id' | 'ts'> & { ts
   try {
     const uid = currentUid();
     const ts = entry.ts ?? Date.now();
-    await addDoc(collection(db, COL), {
+    // Kein `undefined` an Firestore geben (wirft je nach SDK-Config). Optionale
+    // Felder nur setzen, wenn vorhanden.
+    const doc: Record<string, unknown> = {
       ownerUid: uid,
       imageBase64: entry.imageBase64,
       mimeType: entry.mimeType,
       label: entry.label,
       ok: entry.ok,
-      cardId: entry.cardId,
       ts,
-    });
+    };
+    if (entry.cardId) doc.cardId = entry.cardId;
+    if (entry.debug) doc.debug = entry.debug;
+    await addDoc(collection(db, COL), doc);
     // Kürzen: nur eigene Scans (ownerUid), älteste Überzählige löschen.
     // In-Memory sortiert → kein Composite-Index (ownerUid+ts) nötig.
     if (uid) {

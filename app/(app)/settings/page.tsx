@@ -533,6 +533,13 @@ export default function SettingsPage() {
               </div>
               <Switch checked={scannerDebug.test} onChange={v => setScannerDebug('test', v)} accentColor="#3182ce" />
             </div>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-role-body font-medium">Nur Fehlversuche speichern</p>
+                <p className="text-role-label text-glass-muted">In die Testbild-Historie (max. 20) nur nicht erkannte Karten mit Debug-Ausgabe ablegen — hält die Plätze für die Problemfälle frei.</p>
+              </div>
+              <Switch checked={scannerDebug.failonly} onChange={v => setScannerDebug('failonly', v)} accentColor="#3182ce" />
+            </div>
           </div>
         </section>
 

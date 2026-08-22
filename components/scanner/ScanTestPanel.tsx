@@ -367,6 +367,13 @@ export function ScanTestPanel({ onClose, onRecognize }: Props) {
                   <div className="absolute inset-x-0 bottom-0 px-1.5 py-1" style={{ background: 'linear-gradient(transparent, rgba(0,0,0,0.85))' }}>
                     <p className="text-white text-[10px] font-medium leading-tight truncate">{e.label}</p>
                     <p className="text-[9px]" style={{ color: e.ok ? '#8ff0b0' : '#ff8a8a' }}>{e.ok ? '✓ erkannt' : '✕'}</p>
+                    {e.debug?.geminiParsed && (
+                      <p className="text-[8px] text-white/60 leading-tight truncate font-mono">
+                        {String(e.debug.geminiParsed.name ?? '–')} · {String(e.debug.geminiParsed.number ?? '?')}/{String(e.debug.geminiParsed.printedTotal ?? '?')}
+                        {e.debug.geminiParsed.nationalDexNumber != null ? ` · #${e.debug.geminiParsed.nationalDexNumber}` : ''}
+                        {e.debug.via ? ` · ${e.debug.via}` : ''}
+                      </p>
+                    )}
                   </div>
                 </button>
               ))}
