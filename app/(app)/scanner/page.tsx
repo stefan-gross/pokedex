@@ -3299,10 +3299,11 @@ function RecognizedCardLarge({
           />
         )}
 
-        {/* ×N-Hinweis nur bei MEHR als einem Exemplar (wie auf den Sammlungs-
-            Kacheln) — bei genau 1 signalisiert der grüne Rahmen bereits Besitz.
+        {/* ×N-Besitz-Hinweis beim Scannen bereits ab EINEM Exemplar — der Sinn
+            ist „diese Karte hast du schon", damit man Dubletten sofort erkennt
+            (anders als auf den Sammlungs-Kacheln, wo ×1 nur Rauschen wäre).
             Nutzt die App-Badge-Komponente (CardBadge, Ecken-Variante). */}
-        {ownedCount != null && ownedCount > 1 && (
+        {ownedCount != null && ownedCount > 0 && (
           <CardBadge
             size={Math.max(40, Math.round((sizeBasePx ?? 220) * 0.2))}
             shape="pill"
