@@ -118,18 +118,24 @@ export function useTemplateGrid({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateKey, active]);
 
+  const binderCardIdSet = useMemo(() => new Set(binderCardIds ?? []), [binderCardIds]);
+
+  // „Vorhanden/Fehlend" im Grid bezieht sich auf die IN DIESER Sammlung liegenden
+  // Karten (binderCardIds) — NICHT auf den gesamten Besitz. So ist der Grid nur
+  // eine andere Darstellung von Blatt/Seite + Zähler (automatische Sammlungen
+  // übernehmen Karten nie still; besessene, aber nicht einsortierte Karten gelten
+  // hier — wie in Blatt/Seite — als fehlend, bis sie einsortiert werden).
   const ownedMap = useMemo(() => {
     const m = new Map<string, CardDoc[]>();
-    for (const c of owned) if (c.tcgId) { const a = m.get(c.tcgId) ?? []; a.push(c); m.set(c.tcgId, a); }
+    for (const c of owned) if (c.tcgId && binderCardIdSet.has(c.id)) { const a = m.get(c.tcgId) ?? []; a.push(c); m.set(c.tcgId, a); }
     return m;
-  }, [owned]);
+  }, [owned, binderCardIdSet]);
   const ownedTcgIds = useMemo(() => new Set(ownedMap.keys()), [ownedMap]);
 
   // Auswahl (Bearbeiten-Modus): pro tcgId genau das Exemplar, das in DIESER
   // Sammlung liegt (binderCardIds). Grid-Karten sind Katalog-Karten (`id` =
   // tcgId) → Brücke tcgId → CardDoc-ID, damit ein Tipp das richtige Exemplar
   // aus der Sammlung entfernt (nicht ein Duplikat aus „Unsortiert").
-  const binderCardIdSet = useMemo(() => new Set(binderCardIds ?? []), [binderCardIds]);
   const exemplarByTcg = useMemo(() => {
     const m = new Map<string, string>();
     for (const c of owned) if (c.tcgId && binderCardIdSet.has(c.id) && !m.has(c.tcgId)) m.set(c.tcgId, c.id);
