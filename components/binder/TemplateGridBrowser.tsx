@@ -34,9 +34,6 @@ const SORT_OPTIONS: { value: SortField; label: string }[] = [
   { value: 'price',   label: 'Preis' },
 ];
 const pluralKarten = (n: number) => (n === 1 ? '1 Karte' : `${n} Karten`);
-// Stabiles leeres Set → unterdrückt das weiße Auto-Herz im Vorlagen-Grid (und
-// bricht nicht das CardGrid-memo wie ein pro-Render neues Set).
-const NO_AUTO_HEART = new Set<string>();
 
 /** Fertige, in EIN Panel montierbare Teile der Vorlagen-Grid-Ansicht. */
 export interface TemplateGridParts {
@@ -91,7 +88,7 @@ export function useTemplateGrid({
   const [sortField, setSortField] = useState<SortField>('number');
   const [sortDir, setSortDir]     = useState<SortDir>('asc');
   const [rarityFilter, setRarityFilter] = useState<Set<string>>(new Set());
-  const { manualIds, manualLists, memberManualListIds, autoListsFor, toggleOnList } = useWishlist();
+  const { manualIds, autoIds, manualLists, memberManualListIds, autoListsFor, toggleOnList } = useWishlist();
 
   // Kartenmenge der Vorlage (Master-Set/Pokémon/Illustrator) + eigene Karten —
   // erst laden, wenn die Grid-Ansicht sichtbar ist (spart Reads in Blätter-/
@@ -226,11 +223,7 @@ export function useTemplateGrid({
       sortKey={sortField}
       priceMap={priceMap}
       manualIds={manualIds}
-      // Kein weißes Auto-Herz im Vorlagen-Grid: in einer automatischen Sammlung
-      // sind praktisch ALLE fehlenden Karten „automatisch gewünscht" → 200+ weiße
-      // Herzen wären reines Rauschen (die fehlende Karte ist ohnehin ausgegraut).
-      // Das rote manuelle Herz (echte Wunschliste) bleibt sichtbar.
-      autoIds={NO_AUTO_HEART}
+      autoIds={autoIds}
       manualLists={manualLists}
       memberIdsFor={memberManualListIds}
       autoListsFor={autoListsFor}
