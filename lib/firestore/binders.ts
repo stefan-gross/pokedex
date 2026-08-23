@@ -112,6 +112,15 @@ export async function removeCardFromBinder(binderId: string, cardId: string): Pr
   invalidateBindersCache();
 }
 
+/** Entfernt mehrere Karten in EINEM Write (arrayRemove mit mehreren Werten) —
+ *  Pendant zu `addCardsToBinder`, für den Template-Sync (statt N Einzel-Writes
+ *  auf dasselbe Dokument → war bei großen Vorlagen ein Write-Sturm). */
+export async function removeCardsFromBinder(binderId: string, cardIds: string[]): Promise<void> {
+  if (cardIds.length === 0) return;
+  await updateDoc(doc(db, COL, binderId), { cardIds: arrayRemove(...cardIds) });
+  invalidateBindersCache();
+}
+
 export async function addWishlistCardToBinder(binderId: string, wishlistCardId: string): Promise<void> {
   await updateDoc(doc(db, COL, binderId), { wishlistCardIds: arrayUnion(wishlistCardId) });
   invalidateBindersCache();

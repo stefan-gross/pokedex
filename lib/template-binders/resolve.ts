@@ -114,11 +114,30 @@ export async function resolveMasterSetTemplate(setId: string): Promise<TemplateS
   }));
 }
 
+// Session-Cache der aufgelösten Slot-Mengen. Die Slots enthalten nur KATALOG-
+// Karten (Illustrator/Dex/Set) — die ändern sich innerhalb einer Session nicht;
+// der Besitz-Abgleich passiert erst später in `resolveSlotWinners`. Ohne Cache
+// löste JEDER Speichervorgang in eine Vorlage die volle Menge neu auf — bei
+// Pokédex sind das 1025 einzelne Katalog-Reads (>30 s). TTL als Sicherheitsnetz
+// gegen einen Katalog-Sync mitten in einer sehr langen Session.
+const slotCache = new Map<string, { at: number; slots: TemplateSlot[] }>();
+const SLOT_TTL_MS = 10 * 60 * 1000;
+
+/** Leert den Slot-Cache (z.B. nach einem Katalog-Sync). */
+export function invalidateTemplateSlotCache() { slotCache.clear(); }
+
 export async function resolveTemplateSlots(template: BinderTemplate): Promise<TemplateSlot[]> {
+  const key = JSON.stringify(template);
+  const cached = slotCache.get(key);
+  if (cached && Date.now() - cached.at < SLOT_TTL_MS) return cached.slots;
+
+  let slots: TemplateSlot[];
   switch (template.type) {
-    case 'artist':    return resolveArtistTemplate(template.artist);
-    case 'pokedex':   return resolvePokedexTemplate();
-    case 'pokemon':   return resolvePokemonTemplate(template.dexNumbers);
-    case 'masterSet': return resolveMasterSetTemplate(template.setId);
+    case 'artist':    slots = await resolveArtistTemplate(template.artist); break;
+    case 'pokedex':   slots = await resolvePokedexTemplate(); break;
+    case 'pokemon':   slots = await resolvePokemonTemplate(template.dexNumbers); break;
+    case 'masterSet': slots = await resolveMasterSetTemplate(template.setId); break;
   }
+  slotCache.set(key, { at: Date.now(), slots });
+  return slots;
 }

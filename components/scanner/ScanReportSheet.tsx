@@ -3,10 +3,13 @@
 import { useState, useEffect } from 'react';
 import { Loader2, X } from 'lucide-react';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
+import { getSetById } from '@/lib/firestore/sets';
 import { catalogCardToInfo, resolveCardImage, type CardInfo } from '@/lib/card-info';
 import { Sheet } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+
+interface SetBadge { symbolUrl?: string; nameDe: string }
 
 export interface ScanReportResult {
   reportType: 'wrong' | 'not_in_catalog';
@@ -32,6 +35,25 @@ export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }:
   const [results, setResults] = useState<CardInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState('');
+  const [setBadges, setSetBadges] = useState<Map<string, SetBadge>>(new Map());
+
+  // Set-Metadaten (Symbol + dt. Name, z.B. „Dunkelnacht") für die Treffer-Sets
+  // nachladen → im Picker Symbol + Set-Name statt nur der Set-ID zeigen.
+  useEffect(() => {
+    const ids = [...new Set(results.map(r => r.setId).filter(Boolean))];
+    const missing = ids.filter(id => !setBadges.has(id));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    Promise.all(missing.map(async id => {
+      const s = await getSetById(id).catch(() => null);
+      return [id, { symbolUrl: s?.symbolUrl, nameDe: s?.nameDe ?? s?.name ?? id }] as const;
+    })).then(entries => {
+      if (cancelled) return;
+      setSetBadges(prev => { const m = new Map(prev); for (const [id, v] of entries) m.set(id, v); return m; });
+    });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results]);
 
   useEffect(() => {
     const term = q.trim();
@@ -128,8 +150,13 @@ export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }:
                 />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold truncate">{info.name}</div>
-                  <div className="text-[11px] text-muted-foreground font-mono truncate">
-                    {info.setId.toUpperCase()} · {info.number}
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground truncate">
+                    {setBadges.get(info.setId)?.symbolUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={setBadges.get(info.setId)!.symbolUrl} alt="" className="w-4 h-4 object-contain shrink-0" />
+                    )}
+                    <span className="truncate">{setBadges.get(info.setId)?.nameDe ?? info.setName}</span>
+                    <span className="font-mono shrink-0">· {info.number}</span>
                   </div>
                 </div>
               </button>

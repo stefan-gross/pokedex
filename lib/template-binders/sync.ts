@@ -1,6 +1,6 @@
 import { Timestamp } from 'firebase/firestore';
 import {
-  getBinders, ensureDefaultBinder, addCardToBinder, removeCardFromBinder, setBinderPages, updateBinder,
+  getBinders, ensureDefaultBinder, addCardsToBinder, removeCardsFromBinder, setBinderPages, updateBinder,
 } from '@/lib/firestore/binders';
 import { getCards } from '@/lib/firestore/cards';
 import { getWishlists, addWishlist, updateWishlist } from '@/lib/firestore/wishlists';
@@ -61,8 +61,11 @@ async function syncOneBinder(
     // die verdrängte Normal-Karte oder ein Duplikat) wandern dorthin.
     // Einschränkung: andere, nicht-Standard-Binder, in die eine Karte manuell
     // gepackt wurde, werden hier nicht angefasst.
-    for (const id of plan.winnerCardIds) await removeCardFromBinder(defaultBinderId, id);
-    for (const id of evicted) { await addCardToBinder(defaultBinderId, id); moved++; }
+    // Gebatcht statt N sequentieller Einzel-Writes auf dasselbe Default-Doc
+    // (war bei großen Vorlagen ein Write-Sturm → sekundenlang).
+    await removeCardsFromBinder(defaultBinderId, plan.winnerCardIds);
+    await addCardsToBinder(defaultBinderId, evicted);
+    moved += evicted.length;
   }
 
   if (JSON.stringify(plan.wishlistItems) !== JSON.stringify(wl.items)) {

@@ -15,9 +15,11 @@ import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
          getCardsByDexNumberRest      as getCardsByDexNumber,
          getCardsByNameAndNumberRest  as getCardsByNameAndNumber } from '@/lib/firestore/catalog-rest';
 import { resolveScannedCard } from '@/lib/scan/resolve-card';
-import type { CatalogCard } from '@/lib/firestore/catalog';
-import { addCard, getCardsByTcgId } from '@/lib/firestore/cards';
-import { addCardToBinder, ensureDefaultBinder } from '@/lib/firestore/binders';
+import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
+import { addCard, getCardsByTcgId, updateCard } from '@/lib/firestore/cards';
+import { addCardToBinder, ensureDefaultBinder, getBinders } from '@/lib/firestore/binders';
+import { matchTemplateBinders } from '@/lib/template-binders/match-hint';
+import { syncTemplateBinders } from '@/lib/template-binders/sync';
 import { BulkAddToCollectionModal } from '@/components/scanner/BulkAddToCollectionModal';
 import { ValueBadge } from '@/components/card/ValueBadge';
 import { CardPrice } from '@/components/card/CardPrice';
@@ -1402,6 +1404,51 @@ export default function ScannerPage() {
     });
     if (job.eventId) void markEventReported(job.eventId, result.correctedCardId);
     void bumpScanStats(job.outcome ?? 'recognized', quality, job.pHashDistance, undefined, true);
+
+    // Gespeicherte Karte gleich mit-korrigieren: die (ggf. schon gespeicherte)
+    // falsch erkannte Karte auf die vom Nutzer gewählte richtige umbiegen. Wir
+    // ändern die CardDoc IN-PLACE (tcgId + denormalisierte Felder) → die
+    // Sammlungs-/Binder-Zuordnung (referenziert die CardDoc-ID) bleibt erhalten,
+    // und das Bild löst live über die neue tcgId aus dem Katalog auf.
+    if (result.reportType === 'wrong' && result.correctedCardId && job.result?.card) {
+      void (async () => {
+        try {
+          const wrongTcgId = job.result!.card!.id;
+          if (wrongTcgId === result.correctedCardId) return;
+          const copies = await getCardsByTcgId(wrongTcgId);
+          if (copies.length === 0) return;                       // nichts gespeichert → nur gemeldet
+          const [cat] = await getCatalogCardsByIds([result.correctedCardId!]);
+          if (!cat) return;
+          // Zuletzt hinzugefügtes Exemplar korrigieren (das gerade Gescannte).
+          const target = [...copies].sort((a, b) =>
+            ((b.addedAt as { toMillis?: () => number })?.toMillis?.() ?? 0) -
+            ((a.addedAt as { toMillis?: () => number })?.toMillis?.() ?? 0))[0];
+          await updateCard(target.id, {
+            tcgId: cat.id, name: cat.nameDe ?? cat.name, setId: cat.setId, setName: cat.setName,
+            series: cat.series, number: cat.number, rarity: cat.rarity,
+            pokemonType: cat.types?.[0], supertype: cat.supertype,
+          });
+          // Erkannte-Karten-Anzeige auf die korrigierte Karte umstellen.
+          const correctedInfo = catalogCardToInfo(cat);
+          setJobs(prev => prev.map(j => j.id === job.id && j.result ? { ...j, result: { ...j.result, card: correctedInfo } } : j));
+          // Vorlagen-Sammlungen beider Karten neu arrangieren (falls betroffen).
+          const templates = (await getBinders()).filter(b => b.template);
+          const affected = new Set<string>();
+          matchTemplateBinders(cat, templates).forEach(b => affected.add(b.id));
+          const wrong = job.result?.card;
+          if (wrong) {
+            matchTemplateBinders(
+              { artist: undefined, nationalDexNumber: wrong.nationalDexNumber, setId: wrong.setId },
+              templates,
+            ).forEach(b => affected.add(b.id));
+          }
+          if (affected.size > 0) await syncTemplateBinders({ binderIds: [...affected] });
+        } catch (e) {
+          console.error('[report] Karten-Korrektur fehlgeschlagen', e);
+        }
+      })();
+    }
+
     setReportToast(true);
     setTimeout(() => setReportToast(false), 2200);
   }, []);
@@ -3252,11 +3299,10 @@ function RecognizedCardLarge({
           />
         )}
 
-        {/* ×N-Hinweis, sobald die Karte schon vorhanden ist — auch bei genau
-            einem Exemplar, da der grüne Rahmen allein auf bunten Kartenmotiven
-            nicht immer auffällt. Nutzt die App-Badge-Komponente (CardBadge,
-            Ecken-Variante) — bündig oben rechts wie auf den Sammlungs-Kacheln. */}
-        {isOwned && ownedCount && (
+        {/* ×N-Hinweis nur bei MEHR als einem Exemplar (wie auf den Sammlungs-
+            Kacheln) — bei genau 1 signalisiert der grüne Rahmen bereits Besitz.
+            Nutzt die App-Badge-Komponente (CardBadge, Ecken-Variante). */}
+        {ownedCount != null && ownedCount > 1 && (
           <CardBadge
             size={Math.max(40, Math.round((sizeBasePx ?? 220) * 0.2))}
             shape="pill"
