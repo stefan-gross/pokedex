@@ -2,10 +2,14 @@
 
 import { use, useState, useEffect, useMemo, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Heart, Minus, Pencil, Download, Trash2 } from 'lucide-react';
+import { ChevronLeft, Heart, Minus, Pencil, Download, Trash2, ShoppingCart } from 'lucide-react';
 import { AutomaticBadge } from '@/components/binder/CollectionTypeBadge';
 import { CreateWishlistModal } from '@/components/wishlist/CreateWishlistModal';
 import { WishlistPickerSheet } from '@/components/wishlist/WishlistPickerSheet';
+import { CardmarketExportSheet } from '@/components/wishlist/CardmarketExportSheet';
+import { ErrorRetry } from '@/components/ui/ErrorRetry';
+import { formatCardNumber } from '@/lib/format';
+import { compareCardInfo } from '@/lib/card-sort';
 import { useWishlist } from '@/lib/hooks/use-wishlist';
 import { getWishlist, removeItemFromWishlist, deleteWishlist } from '@/lib/firestore/wishlists';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
@@ -93,6 +97,8 @@ export default function WishlistDetailPage({ params }: Props) {
   const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
   const [detailOwned, setDetailOwned] = useState<CardDoc[]>([]);
   const [editOpen, setEditOpen] = useState(false);
+  const [error, setError] = useState(false);
+  const [cmExportOpen, setCmExportOpen] = useState(false);
   // Info-Panel-Zustand (wie Grid-Ansicht der Sammlungen)
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState<SortField>('number');
@@ -105,11 +111,15 @@ export default function WishlistDetailPage({ params }: Props) {
   const [wishlistCard, setWishlistCard] = useState<CardInfo | null>(null);
 
   const load = async () => {
+    setError(false);
     try {
       const wl = await getWishlist(id);
       if (!wl) { router.push('/wishlist'); return; }
       setList(wl);
       setBinder(wl.templateBinderId ? await getBinder(wl.templateBinderId) : null);
+    } catch (e) {
+      console.error('[wishlist] load error', e);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -143,7 +153,7 @@ export default function WishlistDetailPage({ params }: Props) {
     () => (list?.items ?? []).map(i => i.tcgId).filter((x): x is string => !!x),
     [list],
   );
-  const { prices } = usePricesBatch(tcgIds);
+  const { prices, loading: pricesLoading } = usePricesBatch(tcgIds);
 
   // Bilder frisch aus dem Katalog auflösen (DE + EN), damit `CardImage` bei
   // einem 404 der deutschen TCGdex-URL auf das englische Bild zurückfallen kann.
@@ -155,7 +165,7 @@ export default function WishlistDetailPage({ params }: Props) {
     let cancelled = false;
     getCatalogCardsByIds(tcgIds)
       .then(cards => { if (!cancelled) setCatById(new Map(cards.map(c => [c.id, c]))); })
-      .catch(() => {});
+      .catch(e => console.error('[wishlist] Katalog-Read fehlgeschlagen', e));
     return () => { cancelled = true; };
   }, [tcgIds]);
 
@@ -165,7 +175,7 @@ export default function WishlistDetailPage({ params }: Props) {
     let cancelled = false;
     getCards()
       .then(cards => { if (!cancelled) setOwnedTcgIds(new Set(cards.map(c => c.tcgId).filter((x): x is string => !!x))); })
-      .catch(() => {});
+      .catch(e => console.error('[wishlist] Besitz-Read fehlgeschlagen', e));
     return () => { cancelled = true; };
   }, []);
 
@@ -184,6 +194,21 @@ export default function WishlistDetailPage({ params }: Props) {
     });
   }, [list, catById]);
 
+  // Cardmarket-„Deck-Liste": eine Karte pro Zeile im Format
+  // `1 <deutscher Name> (<Set>)`. Der Set-Name in Klammern macht die Zeile
+  // eindeutig (Cardmarket-Decklisten-Syntax: Menge + Name + (Edition)) — ohne
+  // ihn matcht z.B. „Karpador" dutzende Printings. Deutscher Name (`nameDe`)
+  // wie gewünscht, Fallback auf englischen Namen bzw. den gespeicherten
+  // Item-Namen; freie Wünsche ohne tcgId kommen mit ihrem Namen mit.
+  const cardmarketText = useMemo(() => (
+    (list?.items ?? []).map(item => {
+      const cc = item.tcgId ? catById.get(item.tcgId) : undefined;
+      const name = cc?.nameDe ?? cc?.name ?? item.name;
+      const set = cc?.setName ?? item.setName;
+      return set ? `1 ${name} (${set})` : `1 ${name}`;
+    }).join('\n')
+  ), [list, catById]);
+
   const priceMap = useMemo(() => {
     const m = new Map<string, number>();
     prices.forEach((pr, id) => { const v = pickTrendPrice(pr); if (v != null) m.set(id, v); });
@@ -199,23 +224,8 @@ export default function WishlistDetailPage({ params }: Props) {
     if (rarityFilter.size > 0) {
       rows = rows.filter(e => rarityFilter.has((e.info.rarity ? getRarityGroup(e.info.rarity) : null)?.label ?? 'Sonstige'));
     }
-    return [...rows].sort((a, b) => {
-      const x = a.info, y = b.info;
-      if (sortField === 'price') {
-        const pa = priceMap.get(x.id), pb = priceMap.get(y.id);
-        if (pa == null && pb == null) return 0;
-        if (pa == null) return 1;
-        if (pb == null) return -1;
-        return sortDir === 'desc' ? pb - pa : pa - pb;
-      }
-      let cmp = 0;
-      if (sortField === 'number')       cmp = (parseInt(x.number) || 0) - (parseInt(y.number) || 0) || x.number.localeCompare(y.number);
-      else if (sortField === 'name')    cmp = x.name.localeCompare(y.name);
-      else if (sortField === 'pokedex') cmp = (x.nationalDexNumber ?? 0) - (y.nationalDexNumber ?? 0);
-      else if (sortField === 'hp')      cmp = (x.hp ?? 0) - (y.hp ?? 0);
-      return sortDir === 'desc' ? -cmp : cmp;
-    });
-  }, [entries, search, rarityFilter, sortField, sortDir, priceMap]);
+    return [...rows].sort((a, b) => compareCardInfo(a.info, b.info, { field: sortField, dir: sortDir, priceMap, pricesLoading }));
+  }, [entries, search, rarityFilter, sortField, sortDir, priceMap, pricesLoading]);
 
   const toggleRarity = (label: string) =>
     setRarityFilter(prev => { const n = new Set(prev); if (n.has(label)) n.delete(label); else n.add(label); return n; });
@@ -249,13 +259,9 @@ export default function WishlistDetailPage({ params }: Props) {
       // (z.B. "007/094") — gleiche Logik wie `numFmt` in CardDetailSheet.
       const numberOf = (i: WishlistItem) => {
         const c = catById.get(i.tcgId ?? '');
-        const raw = (c?.number ?? i.number ?? '').split('/')[0];
-        if (!raw) return '';
-        const isPlain = /^\d+$/.test(raw);
-        const base = isPlain ? raw.padStart(3, '0') : raw;
         const sid = c?.setId ?? i.setId;
         const total = sid ? setById.get(sid)?.printedTotal : undefined;
-        return isPlain && total ? `${base}/${String(total).padStart(3, '0')}` : base;
+        return formatCardNumber(c?.number ?? i.number, total);
       };
       const priceOf = (i: WishlistItem) => {
         if (!i.tcgId) return '';
@@ -321,6 +327,13 @@ export default function WishlistDetailPage({ params }: Props) {
     setDetailCard(catalogCardToInfo(cc));
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen">
+        <ErrorRetry onRetry={load} message="Wunschliste konnte nicht geladen werden." />
+      </div>
+    );
+  }
   if (loading || !list) {
     return (
       <div className="min-h-screen flex justify-center pt-16">
@@ -383,6 +396,15 @@ export default function WishlistDetailPage({ params }: Props) {
               className="shrink-0"
             />
           )}
+          <Button
+            variant="secondary"
+            icon={<ShoppingCart />}
+            onClick={() => setCmExportOpen(true)}
+            disabled={items.length === 0}
+            aria-label="Für Cardmarket exportieren"
+            title="Für Cardmarket exportieren"
+            className="shrink-0"
+          />
           <Button
             variant="secondary"
             icon={<Download />}
@@ -519,6 +541,13 @@ export default function WishlistDetailPage({ params }: Props) {
           onSaved={() => { setEditOpen(false); load(); }}
         />
       )}
+
+      <CardmarketExportSheet
+        open={cmExportOpen}
+        onClose={() => setCmExportOpen(false)}
+        initialText={cardmarketText}
+        count={items.length}
+      />
 
       <ScrollToTopButton />
       <LegendButton symbols={['wishlist-heart', 'automatic', 'unreviewed', 'count', 'foreign-lang']} />
