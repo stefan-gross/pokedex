@@ -439,13 +439,63 @@ async function tryDirectCatalogLookup(parsed: Record<string, unknown>): Promise<
       const numberVariants = new Set([num]);
       numberVariants.add(/^\d+$/.test(num) ? String(parseInt(num, 10)) : num.padStart(3, '0'));
 
-      // ── A) number + dex ──
+      // Fuzzy-Namensvergleich (OCR-tolerant) — geteilt von beiden Pfaden.
+      const nameClose = (cand: unknown) => {
+        if (!nameLower) return true;
+        const tol = nameLower.length >= 6 ? 2 : nameLower.length >= 4 ? 1 : 0;
+        return typeof cand === 'string' && (cand === nameLower || levenshtein(cand, nameLower) <= tol);
+      };
+      const nameMatches = (d: QueryDocumentSnapshot) => nameClose(d.data().nameLower) || nameClose(d.data().nameDeLower);
+
+      // ── B) printedTotal + number ZUERST ──────────────────────────────────
+      // Die gedruckte Gesamtzahl bestimmt das Set eindeutig — zuverlässiger als
+      // number+dex, das bei falsch gelesener Dex-Nr. (z.B. Octillery 224→226 →
+      // Mantax) oder bei set-übergreifenden Dex+Nr.-Kollisionen (dieselbe Karte
+      // in zwei Sets, z.B. Smoliv sv01/sv10) das falsche Set trifft. Inklusive
+      // Namens-Guard + Dex-Feinauflösung; bei Uneindeutigkeit → Fallback A.
+      if (total != null) {
+        const setSnap = await db.collection('tcg_sets').where('printedTotal', '==', total).get();
+        const setIds = setSnap.docs.map(d => d.id);
+        if (setIds.length) {
+          const hitsById = new Map<string, QueryDocumentSnapshot>();
+          for (const setId of setIds) {
+            for (const n of numberVariants) {
+              const snap = await db.collection('tcg_catalog')
+                .where('setId', '==', setId).where('number', '==', n).limit(2).get();
+              for (const d of snap.docs) hitsById.set(d.id, d);
+            }
+          }
+          let hits = [...hitsById.values()];
+          // Name gelesen, aber zu KEINEM Kandidaten passend → Widerspruch, kein Treffer.
+          if (nameLower) {
+            const byName = hits.filter(nameMatches);
+            if (byName.length) hits = byName;
+            else if (hits.length) return null;
+          }
+          if (hits.length > 1 && dexNumber != null) {
+            const byDex = hits.filter(h => h.data().nationalDexNumber === dexNumber);
+            if (byDex.length) hits = byDex;
+          }
+          const r = resolveHits(hits, `printedTotal+number${tag}`);
+          if (r) return r;
+        }
+      }
+
+      // ── A) number + dex (Fallback) ───────────────────────────────────────
+      // Nur wenn printedTotal fehlt oder Pfad B nicht eindeutig war. Mit Namens-
+      // Guard: ein gelesener Name, der zu KEINEM dex+number-Kandidaten passt,
+      // verwirft den Treffer (schützt vor falsch gelesener Dex-Nummer).
       if (dexNumber != null) {
         let candidates: QueryDocumentSnapshot[] = [];
         for (const n of numberVariants) {
           const snap = await db.collection('tcg_catalog')
             .where('nationalDexNumber', '==', dexNumber).where('number', '==', n).limit(10).get();
           if (!snap.empty) { candidates = snap.docs; break; }
+        }
+        if (nameLower && candidates.length) {
+          const byName = candidates.filter(nameMatches);
+          if (byName.length) candidates = byName;
+          else return null; // Name widerspricht dem dex+number-Treffer → nicht sicher
         }
         const r = resolveHits(candidates, `number+dex${tag}`);
         if (r) return r;
@@ -460,40 +510,6 @@ async function tryDirectCatalogLookup(parsed: Record<string, unknown>): Promise<
               if (m) return m;
             }
           }
-        }
-      }
-
-      // ── B) printedTotal + number (greift v.a. wenn dex fehlt) ──
-      if (total != null) {
-        const setSnap = await db.collection('tcg_sets').where('printedTotal', '==', total).get();
-        const setIds = setSnap.docs.map(d => d.id);
-        if (setIds.length) {
-          const hitsById = new Map<string, QueryDocumentSnapshot>();
-          for (const setId of setIds) {
-            for (const n of numberVariants) {
-              const snap = await db.collection('tcg_catalog')
-                .where('setId', '==', setId).where('number', '==', n).limit(2).get();
-              for (const d of snap.docs) hitsById.set(d.id, d);
-            }
-          }
-          let hits = [...hitsById.values()];
-          // Namensfilter FUZZY (OCR-tolerant). NEU: Wurde ein Name gelesen, der zu
-          // KEINEM Kandidaten passt, ist das ein Widerspruch → KEIN Treffer auf
-          // dieser Lesart (verhindert Fehltreffer, z.B. jap. Karte → falsche DE-Karte).
-          if (nameLower) {
-            const tol = nameLower.length >= 6 ? 2 : nameLower.length >= 4 ? 1 : 0;
-            const nameClose = (cand: unknown) =>
-              typeof cand === 'string' && (cand === nameLower || levenshtein(cand, nameLower) <= tol);
-            const byName = hits.filter(h => nameClose(h.data().nameLower) || nameClose(h.data().nameDeLower));
-            if (byName.length) hits = byName;
-            else if (hits.length) return null; // Name widerspricht → nicht sicher
-          }
-          if (hits.length > 1 && dexNumber != null) {
-            const byDex = hits.filter(h => h.data().nationalDexNumber === dexNumber);
-            if (byDex.length) hits = byDex;
-          }
-          const r = resolveHits(hits, `printedTotal+number${tag}`);
-          if (r) return r;
         }
       }
       return null;
