@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Loader2, AlertCircle, Check, Plus, Minus, ChevronLeft, AlertTriangle, EyeOff, SearchX, LayoutGrid, Square, Flag, Bug, ScanLine } from 'lucide-react';
+import { X, Loader2, AlertCircle, Check, Plus, Minus, ChevronLeft, AlertTriangle, EyeOff, SearchX, LayoutGrid, Square, Flag } from 'lucide-react';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
@@ -30,9 +30,8 @@ import { CONDITIONS, VARIANT_LABELS, SERIES_NAMES_DE, SYMBOL_ONLY_SERIES, inhere
 import { useSetMeta } from '@/lib/hooks/use-set-meta';
 import { CardNameLabel } from '@/components/card/CardNameLabel';
 import { getSetById, getSetIdsByPrintedTotal } from '@/lib/firestore/sets';
-import { useScannerDebug } from '@/lib/scanner/debug-flags';
-import { saveScan } from '@/lib/scanner/scan-history';
-import { ScanTestPanel } from '@/components/scanner/ScanTestPanel';
+import { recordScanEvent, recordScanCase, bumpScanStats, markEventReported, updateScanEventPHash, type ScanOutcome, type ScanQuality } from '@/lib/scanner/scan-telemetry';
+import { ScanReportSheet, type ScanReportResult } from '@/components/scanner/ScanReportSheet';
 import type { CaptureMeta } from '@/components/scanner/CameraCapture';
 
 // Gemini liefert Condition in Kurzform (lowercase). Für Persistence wird in
@@ -164,6 +163,22 @@ interface ScanJob {
   // Verarbeitung den Rahmen (grün/gelb/rot) + Hinweis, v.a. im manuellen Modus.
   captureLevel?: string;
   captureReason?: string;
+  // Telemetrie: Original-Meta (Qualität + Vollbild) + verknüpftes scan_events-Doc
+  // (für den „Melden"-Flow, der die Grundwahrheit nachträgt).
+  captureMeta?: CaptureMeta;
+  eventId?: string;
+  outcome?: ScanOutcome;
+}
+
+/** CaptureMeta → kompakte Qualitätswerte für die Telemetrie (ohne Bild). */
+function metaToQuality(meta?: CaptureMeta): ScanQuality | undefined {
+  if (!meta) return undefined;
+  return {
+    trigger: meta.trigger, captureMode: meta.trigger === 'manual' ? 'manual' : 'auto',
+    level: meta.level, sharpness: meta.sharpness, contrast: meta.contrast,
+    glare: meta.glare, softGlare: meta.softGlare, nameGlare: meta.nameGlare, codeGlare: meta.codeGlare,
+    meanLum: meta.meanLum, fill: meta.fill, cornersN: meta.cornersN, angleDeg: meta.angleDeg,
+  };
 }
 
 type BorderStatus = 'none' | 'manual-yellow' | 'auto-yellow' | 'auto-red' | 'error';
@@ -175,8 +190,8 @@ function computeBorderStatus(job: ScanJob): BorderStatus {
   const dist = job.pHashDistance;
   if (typeof dist === 'number') {
     // Schwellwerte synchron mit classifyPHashDistance() in lib/scan/image-hash.ts
-    if (dist >= 28) return 'auto-red';
-    if (dist >= 25) return 'auto-yellow';
+    if (dist >= 32) return 'auto-red';
+    if (dist >= 21) return 'auto-yellow';
   }
   if (job.flaggedManual) return 'manual-yellow';
   return 'none';
@@ -413,20 +428,9 @@ export default function ScannerPage() {
 
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [activeOwnedCopies, setActiveOwnedCopies] = useState<CardDoc[]>([]);
-  const [debugJobId, setDebugJobId] = useState<string | null>(null);
-  // KI-Debug (Settings): zeigt nach dem Auslösen NUR das aufgenommene, entzerrte
-  // Bild als Vorschau — KEIN Gemini/Lookup. Zum Prüfen, was gesendet WÜRDE.
-  const scannerDebugFlags = useScannerDebug();
-  const aiFlagRef = useRef(false);
-  useEffect(() => { aiFlagRef.current = scannerDebugFlags.ai; }, [scannerDebugFlags.ai]);
-  // „Nur Fehlversuche speichern" — im Handler staleness-sicher über Ref lesen.
-  const failOnlyRef = useRef(false);
-  useEffect(() => { failOnlyRef.current = scannerDebugFlags.failonly; }, [scannerDebugFlags.failonly]);
-  const autoDebugOpenedRef = useRef<string | null>(null);
-  const [debugCopied, setDebugCopied] = useState(false);
-  const [previewImage, setPreviewImage] = useState<
-    { src: string; sizeKb: number; base64: string; mimeType: string; meta?: CaptureMeta } | null
-  >(null);
+  // „Melden"-Flow: Job, dessen Erkennung gemeldet wird (Grundwahrheit erfassen).
+  const [reportJobId, setReportJobId] = useState<string | null>(null);
+  const [reportToast, setReportToast] = useState(false);
   const [mode, setMode] = useState<'scanning' | 'review'>('scanning');
   // Review-Modus-Ansichten: grid (Default, 2-Spalten) / single (eine Karte groß + Swipe)
   const [viewMode, setViewMode] = useState<'grid' | 'single'>('grid');
@@ -488,8 +492,6 @@ export default function ScannerPage() {
   // Manueller Auslöser: der Footer-Scan-Button erhöht diesen Zähler → CameraCapture
   // reagiert per useEffect und macht das Standbild.
   const [shutterSignal, setShutterSignal] = useState(0);
-  // Testmodus-Panel (Debug-Schalter „Testmodus")
-  const [testPanelOpen, setTestPanelOpen] = useState(false);
   const switchCaptureMode = useCallback((m: 'auto' | 'manual') => {
     setCaptureMode(m);
     // Stream nur „aufwecken", wenn gerade KEINE erkannte Karte gezeigt wird —
@@ -634,20 +636,7 @@ export default function ScannerPage() {
     };
   }, []);
 
-  const debugJob = jobs.find(j => j.id === debugJobId) ?? null;
-
-  // KI-Debug: nach „An Gemini senden" (Einzeln-Modus) das Debug-Modal automatisch
-  // öffnen, sobald die Antwort da ist (Bild + Gemini-Roh/-Parsed + Latenz + Lookup).
-  useEffect(() => {
-    if (!scannerDebugFlags.ai) return;
-    const ready = [...jobs].reverse().find(
-      j => j.origin === 'recognize' && j.status !== 'processing' && j.debug?.geminiParsed != null,
-    );
-    if (ready && autoDebugOpenedRef.current !== ready.id) {
-      autoDebugOpenedRef.current = ready.id;
-      setDebugJobId(ready.id);
-    }
-  }, [jobs, scannerDebugFlags.ai]);
+  const reportJob = jobs.find(j => j.id === reportJobId) ?? null;
 
   const pendingCount = jobs.filter(j => j.status === 'processing').length;
   const doneJobs = jobs.filter(j => j.status === 'done' && j.result?.card);
@@ -792,25 +781,15 @@ export default function ScannerPage() {
     return () => { cancelled = true; };
   }, [activeJobId, jobs]);
 
-  const handleCapture = useCallback(async (imageBase64: string, mimeType: string, meta?: CaptureMeta, skipPreview = false) => {
+  const handleCapture = useCallback(async (imageBase64: string, mimeType: string, meta?: CaptureMeta) => {
     const id = Math.random().toString(36).slice(2);
     const t0 = Date.now();
     const imageSizeKb = Math.round((imageBase64.length * 3 / 4) / 1024);
 
-    // KI-Debug: erst NUR das entzerrte Bild + Auslöse-Metriken zeigen — kein
-    // Gemini/Lookup. Der Vorschau-Button „An Gemini senden" ruft handleCapture
-    // mit skipPreview=true erneut auf und lässt dann den echten Flow laufen.
-    // Testmodus-Läufe (trigger==='test') überspringen die KI-Vorschau und werden
-    // NICHT erneut in die Historie geschrieben (wir spielen ja ein historisches
-    // Bild ab).
-    const fromTest = meta?.trigger === 'test';
-    if (aiFlagRef.current && !skipPreview && !fromTest) {
-      setPreviewImage({ src: `data:${mimeType};base64,${imageBase64}`, sizeKb: imageSizeKb, base64: imageBase64, mimeType, meta });
-      setStreamPaused(true);
-      return;
-    }
-
     const debug: ScanDebug = { imageBase64, mimeType, imageSizeKb, lookupSteps: [] };
+    // Telemetrie-Event-ID (wird nach dem Ergebnis gesetzt) — die spätere,
+    // asynchrone pHash-Distanz wird darüber an dasselbe Event angehängt.
+    let eventIdPromise: Promise<string | null> | null = null;
 
     // Bild wird nur EINMAL gespeichert (in debug.imageBase64) — verhindert
     // doppelten Speicherverbrauch (vorher: capturedImageBase64 + debug.imageBase64
@@ -821,7 +800,7 @@ export default function ScannerPage() {
       const base = origin === 'recognize'
         ? prev.filter(j => j.origin !== 'recognize')
         : prev;
-      return [...base, { id, origin, status: 'processing', result: null, debug, captureLevel: meta?.level, captureReason: meta?.reason }];
+      return [...base, { id, origin, status: 'processing', result: null, debug, captureLevel: meta?.level, captureReason: meta?.reason, captureMeta: meta }];
     });
     // Im Einzeln-Modus Stream SOFORT pausieren — verhindert Folge-Snaps während
     // Gemini noch arbeitet. User tippt Scan-FAB für nächste Karte.
@@ -905,7 +884,26 @@ export default function ScannerPage() {
         setJobs(prev => prev.map(j => j.id === id
           ? { ...j, status: 'error', result: { card: null, language: (gemini.language ?? 'de') as CardLanguage }, debugInfo: geminiSummary, debug: errDebug }
           : j));
-        if (!fromTest) void saveScan({ imageBase64, mimeType, label: gemini.error ? 'Keine Karte erkannt' : 'Kein lesbarer Text', ok: false });
+        // Telemetrie: Fehl-/Nichterkennung als Event + vollen Fall (mit Bildern).
+        {
+          const outcome: ScanOutcome = gemini.error ? 'error' : 'not_recognized';
+          const quality = metaToQuality(meta);
+          const gm = {
+            name: gemini.name, setCode: gemini.setCode, number: gemini.number,
+            printedTotal: gemini.printedTotal, nationalDexNumber: gemini.nationalDexNumber,
+            hp: gemini.hp, language: gemini.language, confidence: gemini.confidence, error: gemini.error,
+            model: gemini._debug?.model, ms: gemini._debug?.ms, attempts: gemini._debug?.attempts?.length,
+          };
+          void recordScanEvent({ outcome, quality, gemini: gm }).then(eventId => {
+            if (eventId) setJobs(prev => prev.map(j => j.id === id ? { ...j, eventId, outcome } : j));
+            void recordScanCase({
+              outcome, quality, gemini: gm, reportType: 'auto_fail',
+              warpedCropBase64: imageBase64, originalFrameBase64: meta?.originalFrameBase64, mimeType,
+              lookupSteps: debug.lookupSteps, geminiRaw: gemini._debug?.rawText, eventId: eventId ?? undefined,
+            });
+          });
+          void bumpScanStats(outcome, quality, undefined, gemini._debug?.ms);
+        }
         scheduleImageCleanup(id);
         return;
       }
@@ -1241,30 +1239,33 @@ export default function ScannerPage() {
         },
       } : j));
 
-      // Scan-Historie (Testmodus): das gesendete Bild + Ergebnis lokal ablegen,
-      // damit sich falsch/nicht erkannte Karten später mit demselben Bild
-      // nachstellen lassen. Nicht bei Testmodus-Läufen selbst. Bei „Nur
-      // Fehlversuche speichern" nur nicht-erkannte Karten ablegen (hält die
-      // gedeckelten 20 Plätze für die Debug-relevanten Fälle frei).
-      if (!fromTest && !(failOnlyRef.current && finalCard)) {
-        void saveScan({
-          imageBase64, mimeType,
-          label: finalCard ? finalCard.name : 'Kein Treffer',
-          ok: !!finalCard,
-          cardId: finalCard?.id,
-          // Kompakte Debug-Ausgabe für die spätere Fehleranalyse.
-          debug: {
-            geminiParsed: {
-              name: gemini.name, setCode: gemini.setCode, number: gemini.number,
-              printedTotal: gemini.printedTotal, nationalDexNumber: gemini.nationalDexNumber,
-              hp: gemini.hp, language: gemini.language, confidence: gemini.confidence,
-              error: gemini.error,
-            },
-            via: gemini._preLookup?.via,
-            model: gemini._debug?.model,
-            ms: gemini._debug?.ms,
-          },
+      // ── Telemetrie ────────────────────────────────────────────────────────
+      // Für JEDEN Scan ein kompaktes Event (Qualität/Gemini/Lookup, kein Bild) +
+      // Live-Statistik. Bei Fehlern/Pending zusätzlich einen vollen Fall MIT
+      // Bildern (Fehler-Korpus). Grundwahrheit trägt später der „Melden"-Flow nach.
+      const scanOutcome: ScanOutcome = catalogCard ? 'recognized' : (finalCard ? 'pending' : 'not_recognized');
+      {
+        const quality = metaToQuality(meta);
+        const gm = {
+          name: gemini.name, setCode: gemini.setCode, number: gemini.number,
+          printedTotal: gemini.printedTotal, nationalDexNumber: gemini.nationalDexNumber,
+          hp: gemini.hp, language: gemini.language, confidence: gemini.confidence, error: gemini.error,
+          model: gemini._debug?.model, ms: gemini._debug?.ms, attempts: gemini._debug?.attempts?.length,
+        };
+        const lookup = { via: gemini._preLookup?.via, stepsCount: finalDebug.lookupSteps?.length, recognizedCardId: finalCard?.id ?? undefined };
+        eventIdPromise = recordScanEvent({ outcome: scanOutcome, quality, gemini: gm, lookup });
+        void eventIdPromise.then(eventId => {
+          if (eventId) setJobs(prev => prev.map(j => j.id === id ? { ...j, eventId, outcome: scanOutcome } : j));
+          if (eventId && scanOutcome !== 'recognized') {
+            void recordScanCase({
+              outcome: scanOutcome, quality, gemini: gm, lookup, reportType: 'auto_fail',
+              warpedCropBase64: imageBase64, originalFrameBase64: meta?.originalFrameBase64, mimeType,
+              lookupSteps: finalDebug.lookupSteps, geminiRaw: gemini._debug?.rawText,
+              catalogMatch: finalDebug.catalogMatch, eventId,
+            });
+          }
         });
+        void bumpScanStats(scanOutcome, quality, undefined, gemini._debug?.ms);
       }
 
       // Erkennen-Modus: nach erfolgreicher Erkennung Job zentral anzeigen —
@@ -1334,11 +1335,15 @@ export default function ScannerPage() {
               result: { ...j.result, card: best.info, candidates: scored.map(s => s.info) },
               pHashDistance: Number.isFinite(best.distance) ? best.distance : undefined,
             } : j));
+            if (Number.isFinite(best.distance)) void eventIdPromise?.then(eid => { if (eid) void updateScanEventPHash(eid, best.distance); });
           })();
         } else if (catalogCard) {
           const url = pickImageUrl(catalogCardToInfo(catalogCard));
           if (url) void phashOne(url).then(distance => {
-            if (distance != null) setJobs(prev => prev.map(j => j.id === id ? { ...j, pHashDistance: distance } : j));
+            if (distance != null) {
+              setJobs(prev => prev.map(j => j.id === id ? { ...j, pHashDistance: distance } : j));
+              void eventIdPromise?.then(eid => { if (eid) void updateScanEventPHash(eid, distance); });
+            }
           });
         }
       }
@@ -1352,10 +1357,54 @@ export default function ScannerPage() {
       setJobs(prev => prev.map(j => j.id === id
         ? { ...j, status: 'error', result: { card: null, language: 'de' }, debugInfo: `Netzwerkfehler: ${msg}`, debug: errDebug }
         : j));
-      if (!fromTest) void saveScan({ imageBase64, mimeType, label: 'Netzwerkfehler', ok: false });
+      {
+        const quality = metaToQuality(meta);
+        void recordScanEvent({ outcome: 'error', quality, gemini: { error: msg } }).then(eventId => {
+          if (eventId) setJobs(prev => prev.map(j => j.id === id ? { ...j, eventId, outcome: 'error' } : j));
+          void recordScanCase({
+            outcome: 'error', quality, gemini: { error: msg }, reportType: 'auto_fail',
+            warpedCropBase64: imageBase64, originalFrameBase64: meta?.originalFrameBase64, mimeType,
+            eventId: eventId ?? undefined,
+          });
+        });
+        void bumpScanStats('error', quality);
+      }
       scheduleImageCleanup(id);
     }
   }, [scheduleImageCleanup]);
+
+  // „Melden": vollen Fall mit Grundwahrheit ablegen + Event markieren. Nutzt das
+  // im Job gehaltene Bild/Debug/Meta (Bild ggf. schon aufgeräumt → dann ohne).
+  const submitReport = useCallback(async (job: ScanJob, result: ScanReportResult) => {
+    setReportJobId(null);
+    const quality = metaToQuality(job.captureMeta);
+    const gp = (job.debug?.geminiParsed ?? undefined) as Record<string, unknown> | undefined;
+    const gm = gp ? {
+      name: gp.name as string, setCode: gp.setCode as string, number: gp.number as string,
+      printedTotal: gp.printedTotal as number, nationalDexNumber: gp.nationalDexNumber as number,
+      hp: gp.hp as number, language: gp.language as string, confidence: gp.confidence as string,
+    } : undefined;
+    void recordScanCase({
+      outcome: job.outcome ?? 'recognized',
+      quality, gemini: gm,
+      lookup: { recognizedCardId: job.result?.card?.id },
+      pHashDistance: job.pHashDistance,
+      reportType: result.reportType,
+      correctedCardId: result.correctedCardId,
+      note: result.note,
+      warpedCropBase64: job.debug?.imageBase64,
+      originalFrameBase64: job.captureMeta?.originalFrameBase64,
+      mimeType: job.debug?.mimeType,
+      lookupSteps: job.debug?.lookupSteps,
+      geminiRaw: job.debug?.geminiRaw,
+      catalogMatch: job.debug?.catalogMatch,
+      eventId: job.eventId,
+    });
+    if (job.eventId) void markEventReported(job.eventId, result.correctedCardId);
+    void bumpScanStats(job.outcome ?? 'recognized', quality, job.pHashDistance, undefined, true);
+    setReportToast(true);
+    setTimeout(() => setReportToast(false), 2200);
+  }, []);
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden">
@@ -1378,23 +1427,6 @@ export default function ScannerPage() {
             hideFrame={scanMode === 'recognize' && streamPaused && (captureMode === 'auto' || recognizedJobId != null)}
           />
         </div>
-      )}
-
-      {/* Testmodus-Launcher (nur wenn Debug-Schalter „Testmodus" an) — öffnet das
-          Testbild-Panel: gespeicherte Scans erneut durch die Pipeline schicken. */}
-      {scannerDebugFlags.test && mode === 'scanning' && !testPanelOpen && (
-        <button
-          onClick={() => setTestPanelOpen(true)}
-          className="absolute z-40 flex items-center gap-1.5 px-3 h-9 rounded-full glass-overlay text-white text-xs font-semibold"
-          // Links neben dem Schließen-Button (46px breit, px-4 rechts) statt darüber.
-          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)', right: 70 }}
-        >
-          <ScanLine size={15} /> Testbild
-        </button>
-      )}
-
-      {testPanelOpen && (
-        <ScanTestPanel onClose={() => setTestPanelOpen(false)} onRecognize={handleCapture} />
       )}
 
       {/* ── Review-Modus: schwarzer Hintergrund, scrollbar ──────── */}
@@ -2382,7 +2414,7 @@ export default function ScannerPage() {
             key={recognized.id}
             job={recognized}
             onCardTap={() => setActiveJobId(recognized.id)}
-            onDebugTap={() => setDebugJobId(recognized.id)}
+            onReportTap={() => setReportJobId(recognized.id)}
             onPickCandidate={picked => {
               setJobs(prev => prev.map(j => j.id === recognized.id && j.result
                 ? { ...j, result: { ...j.result, card: picked }, editedVariant: picked.variants?.[0] ?? 'standard' }
@@ -2602,61 +2634,6 @@ export default function ScannerPage() {
         );
       })()}
 
-      {/* ── KI-Debug: Vorschau des an Gemini gesendeten Bildes (ohne Senden) ── */}
-      {previewImage && (
-        <div
-          className="fixed inset-0 z-[80] bg-black/90 flex flex-col items-center justify-center gap-4 p-5"
-          onClick={() => { setPreviewImage(null); setStreamPaused(false); }}
-        >
-          <p className="text-white/70 text-xs font-mono">
-            Debug „KI": entzerrtes Bild · {previewImage.sizeKb} KB · NICHT gesendet
-          </p>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={previewImage.src}
-            alt="Vorschau"
-            className="max-w-[88%] max-h-[62vh] rounded-lg shadow-2xl object-contain"
-            onClick={e => e.stopPropagation()}
-          />
-          {previewImage.meta && (
-            <div
-              className="text-white/80 text-[11px] font-mono leading-relaxed text-center"
-              onClick={e => e.stopPropagation()}
-            >
-              <div>
-                Auslöser: <span className="text-blue-300">{previewImage.meta.trigger}</span>
-                {' · '}Ampel: <span className={previewImage.meta.level === 'green' ? 'text-green-400' : 'text-yellow-300'}>{previewImage.meta.level}</span>
-                {' · '}Δbox: <span className={previewImage.meta.boxDelta > 20 ? 'text-yellow-300' : 'text-green-400'}>{previewImage.meta.boxDelta}</span>
-              </div>
-              <div>
-                Schärfe {previewImage.meta.sharpness} · Kontrast {previewImage.meta.contrast} · Füllung {previewImage.meta.fill}%
-              </div>
-              <div>
-                Ecken {previewImage.meta.cornersN} · Winkel {previewImage.meta.angleDeg}° · Name {previewImage.meta.nameGlare}% · Code {previewImage.meta.codeGlare}%
-              </div>
-            </div>
-          )}
-          <div className="flex gap-3" onClick={e => e.stopPropagation()}>
-            <button
-              onClick={() => { setPreviewImage(null); setStreamPaused(false); }}
-              className="h-11 px-6 rounded-full font-semibold text-sm text-white/90 border border-white/25"
-            >
-              Weiter scannen
-            </button>
-            <button
-              onClick={() => {
-                const p = previewImage;
-                setPreviewImage(null);
-                if (p) handleCapture(p.base64, p.mimeType, p.meta, true);
-              }}
-              className="h-11 px-6 rounded-full font-semibold text-sm text-white"
-              style={{ background: 'var(--pokedex-blue)' }}
-            >
-              An Gemini senden
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ── Closing-Overlay: Karten werden in Inbox gespeichert ──────── */}
       {closingSaving && (
@@ -2666,259 +2643,20 @@ export default function ScannerPage() {
         </div>
       )}
 
-      {/* ── Debug-Modal ──────────────────────────────────────────── */}
-      {debugJob?.debug && (
-        <div
-          className="fixed inset-0 z-50 bg-black/90 overflow-y-auto"
-          onClick={() => setDebugJobId(null)}
-        >
-          <div
-            className="min-h-full px-4 py-6"
-            style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-white font-semibold text-base">Debug-Info</h2>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={async () => {
-                    const d = debugJob.debug!;
-                    const text = [
-                      '# Scanner-Debug',
-                      `Karte (erkannt): ${debugJob.result?.card ? `${debugJob.result.card.name} (${debugJob.result.card.id})` : '—'}`,
-                      `Modell: ${d.geminiModel ?? '—'} · Payload: ${d.imageSizeKb ?? '—'} KB`,
-                      `Latenz(ms): upload ${d.uploadMs ?? '—'} · gemini ${d.geminiMs ?? '—'} · lookup ${d.lookupMs ?? '—'} · total ${d.totalMs ?? '—'}`,
-                      d.geminiAttempts?.length ? `Versuche: ${d.geminiAttempts.map(a => JSON.stringify(a)).join(' | ')}` : '',
-                      d.error ? `Fehler: ${d.error}` : '',
-                      `pHash-Distanz: ${debugJob.pHashDistance ?? '—'}`,
-                      '',
-                      '## Gemini geparst:',
-                      JSON.stringify(d.geminiParsed ?? null, null, 2),
-                      '',
-                      '## Gemini roh:',
-                      d.geminiRaw ?? '—',
-                      '',
-                      '## Lookup-Schritte:',
-                      ...(d.lookupSteps?.length ? d.lookupSteps : ['—']),
-                      '',
-                      `## Katalog-Treffer: ${d.catalogMatch ? `${d.catalogMatch.name} (${d.catalogMatch.setId}/${d.catalogMatch.number}) id=${d.catalogMatch.id}` : '—'}`,
-                    ].filter(l => l !== '').join('\n');
-                    try {
-                      await navigator.clipboard.writeText(text);
-                      setDebugCopied(true);
-                      setTimeout(() => setDebugCopied(false), 1800);
-                    } catch {
-                      // Fallback: Text in ein auswählbares Feld legen (idR. langes Drücken → Kopieren)
-                      window.prompt('Debug-Text (kopieren):', text);
-                    }
-                  }}
-                  className="h-9 px-3 flex items-center rounded-full bg-white/10 text-white text-xs font-semibold"
-                >
-                  {debugCopied ? 'Kopiert ✓' : 'Kopieren'}
-                </button>
-                <button
-                  onClick={() => setDebugJobId(null)}
-                  className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10"
-                  aria-label="Schließen"
-                >
-                  <X size={18} color="#fff" />
-                </button>
-              </div>
-            </div>
 
-            {/* Aufgenommenes Bild */}
-            {debugJob.debug.imageBase64 && (
-              <div className="mb-4">
-                <p className="text-white/60 text-xs mb-2 font-mono">An Gemini gesendetes Bild ({debugJob.debug.imageSizeKb} KB)</p>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`data:${debugJob.debug.mimeType ?? 'image/jpeg'};base64,${debugJob.debug.imageBase64}`}
-                  alt="Captured"
-                  className="w-full rounded-lg border border-white/20"
-                />
-              </div>
-            )}
-
-            {/* Timing */}
-            <div className="mb-4 p-3 rounded-lg bg-white/5 text-xs font-mono text-white/80">
-              <div>Modell: <span className="text-blue-300">{debugJob.debug.geminiModel ?? '—'}</span></div>
-              <div>Payload: <span className="text-blue-300">{debugJob.debug.imageSizeKb ?? '—'} KB</span></div>
-              <div>Netzwerk/Server-Overhead: <span className="text-blue-300">{debugJob.debug.uploadMs ?? '—'} ms</span></div>
-              <div>Gemini (Schritt 1): <span className="text-blue-300">{debugJob.debug.geminiMs ?? '—'} ms</span></div>
-              {debugJob.debug.geminiAttempts && debugJob.debug.geminiAttempts.length > 1 && (
-                <div className="pl-3 text-white/50">
-                  {debugJob.debug.geminiAttempts.map((a, i) => (
-                    <div key={i}>
-                      {a.ok ? '✓' : '✗'} {a.model}: {a.ms} ms{!a.ok && a.error ? ` (${a.error.slice(0, 60)})` : ''}
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div>Lookup: <span className="text-blue-300">{debugJob.debug.lookupMs ?? '—'} ms</span></div>
-              <div>Owned: <span className="text-blue-300">{debugJob.debug.ownedMs ?? '—'} ms</span> <span className="text-white/40">(async)</span></div>
-              <div className="pt-1 border-t border-white/10 mt-1">
-                Gesamt (Render): <span className="text-blue-300">{debugJob.debug.totalMs ?? '—'} ms</span>
-              </div>
-              {debugJob.debug.error && (
-                <div className="text-red-300 mt-1">Fehler: {debugJob.debug.error}</div>
-              )}
-            </div>
-
-            {/* Direkter Katalog-Lookup (number+dex) — vor Schritt 2, spart ggf. den
-                kompletten Symbolabgleich */}
-            {(() => {
-              const pl = (debugJob.debug.geminiParsed as { _preLookup?: GeminiResponse['_preLookup'] } | undefined)?._preLookup;
-              if (!pl?.attempted) return null;
-              return (
-                <div className="mb-4">
-                  <p className="text-white/60 text-xs mb-2 font-mono">Direkter Katalog-Lookup (vor Schritt 2)</p>
-                  <div className="p-3 rounded-lg bg-white/5 text-xs font-mono text-white/80 space-y-0.5">
-                    <div>Treffer: <span className={pl.matched ? 'text-green-300' : 'text-white/40'}>{pl.matched ? 'ja' : 'nein'}</span></div>
-                    {pl.via && <div>Methode: <span className="text-blue-300">{pl.via}</span></div>}
-                    {pl.candidateCount != null && <div>Kandidaten: <span className="text-blue-300">{pl.candidateCount}</span></div>}
-                    {pl.cardId && <div>Karte: <span className="text-blue-300">{pl.cardId}</span></div>}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Symbol-Abgleich (Schritt 2) — immer sichtbar, auch wenn nicht ausgelöst */}
-            {(() => {
-              const sm = (debugJob.debug.geminiParsed as { _symbolMatch?: GeminiResponse['_symbolMatch'] } | undefined)?._symbolMatch;
-              return (
-                <div className="mb-4">
-                  <p className="text-white/60 text-xs mb-2 font-mono">Symbol-Abgleich (Schritt 2)</p>
-                  <div className="p-3 rounded-lg bg-white/5 text-xs font-mono text-white/80 space-y-0.5">
-                    <div>Ausgelöst: <span className={sm?.triggered ? 'text-yellow-300' : 'text-white/40'}>{sm?.triggered ? 'ja' : 'nein'}</span></div>
-                    {!sm?.triggered && sm?.reason && (
-                      <div className="text-white/50">Grund: {sm.reason}</div>
-                    )}
-                    {sm?.triggered && (
-                      <>
-                        <div>Modell: <span className="text-blue-300">{sm.model ?? '—'}</span></div>
-                        <div>Gemini (Schritt 2): <span className="text-blue-300">{sm.ms ?? '—'} ms</span></div>
-                        {sm.attempts && sm.attempts.length > 1 && (
-                          <div className="pl-3 text-white/50">
-                            {sm.attempts.map((a, i) => (
-                              <div key={i}>
-                                {a.ok ? '✓' : '✗'} {a.model}: {a.ms} ms{!a.ok && a.error ? ` (${a.error.slice(0, 60)})` : ''}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <div>Referenzblätter bauen: <span className="text-blue-300">{sm.sheetBuildMs ?? '—'} ms</span> <span className="text-white/40">(0 ms = bereits gecacht)</span></div>
-                        <div>Blätter geprüft: <span className="text-blue-300">{sm.sheetsUsed?.length ?? 0}</span></div>
-                        <div>Kandidaten: <span className="text-blue-300">{sm.candidateSetCodes && sm.candidateSetCodes.length > 0 ? sm.candidateSetCodes.join(', ') : '— (kein Match)'}</span></div>
-                        {sm.rejectedMatches && sm.rejectedMatches.length > 0 && (
-                          <div className="text-orange-300">Verworfen: {sm.rejectedMatches.map(c => `"${c}"`).join(', ')} — auf keinem Blatt ein echter Set-Code (vermutlich Typ-Icon verwechselt)</div>
-                        )}
-                        <div>Confidence: <span className="text-blue-300">{sm.matchConfidence ?? '—'}</span>{sm.matchAmbiguous && <span className="text-orange-300"> · mehrdeutig</span>}</div>
-                        {sm.error && <div className="text-red-300">Fehler: {sm.error}</div>}
-                      </>
-                    )}
-                  </div>
-                  {sm?.rawText && (
-                    <pre className="mt-2 p-3 rounded-lg bg-white/5 text-[10px] text-green-200 overflow-x-auto font-mono whitespace-pre-wrap break-all">
-{sm.rawText}
-                    </pre>
-                  )}
-                </div>
-              );
-            })()}
-
-            {/* Gemini-Antwort */}
-            <div className="mb-4">
-              <p className="text-white/60 text-xs mb-2 font-mono">Gemini-Antwort (geparst)</p>
-              <pre className="p-3 rounded-lg bg-white/5 text-[10px] text-green-200 overflow-x-auto font-mono whitespace-pre-wrap break-all">
-{JSON.stringify(debugJob.debug.geminiParsed, null, 2)}
-              </pre>
-            </div>
-
-            {/* Rohantwort */}
-            {debugJob.debug.geminiRaw && (
-              <div className="mb-4">
-                <p className="text-white/60 text-xs mb-2 font-mono">Gemini-Rohantwort</p>
-                <pre className="p-3 rounded-lg bg-white/5 text-[10px] text-white/70 overflow-x-auto font-mono whitespace-pre-wrap break-all">
-{debugJob.debug.geminiRaw}
-                </pre>
-              </div>
-            )}
-
-            {/* DB-Lookup */}
-            <div className="mb-4">
-              <p className="text-white/60 text-xs mb-2 font-mono">Firestore-Lookups</p>
-              <div className="p-3 rounded-lg bg-white/5 text-[10px] font-mono text-white/80 space-y-1">
-                {debugJob.debug.lookupSteps && debugJob.debug.lookupSteps.length > 0 ? (
-                  debugJob.debug.lookupSteps.map((step, i) => (
-                    <div key={i} className={step.endsWith('null') ? 'text-red-300' : 'text-green-300'}>
-                      {i + 1}. {step}
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-white/40">Kein Lookup durchgeführt</div>
-                )}
-                <div className="pt-2 border-t border-white/10 mt-2">
-                  Ergebnis: {debugJob.debug.catalogMatch
-                    ? <span className="text-green-300">{debugJob.debug.catalogMatch.name} ({debugJob.debug.catalogMatch.setId}/{debugJob.debug.catalogMatch.number})</span>
-                    : <span className="text-red-300">nicht gefunden</span>}
-                </div>
-              </div>
-            </div>
-
-            {/* Bild-Verifikation (pHash) — vergleicht Foto gegen Katalog-Bild */}
-            {debugJob.debug.catalogMatch && (() => {
-              const dist = debugJob.pHashDistance;
-              // Schwellwerte synchron mit classifyPHashDistance() in lib/scan/image-hash.ts
-              const cls = dist == null ? null : dist <= 22 ? 'match' : dist <= 27 ? 'unsure' : 'mismatch';
-              const clsColor = cls === 'match' ? 'text-green-300' : cls === 'unsure' ? 'text-yellow-300' : cls === 'mismatch' ? 'text-red-300' : 'text-white/40';
-              const catalogImg = cardImgUrl(debugJob) ?? cardImgUrlLarge(debugJob);
-              return (
-                <div className="mb-4">
-                  <p className="text-white/60 text-xs mb-2 font-mono">Bild-Verifikation (pHash)</p>
-                  <div className="p-3 rounded-lg bg-white/5">
-                    <div className="flex gap-2 mb-2">
-                      <div className="flex-1">
-                        <p className="text-[10px] text-white/40 mb-1 font-mono">Foto</p>
-                        {debugJob.debug.imageBase64 ? (
-                          /* eslint-disable-next-line @next/next/no-img-element */
-                          <img
-                            src={`data:${debugJob.debug.mimeType ?? 'image/jpeg'};base64,${debugJob.debug.imageBase64}`}
-                            alt="Gescanntes Foto"
-                            className="w-full rounded border border-white/20 object-contain"
-                            style={{ maxHeight: 180 }}
-                          />
-                        ) : (
-                          <div className="w-full h-24 rounded border border-white/10 flex items-center justify-center text-white/30 text-[10px]">
-                            gelöscht (&gt;60s)
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-[10px] text-white/40 mb-1 font-mono">Katalog</p>
-                        {catalogImg ? (
-                          /* eslint-disable-next-line @next/next/no-img-element */
-                          <img
-                            src={catalogImg}
-                            alt="Katalog-Bild"
-                            className="w-full rounded border border-white/20 object-contain"
-                            style={{ maxHeight: 180 }}
-                          />
-                        ) : (
-                          <div className="w-full h-24 rounded border border-white/10 flex items-center justify-center text-white/30 text-[10px]">
-                            kein Bild
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-xs font-mono text-white/80">
-                      Hamming-Distanz: <span className={clsColor}>{dist ?? '— (lädt/nicht verfügbar)'}</span>
-                      {cls && <span className={clsColor}> · {cls}</span>}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
+      {/* ── Melden-Sheet (Grundwahrheit für die Fehleranalyse erfassen) ─── */}
+      {reportJob && (
+        <ScanReportSheet
+          recognizedName={reportJob.result?.card?.name}
+          imageSrc={reportJob.debug?.imageBase64 ? `data:${reportJob.debug.mimeType ?? 'image/jpeg'};base64,${reportJob.debug.imageBase64}` : undefined}
+          onClose={() => setReportJobId(null)}
+          onSubmit={result => submitReport(reportJob, result)}
+        />
+      )}
+      {reportToast && (
+        <div className="fixed left-1/2 -translate-x-1/2 z-[120] px-4 py-2 rounded-full bg-black/85 text-white text-sm font-medium"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 90px)' }}>
+          Danke — gemeldet ✓
         </div>
       )}
 
@@ -3271,7 +3009,7 @@ function ScannedCardTile({
 interface RecognizedCardLargeProps {
   job: ScanJob;
   onCardTap: () => void;
-  onDebugTap: () => void;
+  onReportTap: () => void;
   /** Nutzer wählt bei mehrdeutiger Erkennung eine der Kandidaten-Karten. */
   onPickCandidate: (card: CardInfo) => void;
   /** Nach Hinzufügen über die Inline-Leiste: ownedCount/added aktualisieren. */
@@ -3281,7 +3019,7 @@ interface RecognizedCardLargeProps {
 }
 
 function RecognizedCardLarge({
-  job, onCardTap, onDebugTap, onPickCandidate, onSaved, onManage,
+  job, onCardTap, onReportTap, onPickCandidate, onSaved, onManage,
 }: RecognizedCardLargeProps) {
   const card      = job.result?.card;
   // Bild-Kandidaten in Prioritätsreihenfolge — bei 404/Ladefehler eines
@@ -3421,15 +3159,14 @@ function RecognizedCardLarge({
         bottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)',
       }}
     >
-      {/* Debug-Zugang — oben rechts über allem, unabhängig vom Namen (der jetzt
-          unterhalb der Karte steht statt darüber). Glas-Chip (Handoff
-          design_handoff_scanner_glass, "Bug"-Chip 38px). */}
+      {/* Melden — oben rechts: falsch erkannte Karte melden (Grundwahrheit für
+          die Fehleranalyse). Glas-Chip 38px. */}
       <button
-        onClick={onDebugTap}
+        onClick={onReportTap}
         className="absolute top-0 right-0 z-20 w-[38px] h-[38px] flex items-center justify-center rounded-full glass-overlay"
-        aria-label="Debug-Infos anzeigen"
+        aria-label="Falsch erkannt? Melden"
       >
-        <Bug size={17} color="#fff" />
+        <Flag size={17} color="#fff" />
       </button>
 
       {/* Karten-Body — die Slot-Zelle (flex-1/min-h-0) füllt per nativer

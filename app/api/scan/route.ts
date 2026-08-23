@@ -152,33 +152,6 @@ leave the other fields null.`;
 // Kompakte Prompt-Variante (~40 % kürzer) — für den A/B-Test im Testmodus.
 // Behält die kritischen Regeln (number vs. dex, setCode=null bei Symbol-Sets,
 // ganze Karte scannen) + drei Kernbeispiele, lässt den Rest weg.
-const PROMPT_KURZ = `You are a Pokémon TCG card reader. Extract the printed info as JSON.
-
-Read the corner stamp "NNN/TTT" and the Pokédex number carefully — scan the whole border; small stamps hide in glare. The card NAME alone is NOT enough (many cards share names) — always still read the stamp + dex number.
-
-Fields:
-- setCode: 2–4 uppercase letters between the regulation-mark and the language marker on Scarlet&Violet (2023+) cards, e.g. "J ASC DE 005/217" → "ASC". ALL older eras (SWSH, SM, XY, …) have only a graphical symbol → null. Never return a single letter, a language marker (DE/EN), or a symbol description.
-- number: the 1–3 digits BEFORE the "/" in "NNN/TTT" (e.g. "121/182" → "121"). No slash pair → null. A value after "Nr."/"NO."/"#" is the Pokédex number, NOT the collector number. Trainer/Galarian Gallery "TG04/TG30" or "GG04/GG70": keep the prefix → "TG04"/"GG04".
-- printedTotal: the digits AFTER the "/" (e.g. "053/172" → 172), read directly, drop leading zeros; null if no slash. For "TG04/TG30"/"GG04/GG70": digits after slash without the prefix → 30 / 70.
-- nationalDexNumber: digits after "Nr."/"NO."/"#" (DE: small italic banner between name and artwork, or description block; EN "NO."/"#"), parse as int (drop leading zeros: "0271"→271). Search the WHOLE card. A 4-digit value after that prefix is ALWAYS the dex number. null for Trainer/Energy or if absent.
-- language: DE "KP"/"Fähigkeit", EN "HP"/"Ability", FR "PV"/"Talent".
-- hp: the KP/HP integer next to the name; null for Trainer/Energy.
-- name: the LARGE title in the top row (verbatim, incl. hyphens and "ex"). NOT an attack name (lower text box, energy-cost row + damage number), NOT the ability/flavor text.
-- confidence: high/medium/low.
-
-Examples:
-- "J ASC DE 005/217" → {setCode:"ASC", number:"005", printedTotal:217, language:"de"}
-- "078/202" + circular symbol, no letter code → {setCode:null, number:"078", printedTotal:202, language:"en"}
-- Banner "Nr. 0877 …", stamp "121/182" + symbol → {setCode:null, number:"121", printedTotal:182, nationalDexNumber:877, name:"Morpeko"} (121 before "/" = collector; 0877 after "Nr." = dex — never swap)
-
-If no Pokémon card is visible: set "error" to "No card detected" and leave other fields null.`;
-
-/** Server-seitige Allowlist der Prompt-Varianten (kein Client-Prompt → keine
- *  Injection). Auswahl per Header `x-prompt-variant` (nur Testmodus). */
-const PROMPT_VARIANTS: Record<string, string> = {
-  default: PROMPT,
-  kurz: PROMPT_KURZ,
-};
 
 const SCHEMA = {
   type: SchemaType.OBJECT,
@@ -583,10 +556,6 @@ export async function POST(req: NextRequest) {
     const sheetsPromise = getReferenceSheets();
     sheetsPromise.catch(() => {}); // verhindert "unhandled rejection", falls Schritt 2 gar nicht greift
 
-    // Prompt-Variante (Testmodus-A/B): per Header aus der Allowlist wählen,
-    // Default sonst. Kein frei übergebener Prompt → keine Injection.
-    const activePrompt = PROMPT_VARIANTS[req.headers.get('x-prompt-variant') ?? 'default'] ?? PROMPT;
-
     // Vergrößerter Ausschnitt der unteren Identifier-Zeile als zweites Bild →
     // deutlich bessere setCode-/Nummer-Lesbarkeit (der Original-Stempel ist zu
     // klein für das Lite-Modell). Fehlschlag = still, dann nur Vollbild.
@@ -595,9 +564,9 @@ export async function POST(req: NextRequest) {
       ? [
           { inlineData: { data: imageBase64, mimeType } },
           { inlineData: { data: idCrop, mimeType: 'image/jpeg' } },
-          activePrompt + IDENTIFIER_CROP_NOTE,
+          PROMPT + IDENTIFIER_CROP_NOTE,
         ]
-      : [{ inlineData: { data: imageBase64, mimeType } }, activePrompt];
+      : [{ inlineData: { data: imageBase64, mimeType } }, PROMPT];
 
     let step1: GenerateResult;
     try {

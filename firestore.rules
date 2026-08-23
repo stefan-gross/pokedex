@@ -29,11 +29,22 @@ service cloud.firestore {
       allow create: if createsOwn();
     }
 
-    // Scan-Historie (Testmodus): zuletzt gesendete Scan-Bilder + Ergebnis,
-    // geteilt über alle Geräte DESSELBEN Nutzers (iPhone ↔ localhost).
-    match /scan_history/{id} {
+    // Scan-Telemetrie (Optimierung/Fehleranalyse): kompakte Events je Scan,
+    // volle Fälle (mit Bild) bei Fehlern/Meldungen, sowie ein Live-Aggregat pro
+    // Nutzer. Alles owner-gescopt; Queries filtern nach ownerUid.
+    match /scan_events/{id} {
       allow read, update, delete: if owns(resource);
       allow create: if createsOwn();
+    }
+    match /scan_cases/{id} {
+      allow read, update, delete: if owns(resource);
+      allow create: if createsOwn();
+    }
+    // scan_stats: Doc-ID == uid; Zugriff wenn ownerUid == uid (Create wie Update
+    // schreibt ownerUid mit → createsOwn deckt beide via write ab).
+    match /scan_stats/{uid} {
+      allow read, delete: if owns(resource);
+      allow write: if createsOwn();
     }
 
     // Pokémon-Kartenkatalog — öffentliche Daten, kein Auth nötig

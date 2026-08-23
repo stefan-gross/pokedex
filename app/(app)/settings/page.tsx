@@ -14,8 +14,6 @@ import { getBinders, deleteBinder } from '@/lib/firestore/binders';
 import { getWishlists, deleteWishlist } from '@/lib/firestore/wishlists';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
-import { useScannerDebug, setScannerDebug } from '@/lib/scanner/debug-flags';
 import { useUpdateAvailable } from '@/lib/hooks/use-update-available';
 import { auth } from '@/lib/firebase/client';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -96,9 +94,6 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const router = useRouter();
-
-  // Scanner-Debug-Modi (mehrstufig): Scannen / KI / Daten
-  const scannerDebug = useScannerDebug();
 
   // „Neue Version verfügbar" (geteilter Hook, auch im Dashboard).
   const { updateAvailable, confirmedCurrent, buildSha, buildTime } = useUpdateAvailable();
@@ -508,42 +503,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* 3. Scanner-Debug (mehrstufig) */}
-        <section className="space-y-1.5">
-          <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-2">Scanner-Debug</p>
-          <div className="shadow-card rounded-2xl p-4 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-role-body font-medium">Scannen</p>
-                <p className="text-role-label text-glass-muted">Live-Erkennung + Qualitäts-Ampel (Rahmen/Hinweis/Metriken). Löst KEIN Foto aus, sendet nichts an die KI.</p>
-              </div>
-              <Switch checked={scannerDebug.scan} onChange={v => setScannerDebug('scan', v)} accentColor="#3182ce" />
-            </div>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-role-body font-medium">KI</p>
-                <p className="text-role-label text-glass-muted">Gemini-Rohantwort, erkannte Werte und Latenz einblenden/mitloggen.</p>
-              </div>
-              <Switch checked={scannerDebug.ai} onChange={v => setScannerDebug('ai', v)} accentColor="#3182ce" />
-            </div>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-role-body font-medium">Testmodus</p>
-                <p className="text-role-label text-glass-muted">Zeigt im Scanner ein Testbild-Panel: die zuletzt gescannten Bilder erneut durch die Pipeline schicken (Ampel/Erkennung) — ohne Kamera, ideal zum Nachstellen falsch erkannter Karten.</p>
-              </div>
-              <Switch checked={scannerDebug.test} onChange={v => setScannerDebug('test', v)} accentColor="#3182ce" />
-            </div>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-role-body font-medium">Nur Fehlversuche speichern</p>
-                <p className="text-role-label text-glass-muted">In die Testbild-Historie (max. 20) nur nicht erkannte Karten mit Debug-Ausgabe ablegen — hält die Plätze für die Problemfälle frei.</p>
-              </div>
-              <Switch checked={scannerDebug.failonly} onChange={v => setScannerDebug('failonly', v)} accentColor="#3182ce" />
-            </div>
-          </div>
-        </section>
-
-        {/* 4. Gefahren-Zone */}
+        {/* 3. Gefahren-Zone */}
         <section className="space-y-1.5">
           <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-2">Gefahren-Zone</p>
           <Button

@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Flashlight, FlashlightOff, Camera, RefreshCw } from 'lucide-react';
 import { loadCardDetectorSession, detectCardInFrame, type CardBox } from '@/lib/scanner/card-detector-onnx';
 import { computePixelMetrics, assessQuality, computeCriticalGlare, type QualityResult } from '@/lib/scanner/frame-quality';
-import { useScannerDebug } from '@/lib/scanner/debug-flags';
 
 /** Momentaufnahme der Auslöse-Metriken (für KI-Debug-Vorschau). */
 export interface CaptureMeta {
@@ -22,6 +21,10 @@ export interface CaptureMeta {
   fill: number;
   cornersN: number;
   angleDeg: number;
+  /** Herunterskaliertes Vollbild VOR der Entzerrung (base64, ohne data:-Präfix)
+   *  — nur für die Fehleranalyse (Warp-/Eckenfehler sichtbar machen); wird nur
+   *  bei Fehler-/Melde-Fällen persistiert. */
+  originalFrameBase64?: string;
 }
 
 interface Props {
@@ -196,6 +199,18 @@ function encodeCenterCardCrop(src: HTMLCanvasElement): string {
   const cx = Math.round((src.width - cw) / 2);
   const cy = Math.round((src.height - ch) / 2);
   return encodeCropToJpeg(src, cx, cy, cw, ch);
+}
+
+/** Herunterskaliertes Vollbild (vor der Entzerrung) als JPEG-base64 — für die
+ *  Fehleranalyse (macht Warp-/Eckenfehler sichtbar, die im Zuschnitt fehlen). */
+function encodeDownscaledFull(src: HTMLCanvasElement, maxEdge = 1024, quality = 0.6): string {
+  const scale = Math.min(1, maxEdge / Math.max(src.width, src.height));
+  const w = Math.max(1, Math.round(src.width * scale));
+  const h = Math.max(1, Math.round(src.height * scale));
+  const out = document.createElement('canvas');
+  out.width = w; out.height = h;
+  out.getContext('2d')!.drawImage(src, 0, 0, w, h);
+  return out.toDataURL('image/jpeg', quality).split(',')[1];
 }
 
 /** Entzerrter Karten-Zuschnitt: die 4 Ecken [tl,tr,br,bl] werden auf ein
@@ -462,23 +477,6 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
 
   useEffect(() => { onCaptureRef.current = onCapture; }, [onCapture]);
 
-  // Debug-Flags: bei „Scannen" wird NICHT ausgelöst (kein Foto/Gemini), nur
-  // die Ampel/Metriken angezeigt. Ref-Spiegel für Nutzung in Closures (Tick/doCapture).
-  const debugFlags = useScannerDebug();
-  const scanDebugRef = useRef(debugFlags.scan);
-  useEffect(() => { scanDebugRef.current = debugFlags.scan; }, [debugFlags.scan]);
-
-  // Scannen-Debug: Zeit von „Karte zuerst erkannt" bis „würde auslösen" messen,
-  // dann NUR stoppen (kein Foto). Log sammeln + kopierbar.
-  const firstDetectAtRef    = useRef<number | null>(null);
-  const scanDebugStoppedRef = useRef(false);
-  const [scanDebugStopped, setScanDebugStopped] = useState(false);
-  const [scanDebugLog, setScanDebugLog] = useState<string[]>([]);
-  const scanLogCounterRef   = useRef(0);
-  const [scanLogCopied, setScanLogCopied] = useState(false);
-  // Zählt je Tick, welcher Grund „grün/Auslösen" blockiert — zeigt den Engpass.
-  const scanBlockCountsRef  = useRef<Record<string, number>>({});
-
   const [streamReady, setStreamReady] = useState(false);
   // Front/Rück-Switch entfernt — Stream nutzt immer environment (Rückkamera).
   const facingMode = 'environment' as const;
@@ -507,12 +505,6 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   const [snapAnim,   setSnapAnim]   = useState<{
     left: number; top: number; width: number; height: number; phase: 'burst' | 'fade';
   } | null>(null);
-  const [debug,      setDebug]      = useState<DebugInfo>({
-    conf: 0, mse: 0, stable: 0, boxDelta: Infinity, consecutiveFrames: 0,
-    detected: false, sessionReady: false, cropSize: '–', triggerReason: '–', changeMse: 0,
-    level: 'neutral', reason: '', sharpness: 0, glare: 0, softGlare: 0, nameGlare: 0, codeGlare: 0, meanLum: 0, contrast: 0, fill: 0, tickMs: 0,
-    cornersN: 0, angleDeg: 0,
-  });
 
   // Mount-Counter in sessionStorage hochzählen — überlebt iOS-PWA-Reloads.
   useEffect(() => {
@@ -802,8 +794,6 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   // bild genutzt, damit der User auch ohne abgewartete Stille snappen kann.
   const doCapture = useCallback((force = false) => {
     if (paused) return;
-    // Debug „Scannen": nur beobachten — kein Foto, kein Gemini (auch nicht per Tap).
-    if (scanDebugRef.current) return;
     if (!force && cooldownRef.current) return;
     const video = videoRef.current, canvas = canvasRef.current;
     if (!video || !canvas || video.readyState < 2) return;
@@ -842,6 +832,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     }
 
     cropSizeRef.current = cropInfo;
+    const originalFrameBase64 = encodeDownscaledFull(canvas);
     const ds = lastDebugRef.current;
     const meta: CaptureMeta | undefined = ds ? {
       trigger:   force ? 'manual' : 'auto',
@@ -858,7 +849,8 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
       fill:      ds.fill,
       cornersN:  ds.cornersN,
       angleDeg:  ds.angleDeg,
-    } : undefined;
+      originalFrameBase64,
+    } : { trigger: force ? 'manual' : 'auto', level: 'neutral', boxDelta: 0, sharpness: 0, contrast: 0, glare: 0, softGlare: 0, nameGlare: 0, codeGlare: 0, meanLum: 0, fill: 0, cornersN: 0, angleDeg: 0, originalFrameBase64 };
     onCaptureRef.current(imageBase64, 'image/jpeg', meta);
 
     // Haptik: Auto-Trigger = Doppelpuls („für dich ausgelöst"), manueller Tap =
@@ -906,7 +898,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   // Karte darf leicht aus dem Ziel-Rahmen ragen), entzerren/zuschneiden und
   // Reflexions-/Schärfe-Metriken am Standbild messen (nur Hinweis, nicht-blockierend).
   const doManualCapture = useCallback(async () => {
-    if (paused || scanDebugRef.current) return;
+    if (paused) return;
     setManualRetry(false); // neuer Versuch → alten Retry-Hinweis weg
     const video = videoRef.current, canvas = canvasRef.current;
     if (!video || !canvas || video.readyState < 2) return;
@@ -986,6 +978,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
           angleDeg: (cn === 4 && box?.corners)
             ? Math.round(Math.atan2(box.corners[1][1] - box.corners[0][1], box.corners[1][0] - box.corners[0][0]) * 180 / Math.PI)
             : 0,
+          originalFrameBase64: encodeDownscaledFull(canvas),
         };
       }
     } catch { meta = undefined; }
@@ -1090,7 +1083,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   useEffect(() => {
     const delay = setTimeout(() => {
       timerRef.current = setInterval(() => {
-        if (paused || scanDebugStoppedRef.current) return; // Scannen-Debug: nach Trigger-Messung gestoppt
+        if (paused) return;
         // Manuell-Modus: KEINE Live-Erkennung/Ampel/Auto-Trigger. Box leeren →
         // das rAF-Overlay zeigt nur den gestrichelten Ziel-Rahmen. Das Standbild
         // wird erst beim Auslösen (doManualCapture) analysiert.
@@ -1161,13 +1154,6 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
           });
         }
         const cardDetected = onnxBoxRef.current !== null;
-
-        // Scannen-Debug: Zeitstempel beim ERSTEN Erkennen (für „Erkennung→Trigger").
-        if (cardDetected) {
-          if (firstDetectAtRef.current == null) { firstDetectAtRef.current = performance.now(); scanBlockCountsRef.current = {}; }
-        } else {
-          firstDetectAtRef.current = null;
-        }
 
         // 3. Detected-State (Overlay läuft separat im rAF-Loop)
         setDetected(cardDetected);
@@ -1271,19 +1257,7 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
           && boxFullyInside && mse < MOTION_SNAP_THRESHOLD && qualityRef.current.level === 'green';
         const triggerReason   = boxSettled ? 'delta' : consecutiveOk ? 'consecutive' : '–';
 
-        // Scannen-Debug: je Tick den blockierenden Grund zählen (Engpass-Analyse).
-        if (scanDebugRef.current && cardDetected) {
-          let blockReason: string;
-          if (qualityRef.current.level !== 'green') blockReason = qualityRef.current.reason ?? qualityRef.current.level;
-          else if (cooldownRef.current)             blockReason = 'Cooldown';
-          else if (changeDetectedThisTick)          blockReason = 'Szenenwechsel';
-          else if (mse >= MOTION_SNAP_THRESHOLD)    blockReason = 'Bewegung (mse)';
-          else if (!boxFullyInside)                 blockReason = 'nicht ganz im Rahmen';
-          else                                      blockReason = 'bereit';
-          scanBlockCountsRef.current[blockReason] = (scanBlockCountsRef.current[blockReason] ?? 0) + 1;
-        }
-
-        // 7. Debug-State aktualisieren
+        // 7. Qualitäts-Snapshot (füttert die Ampel + die Capture-Metriken)
         const dbgSnapshot: DebugInfo = {
           conf:              onnxBoxRef.current?.conf ?? 0,
           mse:               Math.round(mse),
@@ -1313,35 +1287,13 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
             return Math.round(Math.atan2(cs[1][1] - cs[0][1], cs[1][0] - cs[0][0]) * 180 / Math.PI);
           })(),
         };
-        setDebug(dbgSnapshot);
         lastDebugRef.current = dbgSnapshot;
 
         if (snapCondition && (boxSettled || consecutiveOk)) {
           stableRef.current += 1;
           setProgress(1);
           if (stableRef.current >= SNAP_STABLE_FRAMES) {
-            if (scanDebugRef.current) {
-              // Scannen-Debug: NICHT auslösen — nur Zeit messen + stoppen.
-              const elapsed = firstDetectAtRef.current != null
-                ? Math.round(performance.now() - firstDetectAtRef.current) : 0;
-              const d = dbgSnapshot;
-              const n = ++scanLogCounterRef.current;
-              const blockers = Object.entries(scanBlockCountsRef.current)
-                .sort((a, b) => b[1] - a[1])
-                .map(([r, c]) => `${r} ${c}×`)
-                .join(' · ');
-              const entry = `#${n}  Erkennung→Trigger ${elapsed}ms · ${d.level} · Schärfe ${d.sharpness} · `
-                + `Kontrast ${d.contrast} · Δbox ${d.boxDelta} · Füllung ${d.fill}% · Ecken ${d.cornersN} · `
-                + `Winkel ${d.angleDeg}° · Name ${d.nameGlare}% · Code ${d.codeGlare}% · conf ${d.conf.toFixed(2)}`
-                + (blockers ? `\n     Blocker: ${blockers}` : '');
-              setScanDebugLog(l => [...l, entry]);
-              scanBlockCountsRef.current = {};
-              scanDebugStoppedRef.current = true;
-              setScanDebugStopped(true);
-              stableRef.current = 0;
-            } else {
-              doCapture();
-            }
+            doCapture();
           }
         } else if (!cooldownRef.current) {
           stableRef.current = 0;
@@ -1493,89 +1445,6 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
             className="absolute inset-0 w-full h-full pointer-events-none"
             style={{ zIndex: 2, opacity: hideFrame ? 0 : 1, transition: 'opacity 150ms ease-out' }}
           />
-
-          {/* Debug „Scannen": Live-Metriken (nur beobachten, kein Foto/Gemini) */}
-          {debugFlags.scan && (
-            <div
-              className="absolute left-3 pointer-events-none"
-              style={{ top: 'calc(env(safe-area-inset-top, 0px) + 66px)', zIndex: 6 }}
-            >
-              <div className="glass-overlay rounded-xl px-3 py-2 text-[11px] leading-tight font-mono text-white/90" style={{ minWidth: 158 }}>
-                <div
-                  className="font-bold mb-1"
-                  style={{ color: debug.level === 'green' ? '#48bb78' : debug.level === 'yellow' ? '#ecc94b' : debug.level === 'red' ? '#ef4444' : '#fff' }}
-                >
-                  DEBUG · {debug.level}{debug.reason ? ` · ${debug.reason}` : ''}
-                </div>
-                <div>Schärfe {debug.sharpness} · Glare {debug.glare}% · Soft {debug.softGlare}%</div>
-                <div>Name {debug.nameGlare}% · Code {debug.codeGlare}%</div>
-                <div>Licht {debug.meanLum} · Kontrast {debug.contrast}</div>
-                <div>Füllung {debug.fill}% · Δbox {debug.boxDelta}</div>
-                <div>MSE {debug.mse} · Tick {debug.tickMs}ms</div>
-                <div>Ecken {debug.cornersN} · Winkel {debug.angleDeg}°</div>
-                <div>conf {debug.conf.toFixed(2)} · {debug.detected ? 'erkannt' : '—'}</div>
-              </div>
-            </div>
-          )}
-
-          {/* Scannen-Debug: Stopp nach Trigger-Messung — Zeit-Log + Kopieren + Weiter */}
-          {debugFlags.scan && scanDebugStopped && (
-            <div
-              className="absolute inset-x-3 bottom-24 rounded-xl p-3 font-mono text-[11px] text-white"
-              style={{ zIndex: 8, background: 'rgba(0,0,0,0.82)' }}
-            >
-              <div className="font-bold text-green-400 mb-1">
-                Trigger erreicht (nicht ausgelöst) · {scanDebugLog.length} Messung(en)
-              </div>
-              <div className="max-h-40 overflow-y-auto space-y-1 mb-2">
-                {scanDebugLog.map((l, i) => (
-                  <div key={i} className="text-white/85 break-words">{l}</div>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={async () => {
-                    const text = scanDebugLog.join('\n');
-                    try {
-                      await navigator.clipboard.writeText(text);
-                      setScanLogCopied(true);
-                      setTimeout(() => setScanLogCopied(false), 1600);
-                    } catch {
-                      window.prompt('Scan-Log (kopieren):', text);
-                    }
-                  }}
-                  className="h-9 px-4 rounded-full bg-white/15 text-white text-xs font-semibold"
-                >
-                  {scanLogCopied ? 'Kopiert ✓' : 'Kopieren'}
-                </button>
-                <button
-                  onClick={() => {
-                    // Weiter scannen: Stopp aufheben + Erkennung frisch starten
-                    scanDebugStoppedRef.current = false;
-                    setScanDebugStopped(false);
-                    firstDetectAtRef.current      = null;
-                    stableRef.current             = 0;
-                    onnxBoxRef.current            = null;
-                    prevBoxRef.current            = null;
-                    cornerHistoryRef.current      = [];
-                    onnxStickyRef.current         = 0;
-                    consecutiveDetectRef.current  = 0;
-                    boxDeltaRef.current           = Infinity;
-                  }}
-                  className="h-9 px-4 rounded-full text-white text-xs font-semibold"
-                  style={{ background: '#3182ce' }}
-                >
-                  Weiter scannen
-                </button>
-                <button
-                  onClick={() => { setScanDebugLog([]); scanLogCounterRef.current = 0; }}
-                  className="h-9 px-4 rounded-full bg-white/15 text-white/80 text-xs font-semibold"
-                >
-                  Leeren
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Weißer Blitz beim Snap */}
           {flashing && (
