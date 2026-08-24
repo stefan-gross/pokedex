@@ -1405,37 +1405,52 @@ export default function ScannerPage() {
     if (job.eventId) void markEventReported(job.eventId, result.correctedCardId);
     void bumpScanStats(job.outcome ?? 'recognized', quality, job.pHashDistance, undefined, true);
 
-    // Gespeicherte Karte gleich mit-korrigieren: die (ggf. schon gespeicherte)
-    // falsch erkannte Karte auf die vom Nutzer gewählte richtige umbiegen. Wir
-    // ändern die CardDoc IN-PLACE (tcgId + denormalisierte Felder) → die
-    // Sammlungs-/Binder-Zuordnung (referenziert die CardDoc-ID) bleibt erhalten,
-    // und das Bild löst live über die neue tcgId aus dem Katalog auf.
-    if (result.reportType === 'wrong' && result.correctedCardId && job.result?.card) {
+    // Korrigierte Karte übernehmen: die Erkannt-Anzeige IMMER auf die vom Nutzer
+    // gewählte richtige Karte umstellen (auch wenn noch nichts gespeichert war /
+    // die Erkennung „pending" war) → sie erscheint danach als normale erkannte
+    // Karte und lässt sich über die Leiste hinzufügen. War bereits ein (falsches)
+    // reguläres Exemplar gespeichert, wird dieses zusätzlich IN-PLACE umgebogen
+    // (tcgId + Felder), sodass die Sammlungs-/Binder-Zuordnung erhalten bleibt.
+    if (result.reportType === 'wrong' && result.correctedCardId) {
+      const correctedId = result.correctedCardId;
+      const wrong = job.result?.card ?? null;
       void (async () => {
         try {
-          const wrongTcgId = job.result!.card!.id;
-          if (wrongTcgId === result.correctedCardId) return;
-          const copies = await getCardsByTcgId(wrongTcgId);
-          if (copies.length === 0) return;                       // nichts gespeichert → nur gemeldet
-          const [cat] = await getCatalogCardsByIds([result.correctedCardId!]);
+          const [cat] = await getCatalogCardsByIds([correctedId]);
           if (!cat) return;
-          // Zuletzt hinzugefügtes Exemplar korrigieren (das gerade Gescannte).
-          const target = [...copies].sort((a, b) =>
-            ((b.addedAt as { toMillis?: () => number })?.toMillis?.() ?? 0) -
-            ((a.addedAt as { toMillis?: () => number })?.toMillis?.() ?? 0))[0];
-          await updateCard(target.id, {
-            tcgId: cat.id, name: cat.nameDe ?? cat.name, setId: cat.setId, setName: cat.setName,
-            series: cat.series, number: cat.number, rarity: cat.rarity,
-            pokemonType: cat.types?.[0], supertype: cat.supertype,
-          });
-          // Erkannte-Karten-Anzeige auf die korrigierte Karte umstellen.
           const correctedInfo = catalogCardToInfo(cat);
-          setJobs(prev => prev.map(j => j.id === job.id && j.result ? { ...j, result: { ...j.result, card: correctedInfo } } : j));
-          // Vorlagen-Sammlungen beider Karten neu arrangieren (falls betroffen).
+
+          // 1) Anzeige sofort auf die korrigierte Karte umstellen.
+          setJobs(prev => prev.map(j => j.id === job.id && j.result
+            ? { ...j, result: { ...j.result, card: correctedInfo, ownedCount: undefined } }
+            : j));
+
+          // 2) Bereits gespeichertes falsches (reguläres) Exemplar in-place umbiegen.
+          let correctedStored = false;
+          const wrongTcgId = wrong?.id;
+          if (wrongTcgId && wrongTcgId !== cat.id && !wrongTcgId.startsWith('pending-')) {
+            const copies = await getCardsByTcgId(wrongTcgId);
+            if (copies.length) {
+              const target = [...copies].sort((a, b) =>
+                ((b.addedAt as { toMillis?: () => number })?.toMillis?.() ?? 0) -
+                ((a.addedAt as { toMillis?: () => number })?.toMillis?.() ?? 0))[0];
+              await updateCard(target.id, {
+                tcgId: cat.id, name: cat.nameDe ?? cat.name, setId: cat.setId, setName: cat.setName,
+                series: cat.series, number: cat.number, rarity: cat.rarity,
+                pokemonType: cat.types?.[0], supertype: cat.supertype,
+              });
+              correctedStored = true;
+            }
+          }
+          // Besitzzähler der korrigierten Karte laden; „hinzugefügt"-Haken nur, wenn
+          // wir ein vorhandenes Exemplar umgebogen haben (sonst frisch hinzufügbar).
+          setJobs(prev => prev.map(j => j.id === job.id ? { ...j, added: correctedStored } : j));
+          refreshOwnedCount(job.id, cat.id);
+
+          // 3) Vorlagen-Sammlungen beider Karten neu arrangieren (falls betroffen).
           const templates = (await getBinders()).filter(b => b.template);
           const affected = new Set<string>();
           matchTemplateBinders(cat, templates).forEach(b => affected.add(b.id));
-          const wrong = job.result?.card;
           if (wrong) {
             matchTemplateBinders(
               { artist: undefined, nationalDexNumber: wrong.nationalDexNumber, setId: wrong.setId },
@@ -1451,7 +1466,7 @@ export default function ScannerPage() {
 
     setReportToast(true);
     setTimeout(() => setReportToast(false), 2200);
-  }, []);
+  }, [refreshOwnedCount]);
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden">
