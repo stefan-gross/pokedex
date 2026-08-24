@@ -466,17 +466,25 @@ async function tryDirectCatalogLookup(parsed: Record<string, unknown>): Promise<
             }
           }
           let hits = [...hitsById.values()];
-          // Name gelesen, aber zu KEINEM Kandidaten passend → Widerspruch, kein Treffer.
+          let nameMismatch = false;
+          // Name zum Disambiguieren nutzen. NEU: Passt der gelesene Name zu KEINEM
+          // Kandidaten, aber es gibt genau EINEN Treffer, wird dieser trotzdem
+          // akzeptiert — Set (printedTotal) + Sammelnummer identifizieren die Karte
+          // eindeutig, der OCR-Name ist bei kleinen/alten Karten oft unzuverlässig
+          // (realer Fall: Gemini las „Froschly" statt „Froxy", sv07-039 wurde sonst
+          // fälschlich verworfen). Bei MEHREREN Kandidaten ohne Namenstreffer bleibt
+          // es mehrdeutig → kein Treffer.
           if (nameLower) {
             const byName = hits.filter(nameMatches);
             if (byName.length) hits = byName;
-            else if (hits.length) return null;
+            else if (hits.length > 1) return null;
+            else nameMismatch = true;
           }
           if (hits.length > 1 && dexNumber != null) {
             const byDex = hits.filter(h => h.data().nationalDexNumber === dexNumber);
             if (byDex.length) hits = byDex;
           }
-          const r = resolveHits(hits, `printedTotal+number${tag}`);
+          const r = resolveHits(hits, `printedTotal+number${nameMismatch ? '(name-mismatch)' : ''}${tag}`);
           if (r) return r;
         }
       }
