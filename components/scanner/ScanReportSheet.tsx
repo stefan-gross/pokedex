@@ -35,6 +35,7 @@ export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }:
   const [results, setResults] = useState<CardInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState('');
+  const [selected, setSelected] = useState<CardInfo | null>(null);
   const [setBadges, setSetBadges] = useState<Map<string, SetBadge>>(new Map());
 
   // Set-Metadaten (Symbol + dt. Name, z.B. „Dunkelnacht") für die Treffer-Sets
@@ -74,8 +75,10 @@ export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }:
     return () => clearTimeout(t);
   }, [q]);
 
-  const pick = (c: CardInfo) =>
-    onSubmit({ reportType: 'wrong', correctedCardId: c.id, correctedName: c.name, note: note.trim() || undefined });
+  // Zweistufig: Tippen wählt die Karte nur AUS (kein Sofort-Senden) → der Nutzer
+  // kann danach in Ruhe eine Notiz schreiben und dann bestätigen. Verhindert, dass
+  // Notizen verloren gehen (frühere Version sendete beim Antippen sofort).
+  const toggleSelect = (c: CardInfo) => setSelected(prev => (prev?.id === c.id ? null : c));
 
   return (
     <Sheet
@@ -91,7 +94,7 @@ export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }:
             <div className="min-w-0">
               <h2 className="font-semibold">Scan melden</h2>
               {recognizedName && (
-                <p className="text-[11px] text-muted-foreground truncate">Erkannt als: {recognizedName} — wähle die richtige Karte</p>
+                <p className="text-[11px] text-muted-foreground truncate">Erkannt als: {recognizedName} — richtige Karte wählen, dann bestätigen</p>
               )}
             </div>
             <Button variant="ghost" onClick={onClose} icon={<X />} aria-label="Schließen" className="shrink-0" />
@@ -113,14 +116,36 @@ export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }:
         </div>
       }
       footer={
-        <div className="flex items-center gap-2 px-4 py-2">
-          <Input value={note} onChange={setNote} placeholder="Notiz (optional)" className="flex-1" />
-          <Button
-            variant="secondary"
-            onClick={() => onSubmit({ reportType: 'not_in_catalog', note: note.trim() || undefined })}
-          >
-            Nicht im Katalog
-          </Button>
+        <div className="px-4 py-2 space-y-2">
+          {selected && (
+            <div className="flex items-center gap-2 rounded-md p-1.5 bg-secondary">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={resolveCardImage(selected)} alt="" className="w-7 h-10 rounded object-cover shrink-0" onError={e => { e.currentTarget.style.visibility = 'hidden'; }} />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-muted-foreground">Richtige Karte</div>
+                <div className="text-sm font-semibold truncate">{selected.name} <span className="text-[11px] text-muted-foreground font-mono">· {selected.number}</span></div>
+              </div>
+              <Button variant="ghost" onClick={() => setSelected(null)} icon={<X size={16} />} aria-label="Auswahl aufheben" className="shrink-0" />
+            </div>
+          )}
+          <Input value={note} onChange={setNote} placeholder="Notiz (optional)" className="w-full" />
+          {selected ? (
+            <Button
+              variant="primary"
+              className="w-full"
+              onClick={() => onSubmit({ reportType: 'wrong', correctedCardId: selected.id, correctedName: selected.name, note: note.trim() || undefined })}
+            >
+              Melden bestätigen
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              className="w-full"
+              onClick={() => onSubmit({ reportType: 'not_in_catalog', note: note.trim() || undefined })}
+            >
+              Nicht im Katalog
+            </Button>
+          )}
         </div>
       }
     >
@@ -138,8 +163,9 @@ export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }:
             {results.map(info => (
               <button
                 key={info.id}
-                onClick={() => pick(info)}
-                className="flex items-center gap-2 px-2 py-2 rounded-md text-left transition-colors hover:bg-secondary active:bg-secondary"
+                onClick={() => toggleSelect(info)}
+                aria-pressed={selected?.id === info.id}
+                className={`flex items-center gap-2 px-2 py-2 rounded-md text-left transition-colors hover:bg-secondary active:bg-secondary ${selected?.id === info.id ? 'ring-2 ring-[var(--pokedex-blue,#3182ce)] bg-secondary' : ''}`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
