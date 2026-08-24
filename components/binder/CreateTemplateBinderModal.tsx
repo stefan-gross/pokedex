@@ -9,9 +9,7 @@ import { SearchableSelect } from '@/components/ui/select';
 import { Sheet } from '@/components/ui/modal';
 import { Switch } from '@/components/ui/switch';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
-import {
-  resolveMasterSetTemplate,
-} from '@/lib/template-binders/resolve';
+import { resolveTemplateSlots } from '@/lib/template-binders/resolve';
 import { CreateBinderModal } from './CreateBinderModal';
 import type { BinderTemplate } from '@/types';
 
@@ -72,8 +70,9 @@ export function CreateTemplateBinderModal({ onClose, onSaved, initialMasterSetId
 
   useEffect(() => {
     if (kind !== 'masterSet' || setsLoadedRef.current) return;
-    setsLoadedRef.current = true;
-    getAllSets().then(setAllSets).catch(() => {});
+    // Guard ERST bei Erfolg setzen → ein transienter Fehler (Cold-Start/Race)
+    // führt sonst zu dauerhaft leerer Liste („Lade Sets…") ohne neuen Versuch.
+    getAllSets().then(sets => { setsLoadedRef.current = true; setAllSets(sets); }).catch(() => {});
   }, [kind]);
 
   // Dropdown-Optionen: Logo (Icon), Name (Label), Zyklus (Sub-Zeile), Kürzel
@@ -110,7 +109,8 @@ export function CreateTemplateBinderModal({ onClose, onSaved, initialMasterSetId
     setMasterSlotCount(null);
     setMasterLoading(true);
     try {
-      const slots = await resolveMasterSetTemplate(s.id);
+      // Über resolveTemplateSlots → nutzt den Session-Cache (Wiederholungen sofort).
+      const slots = await resolveTemplateSlots({ type: 'masterSet', setId: s.id });
       setMasterSlotCount(slots.length);
     } finally {
       setMasterLoading(false);
@@ -258,7 +258,10 @@ export function CreateTemplateBinderModal({ onClose, onSaved, initialMasterSetId
   // Master-Set sobald ein Set gewählt ist, Pokémon sobald eines gewählt wurde.
   // (Pokédex hat keinen Zwischenschritt — springt direkt in die Settings.)
   const nextAction: (() => void) | null =
-    kind === 'masterSet' && selectedSet && !masterLoading ? confirmMasterSet
+    // „Weiter" sofort nach der Set-Wahl — die Slot-Anzahl ist nur eine Vorschau
+    // (die exakte Auflösung passiert ohnehin beim Speichern via Sync) und darf
+    // „Weiter" nicht blockieren (war auf langsamer/kalter Verbindung „hängend").
+    kind === 'masterSet' && selectedSet ? confirmMasterSet
     : kind === 'pokemon' && evoPicked ? confirmPokemon
     : kind === 'artist' && artistPicked ? confirmArtist
     : null;
