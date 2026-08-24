@@ -37,13 +37,18 @@ number — the COLLECTOR number: 1–3 digits IMMEDIATELY before the slash in th
   era: bottom-LEFT (S&V, SWSH) or bottom-RIGHT (all older).
   CRITICAL — do NOT confuse it with the Pokédex number:
   - The collector number is ALWAYS the part before a "/". If you cannot find a
-    "NNN/TTT" slash pair, number is null — do NOT substitute another number.
+    "NNN/TTT" slash pair AND there is no letter-prefixed promo number (see below),
+    number is null — do NOT substitute another number.
   - A standalone 3–4 digit value after "Nr."/"NO."/"#" (e.g. "Nr. 0877") is the
     POKÉDEX number → it goes in nationalDexNumber, NEVER in number.
   - A 4-digit value (e.g. "0877", "1025") is virtually never a collector number
     (those are ≤3 digits and paired with "/TTT") — it is the Pokédex number.
-  - Trainer Gallery / Galarian Gallery cards use a LETTER-PREFIXED number, e.g.
-    "TG04/TG30" or "GG04/GG70". KEEP the prefix in the number field → "TG04" / "GG04".
+  - LETTER-PREFIXED numbers — KEEP the FULL prefix in the number field:
+    · Trainer/Galarian Gallery: "TG04/TG30" → "TG04", "GG04/GG70" → "GG04".
+    · Black Star PROMO cards have a prefixed number WITHOUT any slash, printed in
+      the bottom corner: "XY133" → "XY133", "SM108" → "SM108", "SWSH284" →
+      "SWSH284", "SVP061"/"SVP 061" → "SVP061". Capture it verbatim (letters +
+      digits) as number; printedTotal stays null (promos have no "/TTT").
 
 printedTotal — the digits AFTER the slash in the SAME "NNN/TTT" group (the set's
   total card count as printed on the card, e.g. "053/172" → printedTotal = 172).

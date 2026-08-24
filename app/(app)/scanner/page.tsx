@@ -1420,10 +1420,22 @@ export default function ScannerPage() {
           if (!cat) return;
           const correctedInfo = catalogCardToInfo(cat);
 
-          // 1) Anzeige sofort auf die korrigierte Karte umstellen.
-          setJobs(prev => prev.map(j => j.id === job.id && j.result
-            ? { ...j, result: { ...j.result, card: correctedInfo, ownedCount: undefined } }
+          // 1) Anzeige sofort auf die korrigierte Karte umstellen — auch eine
+          //    NICHT erkannte Karte (status 'error', result evtl. null) wird so zu
+          //    einer normalen erkannten, hinzufügbaren Karte.
+          setJobs(prev => prev.map(j => j.id === job.id
+            ? {
+                ...j,
+                status: 'done',
+                result: {
+                  ...(j.result ?? { language: 'de' as CardLanguage }),
+                  card: correctedInfo,
+                  ownedCount: undefined,
+                },
+              }
             : j));
+          // Erkennen-Modus: die korrigierte Karte zentral als erkannte Karte zeigen.
+          if (job.origin === 'recognize') setRecognizedJobId(job.id);
 
           // 2) Bereits gespeichertes falsches (reguläres) Exemplar in-place umbiegen.
           let correctedStored = false;
@@ -2458,6 +2470,15 @@ export default function ScannerPage() {
                 </div>
               </div>
             </div>
+
+            {/* Manuelle Rettung: richtige Karte selbst wählen (öffnet den Picker) →
+                nicht-erkannte Karte wird danach als erkannte Karte hinzufügbar. */}
+            <button
+              onClick={() => setReportJobId(errored.id)}
+              className="pointer-events-auto flex items-center gap-2 h-11 px-6 rounded-full font-semibold text-sm text-white glass-overlay"
+            >
+              <Flag size={16} /> Richtige Karte wählen
+            </button>
           </div>
         );
       })()}
@@ -2674,6 +2695,13 @@ export default function ScannerPage() {
                 </div>
               )}
 
+              <button
+                onClick={() => { setReportJobId(job.id); close(); }}
+                className="w-full h-11 rounded-full font-semibold text-sm text-white flex items-center justify-center gap-1.5 mt-1"
+                style={{ background: 'var(--pokedex-blue)' }}
+              >
+                <Flag size={15} /> Richtige Karte wählen
+              </button>
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={removeAndClose}
@@ -2685,8 +2713,7 @@ export default function ScannerPage() {
                 </button>
                 <button
                   onClick={close}
-                  className="flex-1 h-11 rounded-full font-semibold text-sm text-white"
-                  style={{ background: 'var(--pokedex-blue)' }}
+                  className="flex-1 h-11 rounded-full font-semibold text-sm text-white border border-white/25"
                 >
                   Schließen
                 </button>
