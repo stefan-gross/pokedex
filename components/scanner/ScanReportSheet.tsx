@@ -159,30 +159,36 @@ export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }:
         ) : results.length === 0 ? (
           <div className="text-center py-12 text-sm text-muted-foreground">Keine Karten gefunden.</div>
         ) : (
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {results.map(info => {
               const isSel = selected?.id === info.id;
+              const badge = setBadges.get(info.setId);
               return (
                 <button
                   key={info.id}
                   onClick={() => toggleSelect(info)}
                   aria-pressed={isSel}
-                  className={`rounded-lg p-1 text-left transition-colors ${isSel ? 'ring-2 ring-[var(--pokedex-blue,#3182ce)] bg-secondary' : 'hover:bg-secondary'}`}
+                  className={`flex gap-2 rounded-lg p-1.5 text-left transition-colors ${isSel ? 'ring-2 ring-[var(--pokedex-blue,#3182ce)] bg-secondary' : 'hover:bg-secondary'}`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={resolveCardImage(info)}
                     alt={info.name}
-                    className="w-full aspect-[5/7] rounded object-cover"
+                    className="w-12 aspect-[5/7] rounded object-cover shrink-0"
                     onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
                   />
-                  <div className="mt-1 text-[11px] font-semibold leading-tight truncate">{info.name}</div>
-                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground truncate">
-                    {setBadges.get(info.setId)?.symbolUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={setBadges.get(info.setId)!.symbolUrl} alt="" className="w-3 h-3 object-contain shrink-0" />
-                    )}
-                    <span className="font-mono truncate">{info.number}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-semibold leading-tight truncate">{info.name}</div>
+                    {/* Set-Name ist bei gleichnamigen Auflagen (z.B. 16× „Froxy")
+                        der entscheidende Unterschied → prominent zeigen. */}
+                    <div className="flex items-center gap-1 mt-0.5 text-[10px] text-muted-foreground">
+                      {badge?.symbolUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={badge.symbolUrl} alt="" className="w-3 h-3 object-contain shrink-0" />
+                      )}
+                      <span className="truncate">{badge?.nameDe ?? info.setName}</span>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground font-mono">Nr. {info.number}</div>
                   </div>
                 </button>
               );
