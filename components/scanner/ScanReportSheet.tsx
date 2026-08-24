@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Loader2, X } from 'lucide-react';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { getSetById } from '@/lib/firestore/sets';
-import { catalogCardToInfo, resolveCardImage, type CardInfo } from '@/lib/card-info';
+import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { Sheet } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -120,10 +120,26 @@ export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }:
           {selected && (
             <div className="flex items-center gap-2 rounded-md p-1.5 bg-secondary">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={resolveCardImage(selected)} alt="" className="w-7 h-10 rounded object-cover shrink-0" onError={e => { e.currentTarget.style.visibility = 'hidden'; }} />
+              <img
+                src={selected.imgSmallDe || selected.imgSmall || selected.imgLarge}
+                alt=""
+                className="w-7 h-10 rounded object-cover shrink-0"
+                onError={e => {
+                  const el = e.currentTarget;
+                  if (!el.dataset.fb && selected.imgSmall && el.src.includes('/de/')) { el.dataset.fb = '1'; el.src = selected.imgSmall; }
+                  else if (!el.dataset.fb2 && selected.imgLarge) { el.dataset.fb2 = '1'; el.src = selected.imgLarge; }
+                  else el.style.visibility = 'hidden';
+                }}
+              />
               <div className="flex-1 min-w-0">
                 <div className="text-xs text-muted-foreground">Richtige Karte</div>
-                <div className="text-sm font-semibold truncate">{selected.name} <span className="text-[11px] text-muted-foreground font-mono">· {selected.number}</span></div>
+                <div className="text-sm font-semibold truncate">
+                  {selected.name}
+                  {selected.nameEn && selected.nameEn !== selected.name && (
+                    <span className="font-normal text-muted-foreground"> ({selected.nameEn})</span>
+                  )}
+                  <span className="text-[11px] text-muted-foreground font-mono"> · {selected.number}</span>
+                </div>
               </div>
               <Button variant="ghost" onClick={() => setSelected(null)} icon={<X size={16} />} aria-label="Auswahl aufheben" className="shrink-0" />
             </div>
@@ -172,13 +188,25 @@ export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }:
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={resolveCardImage(info)}
+                    src={info.imgSmallDe || info.imgSmall || info.imgLarge}
                     alt={info.name}
                     className="w-12 aspect-[5/7] rounded object-cover shrink-0"
-                    onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
+                    // Deutsches Bild fehlt oft (abgeleitete /de/-URL → 404). Dann
+                    // NICHT ausblenden, sondern auf das englische Bild zurückfallen.
+                    onError={e => {
+                      const el = e.currentTarget;
+                      if (!el.dataset.fb && info.imgSmall && el.src.includes('/de/')) { el.dataset.fb = '1'; el.src = info.imgSmall; }
+                      else if (!el.dataset.fb2 && info.imgLarge) { el.dataset.fb2 = '1'; el.src = info.imgLarge; }
+                      else el.style.visibility = 'hidden';
+                    }}
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="text-xs font-semibold leading-tight truncate">{info.name}</div>
+                    <div className="text-xs font-semibold leading-tight truncate">
+                      {info.name}
+                      {info.nameEn && info.nameEn !== info.name && (
+                        <span className="font-normal text-muted-foreground"> ({info.nameEn})</span>
+                      )}
+                    </div>
                     {/* Set-Name ist bei gleichnamigen Auflagen (z.B. 16× „Froxy")
                         der entscheidende Unterschied → prominent zeigen. */}
                     <div className="flex items-center gap-1 mt-0.5 text-[10px] text-muted-foreground">
