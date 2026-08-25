@@ -2490,6 +2490,14 @@ export default function ScannerPage() {
             job={recognized}
             onCardTap={() => setActiveJobId(recognized.id)}
             onSubmitReport={result => submitReport(recognized, result)}
+            onPickNotInCatalog={pending => {
+              // Anzeige auf die Pending-Karte umstellen (→ „Hinzufügen" legt sie
+              // an, Reconcile beim nächsten Sync) UND als „nicht im Katalog" melden.
+              setJobs(prev => prev.map(j => j.id === recognized.id && j.result
+                ? { ...j, result: { ...j.result, card: pending }, editedVariant: 'standard' as CardVariant }
+                : j));
+              submitReport(recognized, { reportType: 'not_in_catalog' });
+            }}
             onPickCandidate={picked => {
               setJobs(prev => prev.map(j => j.id === recognized.id && j.result
                 ? { ...j, result: { ...j.result, card: picked }, editedVariant: picked.variants?.[0] ?? 'standard' }
@@ -3102,6 +3110,10 @@ interface RecognizedCardLargeProps {
   onSubmitReport: (result: ScanReportResult) => void;
   /** Nutzer wählt bei mehrdeutiger Erkennung eine der Kandidaten-Karten. */
   onPickCandidate: (card: CardInfo) => void;
+  /** „Nicht im Katalog" aus dem Korrektur-Panel: die aus dem Scan gebaute
+   *  Pending-Karte als aktive Karte übernehmen (→ „Hinzufügen" legt sie an) +
+   *  melden. */
+  onPickNotInCatalog: (pending: CardInfo) => void;
   /** Nach Hinzufügen über die Inline-Leiste: ownedCount/added aktualisieren. */
   onSaved: () => void;
   /** Öffnet den Exemplar-Verwalten/Löschen-Drawer. */
@@ -3109,9 +3121,35 @@ interface RecognizedCardLargeProps {
 }
 
 function RecognizedCardLarge({
-  job, onCardTap, onSubmitReport, onPickCandidate, onSaved, onManage,
+  job, onCardTap, onSubmitReport, onPickCandidate, onPickNotInCatalog, onSaved, onManage,
 }: RecognizedCardLargeProps) {
   const [correcting, setCorrecting] = useState(false);
+
+  // Pending-Karte aus den gelesenen Gemini-Werten bauen (für „Nicht im Katalog"
+  // im Korrektur-Panel) — analog zum Scan-Zeitpunkt: Nummer + ein Set-Signal
+  // (Set-Code/Gesamtzahl/Dex) müssen gelesen sein, sonst nicht verknüpfbar → null.
+  const pendingFromScan: CardInfo | null = (() => {
+    const gp = job.debug?.geminiParsed as {
+      name?: string | null; setCode?: string | null; number?: string | null;
+      printedTotal?: number | null; nationalDexNumber?: number | null; hp?: number | null;
+    } | undefined;
+    const num = gp?.number ? String(gp.number) : '';
+    const strongId = !!(gp?.setCode || gp?.printedTotal != null || gp?.nationalDexNumber != null);
+    if (!gp || !num || !strongId) return null;
+    return {
+      id: `pending-${job.id}`,
+      name: gp.name ?? 'Unbekannte Karte',
+      number: num,
+      setId: '',
+      setName: gp.setCode ?? '?',
+      setCode: gp.setCode ?? undefined,
+      printedTotal: gp.printedTotal ?? undefined,
+      hp: gp.hp ?? undefined,
+      nationalDexNumber: gp.nationalDexNumber ?? undefined,
+      imgSmall: '', imgLarge: '',
+      pendingCatalog: true,
+    };
+  })();
   const card      = job.result?.card;
   // Bild-Kandidaten in Prioritätsreihenfolge — bei 404/Ladefehler eines
   // Kandidaten (z.B. fehlendes TCGdex-DE-Bild) probiert onError automatisch
@@ -3481,9 +3519,15 @@ function RecognizedCardLarge({
               card={card}
               candidates={job.result?.candidates}
               language={job.result?.language}
+              pendingCard={pendingFromScan}
               onClose={() => setCorrecting(false)}
               onPick={(cardId) => { setCorrecting(false); onSubmitReport({ reportType: 'wrong', correctedCardId: cardId }); }}
-              onNotInCatalog={() => { setCorrecting(false); onSubmitReport({ reportType: 'not_in_catalog' }); }}
+              onNotInCatalog={() => {
+                setCorrecting(false);
+                // Pending-Karte baubar → übernehmen (aufnehmbar) + melden; sonst nur melden.
+                if (pendingFromScan) onPickNotInCatalog(pendingFromScan);
+                else onSubmitReport({ reportType: 'not_in_catalog' });
+              }}
             />
           )}
         </div>

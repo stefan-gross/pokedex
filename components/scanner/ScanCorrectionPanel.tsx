@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, ArrowLeftRight, Loader2, Flag } from 'lucide-react';
+import { X, ArrowLeftRight, Loader2, Flag, FilePlus } from 'lucide-react';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { getCardsByDexNumberRest } from '@/lib/firestore/catalog-rest';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
@@ -31,7 +31,11 @@ interface Props {
   language?: string;
   /** Nutzer wählt die richtige Karte → korrigieren + still melden. */
   onPick: (cardId: string) => void;
-  /** Fallback: Karte ist nicht im Katalog. */
+  /** Aus dem Scan gebaute Pending-Karte (Name/Nummer/Set-Signal gelesen), die als
+   *  erstes Slider-Item „Nicht im Katalog" angeboten wird. null → nicht baubar
+   *  (dann Fallback-Button „Nicht im Katalog"). */
+  pendingCard?: CardInfo | null;
+  /** „Nicht im Katalog": Pending-Karte übernehmen (falls baubar) + melden. */
   onNotInCatalog: () => void;
   onClose: () => void;
 }
@@ -44,7 +48,7 @@ interface Props {
  * korrigiert die Anzeige UND meldet still (Grundwahrheit). Kein Notizfeld.
  */
 export function ScanCorrectionPanel({
-  open, card, candidates, language, onPick, onNotInCatalog, onClose,
+  open, card, candidates, language, pendingCard, onPick, onNotInCatalog, onClose,
 }: Props) {
   const english = language === 'en';
 
@@ -197,12 +201,33 @@ export function ScanCorrectionPanel({
       <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-3">
         {loading ? (
           <div className="flex items-center justify-center py-8 text-white/50"><Loader2 size={16} className="animate-spin" /></div>
-        ) : items.length === 0 ? (
+        ) : (items.length === 0 && !pendingCard) ? (
           <div className="text-center py-8 text-sm text-white/50">
             {searchResults ? 'Keine Karten gefunden.' : 'Tippe den Namen der richtigen Karte ein.'}
           </div>
         ) : (
           <div className="flex gap-3 overflow-x-auto pb-1 items-stretch">
+            {/* „Nicht im Katalog"-Erstkarte: übernimmt die aus dem Scan gebaute
+                Pending-Karte → danach normal „Hinzufügen". */}
+            {pendingCard && (
+              <button
+                onClick={onNotInCatalog}
+                className="shrink-0 w-[150px] rounded-2xl p-2 text-center"
+                style={{ border: '1.5px dashed #f4c542', background: 'rgba(244,197,66,0.06)' }}
+                aria-label="Nicht im Katalog — als neue Karte aufnehmen"
+              >
+                <div className="w-full aspect-[5/7] rounded-lg flex flex-col items-center justify-center gap-1.5" style={{ border: '1.5px dashed rgba(244,197,66,0.45)' }}>
+                  <FilePlus size={26} color="#f4c542" />
+                  <span className="text-[11px] font-semibold" style={{ color: '#f4c542' }}>Nicht im Katalog</span>
+                </div>
+                <div className="mt-2 text-[13px] font-semibold leading-tight text-white truncate">{pendingCard.name}</div>
+                <div className="mt-1.5 text-[11px] text-white/60 leading-tight">Als neue Karte aufnehmen</div>
+                <div className="mt-1 text-[11px] text-white/45 font-mono tabular-nums truncate">
+                  {pendingCard.setCode && <span className="text-white/45">{pendingCard.setCode} · </span>}
+                  {printedNumber(pendingCard.number, pendingCard.printedTotal)}
+                </div>
+              </button>
+            )}
             {items.map(it => {
               const badge = setBadges.get(it.info.setId);
               const isCand = it.group === 'cand';
@@ -251,16 +276,20 @@ export function ScanCorrectionPanel({
         )}
       </div>
 
-      <div className="shrink-0 px-4 py-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-        <Button
-          variant="secondary"
-          className="w-full"
-          icon={<Flag size={16} />}
-          onClick={onNotInCatalog}
-        >
-          Nicht im Katalog
-        </Button>
-      </div>
+      {/* Fallback-Button nur, wenn keine Pending-Karte baubar ist (Scan zu dünn) —
+          sonst übernimmt die „Nicht im Katalog"-Erstkarte im Slider diese Rolle. */}
+      {!pendingCard && (
+        <div className="shrink-0 px-4 py-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+          <Button
+            variant="secondary"
+            className="w-full"
+            icon={<Flag size={16} />}
+            onClick={onNotInCatalog}
+          >
+            Nicht im Katalog
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
