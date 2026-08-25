@@ -27,7 +27,9 @@ import { ValueBadge } from '@/components/card/ValueBadge';
 import { CardPrice } from '@/components/card/CardPrice';
 import { CardBadge } from '@/components/card/CardBadge';
 import { CardPlaceholder } from '@/components/card/CardPlaceholder';
+import { CardImage } from '@/components/card/CardImage';
 import { catalogCardToInfo, cardInfoToAddInput, resolveCardImage } from '@/lib/card-info';
+import { cardImageCandidates } from '@/lib/card-image';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition as PersistedCondition, CardDoc, CardLanguage, CardVariant } from '@/types';
 import { CONDITIONS, VARIANT_LABELS, SERIES_NAMES_DE, SYMBOL_ONLY_SERIES, inherentFoilVariant, holoShimmerClass } from '@/lib/card-constants';
@@ -233,55 +235,40 @@ function levenshtein(a: string, b: string): number {
   return prev[n];
 }
 
+/** Vorschaubild während der Verarbeitung: das aufgenommene Foto (base64 ist die
+ *  einzige Quelle — kein Duplikat im State). Sonst null. */
+function processingPhoto(job: ScanJob): string | null {
+  return (job.status === 'processing' && job.debug?.imageBase64)
+    ? `data:${job.debug.mimeType ?? 'image/jpeg'};base64,${job.debug.imageBase64}`
+    : null;
+}
+
+// Alle Scanner-Bildquellen laufen über die ZENTRALE Kandidaten-Logik
+// (`cardImageCandidates`, inkl. Storage-Fallback + Sprachreihenfolge) — dieselbe,
+// die Grid/Detail/Picker nutzen. Hier nur die Scan-Job-Hülle (Foto während der
+// Verarbeitung + Sprache aus dem Ergebnis).
 function cardImgUrl(job: ScanJob): string | null {
-  // Während Verarbeitung: aufgenommenes Bild als Vorschau zeigen
-  // (Image base64 ist die einzige Quelle — kein Duplikat im State).
-  if (job.status === 'processing' && job.debug?.imageBase64)
-    return `data:${job.debug.mimeType ?? 'image/jpeg'};base64,${job.debug.imageBase64}`;
+  const photo = processingPhoto(job);
+  if (photo) return photo;
   const card = job.result?.card;
   if (!card) return null;
-  const lang = job.result?.language ?? 'en';
-  // DE-First: gespeicherte DE-Bild-URL aus dem Catalog nehmen (Enrichment-
-  // Output). Vorherige Lösung baute on-the-fly tcgdex-URLs — 404 bei Sets
-  // ohne DE-Assets (z.B. Pokémon TCG Classic `me2pt5`). Fallback EN.
-  if (lang === 'de' && card.imgSmallDe) return card.imgSmallDe;
-  return card.imgSmall ?? null;
+  return cardImageCandidates(card, { size: 'small', language: job.result?.language })[0] ?? null;
 }
 
-/** Wie cardImgUrl, aber bevorzugt imgLarge*-URLs für die zentrale
- *  Erkennen-Anzeige (~600 px Höhe sonst sichtbar unscharf). */
 function cardImgUrlLarge(job: ScanJob): string | null {
-  if (job.status === 'processing' && job.debug?.imageBase64)
-    return `data:${job.debug.mimeType ?? 'image/jpeg'};base64,${job.debug.imageBase64}`;
+  const photo = processingPhoto(job);
+  if (photo) return photo;
   const card = job.result?.card;
   if (!card) return null;
-  const lang = job.result?.language ?? 'en';
-  if (lang === 'de' && card.imgLargeDe) return card.imgLargeDe;
-  if (card.imgLarge) return card.imgLarge;
-  if (lang === 'de' && card.imgSmallDe) return card.imgSmallDe;
-  return card.imgSmall ?? null;
+  return cardImageCandidates(card, { size: 'large', language: job.result?.language })[0] ?? null;
 }
 
-/** Wie cardImgUrlLarge, aber liefert ALLE Bild-Kandidaten in Prioritäts-
- *  reihenfolge statt nur den ersten Treffer — RecognizedCardLarge probiert
- *  bei einem 404/Ladefehler automatisch den nächsten (z.B. TCGdex-DE-Bild
- *  fehlt → pokemontcg.io-Bild als Fallback), bevor sie aufgibt. */
+/** ALLE Bild-Kandidaten in Prioritätsreihenfolge — RecognizedCardLarge probiert
+ *  bei 404/Ladefehler automatisch den nächsten, bevor sie aufgibt. */
 function cardImgUrlsLarge(job: ScanJob): string[] {
   const card = job.result?.card;
   if (!card) return [];
-  const lang = job.result?.language ?? 'en';
-  const candidates = lang === 'de'
-    ? [card.imgLargeDe, card.imgLarge, card.imgSmallDe, card.imgSmall]
-    : [card.imgLarge, card.imgSmall, card.imgLargeDe, card.imgSmallDe];
-  // Fallback: selbst gehostete Storage-Bilder (Ersatz für Karten OHNE TCGdex-Bild,
-  // z.B. McDonald's-Sets) als LETZTE Kandidaten. Greifen nur, wenn kein Katalog-
-  // Bild lädt; existiert kein Storage-Bild → 404 → onError springt weiter.
-  const bucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-  if (bucket) {
-    const base = `https://storage.googleapis.com/${bucket}/catalog-images/${card.id}`;
-    candidates.push(`${base}_de.png`, `${base}_de.jpg`, `${base}.png`);
-  }
-  return candidates.filter((u): u is string => !!u);
+  return cardImageCandidates(card, { size: 'large', language: job.result?.language });
 }
 
 /** Klassifiziert einen Error-Job und gibt thematische Karten-Daten zurück.
@@ -1312,9 +1299,9 @@ export default function ScannerPage() {
       //    kann im Picker weiter frei umwählen. Fehler degradieren still (kein Rang).
       if (debug.imageBase64) {
         const lang = (gemini.language ?? 'de') as CardLanguage;
-        const pickImageUrl = (info: CardInfo) =>
-          (lang === 'de' && info.imgLargeDe) || info.imgLarge
-          || (lang === 'de' && info.imgSmallDe) || info.imgSmall || null;
+        // pHash-Referenzbild über die zentrale Kandidaten-Logik (bestes Katalog-
+        // bild in der erkannten Sprache).
+        const pickImageUrl = (info: CardInfo) => resolveCardImage(info, 'large', lang) ?? null;
         const phashOne = async (url: string): Promise<number | null> => {
           try {
             const { distance } = await fetch('/api/scan/verify-image', {
@@ -3504,7 +3491,6 @@ function RecognizedCardLarge({
           <div className="flex gap-2 overflow-x-auto pb-1">
             {job.result!.candidates!.map(cand => {
               const selected = cand.id === card.id;
-              const thumb = resolveCardImage(cand, 'small');
               return (
                 <button
                   key={cand.id}
@@ -3513,12 +3499,15 @@ function RecognizedCardLarge({
                   style={{ border: selected ? '2px solid #35d15a' : '2px solid rgba(255,255,255,0.15)' }}
                   aria-label={`${cand.name} ${cand.setCode ?? cand.setId} ${cand.number}`}
                 >
-                  {thumb ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={thumb} alt={cand.name} className="w-16 rounded object-contain" />
-                  ) : (
-                    <div className="w-16 h-[89px] rounded bg-white/10" />
-                  )}
+                  <CardImage
+                    card={cand}
+                    size="small"
+                    language={job.result?.language}
+                    alt={cand.name}
+                    width={64}
+                    height={89}
+                    className="w-16 rounded object-contain"
+                  />
                   <span className="text-white/80 text-[10px] font-mono tabular-nums">
                     {(cand.setCode ?? cand.setId?.toUpperCase() ?? '?')} {cand.number}
                   </span>

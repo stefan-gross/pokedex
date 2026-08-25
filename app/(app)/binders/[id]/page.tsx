@@ -974,8 +974,8 @@ function MiniPageGrid({
             {card && (
               <>
                 <CardImage
-                  srcDe={cardInfo?.imgLargeDe}
-                  src={cardInfo?.imgLarge ?? ""}
+                  card={cardInfo ?? undefined}
+                  size="large"
                   alt=""
                   width={245}
                   height={342}
@@ -1630,13 +1630,16 @@ function SinglePageView({
                   width: 80,
                 }}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={activeCardInfo ? resolveCardImage(activeCardInfo) : undefined}
-                  alt={activeCard.name}
-                  className="w-full h-full object-cover"
-                  onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
-                />
+                {activeCardInfo && (
+                  <CardImage
+                    card={activeCardInfo}
+                    size="large"
+                    alt={activeCard.name}
+                    width={80}
+                    height={112}
+                    className="w-full h-full object-cover"
+                  />
+                )}
               </div>
             ) : null}
           </DragOverlay>
@@ -1871,16 +1874,16 @@ function DraggableCardSlot({
         // Skeleton rendern statt eines <img> ohne src (das zeigte sonst den
         // alt-Text = Kartenname). Erst mit URL das echte Bild (mit eigenem
         // Skeleton bis onLoad).
-        const src = resolveCardImage(cardInfo);
-        return src ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={src}
+        // Solange der Katalog-Lookup lädt (kein cardInfo), Skeleton statt Bild.
+        // Danach die zentrale CardImage-Kette (inkl. Storage-Fallback).
+        return cardInfo ? (
+          <CardImage
+            card={cardInfo}
+            size="large"
             alt={card.name}
-            className={`w-full h-full object-cover pointer-events-none no-callout${imgLoaded ? '' : ' img-skeleton'}`}
-            draggable={false}
-            onLoad={() => setImgLoaded(true)}
-            onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
+            width={245}
+            height={342}
+            className="w-full h-full object-cover pointer-events-none no-callout"
           />
         ) : (
           <div className="w-full h-full img-skeleton" aria-label={card.name} />

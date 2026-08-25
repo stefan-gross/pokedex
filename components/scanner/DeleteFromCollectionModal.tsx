@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { Minus } from 'lucide-react';
-import { resolveCardImage, type CardInfo } from '@/lib/card-info';
+import { type CardInfo } from '@/lib/card-info';
+import { CardImage } from '@/components/card/CardImage';
 import type { CardDoc, BinderDoc, CardVariant, CardCondition, CardLanguage } from '@/types';
 import { deleteCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { getBinders, removeCardFromBinderAndCleanup } from '@/lib/firestore/binders';
@@ -135,10 +136,12 @@ export function DeleteFromCollectionModal({
     >
           {/* Karten-Zeile */}
           <div className="flex items-center gap-3 pb-[14px] mb-4 border-b border-[rgba(46,46,50,0.1)] dark:border-white/10">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={resolveCardImage(card, 'small')}
+            <CardImage
+              card={card}
+              size="small"
               alt={card.name}
+              width={40}
+              height={56}
               className="w-10 h-14 rounded-[3px] object-cover shrink-0"
             />
             <div className="min-w-0">

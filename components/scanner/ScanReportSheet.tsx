@@ -5,6 +5,7 @@ import { Loader2, X } from 'lucide-react';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { getSetById } from '@/lib/firestore/sets';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
+import { CardImage } from '@/components/card/CardImage';
 import { Sheet } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,13 +43,6 @@ function displayNames(info: CardInfo, english: boolean): { primary: string; seco
   }
   const secondary = info.nameEn && info.nameEn !== info.name ? info.nameEn : undefined;
   return { primary: info.name, secondary };
-}
-
-/** Bild-Kandidaten in Prioritätsreihenfolge — EN zuerst bei englischer Karte. */
-function imageSrcFor(info: CardInfo, english: boolean): string | undefined {
-  return english
-    ? (info.imgSmall || info.imgSmallDe || info.imgLarge || undefined)
-    : (info.imgSmallDe || info.imgSmall || info.imgLarge || undefined);
 }
 
 /** Melden-Sheet: der Nutzer wählt per Katalogsuche die RICHTIGE Karte
@@ -164,17 +158,14 @@ export function ScanReportSheet({ recognizedName, seedQuery, language, imageSrc,
         <div className="px-4 py-2 space-y-2">
           {selected && (
             <div className="flex items-center gap-2 rounded-md p-1.5 bg-secondary">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={imageSrcFor(selected, english)}
+              <CardImage
+                card={selected}
+                size="small"
+                language={english ? 'en' : 'de'}
                 alt=""
+                width={28}
+                height={40}
                 className="w-7 h-10 rounded object-cover shrink-0"
-                onError={e => {
-                  const el = e.currentTarget;
-                  if (!el.dataset.fb && selected.imgSmall && el.src.includes('/de/')) { el.dataset.fb = '1'; el.src = selected.imgSmall; }
-                  else if (!el.dataset.fb2 && selected.imgLarge) { el.dataset.fb2 = '1'; el.src = selected.imgLarge; }
-                  else el.style.visibility = 'hidden';
-                }}
               />
               <div className="flex-1 min-w-0">
                 <div className="text-xs text-muted-foreground">Richtige Karte</div>
@@ -234,19 +225,14 @@ export function ScanReportSheet({ recognizedName, seedQuery, language, imageSrc,
                   aria-pressed={isSel}
                   className={`flex gap-2 rounded-lg p-1.5 text-left transition-colors ${isSel ? 'ring-2 ring-[var(--pokedex-blue,#3182ce)] bg-secondary' : 'hover:bg-secondary'}`}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={imageSrcFor(info, english)}
+                  <CardImage
+                    card={info}
+                    size="small"
+                    language={english ? 'en' : 'de'}
                     alt={names.primary}
+                    width={48}
+                    height={67}
                     className="w-12 aspect-[5/7] rounded object-cover shrink-0"
-                    // Deutsches Bild fehlt oft (abgeleitete /de/-URL → 404). Dann
-                    // NICHT ausblenden, sondern auf das englische Bild zurückfallen.
-                    onError={e => {
-                      const el = e.currentTarget;
-                      if (!el.dataset.fb && info.imgSmall && el.src.includes('/de/')) { el.dataset.fb = '1'; el.src = info.imgSmall; }
-                      else if (!el.dataset.fb2 && info.imgLarge) { el.dataset.fb2 = '1'; el.src = info.imgLarge; }
-                      else el.style.visibility = 'hidden';
-                    }}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="text-xs font-semibold leading-tight truncate">

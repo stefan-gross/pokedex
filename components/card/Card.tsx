@@ -258,8 +258,8 @@ function CardImpl({
           }}
         >
           <CardImage
-            srcDe={card.imgSmallDe}
-            src={card.imgSmall}
+            card={card}
+            size="small"
             alt={card.name}
             width={245}
             height={342}

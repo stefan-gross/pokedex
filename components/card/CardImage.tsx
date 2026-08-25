@@ -3,12 +3,24 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { CardPlaceholder, type CardPlaceholderInfo } from '@/components/card/CardPlaceholder';
+import {
+  cardImageCandidates, isUnoptimizedImage, type ImageCardLike,
+} from '@/lib/card-image';
 
 interface CardImageProps {
-  /** Bevorzugtes DE-Bild (TCGdex). Fehlt es, wird `src` direkt gezeigt. */
+  /** Bevorzugt: die Karte selbst — die Kandidatenliste (inkl. Storage-Fallback)
+   *  wird zentral über `cardImageCandidates` gebaut. */
+  card?: ImageCardLike;
+  /** Größe/Sprache für die zentrale Kandidaten-Logik (nur mit `card`). */
+  size?: 'small' | 'large';
+  language?: string;
+  /** Optionale Zusatzquelle, die VOR allen Kandidaten probiert wird (z.B. eine
+   *  zur Laufzeit aus Set-Metadaten abgeleitete DE-Bild-URL). */
+  leadSrc?: string;
+  /** Legacy-API (ohne `card`): bevorzugtes DE-Bild … */
   srcDe?: string;
-  /** EN-Bild als sicherer Fallback (pokemontcg.io). */
-  src: string;
+  /** … und EN-Bild als Fallback. Wird nur genutzt, wenn `card` fehlt. */
+  src?: string;
   alt: string;
   width: number;
   height: number;
@@ -24,13 +36,16 @@ interface CardImageProps {
 }
 
 /**
- * Karten-Bild mit DE-first Logik:
- * 1. Zeigt `srcDe` wenn vorhanden
- * 2. Bei Ladefehler automatischer Fallback auf `src` (EN)
- *
- * Einheitlich für Grid (CardTile) und Detailansicht (CardDetailSheet).
+ * Karten-Bild mit zentraler Kandidaten-Logik (`lib/card-image.ts`):
+ * probiert alle Bildquellen der Reihe nach (DE/EN-Katalog + selbst gehostete
+ * Storage-Bilder), springt bei Ladefehler automatisch zum nächsten und zeigt
+ * erst am Ende den Platzhalter. Einheitlich für Grid, Detail, Picker & Co.
  */
 export function CardImage({
+  card,
+  size = 'small',
+  language,
+  leadSrc,
   srcDe,
   src,
   alt,
@@ -44,23 +59,27 @@ export function CardImage({
   onClick,
   placeholderInfo,
 }: CardImageProps) {
-  const [failed, setFailed] = useState(false);
+  // Kandidaten zentral bauen (mit `card`) oder aus der Legacy-srcDe/src-API.
+  const base = card
+    ? cardImageCandidates(card, { size, language })
+    : [srcDe, src].filter((u): u is string => !!u);
+  // Optionale Zusatzquelle voranstellen (dedupliziert).
+  const candidates = (leadSrc ? [leadSrc, ...base] : base)
+    .filter((u, i, arr): u is string => !!u && arr.indexOf(u) === i);
+
+  const [idx, setIdx] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  // Bei Kartenwechsel (neue Kandidatenliste) von vorne beginnen — State während
+  // des Renderns anpassen (React-empfohlen) statt via Effekt, um Kaskaden-
+  // Renders zu vermeiden.
+  const key = candidates.join('|');
+  const [prevKey, setPrevKey] = useState(key);
+  if (key !== prevKey) { setPrevKey(key); setIdx(0); setLoaded(false); }
 
-  // || statt ?? — fängt auch leere Strings aus Firestore ab
-  const activeSrc = (!failed && srcDe) ? srcDe : (src || undefined);
+  const activeSrc = candidates[idx];
 
-  // Kein Bild (weder TCGdex noch Backfill):
-  // - Vorläufige (nicht katalogisierte) Karte → eigenes Template mit den
-  //   erkannten Werten (Name/KP/Set/Nr.) via CardPlaceholder.
-  // - Alle anderen Karten ohne Bild → statische „Kein Bild"-Platzhalterkarte
-  //   (`/no-card-image.png`, gleiche Kartenproportion).
-  // Sobald ein späterer TCGdex-Sync ein (deutsches) Bild liefert, wird das Feld
-  // gefüllt und hier automatisch das echte Bild gezeigt.
+  // Keine (weitere) Quelle mehr: Platzhalter.
   if (!activeSrc) {
-    // Mit Karteninfos: Platzhalterkarte mit Daten-Overlay (CardPlaceholder wählt
-    // je nach `pending` das Template + „?"-Badge). Ohne Infos (z.B. Evolutions-
-    // Thumbnail): nur die statische „Kein Bild"-Karte.
     if (placeholderInfo) {
       return <CardPlaceholder info={placeholderInfo} className={className} style={style} onClick={onClick} />;
     }
@@ -83,9 +102,9 @@ export function CardImage({
       priority={priority}
       onClick={onClick}
       onLoad={() => setLoaded(true)}
-      // Bei DE→EN-Fallback lädt ein neues Bild → Skeleton erneut zeigen.
-      onError={() => { setFailed(true); setLoaded(false); }}
-      unoptimized={!failed && !!srcDe}
+      // Nächsten Kandidaten probieren (Skeleton erneut zeigen).
+      onError={() => { setIdx(i => i + 1); setLoaded(false); }}
+      unoptimized={isUnoptimizedImage(activeSrc)}
     />
   );
 }

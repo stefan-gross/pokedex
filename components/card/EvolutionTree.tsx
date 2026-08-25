@@ -45,8 +45,8 @@ function NodeThumb({ card, isCurrent, onSelect }: { card: CardInfo; isCurrent: b
       >
         <div className="rounded-[6px] overflow-hidden">
           <CardImage
-            srcDe={card.imgSmallDe}
-            src={card.imgSmall}
+            card={card}
+            size="small"
             alt={card.name}
             width={68}
             height={95}

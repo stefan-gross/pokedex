@@ -10,6 +10,7 @@ import { CollectionPickerSheet } from '@/components/collection/CollectionPickerS
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSubtypeDe, SYMBOL_ONLY_SERIES, inherentFoilVariant, holoShimmerClass } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
+import { cardImageCandidates } from '@/lib/card-image';
 import { formatCardNumber } from '@/lib/format';
 import { deleteCard, getCardsByTcgId, markReviewed } from '@/lib/firestore/cards';
 import { getBinders, removeCardFromBinderAndCleanup, ensureDefaultBinder, setCardExclusiveBinder } from '@/lib/firestore/binders';
@@ -708,11 +709,11 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
               onClick={() => setZoomed(true)}
             >
               <CardImage
-                srcDe={imgSrcDe}
-                // `||` statt `??`: ein LEERER String (imgLarge = '' bei Karten
-                // ohne großes Bild, z.B. sehr neue Sets) fällt so aufs kleine
-                // Bild zurück statt eine leere Box zu zeigen (`??` würde '' behalten).
-                src={card.imgLarge || card.imgSmall}
+                card={card}
+                size="large"
+                // Zur Laufzeit aus Set-Metadaten abgeleitete DE-URL zuerst; danach
+                // die zentrale Kandidatenkette (Katalog DE/EN + Storage-Fallback).
+                leadSrc={imgSrcDe}
                 alt={card.name}
                 width={140}
                 height={196}
@@ -1027,8 +1028,8 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                               <div className="glass-inner rounded-[7px] p-[2px]">
                                 <div className="rounded-[4px] overflow-hidden w-10">
                                   <CardImage
-                                    srcDe={sf.imgSmallDe}
-                                    src={sf.imgSmall}
+                                    card={sf}
+                                    size="small"
                                     alt={sf.name}
                                     width={40}
                                     height={56}
@@ -1197,22 +1198,20 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           className="fixed inset-0 z-[70] bg-black flex items-center justify-center"
           onClick={() => setZoomed(false)}
         >
-          {(imgSrcDe || card.imgLarge || card.imgSmall) ? (
+          {[imgSrcDe, ...cardImageCandidates(card, { size: 'large' })].some(Boolean) ? (
             /* Wrapper schrumpft exakt auf die (per max-Größe skalierte) Bild-Box,
                rundet + clippt — so sitzt der Holo-Overlay deckungsgleich auf dem
                Bild (nicht auf dem Vollbild-Hintergrund). */
             <div className="relative inline-flex rounded-2xl overflow-hidden" style={{ maxWidth: '90vw', maxHeight: '85dvh' }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={imgSrcDe || card.imgLarge || card.imgSmall}
+              <CardImage
+                card={card}
+                size="large"
+                leadSrc={imgSrcDe}
                 alt={card.name}
+                width={490}
+                height={686}
                 className="block"
                 style={{ maxWidth: '90vw', maxHeight: '85dvh', objectFit: 'contain' }}
-                onError={e => {
-                  const target = e.currentTarget;
-                  const en = card.imgLarge || card.imgSmall;
-                  if (target.src !== en) target.src = en;
-                }}
               />
               {(() => {
                 const foil = inherentFoilVariant(card.variants);

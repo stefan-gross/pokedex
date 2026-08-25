@@ -8,6 +8,10 @@ import type { CatalogCard } from '@/lib/firestore/catalog';
 import type { CachedPricesLike } from '@/lib/prices/trend-from-cached';
 import type { CardVariant, CardDoc, CardCondition, CardLanguage, CardAttack, CardAbility, CardWeakRes } from '@/types';
 
+// Bildquellen-Logik lebt zentral in `lib/card-image.ts` — hier re-exportiert,
+// damit bestehende Importe (`from '@/lib/card-info'`) unverändert funktionieren.
+export { resolveCardImage, cardImageCandidates } from '@/lib/card-image';
+
 export interface CardInfo {
   id: string;
   name: string;
@@ -55,20 +59,6 @@ export interface CardInfo {
   /** Inline gecachte Preise (aus dem Katalog-Doc) — für Preis-Sortierung/-Anzeige
    *  ohne Extra-Fetch (z.B. Sammlung/Suche). */
   prices?: CachedPricesLike;
-}
-
-/** DE-bevorzugte Bild-URL einer Karte (DE → EN-Fallback), `undefined` wenn
- *  keine vorhanden. Ersetzt das an vielen Stellen inline duplizierte
- *  `imgLargeDe || imgLarge`-Muster (B6). Für die abweichenden Fälle
- *  (CardDetailSheet mit separatem DE-State, sprach-abhängiger Scanner-Picker)
- *  bewusst nicht genutzt. */
-export function resolveCardImage(
-  c: { imgLargeDe?: string; imgLarge?: string; imgSmallDe?: string; imgSmall?: string },
-  size: 'large' | 'small' = 'large',
-): string | undefined {
-  return size === 'large'
-    ? (c.imgLargeDe || c.imgLarge || undefined)
-    : (c.imgSmallDe || c.imgSmall || undefined);
 }
 
 /** Leitet die deutsche TCGdex-Bild-URL aus der englischen ab (/en/ → /de/).
