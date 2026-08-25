@@ -3126,16 +3126,17 @@ function RecognizedCardLarge({
   const [correcting, setCorrecting] = useState(false);
 
   // Pending-Karte aus den gelesenen Gemini-Werten bauen (für „Nicht im Katalog"
-  // im Korrektur-Panel) — analog zum Scan-Zeitpunkt: Nummer + ein Set-Signal
-  // (Set-Code/Gesamtzahl/Dex) müssen gelesen sein, sonst nicht verknüpfbar → null.
+  // im Korrektur-Panel). Anders als beim Scan-Zeitpunkt (der ein Set-Signal
+  // verlangt, um pending vs. Fehler automatisch zu entscheiden) genügt hier
+  // Name ODER Nummer — der Nutzer sagt aktiv „nicht im Katalog", wir bauen die
+  // Karte aus dem, was gelesen wurde. Nur wenn gar nichts lesbar ist → null.
   const pendingFromScan: CardInfo | null = (() => {
     const gp = job.debug?.geminiParsed as {
       name?: string | null; setCode?: string | null; number?: string | null;
       printedTotal?: number | null; nationalDexNumber?: number | null; hp?: number | null;
     } | undefined;
     const num = gp?.number ? String(gp.number) : '';
-    const strongId = !!(gp?.setCode || gp?.printedTotal != null || gp?.nationalDexNumber != null);
-    if (!gp || !num || !strongId) return null;
+    if (!gp || (!num && !gp.name)) return null;
     return {
       id: `pending-${job.id}`,
       name: gp.name ?? 'Unbekannte Karte',
