@@ -139,6 +139,11 @@ export async function resolveScannedCard(s: ScanSignals, deps: ResolveDeps): Pro
   // zweites Signal (printedTotal = Set-Fingerabdruck) die Karte schon eingrenzt.
   const nameOrSpeciesOk = async (c: CatalogCard) => {
     if (nameOk(c)) return true;
+    // Art-Gleichheit über Geminis DIREKT gelesene Dex-Nr. (falls vorhanden) —
+    // „Froxy"(de)/„Froakie"(en) sind dieselbe Art. Deckt den Fall ab, dass Gemini
+    // die Dex-Nr. mitliefert (dann wird `dexForName` gar nicht erst gebraucht).
+    if (s.nationalDexNumber != null && c.nationalDexNumber === s.nationalDexNumber) return true;
+    // Sonst den Artnamen selbst → Dex auflösen (nur wenn Gemini keine Dex-Nr. gab).
     const nd = await getNameDex();
     return nd != null && c.nationalDexNumber === nd;
   };
