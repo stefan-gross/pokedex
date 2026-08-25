@@ -43,6 +43,9 @@ export interface ResolveDeps {
   /** Name-Präfix-Suche (nameLower ∪ nameDeLower) für den Promo-Fallback R5.
    *  Optional — fehlt sie, wird R5 übersprungen. */
   byNamePrefix?(prefixLower: string): Promise<CatalogCard[]>;
+  /** National-Dex einer Art über ihren DE-/EN-Namen — für das artbewusste
+   *  Namens-Gate in R2 (Froxy↔Froakie). Optional. */
+  dexForName?(name: string): Promise<number | null>;
 }
 
 /** Name auf Vergleichsform reduzieren (Bindestriche/Leerzeichen/Suffix-Zeichen
@@ -121,6 +124,24 @@ export async function resolveScannedCard(s: ScanSignals, deps: ResolveDeps): Pro
     const t = await deps.setPrintedTotal(c.setId);
     return t == null || t === s.printedTotal;
   };
+  // Art-Dex aus dem gelesenen Namen (memoisiert, nur bei Bedarf abgefragt) —
+  // überbrückt DE-/EN-Namensdifferenzen im Namens-Gate: „Froxy"(de) und
+  // „Froakie"(en) sind dieselbe Art (Dex 656). Nur wenn Gemini KEINE eigene
+  // Dex-Nr. lieferte (sonst gilt die).
+  let nameDex: number | null | undefined;
+  const getNameDex = async (): Promise<number | null> => {
+    if (nameDex !== undefined) return nameDex;
+    nameDex = (deps.dexForName && s.name && !s.nationalDexNumber) ? await deps.dexForName(s.name) : null;
+    return nameDex;
+  };
+  // Namens-Gate mit Art-Fallback: Name gleicht ODER (kein Namensgleich, aber die
+  // Karte gehört zur namensaufgelösten Art). Nur dort einsetzen, wo ein starkes
+  // zweites Signal (printedTotal = Set-Fingerabdruck) die Karte schon eingrenzt.
+  const nameOrSpeciesOk = async (c: CatalogCard) => {
+    if (nameOk(c)) return true;
+    const nd = await getNameDex();
+    return nd != null && c.nationalDexNumber === nd;
+  };
 
   // ── R1: setCode + number ────────────────────────────────────────────────
   if (s.setCode && numbers.length) {
@@ -143,7 +164,9 @@ export async function resolveScannedCard(s: ScanSignals, deps: ResolveDeps): Pro
     for (const setId of setIds) {
       for (const n of numbers) {
         const c = await deps.bySetAndNumber(setId, n);
-        if (c && !seen.has(c.id) && dexOk(c) && nameOk(c)) { seen.add(c.id); hits.push(c); }
+        // Namens-Gate artbewusst: die McDonald's-Auflage „Froakie" wird bei
+        // deutschem Scan-Namen „Froxy" über die gemeinsame Dex-Nr. akzeptiert.
+        if (c && !seen.has(c.id) && dexOk(c) && (await nameOrSpeciesOk(c))) { seen.add(c.id); hits.push(c); }
       }
     }
     if (hits.length === 1) {

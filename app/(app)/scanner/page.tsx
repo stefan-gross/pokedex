@@ -14,7 +14,8 @@ import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
          getCardBySetAndNumberRest    as getCardBySetAndNumber,
          getCardsByDexNumberRest      as getCardsByDexNumber,
          getCardsByNameAndNumberRest  as getCardsByNameAndNumber,
-         getCardsByNamePrefixRest     as getCardsByNamePrefix } from '@/lib/firestore/catalog-rest';
+         getCardsByNamePrefixRest     as getCardsByNamePrefix,
+         getDexForNameRest            as getDexForName } from '@/lib/firestore/catalog-rest';
 import { resolveScannedCard } from '@/lib/scan/resolve-card';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { addCard, getCardsByTcgId, updateCard } from '@/lib/firestore/cards';
@@ -962,6 +963,7 @@ export default function ScannerPage() {
           setIdsByPrintedTotal: getSetIdsByPrintedTotal,
           setPrintedTotal: getSetPrintedTotal,
           byNamePrefix: (prefix: string) => getCardsByNamePrefix(prefix, 40),
+          dexForName: getDexForName,
         },
       );
       debug.lookupSteps!.push(...resolved.trace);

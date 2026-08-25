@@ -107,6 +107,25 @@ export async function getCardsByNameAndNumberRest(
   return merged;
 }
 
+/** National-Dex einer Art über ihren deutschen ODER englischen Namen. Für das
+ *  artbewusste Namens-Gate in resolve-card (R2): „Froxy"(de)/„Froakie"(en) → 656,
+ *  damit eine englisch-only-Auflage bei deutschem Scan-Namen nicht am Namens-Gate
+ *  scheitert. Nur bei EINDEUTIGER Art (genau eine Dex-Nr.) zurückgegeben — sonst
+ *  null (nicht raten). */
+export async function getDexForNameRest(name: string): Promise<number | null> {
+  const nl = name.trim().toLowerCase();
+  if (nl.length < 2) return null;
+  const queryFor = (field: 'nameLower' | 'nameDeLower') => runQuery({
+    from: [{ collectionId: 'tcg_catalog' }],
+    where: { fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: { stringValue: nl } } },
+    limit: 10,
+  });
+  const [a, b] = await Promise.all([queryFor('nameLower'), queryFor('nameDeLower')]);
+  const dexes = new Set<number>();
+  for (const c of [...a, ...b]) if (typeof c.nationalDexNumber === 'number') dexes.add(c.nationalDexNumber);
+  return dexes.size === 1 ? [...dexes][0] : null;
+}
+
 /** Name-Präfix-Suche (Range) auf nameLower ODER nameDeLower. Für den Promo-
  *  Fallback (resolve-card R5): holt Karten derselben Art, wenn Name (Bindestrich/
  *  Suffix) und Nummer (Set-Präfix wie „XY133") nicht EXAKT gleichen — der
