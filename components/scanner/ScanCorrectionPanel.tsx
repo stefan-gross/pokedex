@@ -9,9 +9,15 @@ import { getSetById } from '@/lib/firestore/sets';
 import { CardImage } from '@/components/card/CardImage';
 import { Input } from '@/components/ui/input';
 
-interface Group { key: string; label: string; accent?: boolean }
 interface Item { info: CardInfo; group: string }
-interface SetBadge { symbolUrl?: string; nameDe: string }
+interface SetBadge { symbolUrl?: string; logoUrl?: string; nameDe: string; code?: string; printedTotal?: number }
+
+/** Aufgedruckte Sammelnummer, wie auf der Karte: „022/025" bzw. Promo „XY133". */
+function printedNumber(number: string, printedTotal?: number): string {
+  const base = number.split('/')[0];
+  const padded = /^\d+$/.test(base) ? base.padStart(3, '0') : base;
+  return printedTotal ? `${padded}/${String(printedTotal).padStart(3, '0')}` : padded;
+}
 
 interface Props {
   /** Sichtbar? Steuert die Slide-Animation (B2: Panel gleitet übers Sheet). */
@@ -108,13 +114,20 @@ export function ScanCorrectionPanel({
 
   const items = searchResults ?? prefill;
 
-  const GROUPS: Record<string, Group> = {
-    cand:   { key: 'cand',   label: 'Wahrscheinlich', accent: true },
-    family: { key: 'family', label: 'Gleiche Art' },
-    search: { key: 'search', label: '' },
-  };
+  // Dt. Art-Name je Dex-Nr. aus den Treffern selbst ableiten: Karten MIT DE-Namen
+  // (catalogCardToInfo → `name`=DE, `nameEn` gesetzt) liefern die Übersetzung für
+  // englisch-only-Auflagen derselben Art (z.B. „Greninja" → „Quajutsu"). So steht
+  // überall derselbe deutsche Name, auch wenn eine Auflage keinen DE-Namen hat.
+  const dexDe = new Map<number, string>();
+  for (const it of items) {
+    if (it.info.nameEn && it.info.nationalDexNumber != null && !dexDe.has(it.info.nationalDexNumber)) {
+      dexDe.set(it.info.nationalDexNumber, it.info.name);
+    }
+  }
+  const deName = (info: CardInfo): string =>
+    info.nameEn ? info.name : (info.nationalDexNumber != null ? dexDe.get(info.nationalDexNumber) : undefined) ?? info.name;
 
-  // Set-Symbol + dt. Set-Name für die Treffer nachladen (gleichnamige Auflagen).
+  // Set-Symbol + Logo (DE) + Code + Gesamtzahl für die Treffer nachladen.
   useEffect(() => {
     const ids = [...new Set(items.map(i => i.info.setId).filter(Boolean))];
     const missing = ids.filter(id => !setBadges.has(id));
@@ -122,7 +135,13 @@ export function ScanCorrectionPanel({
     let cancelled = false;
     Promise.all(missing.map(async id => {
       const s = await getSetById(id).catch(() => null);
-      return [id, { symbolUrl: s?.symbolUrl, nameDe: s?.nameDe ?? s?.name ?? id }] as const;
+      return [id, {
+        symbolUrl: s?.symbolUrl,
+        logoUrl: s?.logoUrl || s?.logoUrlEn || undefined,
+        nameDe: s?.nameDe ?? s?.name ?? id,
+        code: s?.ptcgoCode,
+        printedTotal: s?.printedTotal,
+      }] as const;
     })).then(entries => {
       if (cancelled) return;
       setSetBadges(prev => { const m = new Map(prev); for (const [id, v] of entries) m.set(id, v); return m; });
@@ -177,45 +196,48 @@ export function ScanCorrectionPanel({
           </div>
         ) : (
           <div className="flex gap-3 overflow-x-auto pb-1 items-stretch">
-            {items.map((it, idx) => {
-              const prev = items[idx - 1];
-              const showLabel = !searchResults && it.group !== prev?.group && GROUPS[it.group]?.label;
+            {items.map(it => {
               const badge = setBadges.get(it.info.setId);
-              const hasEn = it.info.nameEn && it.info.nameEn !== it.info.name;
+              const isCand = it.group === 'cand';
               return (
-                <div key={it.info.id} className="flex gap-3 shrink-0">
-                  {showLabel && (
-                    <div
-                      className="shrink-0 self-center text-[10px] font-semibold tracking-wide"
-                      style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', color: GROUPS[it.group].accent ? '#f4c542' : 'rgba(255,255,255,0.5)' }}
-                    >
-                      {GROUPS[it.group].label}
-                    </div>
-                  )}
-                  <button
-                    onClick={() => onPick(it.info.id)}
-                    className="shrink-0 w-[150px] rounded-2xl p-2 text-left"
-                    style={{ border: it.group === 'cand' ? '1.5px solid #f4c542' : '1.5px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.04)' }}
-                    aria-label={`${it.info.name} ${it.info.setCode ?? it.info.setId} ${it.info.number}`}
-                  >
-                    <div className="relative">
-                      {it.group === 'cand' && (
-                        <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 z-10 px-2 py-0.5 rounded-md text-[9px] font-bold" style={{ background: '#f4c542', color: '#3a2c00' }}>Kandidat</span>
-                      )}
-                      <CardImage card={it.info} size="small" language={language} alt={it.info.name} width={150} height={210} className="w-full aspect-[5/7] rounded-lg object-cover" />
-                    </div>
-                    <div className="mt-2 text-[13px] font-semibold leading-tight text-white truncate">{it.info.name}</div>
-                    {hasEn && <div className="text-[10px] text-white/45 leading-tight truncate -mt-0.5">{it.info.nameEn}</div>}
-                    <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-white/65">
-                      {badge?.symbolUrl && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={badge.symbolUrl} alt="" className="w-4 h-4 object-contain shrink-0" />
-                      )}
-                      <span className="truncate">{badge?.nameDe ?? it.info.setName}</span>
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-white/45 font-mono tabular-nums">Nr. {it.info.number}</div>
-                  </button>
-                </div>
+                <button
+                  key={it.info.id}
+                  onClick={() => onPick(it.info.id)}
+                  className="shrink-0 w-[150px] rounded-2xl p-2 text-center"
+                  style={{ border: isCand ? '1.5px solid #f4c542' : '1.5px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.04)' }}
+                  aria-label={`${deName(it.info)} ${badge?.code ?? it.info.setId} ${printedNumber(it.info.number, badge?.printedTotal)}`}
+                >
+                  <div className="relative">
+                    {isCand && (
+                      <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 z-10 px-2 py-0.5 rounded-md text-[9px] font-bold" style={{ background: '#f4c542', color: '#3a2c00' }}>Kandidat</span>
+                    )}
+                    <CardImage card={it.info} size="small" language={language} alt={deName(it.info)} width={150} height={210} className="w-full aspect-[5/7] rounded-lg object-cover" />
+                  </div>
+
+                  <div className="mt-2 text-[13px] font-semibold leading-tight text-white truncate">{deName(it.info)}</div>
+
+                  {/* Set-Identität: Logo (DE) wenn vorhanden, sonst Symbol + Name. */}
+                  <div className="mt-1.5 h-5 flex items-center justify-center gap-1.5">
+                    {badge?.logoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={badge.logoUrl} alt={badge.nameDe} className="h-5 max-w-full object-contain" />
+                    ) : (
+                      <>
+                        {badge?.symbolUrl && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={badge.symbolUrl} alt="" className="w-4 h-4 object-contain shrink-0" />
+                        )}
+                        <span className="text-[11px] text-white/65 truncate">{badge?.nameDe ?? it.info.setName}</span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Set-Kürzel + aufgedruckte Nummer (022/025 bzw. Promo XY133). */}
+                  <div className="mt-1 text-[11px] text-white/55 font-mono tabular-nums truncate">
+                    {badge?.code && <span className="text-white/45">{badge.code} · </span>}
+                    {printedNumber(it.info.number, badge?.printedTotal)}
+                  </div>
+                </button>
               );
             })}
           </div>
