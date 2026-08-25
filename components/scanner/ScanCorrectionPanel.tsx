@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, ArrowLeftRight, Loader2 } from 'lucide-react';
+import { X, ArrowLeftRight, Loader2, Flag } from 'lucide-react';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { getCardsByDexNumberRest } from '@/lib/firestore/catalog-rest';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { getSetById } from '@/lib/firestore/sets';
 import { CardImage } from '@/components/card/CardImage';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 interface Item { info: CardInfo; group: string }
 interface SetBadge { symbolUrl?: string; logoUrl?: string; nameDe: string; code?: string; printedTotal?: number }
@@ -45,6 +46,8 @@ interface Props {
 export function ScanCorrectionPanel({
   open, card, candidates, language, onPick, onNotInCatalog, onClose,
 }: Props) {
+  const english = language === 'en';
+
   // Slide-Mount: beim Öffnen einblenden (rAF → Transition greift), beim Schließen
   // erst raus-animieren, dann unmounten.
   const [mounted, setMounted] = useState(false);
@@ -126,6 +129,10 @@ export function ScanCorrectionPanel({
   }
   const deName = (info: CardInfo): string =>
     info.nameEn ? info.name : (info.nationalDexNumber != null ? dexDe.get(info.nationalDexNumber) : undefined) ?? info.name;
+  // Anzeige-Name je erkannter Sprache: englische Karte → englischer Name (Bilder
+  // sind via `language` ohnehin schon englisch), sonst der einheitliche DE-Name.
+  const displayName = (info: CardInfo): string =>
+    english ? (info.nameEn ?? info.name) : deName(info);
 
   // Set-Symbol + Logo (DE) + Code + Gesamtzahl für die Treffer nachladen.
   useEffect(() => {
@@ -205,16 +212,16 @@ export function ScanCorrectionPanel({
                   onClick={() => onPick(it.info.id)}
                   className="shrink-0 w-[150px] rounded-2xl p-2 text-center"
                   style={{ border: isCand ? '1.5px solid #f4c542' : '1.5px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.04)' }}
-                  aria-label={`${deName(it.info)} ${badge?.code ?? it.info.setId} ${printedNumber(it.info.number, badge?.printedTotal)}`}
+                  aria-label={`${displayName(it.info)} ${badge?.code ?? it.info.setId} ${printedNumber(it.info.number, badge?.printedTotal)}`}
                 >
                   <div className="relative">
                     {isCand && (
                       <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 z-10 px-2 py-0.5 rounded-md text-[9px] font-bold" style={{ background: '#f4c542', color: '#3a2c00' }}>Kandidat</span>
                     )}
-                    <CardImage card={it.info} size="small" language={language} alt={deName(it.info)} width={150} height={210} className="w-full aspect-[5/7] rounded-lg object-cover" />
+                    <CardImage card={it.info} size="small" language={language} alt={displayName(it.info)} width={150} height={210} className="w-full aspect-[5/7] rounded-lg object-cover" />
                   </div>
 
-                  <div className="mt-2 text-[13px] font-semibold leading-tight text-white truncate">{deName(it.info)}</div>
+                  <div className="mt-2 text-[13px] font-semibold leading-tight text-white truncate">{displayName(it.info)}</div>
 
                   {/* Set-Identität: Logo (DE) wenn vorhanden, sonst Symbol + Name. */}
                   <div className="mt-1.5 h-5 flex items-center justify-center gap-1.5">
@@ -244,13 +251,16 @@ export function ScanCorrectionPanel({
         )}
       </div>
 
-      <button
-        onClick={onNotInCatalog}
-        className="shrink-0 py-2.5 text-[12px] font-semibold text-center border-t"
-        style={{ color: 'rgba(255,255,255,0.6)', borderColor: 'rgba(255,255,255,0.08)' }}
-      >
-        Nicht dabei? <span style={{ color: '#f4c542', textDecoration: 'underline' }}>Nicht im Katalog melden</span>
-      </button>
+      <div className="shrink-0 px-4 py-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+        <Button
+          variant="secondary"
+          className="w-full"
+          icon={<Flag size={16} />}
+          onClick={onNotInCatalog}
+        >
+          Nicht im Katalog
+        </Button>
+      </div>
     </div>
   );
 }
