@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
 interface Item { info: CardInfo; group: string }
-interface SetBadge { symbolUrl?: string; logoUrl?: string; nameDe: string; code?: string; printedTotal?: number }
+interface SetBadge { symbolUrl?: string; logoUrl?: string; nameDe?: string; code?: string; printedTotal?: number }
 
 /** Aufgedruckte Sammelnummer, wie auf der Karte: „022/025" bzw. Promo „XY133". */
 function printedNumber(number: string, printedTotal?: number): string {
@@ -146,10 +146,13 @@ export function ScanCorrectionPanel({
     let cancelled = false;
     Promise.all(missing.map(async id => {
       const s = await getSetById(id).catch(() => null);
+      // Set-Doc kann fehlen (z.B. Pokémon-TCG-Pocket-Sets A1/A3a/B1 sind nicht in
+      // tcg_sets) → Felder bleiben leer, der Render fällt auf die Karten-eigenen
+      // Werte (setName/setCode/setId) zurück.
       return [id, {
         symbolUrl: s?.symbolUrl,
         logoUrl: s?.logoUrl || s?.logoUrlEn || undefined,
-        nameDe: s?.nameDe ?? s?.name ?? id,
+        nameDe: s?.nameDe ?? s?.name,
         code: s?.ptcgoCode,
         printedTotal: s?.printedTotal,
       }] as const;
@@ -248,27 +251,35 @@ export function ScanCorrectionPanel({
 
                   <div className="mt-2 text-[13px] font-semibold leading-tight text-white truncate">{displayName(it.info)}</div>
 
-                  {/* Set-Identität: Logo (DE) wenn vorhanden, sonst Symbol + Name. */}
-                  <div className="mt-1.5 h-5 flex items-center justify-center gap-1.5">
-                    {badge?.logoUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={badge.logoUrl} alt={badge.nameDe} className="h-5 max-w-full object-contain" />
-                    ) : (
+                  {/* Set-Identität: Logo (DE) wenn vorhanden, sonst Symbol + Name.
+                      Name/Code fallen bei fehlendem Set-Doc auf die Karten-Felder
+                      zurück (setName „Genetic Apex" statt Set-ID „A1"). */}
+                  {(() => {
+                    const setName = badge?.nameDe ?? it.info.setName ?? it.info.setId;
+                    const setCode = it.info.setCode || badge?.code || it.info.setId?.toUpperCase();
+                    return (
                       <>
-                        {badge?.symbolUrl && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={badge.symbolUrl} alt="" className="w-4 h-4 object-contain shrink-0" />
-                        )}
-                        <span className="text-[11px] text-white/65 truncate">{badge?.nameDe ?? it.info.setName}</span>
+                        <div className="mt-1.5 h-5 flex items-center justify-center gap-1.5">
+                          {badge?.logoUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={badge.logoUrl} alt={setName} className="h-5 max-w-full object-contain" />
+                          ) : (
+                            <>
+                              {badge?.symbolUrl && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={badge.symbolUrl} alt="" className="w-4 h-4 object-contain shrink-0" />
+                              )}
+                              <span className="text-[11px] text-white/65 truncate">{setName}</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="mt-1 text-[11px] text-white/55 font-mono tabular-nums truncate">
+                          {setCode && <span className="text-white/45">{setCode} · </span>}
+                          {printedNumber(it.info.number, badge?.printedTotal)}
+                        </div>
                       </>
-                    )}
-                  </div>
-
-                  {/* Set-Kürzel + aufgedruckte Nummer (022/025 bzw. Promo XY133). */}
-                  <div className="mt-1 text-[11px] text-white/55 font-mono tabular-nums truncate">
-                    {badge?.code && <span className="text-white/45">{badge.code} · </span>}
-                    {printedNumber(it.info.number, badge?.printedTotal)}
-                  </div>
+                    );
+                  })()}
                 </button>
               );
             })}
