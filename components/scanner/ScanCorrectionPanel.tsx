@@ -176,41 +176,44 @@ export function ScanCorrectionPanel({
             {searchResults ? 'Keine Karten gefunden.' : 'Tippe den Namen der richtigen Karte ein.'}
           </div>
         ) : (
-          <div className="flex gap-2.5 overflow-x-auto pb-1 items-stretch">
+          <div className="flex gap-3 overflow-x-auto pb-1 items-stretch">
             {items.map((it, idx) => {
               const prev = items[idx - 1];
               const showLabel = !searchResults && it.group !== prev?.group && GROUPS[it.group]?.label;
+              const badge = setBadges.get(it.info.setId);
+              const hasEn = it.info.nameEn && it.info.nameEn !== it.info.name;
               return (
-                <div key={it.info.id} className="flex gap-2.5 shrink-0">
+                <div key={it.info.id} className="flex gap-3 shrink-0">
                   {showLabel && (
                     <div
-                      className="shrink-0 self-center text-[9px] font-semibold tracking-wide"
-                      style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', color: GROUPS[it.group].accent ? '#f4c542' : 'rgba(255,255,255,0.45)' }}
+                      className="shrink-0 self-center text-[10px] font-semibold tracking-wide"
+                      style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', color: GROUPS[it.group].accent ? '#f4c542' : 'rgba(255,255,255,0.5)' }}
                     >
                       {GROUPS[it.group].label}
                     </div>
                   )}
                   <button
                     onClick={() => onPick(it.info.id)}
-                    className="shrink-0 w-[84px] rounded-xl p-1.5 text-left"
+                    className="shrink-0 w-[150px] rounded-2xl p-2 text-left"
                     style={{ border: it.group === 'cand' ? '1.5px solid #f4c542' : '1.5px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.04)' }}
                     aria-label={`${it.info.name} ${it.info.setCode ?? it.info.setId} ${it.info.number}`}
                   >
                     <div className="relative">
                       {it.group === 'cand' && (
-                        <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 z-10 px-1.5 py-px rounded-md text-[8px] font-bold" style={{ background: '#f4c542', color: '#3a2c00' }}>Kandidat</span>
+                        <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 z-10 px-2 py-0.5 rounded-md text-[9px] font-bold" style={{ background: '#f4c542', color: '#3a2c00' }}>Kandidat</span>
                       )}
-                      <CardImage card={it.info} size="small" language={language} alt={it.info.name} width={72} height={100} className="w-full aspect-[5/7] rounded-md object-cover" />
+                      <CardImage card={it.info} size="small" language={language} alt={it.info.name} width={150} height={210} className="w-full aspect-[5/7] rounded-lg object-cover" />
                     </div>
-                    <div className="mt-1 text-[10px] font-semibold leading-tight truncate text-white">{it.info.name}</div>
-                    <div className="flex items-center gap-1 text-[9px] text-white/55">
-                      {setBadges.get(it.info.setId)?.symbolUrl && (
+                    <div className="mt-2 text-[13px] font-semibold leading-tight text-white truncate">{it.info.name}</div>
+                    {hasEn && <div className="text-[10px] text-white/45 leading-tight truncate -mt-0.5">{it.info.nameEn}</div>}
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-white/65">
+                      {badge?.symbolUrl && (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={setBadges.get(it.info.setId)!.symbolUrl} alt="" className="w-2.5 h-2.5 object-contain shrink-0" />
+                        <img src={badge.symbolUrl} alt="" className="w-4 h-4 object-contain shrink-0" />
                       )}
-                      <span className="truncate">{setBadges.get(it.info.setId)?.nameDe ?? it.info.setName}</span>
+                      <span className="truncate">{badge?.nameDe ?? it.info.setName}</span>
                     </div>
-                    <div className="text-[9px] text-white/45 font-mono">Nr. {it.info.number}</div>
+                    <div className="mt-0.5 text-[11px] text-white/45 font-mono tabular-nums">Nr. {it.info.number}</div>
                   </button>
                 </div>
               );
