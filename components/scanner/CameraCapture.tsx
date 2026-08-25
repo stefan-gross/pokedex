@@ -131,6 +131,11 @@ const SNAP_COOLDOWN_MIN_MS    = 800;  // Mindest-Wartezeit nach Snap (verlänger
 
 // Rand um die ONNX-Box beim Zuschneiden für Gemini (Pixel in Video-Koordinaten)
 const CROP_PADDING = 24;
+// Zentrums-Präferenz beim Manuell-Auslöser (siehe detectCardInFrame `centerBias`).
+// 0.6: eine randnahe Karte (dist ~0.5·Diagonale) verliert ~0.3 Konfidenz → die
+// mittig anvisierte Karte gewinnt, solange sie halbwegs erkannt wird; eine klar
+// zentrale Karte schlägt eine randständige selbst bei etwas höherer Konfidenz.
+const MANUAL_CENTER_BIAS = 0.6;
 
 /** Median über N Zahlen (kleines N, naiv per Sort). */
 function median(values: number[]): number {
@@ -906,8 +911,11 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
     canvas.height = video.videoHeight;
     canvas.getContext('2d')!.drawImage(video, 0, 0);
 
+    // Zentrums-Präferenz: im Manuell-Modus hält der Nutzer die GEWÜNSCHTE Karte
+    // gezielt in die Mitte. Bei mehreren Karten im Bild (z.B. offener Ordner)
+    // soll die mittige gewinnen, nicht die zufällig „klarste" (höchste Konfidenz).
     let box: CardBox | null = null;
-    try { box = await detectCardInFrame(canvas, true); } catch { box = null; }
+    try { box = await detectCardInFrame(canvas, true, MANUAL_CENTER_BIAS); } catch { box = null; }
 
     let imageBase64: string;
     if (box?.corners?.length === 4) {

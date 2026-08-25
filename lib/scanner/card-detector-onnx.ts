@@ -123,6 +123,15 @@ function minAreaRect(hull: Pt[]): Pt[] | null {
 export async function detectCardInFrame(
   source: HTMLCanvasElement | HTMLVideoElement,
   includeCorners: boolean = false,
+  /**
+   * Gewichtung einer Zentrums-Präferenz [0..~1]. 0 = reine Konfidenz (Default,
+   * unverändertes Auto-Verhalten). > 0 zieht die Auswahl zur Bildmitte, damit bei
+   * mehreren Karten im Bild die ANVISIERTE (mittige) gewinnt statt der zufällig
+   * „klarsten" — v.a. für den Manuell-Auslöser, wo der Nutzer gezielt eine Karte
+   * in die Mitte hält. Score = conf − centerBias · (Abstand Box-Mitte↔Bildmitte,
+   * normiert auf die Bilddiagonale).
+   */
+  centerBias: number = 0,
 ): Promise<CardBox | null> {
   if (!session) return null;
 
@@ -212,6 +221,11 @@ export async function detectCardInFrame(
 
   let best: CardBox | null = null;
   let bestIdx = -1;
+  let bestScore = -Infinity;
+
+  // Bildmitte + Diagonale in QUELL-Koordinaten (für die Zentrums-Präferenz).
+  const frameCx = srcW / 2, frameCy = srcH / 2;
+  const frameDiag = Math.hypot(srcW, srcH) || 1;
 
   for (let i = 0; i < numAnchors; i++) {
     const cardConf = getVal(4 + CLASS_CARD, i);
@@ -222,7 +236,17 @@ export async function detectCardInFrame(
     const w  = getVal(2, i);
     const h  = getVal(3, i);
 
-    if (!best || cardConf > best.conf) {
+    // Score = Konfidenz − Zentrums-Strafe. Bei centerBias=0 identisch zur reinen
+    // Konfidenz-Auswahl (unverändertes Verhalten).
+    let score = cardConf;
+    if (centerBias > 0) {
+      const bCx = toSrcX(cx), bCy = toSrcY(cy);
+      const dist = Math.hypot(bCx - frameCx, bCy - frameCy) / frameDiag;
+      score = cardConf - centerBias * dist;
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
       bestIdx = i;
       best = {
         x: toSrcX(cx - w / 2),
