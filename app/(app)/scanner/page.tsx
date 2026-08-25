@@ -38,6 +38,7 @@ import { CardNameLabel } from '@/components/card/CardNameLabel';
 import { getSetById, getSetIdsByPrintedTotal } from '@/lib/firestore/sets';
 import { recordScanEvent, recordScanCase, bumpScanStats, markEventReported, updateScanEventPHash, type ScanOutcome, type ScanQuality } from '@/lib/scanner/scan-telemetry';
 import { ScanReportSheet, type ScanReportResult } from '@/components/scanner/ScanReportSheet';
+import { ScanCorrectionPanel } from '@/components/scanner/ScanCorrectionPanel';
 import type { CaptureMeta } from '@/components/scanner/CameraCapture';
 
 // Gemini liefert Condition in Kurzform (lowercase). Für Persistence wird in
@@ -2488,7 +2489,7 @@ export default function ScannerPage() {
             key={recognized.id}
             job={recognized}
             onCardTap={() => setActiveJobId(recognized.id)}
-            onReportTap={() => setReportJobId(recognized.id)}
+            onSubmitReport={result => submitReport(recognized, result)}
             onPickCandidate={picked => {
               setJobs(prev => prev.map(j => j.id === recognized.id && j.result
                 ? { ...j, result: { ...j.result, card: picked }, editedVariant: picked.variants?.[0] ?? 'standard' }
@@ -3096,7 +3097,9 @@ function ScannedCardTile({
 interface RecognizedCardLargeProps {
   job: ScanJob;
   onCardTap: () => void;
-  onReportTap: () => void;
+  /** Korrektur/Melden aus dem Inline-Panel: korrigierte Karte übernehmen +
+   *  still melden (reportType 'wrong'), oder 'not_in_catalog'. */
+  onSubmitReport: (result: ScanReportResult) => void;
   /** Nutzer wählt bei mehrdeutiger Erkennung eine der Kandidaten-Karten. */
   onPickCandidate: (card: CardInfo) => void;
   /** Nach Hinzufügen über die Inline-Leiste: ownedCount/added aktualisieren. */
@@ -3106,8 +3109,9 @@ interface RecognizedCardLargeProps {
 }
 
 function RecognizedCardLarge({
-  job, onCardTap, onReportTap, onPickCandidate, onSaved, onManage,
+  job, onCardTap, onSubmitReport, onPickCandidate, onSaved, onManage,
 }: RecognizedCardLargeProps) {
+  const [correcting, setCorrecting] = useState(false);
   const card      = job.result?.card;
   // Bild-Kandidaten in Prioritätsreihenfolge — bei 404/Ladefehler eines
   // Kandidaten (z.B. fehlendes TCGdex-DE-Bild) probiert onError automatisch
@@ -3246,16 +3250,6 @@ function RecognizedCardLarge({
         bottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)',
       }}
     >
-      {/* Melden — oben rechts: falsch erkannte Karte melden (Grundwahrheit für
-          die Fehleranalyse). Glas-Chip 38px. */}
-      <button
-        onClick={onReportTap}
-        className="absolute top-0 right-0 z-20 w-[38px] h-[38px] flex items-center justify-center rounded-full glass-overlay"
-        aria-label="Falsch erkannt? Melden"
-      >
-        <Flag size={17} color="#fff" />
-      </button>
-
       {/* Karten-Body — die Slot-Zelle (flex-1/min-h-0) füllt per nativer
           Flexbox-Berechnung exakt den verbleibenden Platz in der Spalte (statt
           eine Höhe per vh/dvh zu schätzen). fittedSize berechnet daraus per
@@ -3367,7 +3361,7 @@ function RecognizedCardLarge({
       <div className="absolute inset-x-0 bottom-0 z-10 px-4 flex flex-col gap-3">
       {card && (
         <div
-          className="w-full flex flex-col items-start gap-2 px-4 py-4 rounded-[24px] glass-overlay"
+          className="relative w-full flex flex-col items-start gap-2 px-4 py-4 rounded-[24px] glass-overlay"
           // Dunkle Basis (überschreibt die helle .glass-overlay-Tönung) mit
           // Verlauf — oben am kräftigsten, da dort die großen Texte (Set/Name/
           // Preis) über der Karte liegen. Sonst scheinen helle Karten (z.B.
@@ -3475,7 +3469,23 @@ function RecognizedCardLarge({
             regionStyle={regionStyle(0)}
             regionRef={registerRegion(0)}
             onVariantChange={setShimmerVariant}
+            onCorrectTap={() => setCorrecting(true)}
           />
+
+          {/* Korrektur-Panel (B2): gleitet über das Info-Sheet, das große
+              Kartenbild dahinter bleibt fix. Auswahl korrigiert die Anzeige
+              (via onSubmitReport → submitReport tauscht die Karte) + meldet still. */}
+          {card && (
+            <ScanCorrectionPanel
+              open={correcting}
+              card={card}
+              candidates={job.result?.candidates}
+              language={job.result?.language}
+              onClose={() => setCorrecting(false)}
+              onPick={(cardId) => { setCorrecting(false); onSubmitReport({ reportType: 'wrong', correctedCardId: cardId }); }}
+              onNotInCatalog={() => { setCorrecting(false); onSubmitReport({ reportType: 'not_in_catalog' }); }}
+            />
+          )}
         </div>
       )}
 

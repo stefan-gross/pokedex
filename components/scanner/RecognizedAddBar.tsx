@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Check, ChevronDown } from 'lucide-react';
+import { Plus, Check, ChevronDown, ArrowLeftRight } from 'lucide-react';
 import { cardInfoToAddInput, type CardInfo } from '@/lib/card-info';
 import type { CardCondition, CardLanguage, CardVariant, BinderDoc } from '@/types';
 import { addCard, getCards } from '@/lib/firestore/cards';
@@ -42,6 +42,8 @@ interface Props {
   /** Meldet die aktuell gewählte Variante nach oben (initial + bei Änderung),
    *  damit die große Karte den Holo-/Reverse-Glanz passend anzeigen kann. */
   onVariantChange?: (variant: CardVariant) => void;
+  /** Öffnet das Korrektur-Panel (falsch erkannt → richtige Karte wählen). */
+  onCorrectTap?: () => void;
 }
 
 /** Inline-Hinzufügen-Leiste unter der erkannten Karte (Einzelscan): Zustand,
@@ -54,7 +56,7 @@ interface Props {
  *  Sprache eindeutig. */
 export function RecognizedAddBar({
   card, preVariant, preCondition, preLanguage, ownedCount, onSaved, onManage,
-  regionStyle, regionRef, onVariantChange,
+  regionStyle, regionRef, onVariantChange, onCorrectTap,
 }: Props) {
   const variantOptions: CardVariant[] =
     (card.variants && card.variants.length > 0 ? card.variants : ['standard']) as CardVariant[];
@@ -241,18 +243,33 @@ export function RecognizedAddBar({
           </button>
         </Field>
 
-        {/* Breiter Hinzufügen-Button — Design-System-Button (variant primary). */}
-        <Button
-          variant="primary"
-          accentColor="#2f855a"
-          size="lg"
-          className="w-full"
-          disabled={saving}
-          icon={justSaved ? <Check strokeWidth={3} /> : <Plus strokeWidth={3} />}
-          onClick={save}
-        >
-          {justSaved ? 'Hinzugefügt' : saving ? 'Wird gespeichert …' : 'Hinzufügen'}
-        </Button>
+        {/* Hinzufügen (breit) + Korrigieren (gelb, Icon-only). Der Korrektur-
+            Button ersetzt den früheren Flag-Button oben rechts: falsch erkannt →
+            richtige Karte wählen (tauscht die Anzeige + meldet still). */}
+        <div className="flex gap-2">
+          <Button
+            variant="primary"
+            accentColor="#2f855a"
+            size="lg"
+            className="flex-1"
+            disabled={saving}
+            icon={justSaved ? <Check strokeWidth={3} /> : <Plus strokeWidth={3} />}
+            onClick={save}
+          >
+            {justSaved ? 'Hinzugefügt' : saving ? 'Wird gespeichert …' : 'Hinzufügen'}
+          </Button>
+          {onCorrectTap && (
+            <button
+              type="button"
+              onClick={onCorrectTap}
+              aria-label="Falsch erkannt? Richtige Karte wählen"
+              className="shrink-0 w-14 rounded-2xl flex items-center justify-center active:scale-95 transition-transform"
+              style={{ background: '#f4c542', color: '#3a2c00' }}
+            >
+              <ArrowLeftRight size={22} strokeWidth={2.5} />
+            </button>
+          )}
+        </div>
 
         {/* Verwalten/Entfernen — nur wenn schon Exemplare existieren. Öffnet den
             Exemplar-Drawer; dort wird das konkrete Exemplar (Sammlung + Zustand +
