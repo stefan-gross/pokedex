@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, ArrowLeftRight, Loader2, Flag, FilePlus } from 'lucide-react';
+import { X, ArrowLeftRight, Loader2, Flag } from 'lucide-react';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { getCardsByDexNumberRest } from '@/lib/firestore/catalog-rest';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
@@ -216,19 +216,33 @@ export function ScanCorrectionPanel({
               <button
                 onClick={onNotInCatalog}
                 className="shrink-0 w-[150px] rounded-2xl p-2 text-center"
-                style={{ border: '1.5px dashed #f4c542', background: 'rgba(244,197,66,0.06)' }}
+                style={{ border: '1.5px solid #f4c542', background: 'rgba(244,197,66,0.06)' }}
                 aria-label="Nicht im Katalog — als neue Karte aufnehmen"
               >
-                <div className="w-full aspect-[5/7] rounded-lg flex flex-col items-center justify-center gap-1.5" style={{ border: '1.5px dashed rgba(244,197,66,0.45)' }}>
-                  <FilePlus size={26} color="#f4c542" />
-                  <span className="text-[11px] font-semibold" style={{ color: '#f4c542' }}>Nicht im Katalog</span>
+                <div className="relative">
+                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 z-10 px-2 py-0.5 rounded-md text-[9px] font-bold" style={{ background: '#f4c542', color: '#3a2c00' }}>Nicht im Katalog</span>
+                  {/* Bestehende Platzhalter-Optik (CardPlaceholder via CardImage,
+                      pending:true) — konsistent zur „Nicht im Katalog"-Karte sonst. */}
+                  <CardImage
+                    card={pendingCard}
+                    size="small"
+                    alt={pendingCard.name}
+                    width={150}
+                    height={210}
+                    className="w-full aspect-[5/7] rounded-lg object-cover"
+                    placeholderInfo={{
+                      name: pendingCard.name,
+                      hp: pendingCard.hp,
+                      number: pendingCard.number,
+                      total: pendingCard.printedTotal,
+                      dexNumber: pendingCard.nationalDexNumber,
+                      setCode: pendingCard.setCode,
+                      pending: true,
+                    }}
+                  />
                 </div>
                 <div className="mt-2 text-[13px] font-semibold leading-tight text-white truncate">{pendingCard.name}</div>
-                <div className="mt-1.5 text-[11px] text-white/60 leading-tight">Als neue Karte aufnehmen</div>
-                <div className="mt-1 text-[11px] text-white/45 font-mono tabular-nums truncate">
-                  {pendingCard.setCode && <span className="text-white/45">{pendingCard.setCode} · </span>}
-                  {printedNumber(pendingCard.number, pendingCard.printedTotal)}
-                </div>
+                <div className="mt-1 text-[11px] font-semibold leading-tight" style={{ color: '#f4c542' }}>Als neue Karte aufnehmen</div>
               </button>
             )}
             {items.map(it => {
