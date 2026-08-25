@@ -21,17 +21,44 @@ export interface ScanReportResult {
 interface Props {
   /** Was die App erkannt hatte (Kontext) — leer bei „nicht erkannt". */
   recognizedName?: string;
+  /** Was Gemini als Namen GELESEN hat — als Vorbelegung der Suche. Oft korrekt,
+   *  auch wenn der Katalog-Lookup danebenlag (der eigentliche Fehler). */
+  seedQuery?: string;
+  /** Von Gemini erkannte Sprache der physischen Karte ('de' | 'en' | …). Steuert
+   *  Anzeige (EN-Name/Bild zuerst bei englischen Karten) und Treffer-Reihenfolge. */
+  language?: string;
   /** Das gescannte Bild (data-URL) zur Orientierung. */
   imageSrc?: string;
   onClose: () => void;
   onSubmit: (result: ScanReportResult) => void;
 }
 
+/** Anzeige-Facette je Sprache: bei englischer Karte den englischen Namen zuerst
+ *  (er steht so auf der Karte in der Hand), sonst DE-first wie überall sonst. */
+function displayNames(info: CardInfo, english: boolean): { primary: string; secondary?: string } {
+  // catalogCardToInfo: `name` = DE (falls vorhanden), `nameEn` = EN-Zusatz.
+  if (english && info.nameEn && info.nameEn !== info.name) {
+    return { primary: info.nameEn, secondary: info.name };
+  }
+  const secondary = info.nameEn && info.nameEn !== info.name ? info.nameEn : undefined;
+  return { primary: info.name, secondary };
+}
+
+/** Bild-Kandidaten in Prioritätsreihenfolge — EN zuerst bei englischer Karte. */
+function imageSrcFor(info: CardInfo, english: boolean): string | undefined {
+  return english
+    ? (info.imgSmall || info.imgSmallDe || info.imgLarge || undefined)
+    : (info.imgSmallDe || info.imgSmall || info.imgLarge || undefined);
+}
+
 /** Melden-Sheet: der Nutzer wählt per Katalogsuche die RICHTIGE Karte
  *  (Grundwahrheit) oder „nicht im Katalog". Läuft über dem Kamerabild →
  *  `forceDark elevated`. */
-export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }: Props) {
-  const [q, setQ] = useState('');
+export function ScanReportSheet({ recognizedName, seedQuery, language, imageSrc, onClose, onSubmit }: Props) {
+  const english = language === 'en';
+  // Suche mit dem von Gemini gelesenen Namen vorbelegen → der Nutzer landet
+  // meist direkt auf einer Trefferliste statt vor einem leeren Feld.
+  const [q, setQ] = useState(seedQuery?.trim() ?? '');
   const [results, setResults] = useState<CardInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState('');
@@ -64,8 +91,26 @@ export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }:
       if (term.length < 2) { setResults([]); setLoading(false); return; }
       setLoading(true);
       try {
-        const { cards } = await searchCatalogCards(term, { displayLimit: 40 });
-        setResults(cards.map(catalogCardToInfo));
+        // bridgeByDex: findet auch die englisch-only-Auflage, wenn nach dem
+        // deutschen Namen gesucht wird (z.B. „Froxy" → McDonald's „Froakie").
+        const { cards } = await searchCatalogCards(term, { displayLimit: 60, bridgeByDex: true });
+        const infos = cards.map(catalogCardToInfo);
+        // EN-/Namens-Priorität: exakte Namenstreffer (in der erkannten Sprache
+        // zuerst) nach oben, danach Präfixtreffer, Rest stabil dahinter. So
+        // steht die tatsächlich gesuchte Karte oben, auch wenn die Dex-Brücke
+        // die ganze Evolutionslinie/Art mit nachgezogen hat.
+        const lower = term.toLowerCase();
+        const score = (info: CardInfo): number => {
+          const de = info.name.toLowerCase();
+          const en = info.nameEn?.toLowerCase();
+          const exact = de === lower || en === lower;
+          const prefix = de.startsWith(lower) || (!!en && en.startsWith(lower));
+          if (exact) return english && en === lower ? 0 : 1;
+          if (prefix) return 2;
+          return 3;
+        };
+        infos.sort((a, b) => score(a) - score(b));
+        setResults(infos.slice(0, 40));
       } catch {
         setResults([]);
       } finally {
@@ -73,7 +118,7 @@ export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }:
       }
     }, 300);
     return () => clearTimeout(t);
-  }, [q]);
+  }, [q, english]);
 
   // Zweistufig: Tippen wählt die Karte nur AUS (kein Sofort-Senden) → der Nutzer
   // kann danach in Ruhe eine Notiz schreiben und dann bestätigen. Verhindert, dass
@@ -121,7 +166,7 @@ export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }:
             <div className="flex items-center gap-2 rounded-md p-1.5 bg-secondary">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={selected.imgSmallDe || selected.imgSmall || selected.imgLarge}
+                src={imageSrcFor(selected, english)}
                 alt=""
                 className="w-7 h-10 rounded object-cover shrink-0"
                 onError={e => {
@@ -134,10 +179,12 @@ export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }:
               <div className="flex-1 min-w-0">
                 <div className="text-xs text-muted-foreground">Richtige Karte</div>
                 <div className="text-sm font-semibold truncate">
-                  {selected.name}
-                  {selected.nameEn && selected.nameEn !== selected.name && (
-                    <span className="font-normal text-muted-foreground"> ({selected.nameEn})</span>
-                  )}
+                  {(() => { const n = displayNames(selected, english); return (<>
+                    {n.primary}
+                    {n.secondary && (
+                      <span className="font-normal text-muted-foreground"> ({n.secondary})</span>
+                    )}
+                  </>); })()}
                   <span className="text-[11px] text-muted-foreground font-mono"> · {selected.number}</span>
                 </div>
               </div>
@@ -179,6 +226,7 @@ export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }:
             {results.map(info => {
               const isSel = selected?.id === info.id;
               const badge = setBadges.get(info.setId);
+              const names = displayNames(info, english);
               return (
                 <button
                   key={info.id}
@@ -188,8 +236,8 @@ export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }:
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={info.imgSmallDe || info.imgSmall || info.imgLarge}
-                    alt={info.name}
+                    src={imageSrcFor(info, english)}
+                    alt={names.primary}
                     className="w-12 aspect-[5/7] rounded object-cover shrink-0"
                     // Deutsches Bild fehlt oft (abgeleitete /de/-URL → 404). Dann
                     // NICHT ausblenden, sondern auf das englische Bild zurückfallen.
@@ -202,9 +250,9 @@ export function ScanReportSheet({ recognizedName, imageSrc, onClose, onSubmit }:
                   />
                   <div className="min-w-0 flex-1">
                     <div className="text-xs font-semibold leading-tight truncate">
-                      {info.name}
-                      {info.nameEn && info.nameEn !== info.name && (
-                        <span className="font-normal text-muted-foreground"> ({info.nameEn})</span>
+                      {names.primary}
+                      {names.secondary && (
+                        <span className="font-normal text-muted-foreground"> ({names.secondary})</span>
                       )}
                     </div>
                     {/* Set-Name ist bei gleichnamigen Auflagen (z.B. 16× „Froxy")

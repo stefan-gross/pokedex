@@ -11,6 +11,17 @@ export interface CatalogSearchOptions {
   candidateLimit?: number;
   /** Mindestlänge pro Wort für Mehrwort-/Illustrator-Suche (Default 3). */
   minComboLen?: number;
+  /**
+   * Sprachübergreifende Vervollständigung über die Pokédex-Nummer. Namens-
+   * Treffer decken oft nur EINE Sprache ab (z.B. „Froxy" → nur die deutschen
+   * Froakie-Karten). Englisch-only-Auflagen desselben Pokémon (z.B. das
+   * McDonald's-Set `2021swsh-22`, intern nur „Froakie", ohne DE-Namen) fehlen
+   * dadurch. Ist die Brücke aktiv, ziehen wir über die `nationalDexNumber` der
+   * Namens-Treffer ALLE Karten derselben Art nach — egal in welcher Sprache der
+   * aufgedruckte Name vorliegt. Nur bei fokussierter Suche (≤ 4 Arten) aktiv,
+   * damit ein generischer Begriff die Liste nicht aufbläht.
+   */
+  bridgeByDex?: boolean;
 }
 
 export interface CatalogSearchResult {
@@ -110,6 +121,25 @@ export async function searchCatalogCards(
   // 3. Reine Illustrator-Suche (Einzelwort-Fallback)
   if (hits.length === 0 && q.length >= minLen) {
     hits = await byArtist(q, displayLimit);
+  }
+
+  // 4. Dex-Brücke: sprachübergreifend nachziehen (siehe `bridgeByDex`-Doc). Nur
+  //    wenn es Namens-/Illustrator-Treffer gibt und NICHT bereits eine reine
+  //    Dex-Suche lief (die ist schon vollständig). ≤ 4 Arten = fokussierte Suche.
+  if (opts.bridgeByDex && hits.length > 0 && !dexNum) {
+    const dexNums = [...new Set(hits.map(c => c.nationalDexNumber).filter((n): n is number => typeof n === 'number'))];
+    if (dexNums.length > 0 && dexNums.length <= 4) {
+      const seen = new Set(hits.map(c => c.id));
+      // Pro Art gedeckelt (nicht `candidateLimit`): ein häufiges Pokémon wie
+      // Pikachu hat >150 Karten — ungedeckelt würde die Brücke bei jedem
+      // Tastendruck hunderte Reads auslösen. Die Anzeige kappt ohnehin früher.
+      const perDex = Math.min(candidateLimit, 120);
+      const bridged = scopeToSet(
+        (await Promise.all(dexNums.map(n => getCardsByDexNumber(n, perDex)))).flat(),
+      );
+      // Namens-Treffer bleiben vorne; nur die zusätzlich gefundenen anhängen.
+      for (const c of bridged) if (!seen.has(c.id)) { seen.add(c.id); hits.push(c); }
+    }
   }
 
   return { cards: hits };

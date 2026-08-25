@@ -40,6 +40,37 @@ export interface ResolveDeps {
   setIdsByPrintedTotal(printedTotal: number): Promise<string[]>;
   /** Gedruckter Gesamtumfang eines Sets (gecacht empfohlen). */
   setPrintedTotal(setId: string): Promise<number | null>;
+  /** Name-Präfix-Suche (nameLower ∪ nameDeLower) für den Promo-Fallback R5.
+   *  Optional — fehlt sie, wird R5 übersprungen. */
+  byNamePrefix?(prefixLower: string): Promise<CatalogCard[]>;
+}
+
+/** Name auf Vergleichsform reduzieren (Bindestriche/Leerzeichen/Suffix-Zeichen
+ *  raus) — „Ash-Greninja EX" und „Ash Greninja EX" werden identisch. */
+function nameNorm(s?: string | null): string {
+  return (s ?? '').toLowerCase().replace(/[^a-z0-9äöü]/g, '');
+}
+
+/** Reine Ziffern einer Nummer ohne führende Nullen: „XY133"→„133", „091"→„91".
+ *  Bildet den Nummern-Kern ab, den Gemini auch bei fehlendem Set-Präfix liest. */
+function numberCore(s?: string | null): string {
+  return (s ?? '').replace(/\D/g, '').replace(/^0+/, '');
+}
+
+/** Levenshtein-Distanz (OCR-tolerante Namens-Gegenprobe). */
+function lev(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
 }
 
 export type ResolveStatus = 'unique' | 'ambiguous' | 'notfound';
@@ -74,6 +105,17 @@ export async function resolveScannedCard(s: ScanSignals, deps: ResolveDeps): Pro
 
   const dexOk  = (c: CatalogCard) => !s.nationalDexNumber || !c.nationalDexNumber || c.nationalDexNumber === s.nationalDexNumber;
   const nameOk = (c: CatalogCard) => !nameLower || c.nameLower === nameLower || c.nameDeLower === nameLower;
+  // OCR-tolerantes Namens-Gate (normalisiert + Levenshtein) — akzeptiert
+  // Bindestrich-/Suffix-Varianten, weist aber klar andere Namen ab. Ohne
+  // gelesenen Namen immer true (kein Gate).
+  const gNorm = nameNorm(s.name);
+  const nameLooseOk = (c: CatalogCard) => {
+    if (!gNorm) return true;
+    const cn = nameNorm(c.name), cd = nameNorm(c.nameDe);
+    return cn === gNorm || cd === gNorm
+      || (cn.length >= 3 && lev(cn, gNorm) <= 2)
+      || (cd.length >= 3 && lev(cd, gNorm) <= 2);
+  };
   const totalOk = async (c: CatalogCard) => {
     if (!s.printedTotal) return true;
     const t = await deps.setPrintedTotal(c.setId);
@@ -146,8 +188,12 @@ export async function resolveScannedCard(s: ScanSignals, deps: ResolveDeps): Pro
   // ── R4: nationalDexNumber + number (nur als Eingrenzung) ────────────────
   if (s.nationalDexNumber && numbers.length) {
     const dexCards = await deps.byDexNumber(s.nationalDexNumber);
-    let filtered = dexCards.filter(c => numbers.includes(c.number));
-    trace.push(`R4 dex ${s.nationalDexNumber} + number: ${dexCards.length} roh → ${filtered.length} mit Nummer`);
+    // Namens-Gate: gleiche Dex+Nummer können ZWEI verschiedene Karten teilen
+    // (z.B. Greninja GX `sm6-133` vs. Ash-Greninja EX — beide Dex 658). Ohne
+    // Name würde die erste „Nummer 133"-Karte fälschlich gewinnen; mit Name
+    // fällt sie durch und R5 (Promo, Nummern-Kern „XY133") übernimmt.
+    let filtered = dexCards.filter(c => numbers.includes(c.number) && nameLooseOk(c));
+    trace.push(`R4 dex ${s.nationalDexNumber} + number: ${dexCards.length} roh → ${filtered.length} mit Nummer${gNorm ? '+Name' : ''}`);
     if (s.printedTotal && filtered.length > 1) {
       const tf: CatalogCard[] = [];
       for (const c of filtered) if (await totalOk(c)) tf.push(c);
@@ -158,6 +204,38 @@ export async function resolveScannedCard(s: ScanSignals, deps: ResolveDeps): Pro
     }
     if (filtered.length > 1) {
       return { status: 'ambiguous', candidates: filtered, matchedBy: 'dex+number', trace };
+    }
+  }
+
+  // ── R5: Promo-Fallback — Name (fuzzy) + Nummer-Kern ──────────────────────
+  // Für Promos (XY-/SM-/SWSH-/SV-Serie), deren Katalog-Nummer einen Set-Präfix
+  // trägt (z.B. „XY133"), den Gemini als reine Ziffern liest („133"), und deren
+  // Name durch Bindestrich/Suffix minimal abweicht („Ash-Greninja EX" vs
+  // „Ash Greninja EX"). setCode/printedTotal/Dex fehlen bei Promos meist — R1–R4
+  // greifen dann nicht. Erst Name UND Nummern-Kern ZUSAMMEN sind präzise genug.
+  const gCore = numberCore(s.number);
+  if (deps.byNamePrefix && nameLower && s.name && gCore) {
+    // Präfix normalisieren (Sonderzeichen → Leerzeichen) + die ersten zwei
+    // Wörter als lockereren Präfix (fängt fehlende/zusätzliche Suffixe wie „EX").
+    const spaced = s.name.toLowerCase().replace(/[^a-z0-9äöü]+/g, ' ').trim();
+    const tokens = spaced.split(' ').filter(Boolean);
+    const prefixes = [...new Set([spaced, tokens.slice(0, 2).join(' ')].filter(p => p.length >= 2))];
+    const byId = new Map<string, CatalogCard>();
+    for (const p of prefixes) for (const c of await deps.byNamePrefix(p)) byId.set(c.id, c);
+
+    const matches: CatalogCard[] = [];
+    for (const c of byId.values()) {
+      if (numberCore(c.number) !== gCore) continue;          // Nummern-Kern muss passen
+      if (!dexOk(c) || !nameLooseOk(c)) continue;
+      if (!(await totalOk(c))) continue;
+      matches.push(c);
+    }
+    trace.push(`R5 promo name+nummern-kern (${prefixes.join(' | ')} × ${gCore}): ${byId.size} roh → ${matches.length} bestätigt`);
+    if (matches.length === 1) {
+      return { status: 'unique', card: matches[0], matchedBy: 'promo-name+number', trace };
+    }
+    if (matches.length > 1) {
+      return { status: 'ambiguous', candidates: matches, matchedBy: 'promo-name+number', trace };
     }
   }
 

@@ -106,3 +106,40 @@ export async function getCardsByNameAndNumberRest(
   }
   return merged;
 }
+
+/** Name-Präfix-Suche (Range) auf nameLower ODER nameDeLower. Für den Promo-
+ *  Fallback (resolve-card R5): holt Karten derselben Art, wenn Name (Bindestrich/
+ *  Suffix) und Nummer (Set-Präfix wie „XY133") nicht EXAKT gleichen — der
+ *  Aufrufer filtert in-memory per Nummer-Suffix + Namens-Gegenprobe. */
+export async function getCardsByNamePrefixRest(
+  prefixLower: string,
+  maxResults = 40,
+): Promise<CatalogCard[]> {
+  const p = prefixLower.trim().toLowerCase();
+  if (p.length < 2) return [];
+  const end = p + ''; // Unicode-Sentinel: alle Strings mit Präfix p
+  const queryFor = (field: 'nameLower' | 'nameDeLower') => runQuery({
+    from: [{ collectionId: 'tcg_catalog' }],
+    where: {
+      compositeFilter: {
+        op: 'AND',
+        filters: [
+          { fieldFilter: { field: { fieldPath: field }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: p   } } },
+          { fieldFilter: { field: { fieldPath: field }, op: 'LESS_THAN',             value: { stringValue: end } } },
+        ],
+      },
+    },
+    orderBy: [{ field: { fieldPath: field }, direction: 'ASCENDING' }],
+    limit: maxResults,
+  });
+
+  const [a, b] = await Promise.all([queryFor('nameLower'), queryFor('nameDeLower')]);
+  const seen = new Set<string>();
+  const merged: CatalogCard[] = [];
+  for (const c of [...a, ...b]) {
+    if (seen.has(c.id)) continue;
+    seen.add(c.id);
+    merged.push(c);
+  }
+  return merged;
+}

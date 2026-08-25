@@ -13,7 +13,8 @@ import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
          getCardBySetAndNumberRest    as getCardBySetAndNumber,
          getCardsByDexNumberRest      as getCardsByDexNumber,
-         getCardsByNameAndNumberRest  as getCardsByNameAndNumber } from '@/lib/firestore/catalog-rest';
+         getCardsByNameAndNumberRest  as getCardsByNameAndNumber,
+         getCardsByNamePrefixRest     as getCardsByNamePrefix } from '@/lib/firestore/catalog-rest';
 import { resolveScannedCard } from '@/lib/scan/resolve-card';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { addCard, getCardsByTcgId, updateCard } from '@/lib/firestore/cards';
@@ -960,6 +961,7 @@ export default function ScannerPage() {
           byDexNumber: (dex: number) => getCardsByDexNumber(dex, 100),
           setIdsByPrintedTotal: getSetIdsByPrintedTotal,
           setPrintedTotal: getSetPrintedTotal,
+          byNamePrefix: (prefix: string) => getCardsByNamePrefix(prefix, 40),
         },
       );
       debug.lookupSteps!.push(...resolved.trace);
@@ -2734,14 +2736,21 @@ export default function ScannerPage() {
 
 
       {/* ── Melden-Sheet (Grundwahrheit für die Fehleranalyse erfassen) ─── */}
-      {reportJob && (
-        <ScanReportSheet
-          recognizedName={reportJob.result?.card?.name}
-          imageSrc={reportJob.debug?.imageBase64 ? `data:${reportJob.debug.mimeType ?? 'image/jpeg'};base64,${reportJob.debug.imageBase64}` : undefined}
-          onClose={() => setReportJobId(null)}
-          onSubmit={result => submitReport(reportJob, result)}
-        />
-      )}
+      {reportJob && (() => {
+        // Geminis gelesener Name/Sprache (oft korrekt, auch wenn der Katalog-
+        // Lookup danebenlag) als Such-Vorbelegung + Anzeige-/Sortier-Sprache.
+        const gp = reportJob.debug?.geminiParsed as { name?: string | null; language?: string | null } | undefined;
+        return (
+          <ScanReportSheet
+            recognizedName={reportJob.result?.card?.name}
+            seedQuery={gp?.name ?? reportJob.result?.card?.name ?? undefined}
+            language={gp?.language ?? reportJob.result?.language ?? undefined}
+            imageSrc={reportJob.debug?.imageBase64 ? `data:${reportJob.debug.mimeType ?? 'image/jpeg'};base64,${reportJob.debug.imageBase64}` : undefined}
+            onClose={() => setReportJobId(null)}
+            onSubmit={result => submitReport(reportJob, result)}
+          />
+        );
+      })()}
       {reportToast && (
         <div className="fixed left-1/2 -translate-x-1/2 z-[120] px-4 py-2 rounded-full bg-black/85 text-white text-sm font-medium"
           style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 90px)' }}>
