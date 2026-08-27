@@ -2,43 +2,36 @@
 
 import { useEffect } from 'react';
 
-/** Breite des Randbands (px), in dem eine horizontale Wischgeste die native
- *  iOS-Zurück-Navigation auslöst. iOS reagiert ab ~20 px — knapp darüber, um
- *  legitime Interaktionen weiter innen nicht zu beeinträchtigen. */
-const EDGE = 22;
+/** Breite des Randbands (px) an linker UND rechter Kante, in dem die native
+ *  iOS-Zurück-/Vorwärts-Wischgeste ausgelöst wird. iOS reagiert ab ~20 px. */
+const EDGE = 24;
 
 /**
- * Unterdrückt die native Zurück-Wischgeste (iOS-PWA/Browser: vom linken
- * Bildschirmrand nach innen wischen → History-Back). Ein Touch, der INNERHALB
- * des linken Randbands beginnt UND sich überwiegend HORIZONTAL bewegt, wird per
- * `preventDefault` gestoppt. Vertikales Scrollen (auch am Rand startend) bleibt
- * unberührt, damit Listen normal scrollbar sind.
+ * Unterdrückt die nativen Zurück-/Vorwärts-Wischgesten (iOS-PWA/Browser: vom
+ * linken bzw. rechten Bildschirmrand nach innen wischen → History back/forward).
+ *
+ * Robust: Beginnt ein Touch INNERHALB eines Randbands, wird JEDER folgende
+ * `touchmove` sofort per `preventDefault` gestoppt — ohne vorher auf eine
+ * erkannte Horizontal-Richtung zu warten. Genau dieses Warten war das Leck:
+ * iOS committet die Rand-Geste oft schon beim ersten winzigen Move, bevor
+ * „horizontal" feststeht. Der Preis ist ein sehr schmales (24 px) Randband, in
+ * dem auch vertikales Scrollen unterbunden ist — dort startet man selten.
  *
  * Rein clientseitig, ohne UI — global im `(app)`-Layout eingehängt.
  */
 export function EdgeSwipeGuard() {
   useEffect(() => {
     let active = false;
-    let startX = 0;
-    let startY = 0;
 
     const onStart = (e: TouchEvent) => {
       const t = e.touches[0];
       if (!t) { active = false; return; }
-      active = t.clientX <= EDGE;
-      startX = t.clientX;
-      startY = t.clientY;
+      const x = t.clientX;
+      active = x <= EDGE || x >= window.innerWidth - EDGE;
     };
 
     const onMove = (e: TouchEvent) => {
-      if (!active) return;
-      const t = e.touches[0];
-      if (!t) return;
-      const dx = t.clientX - startX;
-      const dy = t.clientY - startY;
-      // Nur die horizontale Rand-Geste blocken (Zurück), vertikales Scrollen
-      // durchlassen. `cancelable` schützt vor bereits laufendem Scroll.
-      if (Math.abs(dx) > Math.abs(dy) && e.cancelable) e.preventDefault();
+      if (active && e.cancelable) e.preventDefault();
     };
 
     const onEnd = () => { active = false; };
