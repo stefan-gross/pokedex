@@ -128,7 +128,7 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
   if (!mounted || typeof document === 'undefined') return null;
 
   return createPortal(
-    <div className={`fixed inset-0 ${elevated ? 'z-[100]' : 'z-[60]'} flex items-end${forceDark ? ' dark' : ''}`}>
+    <div className={`fixed inset-0 isolate ${elevated ? 'z-[100]' : 'z-[60]'} flex items-end${forceDark ? ' dark' : ''}`}>
       {/* Backdrop SOFORT sichtbar (kein Opacity-Fade) — sonst blitzt beim
           direkten Wechsel zwischen zwei Sheets kurz der helle Hintergrund
           durch, während der neue Backdrop von 0 einblendet. Nur das Panel
