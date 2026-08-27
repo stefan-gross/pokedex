@@ -7,6 +7,7 @@ import { getCardsByDexNumberRest } from '@/lib/firestore/catalog-rest';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { getSetById } from '@/lib/firestore/sets';
 import { CardImage } from '@/components/card/CardImage';
+import { CardTileButton } from '@/components/card/CardTileButton';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
@@ -212,10 +213,12 @@ export function ScanCorrectionPanel({
             {/* „Nicht im Katalog"-Erstkarte: übernimmt die aus dem Scan gebaute
                 Pending-Karte → danach normal „Hinzufügen". */}
             {pendingCard && (
-              <button
+              <CardTileButton
+                selected
+                accent="#f4c542"
                 onClick={onNotInCatalog}
-                className="shrink-0 w-[150px] rounded-2xl p-2 text-center"
-                style={{ border: '1.5px solid #f4c542', background: 'rgba(244,197,66,0.06)' }}
+                className="w-[150px] text-center"
+                style={{ background: 'rgba(244,197,66,0.06)' }}
                 aria-label="Nicht im Katalog — als neue Karte aufnehmen"
               >
                 <div className="relative">
@@ -242,17 +245,18 @@ export function ScanCorrectionPanel({
                 </div>
                 <div className="mt-2 text-[13px] font-semibold leading-tight text-white truncate">{pendingCard.name}</div>
                 <div className="mt-1 text-[11px] font-semibold leading-tight" style={{ color: '#f4c542' }}>Als neue Karte aufnehmen</div>
-              </button>
+              </CardTileButton>
             )}
             {items.map(it => {
               const badge = setBadges.get(it.info.setId);
               const isCand = it.group === 'cand';
               return (
-                <button
+                <CardTileButton
                   key={it.info.id}
+                  selected={isCand}
+                  accent="#f4c542"
                   onClick={() => onPick(it.info.id)}
-                  className="shrink-0 w-[150px] rounded-2xl p-2 text-center"
-                  style={{ border: isCand ? '1.5px solid #f4c542' : '1.5px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.04)' }}
+                  className="w-[150px] text-center"
                   aria-label={`${displayName(it.info)} ${badge?.code ?? it.info.setId} ${printedNumber(it.info.number, badge?.printedTotal)}`}
                 >
                   <div className="relative">
@@ -293,7 +297,7 @@ export function ScanCorrectionPanel({
                       </>
                     );
                   })()}
-                </button>
+                </CardTileButton>
               );
             })}
           </div>

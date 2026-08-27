@@ -6,6 +6,7 @@ import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { getSetById } from '@/lib/firestore/sets';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { CardImage } from '@/components/card/CardImage';
+import { CardTileButton } from '@/components/card/CardTileButton';
 import { Sheet } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -219,11 +220,13 @@ export function ScanReportSheet({ recognizedName, seedQuery, language, imageSrc,
               const badge = setBadges.get(info.setId);
               const names = displayNames(info, english);
               return (
-                <button
+                <CardTileButton
                   key={info.id}
+                  tone="ring"
+                  selected={isSel}
+                  accent="var(--pokedex-blue,#3182ce)"
                   onClick={() => toggleSelect(info)}
-                  aria-pressed={isSel}
-                  className={`flex gap-2 rounded-lg p-1.5 text-left transition-colors ${isSel ? 'ring-2 ring-[var(--pokedex-blue,#3182ce)] bg-secondary' : 'hover:bg-secondary'}`}
+                  className="flex gap-2"
                 >
                   <CardImage
                     card={info}
@@ -252,7 +255,7 @@ export function ScanReportSheet({ recognizedName, seedQuery, language, imageSrc,
                     </div>
                     <div className="text-[10px] text-muted-foreground font-mono">Nr. {info.number}</div>
                   </div>
-                </button>
+                </CardTileButton>
               );
             })}
           </div>

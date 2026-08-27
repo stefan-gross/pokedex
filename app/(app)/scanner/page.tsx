@@ -28,6 +28,7 @@ import { CardPrice } from '@/components/card/CardPrice';
 import { CardBadge } from '@/components/card/CardBadge';
 import { CardPlaceholder } from '@/components/card/CardPlaceholder';
 import { CardImage } from '@/components/card/CardImage';
+import { CardTileButton } from '@/components/card/CardTileButton';
 import { catalogCardToInfo, cardInfoToAddInput, resolveCardImage } from '@/lib/card-info';
 import { cardImageCandidates } from '@/lib/card-image';
 import type { CardInfo } from '@/lib/card-info';
@@ -3547,11 +3548,13 @@ function RecognizedCardLarge({
             {job.result!.candidates!.map(cand => {
               const selected = cand.id === card.id;
               return (
-                <button
+                <CardTileButton
                   key={cand.id}
+                  selected={selected}
+                  accent="#35d15a"
+                  borderWidth={2}
                   onClick={() => onPickCandidate(cand)}
-                  className="shrink-0 flex flex-col items-center gap-1 rounded-lg p-1"
-                  style={{ border: selected ? '2px solid #35d15a' : '2px solid rgba(255,255,255,0.15)' }}
+                  className="flex flex-col items-center gap-1 rounded-lg p-1"
                   aria-label={`${cand.name} ${cand.setCode ?? cand.setId} ${cand.number}`}
                 >
                   <CardImage
@@ -3566,7 +3569,7 @@ function RecognizedCardLarge({
                   <span className="text-white/80 text-[10px] font-mono tabular-nums">
                     {(cand.setCode ?? cand.setId?.toUpperCase() ?? '?')} {cand.number}
                   </span>
-                </button>
+                </CardTileButton>
               );
             })}
           </div>
