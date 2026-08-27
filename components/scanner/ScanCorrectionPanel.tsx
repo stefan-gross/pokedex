@@ -180,14 +180,13 @@ export function ScanCorrectionPanel({
         <span className="flex items-center gap-2 text-[15px] font-bold text-[#f4c542]">
           <ArrowLeftRight size={17} /> Richtige Karte wählen
         </span>
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<X />}
           onClick={onClose}
           aria-label="Abbrechen"
-          className="w-8 h-8 flex items-center justify-center rounded-lg"
-          style={{ background: 'rgba(255,255,255,0.08)' }}
-        >
-          <X size={17} color="#fff" />
-        </button>
+        />
       </div>
 
       <div className="px-4 pb-2">
