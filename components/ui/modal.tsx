@@ -110,6 +110,8 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
   const [visible, setVisible] = useState(false);
   const [dragY, setDragY] = useState(0);
   const dragStartYRef = useRef<number | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [dbg, setDbg] = useState('');
 
   useEffect(() => {
     if (open) {
@@ -125,6 +127,23 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
 
   useBodyScrollLock(mounted && lockScroll);
   useEscapeToClose(mounted, onClose);
+
+  // TEMP-Diagnose „schwarzer Rand": wo endet das Panel real vs. Fenster?
+  useEffect(() => {
+    if (!visible) return;
+    const t = setTimeout(() => {
+      const el = panelRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const probe = document.createElement('div');
+      probe.style.cssText = 'position:fixed;bottom:0;height:env(safe-area-inset-bottom,0px);width:0';
+      document.body.appendChild(probe);
+      const safe = Math.round(parseFloat(getComputedStyle(probe).height) || 0);
+      probe.remove();
+      setDbg(`panelBottom:${Math.round(r.bottom)} innerH:${window.innerHeight} safe:${safe} bodyPos:${document.body.style.position || 'static'}`);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [visible]);
   if (!mounted || typeof document === 'undefined') return null;
 
   return createPortal(
@@ -137,7 +156,14 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
         className="absolute inset-0 glass-sheet-backdrop"
         onClick={onClose}
       />
+      {dbg && (
+        <div className="fixed top-2 inset-x-2 z-[999] text-center pointer-events-none"
+          style={{ background: 'rgba(0,0,0,0.85)', color: '#0f0', fontSize: 11, fontFamily: 'monospace', padding: '3px 6px' }}>
+          {dbg}
+        </div>
+      )}
       <div
+        ref={panelRef}
         className="relative w-full rounded-t-2xl glass-sheet max-h-[93dvh] flex flex-col"
         style={{
           ...style,
