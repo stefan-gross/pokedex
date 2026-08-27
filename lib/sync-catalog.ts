@@ -107,6 +107,7 @@ export async function runSync(mode: 'auto' | 'update' | 'reset' = 'auto'): Promi
   }
 
   const setsMeta = await loadSetsMeta();
+  const excludedSetIds = await fetchExcludedSetIds(); // z.B. Pokémon TCG Pocket
   const deCache = new Map<string, Map<string, DeCardInfo>>(); // setId → localId→DE-Info (pro Aufruf)
   let written = 0;
 
@@ -118,6 +119,8 @@ export async function runSync(mode: 'auto' | 'update' | 'reset' = 'auto'): Promi
     const cards: CatalogCard[] = [];
     for (const en of enCards) {
       const setId = en.set?.id ?? '';
+      // Ausgeschlossene Serie (z.B. Pokémon TCG Pocket) — nicht in den Katalog.
+      if (setId && excludedSetIds.has(setId)) continue;
       if (setId && !deCache.has(setId)) deCache.set(setId, (await fetchDeCardsForSet(setId)) ?? new Map());
       const de = setId ? deCache.get(setId)?.get(en.localId) : undefined;
       const sm = setsMeta.get(setId);
@@ -361,6 +364,29 @@ const TCGDEX_REST = 'https://api.tcgdex.net/v2';
  *  bewusst ausgeschlossen, sonst tauchen die Karten in Suche/Browse als
  *  Fremdkörper auf und der nächste Sync würde gelöschte wieder anlegen. */
 const EXCLUDED_SERIES = new Set(['Pokémon TCG Pocket']);
+
+/** Set-IDs, die zu einer ausgeschlossenen Serie (EXCLUDED_SERIES) gehören, über
+ *  den TCGdex-`/series`-Endpunkt aufgelöst. Der Voll-Import (`runSync`) holt
+ *  Karten nach `category` (ohne Serien-Info) und muss diese Sets daher aktiv
+ *  überspringen — sonst landeten z.B. die rein digitalen Pokémon-TCG-Pocket-
+ *  Karten wieder im Katalog. (Der Delta-Sync iteriert nur über `tcg_sets`, wo
+ *  diese Serien ohnehin fehlen, und ist damit schon sauber.) */
+async function fetchExcludedSetIds(): Promise<Set<string>> {
+  const out = new Set<string>();
+  try {
+    const res = await fetch(`${TCGDEX_REST}/en/series`);
+    if (!res.ok) return out;
+    const series: Array<{ id: string; name: string }> = await res.json();
+    const ids = series.filter(s => EXCLUDED_SERIES.has(s.name)).map(s => s.id);
+    for (const sid of ids) {
+      const r = await fetch(`${TCGDEX_REST}/en/series/${sid}`);
+      if (!r.ok) continue;
+      const detail: { sets?: Array<{ id: string }> } = await r.json();
+      for (const set of detail.sets ?? []) out.add(set.id);
+    }
+  } catch { /* im Zweifel nichts ausschließen — der Set-Sync filtert weiterhin */ }
+  return out;
+}
 
 export async function syncSets(): Promise<SyncSetsResult> {
   const db = getAdminDb();
