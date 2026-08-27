@@ -5,6 +5,7 @@ import { BottomNav } from '@/components/BottomNav';
 import AuthRefresh from '@/components/AuthRefresh';
 import { GlassBackground } from '@/components/GlassBackground';
 import { ColdStartSplash } from '@/components/ColdStartSplash';
+import { EdgeSwipeGuard } from '@/components/EdgeSwipeGuard';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -18,6 +19,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           und iOS lädt die PWA bei Kamera-Nutzung gern neu (neue Session) → der
           Splash würde sonst mitten im Scannen auftauchen. */}
       {!isScanner && <ColdStartSplash />}
+      <EdgeSwipeGuard />
       <AuthRefresh />
       {!isScanner && <GlassBackground />}
       {/* Covers iPhone status bar / Dynamic Island area */}
