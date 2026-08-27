@@ -4,7 +4,7 @@ import { forwardRef, isValidElement, cloneElement } from 'react';
 import Link from 'next/link';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
-import { primaryGlassStyle, scanFabStyle, secondaryGlassStyle } from '@/lib/ui/tinted-glass';
+import { primaryGlassStyle, scanFabStyle, secondaryGlassStyle, tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import { readableTextColor } from '@/lib/color-utils';
 import { useGlassTheme } from '@/lib/ui/glass-theme';
 
@@ -66,8 +66,10 @@ const ICON_ONLY_WIDTH = { sm: 'w-9', md: 'w-11', lg: 'w-12' } as const;
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
-  /** Akzentfarbe (Hex/CSS-Var) — wirkt nur bei `primary`/`scan` (`secondary`
-   *  bleibt immer neutral). Default je Variante, siehe `DEFAULT_*` oben. */
+  /** Akzentfarbe (Hex). Bei `primary`/`scan`: volle Füllung + automatisch
+   *  lesbare Textfarbe (`readableTextColor`). Bei `secondary`: zurückhaltende
+   *  Tönung (Akzent-Tint als Hintergrund, Text bleibt theme-neutral). Ohne
+   *  `accentColor` bleibt `secondary` komplett neutral. Default je Variante. */
   accentColor?: string;
   /** Icon vor dem Text. Ohne `children` (kein Text) wird der Button
    *  automatisch rund + textlos (Icon-only) statt einer eigenen Prop/Variante
@@ -125,9 +127,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     // Weiß — wichtig, da `accentColor` frei überschreibbar ist.
     ...((isPrimary || isScan) ? { color: readableTextColor(color) } : undefined),
     ...(isPrimary ? primaryGlassStyle(color) : undefined),
-    // `secondary` hat keine Akzentfarbe — Hintergrund/Rahmen/Schatten/
-    // Textfarbe kommen komplett aus dem Theme (Keine/Weiß/Grau-Wahl).
-    ...(isSecondary ? secondaryGlassStyle() : undefined),
+    // `secondary`: ohne `accentColor` neutral (Theme). MIT `accentColor` eine
+    // zurückhaltende Tönung (Akzent-Tint als Hintergrund) — die Textfarbe kommt
+    // BEWUSST weiter aus der `text-glass`-Klasse (theme-abhängig hell/dunkel),
+    // nicht inline, sonst wäre sie im Dark-Kontext falsch (kein Hydration-/
+    // Kontrast-Problem). Für „zurückhaltend farblich zugeordnet" statt CTA-Wucht.
+    ...(isSecondary
+      ? (accentColor ? tintedGlassStyle(accentColor, { alpha: 0.28 }) : secondaryGlassStyle())
+      : undefined),
     // `scan` bekommt 1:1 das Original-Rezept des Footer-FABs
     // (`components/BottomNav.tsx`) — inkl. Rahmen (bewusste Ausnahme von
     // der "randlos"-Regel, da hier ein bestehender Look nachgebildet wird).

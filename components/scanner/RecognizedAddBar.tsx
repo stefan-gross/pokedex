@@ -259,11 +259,10 @@ export function RecognizedAddBar({
             {justSaved ? 'Hinzugefügt' : saving ? 'Wird gespeichert …' : 'Hinzufügen'}
           </Button>
           {onCorrectTap && (
-            // Design-System-Button (Icon-only): gelber Akzent, Vordergrundfarbe
-            // wählt der Button automatisch nach Helligkeit (readableTextColor →
-            // dunkles Icon auf Gelb).
+            // Getönte secondary: zurückhaltender gelber Tint (nicht die volle
+            // CTA-Wucht des grünen „Hinzufügen"), Icon-Farbe theme-neutral.
             <Button
-              variant="primary"
+              variant="secondary"
               accentColor="#f4c542"
               size="lg"
               className="shrink-0"
