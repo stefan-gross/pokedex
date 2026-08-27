@@ -259,15 +259,18 @@ export function RecognizedAddBar({
             {justSaved ? 'Hinzugefügt' : saving ? 'Wird gespeichert …' : 'Hinzufügen'}
           </Button>
           {onCorrectTap && (
-            <button
-              type="button"
+            // Design-System-Button (Icon-only): gelber Akzent, Vordergrundfarbe
+            // wählt der Button automatisch nach Helligkeit (readableTextColor →
+            // dunkles Icon auf Gelb).
+            <Button
+              variant="primary"
+              accentColor="#f4c542"
+              size="lg"
+              className="shrink-0"
+              icon={<ArrowLeftRight strokeWidth={2.5} />}
               onClick={onCorrectTap}
               aria-label="Falsch erkannt? Richtige Karte wählen"
-              className="shrink-0 w-14 rounded-2xl flex items-center justify-center active:scale-95 transition-transform"
-              style={{ background: '#f4c542', color: '#3a2c00' }}
-            >
-              <ArrowLeftRight size={22} strokeWidth={2.5} />
-            </button>
+            />
           )}
         </div>
 
