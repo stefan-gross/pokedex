@@ -142,6 +142,14 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
         style={{
           ...style,
           colorScheme: forceDark ? 'dark' : undefined,
+          // Glas bis zur PHYSISCHEN Unterkante ziehen. `items-end` verankert das
+          // Panel nur am unteren Rand des Web-Viewports (844px); die iPhone-Safe-
+          // Area (env(safe-area-inset-bottom) = 34px) blieb darunter dunkel
+          // („schwarzer Rand"). Negatives margin-bottom schiebt die Glas-Box um
+          // genau diese Höhe tiefer, sodass sie die Home-Indicator-Zone abdeckt.
+          // Inhalts-Freiraum regeln die Sheets selbst (bodyClassName / pb-safe im
+          // Footer), damit Text nicht unter den Home-Indicator rutscht.
+          marginBottom: 'calc(-1 * env(safe-area-inset-bottom, 0px))',
           transform: visible ? `translateY(${dragY}px)` : 'translateY(100%)',
           transition: dragStartYRef.current != null ? 'none' : 'transform 250ms ease-out',
         }}

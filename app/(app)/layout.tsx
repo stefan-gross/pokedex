@@ -6,7 +6,6 @@ import AuthRefresh from '@/components/AuthRefresh';
 import { GlassBackground } from '@/components/GlassBackground';
 import { ColdStartSplash } from '@/components/ColdStartSplash';
 import { EdgeSwipeGuard } from '@/components/EdgeSwipeGuard';
-import { DebugSafeArea } from '@/components/DebugSafeArea';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -21,7 +20,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           Splash würde sonst mitten im Scannen auftauchen. */}
       {!isScanner && <ColdStartSplash />}
       <EdgeSwipeGuard />
-      <DebugSafeArea />
       <AuthRefresh />
       {!isScanner && <GlassBackground />}
       {/* Covers iPhone status bar / Dynamic Island area */}
