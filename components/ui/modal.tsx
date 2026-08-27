@@ -5,30 +5,42 @@ import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from './button';
 
-/** Sperrt das Scrollen von `<body>` während ein Modal offen ist — sonst
- *  scrollt der Hintergrund unter dem Overlay mit (iOS-Safari-typisches
- *  Problem bei `position: fixed`-Overlays). Reines `overflow: hidden`
- *  reicht dafür NICHT — iOS Safari lässt den Hintergrund trotzdem per Touch
- *  scrollen (`overflow: hidden` blockiert dort nur Maus-/Trackpad-Scroll).
- *  Der zuverlässige Trick: `<body>` selbst auf `position: fixed` setzen
- *  (per gemerktem `scrollY` als negativer `top`-Offset), das macht den
- *  Hintergrund für Touch-Gesten komplett unbeweglich; beim Schließen wird
- *  die Scroll-Position exakt wiederhergestellt. */
+/** Sperrt das Scrollen des Hintergrunds, während ein Modal offen ist.
+ *
+ *  WICHTIG: NICHT über `body { position: fixed }` — das ließ iOS im Standalone-
+ *  PWA das Layout-Viewport schrumpfen (`window.innerHeight` 844 → 797, also
+ *  minus Safe-Top+Bottom). Alles am Viewport-Boden endete dann ~47px zu früh,
+ *  die physische Home-Indicator-Zone blieb schwarz („schwarzer Rand" im Drawer).
+ *
+ *  Stattdessen: `overflow: hidden` auf <html>/<body> (verschiebt/schrumpft das
+ *  Viewport NICHT, Scroll-Position bleibt automatisch erhalten — kein Sprung).
+ *  Da `overflow: hidden` auf iOS Touch-Scroll allein nicht zuverlässig stoppt,
+ *  zusätzlich ein `touchmove`-Guard: jede Touch-Bewegung wird `preventDefault`t,
+ *  AUSSER sie beginnt innerhalb eines als `data-scroll-lock-allow` markierten
+ *  Bereichs (der scrollende Panel-Body). So bleibt der Hintergrund fest, das
+ *  Panel selbst scrollt normal. */
 function useBodyScrollLock(active: boolean) {
   useEffect(() => {
     if (!active) return;
-    const scrollY = window.scrollY;
-    const { position, top, width, overflow } = document.body.style;
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = '100%';
+    const htmlOverflow = document.documentElement.style.overflow;
+    const bodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
+
+    const onTouchMove = (e: TouchEvent) => {
+      let el = e.target as HTMLElement | null;
+      while (el && el !== document.body) {
+        if (el.dataset && 'scrollLockAllow' in el.dataset) return; // im Panel-Body → erlauben
+        el = el.parentElement;
+      }
+      if (e.cancelable) e.preventDefault();
+    };
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+
     return () => {
-      document.body.style.position = position;
-      document.body.style.top = top;
-      document.body.style.width = width;
-      document.body.style.overflow = overflow;
-      window.scrollTo(0, scrollY);
+      document.documentElement.style.overflow = htmlOverflow;
+      document.body.style.overflow = bodyOverflow;
+      document.removeEventListener('touchmove', onTouchMove);
     };
   }, [active]);
 }
@@ -110,8 +122,6 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
   const [visible, setVisible] = useState(false);
   const [dragY, setDragY] = useState(0);
   const dragStartYRef = useRef<number | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  const [dbg, setDbg] = useState('');
 
   useEffect(() => {
     if (open) {
@@ -127,23 +137,6 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
 
   useBodyScrollLock(mounted && lockScroll);
   useEscapeToClose(mounted, onClose);
-
-  // TEMP-Diagnose „schwarzer Rand": wo endet das Panel real vs. Fenster?
-  useEffect(() => {
-    if (!visible) return;
-    const t = setTimeout(() => {
-      const el = panelRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const probe = document.createElement('div');
-      probe.style.cssText = 'position:fixed;bottom:0;height:env(safe-area-inset-bottom,0px);width:0';
-      document.body.appendChild(probe);
-      const safe = Math.round(parseFloat(getComputedStyle(probe).height) || 0);
-      probe.remove();
-      setDbg(`panelBottom:${Math.round(r.bottom)} innerH:${window.innerHeight} safe:${safe} bodyPos:${document.body.style.position || 'static'}`);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [visible]);
   if (!mounted || typeof document === 'undefined') return null;
 
   return createPortal(
@@ -156,26 +149,11 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
         className="absolute inset-0 glass-sheet-backdrop"
         onClick={onClose}
       />
-      {dbg && (
-        <div className="fixed top-2 inset-x-2 z-[999] text-center pointer-events-none"
-          style={{ background: 'rgba(0,0,0,0.85)', color: '#0f0', fontSize: 11, fontFamily: 'monospace', padding: '3px 6px' }}>
-          {dbg}
-        </div>
-      )}
       <div
-        ref={panelRef}
         className="relative w-full rounded-t-2xl glass-sheet max-h-[93dvh] flex flex-col"
         style={{
           ...style,
           colorScheme: forceDark ? 'dark' : undefined,
-          // Glas bis zur PHYSISCHEN Unterkante ziehen. `items-end` verankert das
-          // Panel nur am unteren Rand des Web-Viewports (844px); die iPhone-Safe-
-          // Area (env(safe-area-inset-bottom) = 34px) blieb darunter dunkel
-          // („schwarzer Rand"). Negatives margin-bottom schiebt die Glas-Box um
-          // genau diese Höhe tiefer, sodass sie die Home-Indicator-Zone abdeckt.
-          // Inhalts-Freiraum regeln die Sheets selbst (bodyClassName / pb-safe im
-          // Footer), damit Text nicht unter den Home-Indicator rutscht.
-          marginBottom: 'calc(-1 * env(safe-area-inset-bottom, 0px))',
           transform: visible ? `translateY(${dragY}px)` : 'translateY(100%)',
           transition: dragStartYRef.current != null ? 'none' : 'transform 250ms ease-out',
         }}
@@ -210,7 +188,7 @@ export function Sheet({ open, onClose, title, header, dragToClose, children, sty
           <div className="w-9 h-1 rounded-full bg-[rgba(46,46,50,0.2)] dark:bg-white/30" />
         </div>
         {header}
-        <div className={`flex-1 min-h-0 overflow-y-auto ${bodyClassName}`}>
+        <div data-scroll-lock-allow className={`flex-1 min-h-0 overflow-y-auto overscroll-contain ${bodyClassName}`}>
           {!header && title && (
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-1 min-w-0">
@@ -257,7 +235,7 @@ export function Dialog({ open, onClose, title, children, style }: OverlayProps) 
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 transition-opacity duration-[250ms] glass-sheet-backdrop" onClick={onClose} />
       <div className="relative w-full max-w-sm rounded-2xl glass-sheet max-h-[85dvh] flex flex-col" style={style}>
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 pt-4">
+        <div data-scroll-lock-allow className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 pb-4 pt-4">
           {title && (
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold">{title}</h2>
