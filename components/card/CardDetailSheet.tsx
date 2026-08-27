@@ -698,7 +698,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   // hinausragen, egal wie hoch der Wert ist — siehe gleicher Fix in AddToCollectionModal).
   return createPortal((
     <>
-      <Sheet open={sheetOpen} onClose={handleClose} header={header} dragToClose bodyClassName="pb-24">
+      <Sheet open={sheetOpen} onClose={handleClose} header={header} dragToClose bodyClassName="pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)]">
 
           {/* ── Hero: Kartenbild links · Set-Info rechts ───── */}
           <div className="flex gap-3.5 px-4 pt-1 pb-4">
