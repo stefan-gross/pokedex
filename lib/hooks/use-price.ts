@@ -38,7 +38,12 @@ export interface UsePriceState {
   loading: boolean;
 }
 
-export function usePrice(tcgId: string | undefined): UsePriceState {
+export function usePrice(tcgIdRaw: string | undefined): UsePriceState {
+  // Pending-/Nicht-Katalog-IDs (`pending-<jobId>`) haben keinen Preis → wie
+  // „keine ID" behandeln, damit gar kein /api/prices-Request rausgeht (der
+  // sonst serverseitig einen leeren Preis-Stub im Katalog anlegen könnte).
+  const tcgId = tcgIdRaw && !tcgIdRaw.startsWith('pending-') ? tcgIdRaw : undefined;
+
   const [data, setData] = useState<PriceResult | null>(() => {
     if (!tcgId) return null;
     const c = cache.get(tcgId);

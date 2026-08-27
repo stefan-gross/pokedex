@@ -178,6 +178,9 @@ export async function ensureFreshPrice(tcgId: string, force = false): Promise<Pr
  *  abgelaufener) Preis, wird der bei einem transienten Fehler als bester
  *  verfügbarer Wert zurückgegeben, statt gar keinen Preis zu zeigen. */
 export async function refreshAndCache(tcgId: string): Promise<PriceResult | null> {
+  // Pending-/Nicht-Katalog-IDs (z.B. `pending-<jobId>` aus dem Scanner) haben
+  // kein echtes tcg_catalog-Doc → gar nicht erst abfragen/cachen.
+  if (!tcgId || tcgId.startsWith('pending-')) return null;
   const db = getAdminDb();
   const docRef = db.collection('tcg_catalog').doc(tcgId);
 
@@ -207,7 +210,11 @@ export async function refreshAndCache(tcgId: string): Promise<PriceResult | null
       // Sortieren im Browse (`orderBy('priceEur')`). Fehlt der Wert, wird das
       // Feld entfernt, damit die Karte aus der preissortierten Liste fällt.
       const priceEur = pickTrendPrice(live);
-      await docRef.set({
+      // `update` statt `set(...,{merge:true})`: schreibt NUR in ein existierendes
+      // Katalog-Doc. Existiert die ID nicht (z.B. eine versehentlich
+      // durchgereichte Nicht-Katalog-ID), wirft es NOT_FOUND (Code 5) → wir legen
+      // KEINEN leeren Stub an, sondern überspringen still.
+      await docRef.update({
         prices: {
           cachedAt,
           provider: live.provider,
@@ -221,16 +228,17 @@ export async function refreshAndCache(tcgId: string): Promise<PriceResult | null
         // damit sie im preissortierten Browse als Schluss-Block angehängt werden
         // können statt bei orderBy('priceEur') ganz zu verschwinden.
         hasPrice: priceEur != null,
-      }, { merge: true });
+      });
     } else {
-      await docRef.set({
+      await docRef.update({
         prices: { cachedAt, empty: true },
         priceEur: FieldValue.delete(),
         hasPrice: false,
-      }, { merge: true });
+      });
     }
   } catch (e) {
-    console.warn('[prices] cache write error', e);
+    // NOT_FOUND (Code 5) = Doc existiert nicht → bewusst ignoriert (kein Stub).
+    if ((e as { code?: number }).code !== 5) console.warn('[prices] cache write error', e);
   }
   return live;
 }
@@ -243,6 +251,8 @@ export async function refreshAndCache(tcgId: string): Promise<PriceResult | null
  *  Cache-Werte werden stattdessen zurückgegeben. */
 export async function refreshAndCacheSet(setId: string, tcgIds: string[]): Promise<Map<string, PriceResult | null>> {
   const db = getAdminDb();
+  // Pending-/Nicht-Katalog-IDs raus (kein echtes Doc → würde einen Stub anlegen).
+  tcgIds = tcgIds.filter(id => id && !id.startsWith('pending-'));
 
   let live: Map<string, PriceResult | null>;
   try {
