@@ -1195,7 +1195,11 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
       {/* ── Zoom-Overlay ──────────────────────────────────────── */}
       {zoomed && (
         <div
-          className="fixed inset-0 z-[70] bg-black flex items-center justify-center"
+          // `transform-gpu isolate`: erzwingt einen eigenen Compositing-Layer.
+          // Ohne diesen malte das fixed-Overlay über dem backdrop-filter-Glas-
+          // Sheet seinen unteren Bereich nicht → weißer Streifen (Body-Hintergrund
+          // schien durch). Der eigene Layer paintet die volle Fläche schwarz.
+          className="fixed inset-0 z-[70] bg-black flex items-center justify-center transform-gpu isolate"
           onClick={() => setZoomed(false)}
         >
           {[imgSrcDe, ...cardImageCandidates(card, { size: 'large' })].some(Boolean) ? (
