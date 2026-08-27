@@ -132,15 +132,35 @@ interface RunQueryResponseEntry {
  *  (`getAuthHeader` wartet über `waitForAuthUser` auf den User). So bleibt die
  *  private Sammlung nicht wegen eines token-losen ersten Reads leer. */
 export async function runFirestoreQuery<T>(structuredQuery: Record<string, unknown>): Promise<T[]> {
+  // Timeout pro fetch: ein hängender Request (z.B. Netz-/Verbindungsklemme nach
+  // frischem Login) darf NICHT den ganzen Read blockieren — sonst bleibt das
+  // Dashboard (`loading = cards === null`) im Endlos-Spinner. Nach `FETCH_TIMEOUT`
+  // wird abgebrochen → Fehler → oben einmal Retry, sonst greift der `.catch` des
+  // Aufrufers (zeigt „leer" statt Spinner).
+  const FETCH_TIMEOUT = 12000;
   const attempt = async (): Promise<Response> => {
     const authHeader = await getAuthHeader();
-    return fetch(`${FIRESTORE_REST_BASE}:runQuery?key=${API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeader },
-      body: JSON.stringify({ structuredQuery }),
-    });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT);
+    try {
+      return await fetch(`${FIRESTORE_REST_BASE}:runQuery?key=${API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeader },
+        body: JSON.stringify({ structuredQuery }),
+        signal: ctrl.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
   };
-  let res = await attempt();
+  // Erster Versuch; bei Netz-/Timeout-Fehler (throw) genau einmal wiederholen,
+  // bevor der Fehler nach oben durchschlägt.
+  let res: Response;
+  try {
+    res = await attempt();
+  } catch {
+    res = await attempt();
+  }
   if ((res.status === 401 || res.status === 403) && auth.currentUser) {
     // Frisches Token erzwingen und genau einmal erneut versuchen.
     try { await auth.currentUser.getIdToken(true); } catch { /* fällt in den Fehler unten */ }
