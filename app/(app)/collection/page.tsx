@@ -309,6 +309,10 @@ function CollectionContent() {
         displayLimit: SEARCH_DISPLAY_LIMIT,
         candidateLimit: SEARCH_CANDIDATE_LIMIT,
         minComboLen: MIN_COMBO_LEN,
+        // Dex-Brücke: über die Pokédex-Nr. der Namens-Treffer die GANZE Art
+        // nachziehen — „Glurak" findet so auch „Mega-Glurak"/„Glurak ex" usw.
+        // (nur bei fokussierter Suche ≤ 4 Arten aktiv, s. searchCatalogCards).
+        bridgeByDex: true,
       });
 
       if (cards.length === 0) { setResults([]); setSets([]); return; }
