@@ -9,9 +9,11 @@ import { getCards } from '@/lib/firestore/cards';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { validateDeck } from '@/lib/decks/rules';
 import { computeDeckDemand, type DeckDemand } from '@/lib/decks/demand';
+import { computeDeckStats } from '@/lib/decks/stats';
 import { CardImage } from '@/components/card/CardImage';
 import { CreateDeckModal } from '@/components/deck/CreateDeckModal';
 import { DeckCardSearchSheet } from '@/components/deck/DeckCardSearchSheet';
+import { DeckStats } from '@/components/deck/DeckStats';
 import { Button } from '@/components/ui/button';
 import { formatEUR } from '@/lib/format';
 import type { DeckDoc, DeckCardRef, CardDoc } from '@/types';
@@ -56,6 +58,7 @@ export default function DeckEditorPage() {
 
   const validation = useMemo(() => deck ? validateDeck(deck.cards, byId, deck.format) : null, [deck, byId]);
   const demand: DeckDemand | null = useMemo(() => deck ? computeDeckDemand(deck.cards, byId, owned) : null, [deck, byId, owned]);
+  const stats = useMemo(() => deck ? computeDeckStats(deck.cards, byId) : null, [deck, byId]);
   const counts = useMemo(() => new Map((deck?.cards ?? []).map(c => [c.catalogId, c.count])), [deck]);
 
   const changeCount = async (catalogId: string, count: number) => {
@@ -110,6 +113,9 @@ export default function DeckEditorPage() {
           ))}
         </div>
       )}
+
+      {/* Statistik (einklappbar) */}
+      {stats && deck.cards.length > 0 && <DeckStats stats={stats} />}
 
       {/* Kategorie-Sektionen */}
       {deck.cards.length === 0 ? (
