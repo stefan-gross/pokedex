@@ -1,6 +1,11 @@
+import type { CatalogCard } from '@/lib/firestore/catalog';
+// REST-Varianten (kein WebChannel-Cold-Start) — Aliase, damit die Aufrufstellen
+// unverändert bleiben.
 import {
-  searchCatalog, searchCatalogByArtist, getCardsByDexNumber, type CatalogCard,
-} from '@/lib/firestore/catalog';
+  searchCatalogRest as searchCatalog,
+  searchCatalogByArtistRest as searchCatalogByArtist,
+  getCardsByDexNumberRest as getCardsByDexNumber,
+} from '@/lib/firestore/catalog-rest';
 
 export interface CatalogSearchOptions {
   /** Vorfilterung auf ein Set — scopt Namens-, Illustrator- UND Dex-Treffer. */

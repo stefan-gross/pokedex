@@ -5,15 +5,21 @@ import {
 import { db, currentUid, waitForUid } from '../firebase/client';
 import { deleteWishlistsForBinder } from './wishlists';
 import { createUidCache } from './uid-cache';
+import { getBindersRest } from './binders-rest';
 import type { BinderDoc, BinderPage } from '@/types';
 
 const COL = 'binders';
 
 const bindersCache = createUidCache<BinderDoc[]>(async uid => {
-  const snap = await getDocs(query(collection(db, COL), where('ownerUid', '==', uid)));
-  return snap.docs
-    .map(d => ({ id: d.id, ...d.data() } as BinderDoc))
-    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  // REST-first (kein WebChannel-Cold-Start); SDK nur als Fallback.
+  try {
+    return await getBindersRest();
+  } catch {
+    const snap = await getDocs(query(collection(db, COL), where('ownerUid', '==', uid)));
+    return snap.docs
+      .map(d => ({ id: d.id, ...d.data() } as BinderDoc))
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  }
 });
 
 /** Leert den `binders`-Cache — nach JEDER Mutation an `binders` aufzurufen (A4). */

@@ -6,7 +6,8 @@
  * `*-rest.ts`-Dateien, die dasselbe `runFirestoreQuery` mit Auth-Token nutzen.
  */
 
-import { BROWSE_SORT_FIELD, type BrowseFilter, type BrowseSortKey, type CatalogCard } from './catalog';
+import { BROWSE_SORT_FIELD, type BrowseFilter, type BrowseSortKey, type CatalogCard, type FilterCounts } from './catalog';
+import { RARITY_GROUPS, SPECIAL_MECHANIC_KEYS, rarityMatchValues } from '../card-constants';
 import { runFirestoreQuery, runFirestoreCount, DOC_PATH_BASE } from './rest-shared';
 
 const runQuery = (structuredQuery: Record<string, unknown>) => runFirestoreQuery<CatalogCard>(structuredQuery);
@@ -215,6 +216,131 @@ export async function getCatalogCardsByIdsRest(ids: string[]): Promise<CatalogCa
     where: { fieldFilter: { field: { fieldPath: '__name__' }, op: 'IN', value: { arrayValue: { values: chunk.map(docRef) } } } },
   })));
   return results.flat();
+}
+
+/** REST-Variante von `searchCatalog` (Prefix-Namenssuche EN+DE, gemerged). */
+export async function searchCatalogRest(q: string, setId = '', maxResults = 300): Promise<CatalogCard[]> {
+  const lower = q.toLowerCase();
+  if (!lower) return [];
+  const end = lower + ''; // Unicode-Sentinel: alle Strings mit Präfix `lower`
+  const queryFor = (field: 'nameLower' | 'nameDeLower') => {
+    const range = [
+      { fieldFilter: { field: { fieldPath: field }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: lower } } },
+      { fieldFilter: { field: { fieldPath: field }, op: 'LESS_THAN_OR_EQUAL',    value: { stringValue: end   } } },
+    ];
+    const filters = setId
+      ? [{ fieldFilter: { field: { fieldPath: 'setId' }, op: 'EQUAL', value: { stringValue: setId } } }, ...range]
+      : range;
+    return runQuery({
+      from: [{ collectionId: 'tcg_catalog' }],
+      where: { compositeFilter: { op: 'AND', filters } },
+      orderBy: [{ field: { fieldPath: field }, direction: 'ASCENDING' }],
+      limit: maxResults,
+    });
+  };
+  const [de, en] = await Promise.all([queryFor('nameDeLower'), queryFor('nameLower')]);
+  const byId = new Map<string, CatalogCard>();
+  for (const c of [...de, ...en]) if (!byId.has(c.id)) byId.set(c.id, c);
+  return [...byId.values()].slice(0, maxResults);
+}
+
+/** REST-Variante von `searchCatalogByArtist` (Illustrator-Wortsuche). */
+export async function searchCatalogByArtistRest(q: string, maxResults = 300): Promise<CatalogCard[]> {
+  const tokens = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return [];
+  const docs = await runQuery({
+    from: [{ collectionId: 'tcg_catalog' }],
+    where: { fieldFilter: { field: { fieldPath: 'artistTokens' }, op: 'ARRAY_CONTAINS_ANY', value: { arrayValue: { values: tokens.slice(0, 30).map(t => ({ stringValue: t })) } } } },
+    limit: maxResults,
+  });
+  if (tokens.length === 1) return docs;
+  return docs.filter(c => tokens.every(t => c.artistTokens?.includes(t)));
+}
+
+/** REST-Variante von `getSortableCount` — `orderBy(field)` zählt (wie im SDK)
+ *  nur Docs, die das Feld besitzen. */
+export async function getSortableCountRest(field: string): Promise<number> {
+  try {
+    return await runFirestoreCount({
+      from: [{ collectionId: 'tcg_catalog' }],
+      orderBy: [{ field: { fieldPath: field }, direction: 'ASCENDING' }],
+    });
+  } catch { return 0; }
+}
+
+/** REST-Variante von `getCatalogFilterCounts` (Typ-/Supertype-/Rarity-/Sonderform-
+ *  Zähler per Aggregation, parallel). */
+export async function getCatalogFilterCountsRest(activeFilter: BrowseFilter = {}): Promise<FilterCounts> {
+  const TYPES = ['Fire', 'Water', 'Grass', 'Lightning', 'Psychic', 'Fighting', 'Darkness', 'Metal', 'Dragon', 'Fairy', 'Colorless'];
+  const SUPERTYPES = ['Pokémon', 'Trainer', 'Energy'];
+
+  const arrHas = (field: string, v: string) => ({ fieldFilter: { field: { fieldPath: field }, op: 'ARRAY_CONTAINS', value: { stringValue: v } } });
+  const eq     = (field: string, v: string) => ({ fieldFilter: { field: { fieldPath: field }, op: 'EQUAL',          value: { stringValue: v } } });
+  const arrAny = (field: string, vs: string[]) => ({ fieldFilter: { field: { fieldPath: field }, op: 'ARRAY_CONTAINS_ANY', value: { arrayValue: { values: vs.map(v => ({ stringValue: v })) } } } });
+  const inOp   = (field: string, vs: string[]) => ({ fieldFilter: { field: { fieldPath: field }, op: 'IN',           value: { arrayValue: { values: vs.map(v => ({ stringValue: v })) } } } });
+
+  const countWhere = async (filters: Record<string, unknown>[]): Promise<number> => {
+    const where = filters.length === 1 ? filters[0] : { compositeFilter: { op: 'AND', filters } };
+    try { return await runFirestoreCount({ from: [{ collectionId: 'tcg_catalog' }], where }); }
+    catch { return 0; }
+  };
+
+  const [typeCounts, supertypeCounts, rarityCounts, specialForms] = await Promise.all([
+    Promise.all(TYPES.map(async t => {
+      const f = [arrHas('types', t)];
+      if (activeFilter.supertype) f.push(eq('supertype', activeFilter.supertype));
+      return [t, await countWhere(f)] as [string, number];
+    })),
+    Promise.all(SUPERTYPES.map(async s => {
+      const f = [eq('supertype', s)];
+      if (activeFilter.type) f.push(arrHas('types', activeFilter.type));
+      return [s, await countWhere(f)] as [string, number];
+    })),
+    Promise.all(RARITY_GROUPS.map(async g => {
+      const variants = rarityMatchValues(g.label);
+      if (!variants.length) return [g.label, 0] as [string, number];
+      return [g.label, await countWhere([inOp('rarity', variants)])] as [string, number];
+    })),
+    countWhere([arrAny('subtypes', [...SPECIAL_MECHANIC_KEYS])]),
+  ]);
+
+  return {
+    types:        Object.fromEntries(typeCounts),
+    supertypes:   Object.fromEntries(supertypeCounts),
+    rarities:     Object.fromEntries(rarityCounts),
+    specialForms: specialForms as number,
+  };
+}
+
+/** REST-Variante von `getCardsByEvolutionFamily`. */
+export async function getCardsByEvolutionFamilyRest(dexNum: number, maxResults = 200): Promise<CatalogCard[]> {
+  return runQuery({
+    from: [{ collectionId: 'tcg_catalog' }],
+    where: { fieldFilter: { field: { fieldPath: 'evolutionFamily' }, op: 'ARRAY_CONTAINS', value: { integerValue: String(dexNum) } } },
+    limit: maxResults,
+  });
+}
+
+/** REST-Variante von `getCatalogCount` (Gesamtzahl aus `tcg_catalog_meta/sync`). */
+export async function getCatalogCountRest(): Promise<number> {
+  try {
+    const rows = await runFirestoreQuery<{ syncedTotal?: number }>({
+      from: [{ collectionId: 'tcg_catalog_meta' }],
+      where: { fieldFilter: { field: { fieldPath: '__name__' }, op: 'EQUAL', value: { referenceValue: `${DOC_PATH_BASE}/tcg_catalog_meta/sync` } } },
+      limit: 1,
+    });
+    return rows[0]?.syncedTotal ?? 0;
+  } catch { return 0; }
+}
+
+/** Anzahl Katalog-Karten in einem Set (REST-Aggregation) — Dashboard-Fortschritt. */
+export async function getSetCardCountRest(setId: string): Promise<number> {
+  try {
+    return await runFirestoreCount({
+      from: [{ collectionId: 'tcg_catalog' }],
+      where: { fieldFilter: { field: { fieldPath: 'setId' }, op: 'EQUAL', value: { stringValue: setId } } },
+    });
+  } catch { return -1; }
 }
 
 /** National-Dex einer Art über ihren deutschen ODER englischen Namen. Für das

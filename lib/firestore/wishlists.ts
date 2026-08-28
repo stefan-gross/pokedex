@@ -4,13 +4,22 @@ import {
 } from 'firebase/firestore';
 import { db, currentUid, waitForUid } from '../firebase/client';
 import { createUidCache } from './uid-cache';
+import { getWishlistsRest } from './wishlists-rest';
 import type { WishlistDoc, WishlistItem } from '@/types';
 
 const COL = 'wishlists';
 
 const wishlistsCache = createUidCache<WishlistDoc[]>(async uid => {
-  const snap = await getDocs(query(collection(db, COL), where('ownerUid', '==', uid)));
-  const lists = snap.docs.map(d => ({ id: d.id, ...d.data() } as WishlistDoc));
+  // REST-first (kein WebChannel-Cold-Start); SDK nur als Fallback. Die
+  // Manuell-vor-Automatisch-Sortierung wird hier angewandt (getWishlistsRest
+  // liefert nur nach createdAt vor).
+  let lists: WishlistDoc[];
+  try {
+    lists = await getWishlistsRest();
+  } catch {
+    const snap = await getDocs(query(collection(db, COL), where('ownerUid', '==', uid)));
+    lists = snap.docs.map(d => ({ id: d.id, ...d.data() } as WishlistDoc));
+  }
   // Manuelle Listen zuerst (nach nutzerdefinierter sortOrder, Altbestand ohne
   // sortOrder ans Ende), automatische (Vorlagen-)Listen danach. `orderBy` auf
   // sortOrder ginge nicht (Firestore würde Docs ohne das Feld ausschließen),

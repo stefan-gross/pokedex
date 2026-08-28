@@ -14,8 +14,7 @@ import { useCatalogInfoMap } from '@/lib/hooks/use-catalog-info-map';
 import { getSetById } from '@/lib/firestore/sets';
 import { getRarityGroup } from '@/lib/card-constants';
 import { catalogCardToInfo, pendingCardInfo, ownedCardToInfo, resolveCardImage, type CardInfo } from '@/lib/card-info';
-import { getCountFromServer, collection, query, where } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
+import { getSetCardCountRest } from '@/lib/firestore/catalog-rest';
 import { SetListItem } from '@/components/set/SetListItem';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { useUpdateAvailable } from '@/lib/hooks/use-update-available';
@@ -147,10 +146,10 @@ export default function DashboardPage() {
   useEffect(() => {
     const ids = displayedSets.map(s => s.setId);
     ids.forEach(setId => {
-      // Catalog-Totals laden
+      // Catalog-Totals laden (REST-Aggregation, kein WebChannel-Cold-Start)
       if (!(setId in setTotals)) {
-        getCountFromServer(query(collection(db, 'tcg_catalog'), where('setId', '==', setId)))
-          .then(snap => setSetTotals(prev => ({ ...prev, [setId]: snap.data().count })))
+        getSetCardCountRest(setId)
+          .then(count => { if (count >= 0) setSetTotals(prev => ({ ...prev, [setId]: count })); })
           .catch(() => {});
       }
       // Deutsche Set-Metadaten laden (Name + Logo)

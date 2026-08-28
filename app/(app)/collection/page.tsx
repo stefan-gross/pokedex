@@ -15,7 +15,16 @@ import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { LegendButton } from '@/components/ui/LegendButton';
 import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { getCards } from '@/lib/firestore/cards';
-import { getCardsByDexNumber, getCardsByEvolutionFamily, getCatalogCount, getSortableCount, getCatalogFilterCounts, getBrowseCount, type FilterCounts } from '@/lib/firestore/catalog';
+import type { FilterCounts } from '@/lib/firestore/catalog';
+// REST-Varianten (kein WebChannel-Cold-Start) — Aliase, Aufrufstellen unverändert.
+import {
+  getCardsByDexNumberRest as getCardsByDexNumber,
+  getCardsByEvolutionFamilyRest as getCardsByEvolutionFamily,
+  getCatalogCountRest as getCatalogCount,
+  getSortableCountRest as getSortableCount,
+  getCatalogFilterCountsRest as getCatalogFilterCounts,
+  getBrowseCountRest as getBrowseCount,
+} from '@/lib/firestore/catalog-rest';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';

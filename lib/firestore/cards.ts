@@ -4,6 +4,7 @@ import {
 } from 'firebase/firestore';
 import { db, currentUid, waitForUid } from '../firebase/client';
 import { createUidCache } from './uid-cache';
+import { getCardsRest } from './cards-rest';
 import type { CardDoc } from '@/types';
 
 const COL = 'cards';
@@ -14,10 +15,15 @@ const COL = 'cards';
 // Firestore automatisch an). Ohne diesen Filter würden die neuen Rules
 // (ownerUid == auth.uid) die ganze Query ablehnen.
 const cardsCache = createUidCache<CardDoc[]>(async uid => {
-  const snap = await getDocs(query(collection(db, COL), where('ownerUid', '==', uid)));
-  return snap.docs
-    .map(d => ({ id: d.id, ...d.data() } as CardDoc))
-    .sort((a, b) => (b.addedAt?.seconds ?? 0) - (a.addedAt?.seconds ?? 0));
+  // REST-first (kein WebChannel-Cold-Start); SDK nur als Fallback.
+  try {
+    return await getCardsRest();
+  } catch {
+    const snap = await getDocs(query(collection(db, COL), where('ownerUid', '==', uid)));
+    return snap.docs
+      .map(d => ({ id: d.id, ...d.data() } as CardDoc))
+      .sort((a, b) => (b.addedAt?.seconds ?? 0) - (a.addedAt?.seconds ?? 0));
+  }
 });
 
 /** Leert den `cards`-Cache — nach JEDER Mutation an `cards` aufzurufen (A3). */
