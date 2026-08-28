@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
-import { Plus, Minus, Pencil, Check, AlertTriangle, Layers } from 'lucide-react';
+import { Plus, Minus, Pencil, Check, AlertTriangle, Layers, MoreVertical } from 'lucide-react';
 import { getDeck, setDeckCardCount, addCardToDeck } from '@/lib/firestore/decks';
+import { getAllSets } from '@/lib/firestore/sets';
 import { syncDeckWishlists } from '@/lib/decks/sync';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { getCards } from '@/lib/firestore/cards';
@@ -16,8 +17,10 @@ import { CreateDeckModal } from '@/components/deck/CreateDeckModal';
 import { DeckCardSearchSheet } from '@/components/deck/DeckCardSearchSheet';
 import { DeckStats } from '@/components/deck/DeckStats';
 import { TestHandSheet } from '@/components/deck/TestHandSheet';
+import { DeckCodeSheet } from '@/components/deck/DeckCodeSheet';
 import { Button } from '@/components/ui/button';
-import { formatEUR } from '@/lib/format';
+import { Menu } from '@/components/ui/menu';
+import { formatCardNumber, formatEUR } from '@/lib/format';
 import type { DeckDoc, DeckCardRef, CardDoc } from '@/types';
 
 const FORMAT_LABEL: Record<string, string> = { standard: 'Standard', expanded: 'Expanded', unlimited: 'Unlimited' };
@@ -38,6 +41,8 @@ export default function DeckEditorPage() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [testHandOpen, setTestHandOpen] = useState(false);
+  const [codeSheet, setCodeSheet] = useState<null | 'export' | 'import'>(null);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   const loadDeck = async () => {
     try {
@@ -83,6 +88,57 @@ export default function DeckEditorPage() {
     syncDemand();
   };
 
+  // PTCGL-Import: aufgelöste Karten mit ihrer Anzahl ins Deck übernehmen (merge).
+  const importResolved = async (resolved: { card: CatalogCard; count: number }[]) => {
+    if (!deck) return;
+    for (const r of resolved) await addCardToDeck(deck.id, catalogCardToInfo(r.card), r.count);
+    await loadDeck();
+    syncDemand();
+  };
+
+  const exportPdf = async () => {
+    if (!deck || exportingPdf) return;
+    setExportingPdf(true);
+    try {
+      // Deutsche Set-Namen + gedruckte Nummer frisch auflösen (wie im Wunschlisten-PDF).
+      const allSets = await getAllSets();
+      const setById = new Map(allSets.map(s => [s.id, s]));
+      const sections = CATEGORIES.map(cat => {
+        const rows = deck.cards
+          .filter(c => (byId.get(c.catalogId)?.supertype ?? c.supertype) === cat.key)
+          .sort((a, b) => a.name.localeCompare(b.name, 'de'))
+          .map(ref => {
+            const c = byId.get(ref.catalogId);
+            const own = demand?.perCard.get(ref.catalogId);
+            const sid = c?.setId ?? ref.setId;
+            const s = setById.get(sid);
+            const total = s?.printedTotal;
+            return {
+              count: ref.count,
+              name: c?.nameDe ?? c?.name ?? ref.name,
+              setName: s?.nameDe ?? s?.name ?? sid,
+              number: formatCardNumber(c?.number ?? ref.number, total),
+              owned: own?.isBasicEnergy ? 'Basis-Energie' : own ? `${own.owned}/${own.need}` : '',
+              price: (c?.priceEur ?? 0) > 0 ? formatEUR((c!.priceEur ?? 0) * ref.count) : '',
+            };
+          });
+        const catTotal = rows.reduce((s, r) => s + r.count, 0);
+        return { title: `${cat.label} · ${catTotal}`, rows };
+      }).filter(sec => sec.rows.length > 0);
+
+      const total = deck.cards.reduce((s, c) => s + c.count, 0);
+      const subtitle = `${FORMAT_LABEL[deck.format] ?? deck.format} · ${total}/60 · ${formatEUR(valueEur)}`;
+      const dateStr = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' });
+
+      const { downloadDeckPdf } = await import('@/components/deck/deck-pdf');
+      await downloadDeckPdf({ title: deck.name, subtitle, dateStr, sections });
+    } catch (e) {
+      console.error('[deck] PDF export error', e);
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex justify-center pt-16"><div className="w-8 h-8 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" /></div>;
   }
@@ -102,6 +158,17 @@ export default function DeckEditorPage() {
           <p className="text-role-label text-muted-foreground">{FORMAT_LABEL[deck.format] ?? deck.format} · {formatEUR(valueEur)}</p>
         </div>
         <Button variant="ghost" onClick={() => setEditOpen(true)} icon={<Pencil size={18} />} aria-label="Deck bearbeiten" className="shrink-0" />
+        <Menu
+          portal
+          trigger={(open, toggle) => (
+            <Button variant="ghost" onClick={toggle} icon={<MoreVertical size={18} />} aria-label="Mehr" aria-expanded={open} className="shrink-0" />
+          )}
+          items={[
+            { label: 'Als Code exportieren', onClick: () => setCodeSheet('export') },
+            { label: 'Code importieren', onClick: () => setCodeSheet('import') },
+            { label: exportingPdf ? 'PDF wird erstellt …' : 'Als PDF', onClick: exportPdf, disabled: exportingPdf || deck.cards.length === 0 },
+          ]}
+        />
       </div>
 
       {/* Live-Regel-Leiste */}
@@ -182,6 +249,14 @@ export default function DeckEditorPage() {
         <CreateDeckModal existing={deck} onClose={() => setEditOpen(false)} onSaved={loadDeck} />
       )}
       <TestHandSheet open={testHandOpen} onClose={() => setTestHandOpen(false)} cards={deck.cards} byId={byId} />
+      <DeckCodeSheet
+        open={codeSheet !== null}
+        onClose={() => setCodeSheet(null)}
+        mode={codeSheet ?? 'export'}
+        cards={deck.cards}
+        byId={byId}
+        onImport={importResolved}
+      />
     </div>
   );
 }
