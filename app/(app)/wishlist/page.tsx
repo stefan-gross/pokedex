@@ -9,8 +9,9 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { getWishlists, deleteWishlist, reorderWishlists, pruneOrphanTemplateWishlists } from '@/lib/firestore/wishlists';
+import { getWishlists, deleteWishlist, reorderWishlists, pruneOrphanTemplateWishlists, pruneOrphanDeckWishlists } from '@/lib/firestore/wishlists';
 import { getBinders } from '@/lib/firestore/binders';
+import { getDecks } from '@/lib/firestore/decks';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { LegendButton } from '@/components/ui/LegendButton';
 import { Button } from '@/components/ui/button';
@@ -20,7 +21,11 @@ import { AutomaticCornerBadge } from '@/components/binder/CollectionTypeBadge';
 import { CreateWishlistModal } from '@/components/wishlist/CreateWishlistModal';
 import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
 import { readableTextColor } from '@/lib/color-utils';
-import type { WishlistDoc, BinderDoc } from '@/types';
+import type { WishlistDoc, BinderDoc, DeckDoc } from '@/types';
+
+/** Eine Wunschliste ist automatisch (gesperrt, geerbte Anzeige), wenn sie an
+ *  eine Vorlagen-Sammlung ODER an ein Deck gekoppelt ist. */
+const isAutoList = (l: WishlistDoc) => !!(l.templateBinderId || l.deckId);
 
 /** Übersicht aller Wunschlisten — analog zur Sammlungsübersicht
  *  (app/(app)/binders/page.tsx): manuelle Listen zuerst (per DnD sortierbar,
@@ -29,6 +34,7 @@ import type { WishlistDoc, BinderDoc } from '@/types';
 export default function WishlistOverviewPage() {
   const [lists, setLists] = useState<WishlistDoc[]>([]);
   const [binders, setBinders] = useState<BinderDoc[]>([]);
+  const [decks, setDecks] = useState<DeckDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -37,13 +43,15 @@ export default function WishlistOverviewPage() {
   const load = useCallback(async () => {
     setError(false);
     try {
-      const [wl, bs] = await Promise.all([getWishlists(), getBinders()]);
-      // Verwaiste Auto-Wunschlisten (Vorlagen-Sammlung gelöscht/umbenannt)
+      const [wl, bs, ds] = await Promise.all([getWishlists(), getBinders(), getDecks()]);
+      // Verwaiste Auto-Wunschlisten (Vorlagen-Sammlung/Deck gelöscht/umbenannt)
       // hier aufräumen — die Übersicht ist die Stelle, an der sie sichtbar
-      // würden, und hat beide Datensätze bereits geladen (keine Race).
-      const pruned = await pruneOrphanTemplateWishlists(wl, bs);
+      // würden, und hat alle Datensätze bereits geladen (keine Race).
+      const pruned1 = await pruneOrphanTemplateWishlists(wl, bs);
+      const pruned = await pruneOrphanDeckWishlists(pruned1, ds);
       setLists(pruned);
       setBinders(bs);
+      setDecks(ds);
     } catch (e) {
       console.error('[wishlist] load error', e);
       setError(true);
@@ -55,13 +63,18 @@ export default function WishlistOverviewPage() {
   // (templateBinderId) — Anzeige daher live aus dem Binder ableiten, nicht aus
   // ggf. veralteten Wunschlisten-Feldern.
   const binderById = useMemo(() => new Map(binders.map(b => [b.id, b])), [binders]);
+  const deckById = useMemo(() => new Map(decks.map(d => [d.id, d])), [decks]);
   const displayMeta = useCallback((list: WishlistDoc): { name: string; icon?: string; color?: string } => {
     if (list.templateBinderId) {
       const b = binderById.get(list.templateBinderId);
       if (b) return { name: b.name, icon: b.icon, color: b.color };
     }
+    if (list.deckId) {
+      const d = deckById.get(list.deckId);
+      if (d) return { name: d.name, icon: d.icon, color: d.color };
+    }
     return { name: list.name, icon: list.icon, color: list.color };
-  }, [binderById]);
+  }, [binderById, deckById]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -72,13 +85,14 @@ export default function WishlistOverviewPage() {
     if (!over || active.id === over.id) return;
     const byId = new Map(lists.map(l => [l.id, l]));
     // Automatische Listen sind nicht sortierbar.
-    if (byId.get(String(active.id))?.templateBinderId || byId.get(String(over.id))?.templateBinderId) return;
-    const manual = lists.filter(l => !l.templateBinderId);
+    const a = byId.get(String(active.id)); const o = byId.get(String(over.id));
+    if ((a && isAutoList(a)) || (o && isAutoList(o))) return;
+    const manual = lists.filter(l => !isAutoList(l));
     const from = manual.findIndex(l => l.id === active.id);
     const to = manual.findIndex(l => l.id === over.id);
     if (from < 0 || to < 0) return;
     const reordered = arrayMove(manual, from, to);
-    const auto = lists.filter(l => !!l.templateBinderId);
+    const auto = lists.filter(l => isAutoList(l));
     setLists([...reordered, ...auto]);   // optimistisch
     reorderWishlists(reordered.map(l => l.id)).catch(err => {
       console.error('[wishlists] reorder error', err);
@@ -87,7 +101,7 @@ export default function WishlistOverviewPage() {
   };
 
   const handleDelete = async (list: WishlistDoc) => {
-    if (list.templateBinderId) return;   // automatische Listen sind gesperrt
+    if (isAutoList(list)) return;   // automatische Listen sind gesperrt
     if (list.items.length > 0 && !confirm(`Wunschliste „${list.name}" mit ${list.items.length} Karte(n) löschen?`)) return;
     await deleteWishlist(list.id);
     load();
@@ -174,7 +188,7 @@ function SortableWishlistTile({ list, meta, editMode, onDelete }: {
   editMode: boolean;
   onDelete: () => void;
 }) {
-  const isTemplate = !!list.templateBinderId;
+  const isTemplate = isAutoList(list);
   const count = list.items.length;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: list.id,

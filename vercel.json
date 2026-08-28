@@ -13,6 +13,10 @@
     {
       "path": "/api/cron/refresh-prices",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/sync-decks",
+      "schedule": "30 4 * * *"
     }
   ]
 }

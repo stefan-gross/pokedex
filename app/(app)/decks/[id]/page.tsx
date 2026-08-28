@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { Plus, Minus, Pencil, Check, AlertTriangle } from 'lucide-react';
 import { getDeck, setDeckCardCount, addCardToDeck } from '@/lib/firestore/decks';
+import { syncDeckWishlists } from '@/lib/decks/sync';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { getCards } from '@/lib/firestore/cards';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
@@ -56,6 +57,12 @@ export default function DeckEditorPage() {
   useEffect(() => { loadDeck(); /* eslint-disable-next-line */ }, [id]);
   useEffect(() => { getCards().then(setOwned).catch(() => {}); }, []);
 
+  // Bedarfs-Wunschliste des Decks im Hintergrund synchron halten: einmal beim
+  // Öffnen (falls sich Besitz/Katalog seit dem letzten Mal geändert hat) und
+  // nach jeder Rezept-Mutation. Fire-and-forget — hält die UI schnell.
+  const syncDemand = () => { syncDeckWishlists({ deckIds: [id] }).catch(e => console.error('[deck] demand sync', e)); };
+  useEffect(() => { syncDemand(); /* eslint-disable-next-line */ }, [id]);
+
   const validation = useMemo(() => deck ? validateDeck(deck.cards, byId, deck.format) : null, [deck, byId]);
   const demand: DeckDemand | null = useMemo(() => deck ? computeDeckDemand(deck.cards, byId, owned) : null, [deck, byId, owned]);
   const stats = useMemo(() => deck ? computeDeckStats(deck.cards, byId) : null, [deck, byId]);
@@ -64,12 +71,14 @@ export default function DeckEditorPage() {
   const changeCount = async (catalogId: string, count: number) => {
     if (!deck) return;
     await setDeckCardCount(deck.id, catalogId, count);
-    loadDeck();
+    await loadDeck();
+    syncDemand();
   };
   const addCard = async (card: CardInfo) => {
     if (!deck) return;
     await addCardToDeck(deck.id, card, 1);
-    loadDeck();
+    await loadDeck();
+    syncDemand();
   };
 
   if (loading) {

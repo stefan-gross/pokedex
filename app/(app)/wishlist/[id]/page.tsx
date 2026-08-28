@@ -16,6 +16,7 @@ import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog'
 import { getCardsByTcgId, getCards } from '@/lib/firestore/cards';
 import { getAllSets } from '@/lib/firestore/sets';
 import { getBinder } from '@/lib/firestore/binders';
+import { getDeck } from '@/lib/firestore/decks';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { glassIconColors } from '@/lib/color-utils';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
@@ -93,6 +94,8 @@ export default function WishlistDetailPage({ params }: Props) {
   // Zugehörige Vorlagen-Sammlung (nur bei Auto-Listen) — Name/Icon/Farbe werden
   // von ihr geerbt (Auto-Listen sind nicht selbst anpassbar).
   const [binder, setBinder] = useState<BinderDoc | null>(null);
+  // Zugehöriges Deck (nur bei Deck-Bedarfslisten) — Name/Icon/Farbe geerbt.
+  const [deck, setDeck] = useState<{ name: string; icon?: string; color?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
   const [detailOwned, setDetailOwned] = useState<CardDoc[]>([]);
@@ -117,6 +120,7 @@ export default function WishlistDetailPage({ params }: Props) {
       if (!wl) { router.push('/wishlist'); return; }
       setList(wl);
       setBinder(wl.templateBinderId ? await getBinder(wl.templateBinderId) : null);
+      setDeck(wl.deckId ? await getDeck(wl.deckId) : null);
     } catch (e) {
       console.error('[wishlist] load error', e);
       setError(true);
@@ -130,18 +134,20 @@ export default function WishlistDetailPage({ params }: Props) {
   // Löscht die (manuelle) Wunschliste komplett — Rückfrage bei nicht-leerer
   // Liste (gleiches Muster wie die Übersicht), danach zurück zur Übersicht.
   const handleDeleteList = async () => {
-    if (!list || list.templateBinderId) return;
+    if (!list || list.templateBinderId || list.deckId) return;
     if (list.items.length > 0 &&
         !confirm(`Wunschliste „${list.name}" mit ${list.items.length} Karte(n) löschen?`)) return;
     await deleteWishlist(list.id);
     router.push('/wishlist');
   };
 
-  const isTemplateList = !!list?.templateBinderId;
-  // Auto-Listen erben Name/Icon/Farbe von der Sammlung; manuelle nutzen ihre eigenen.
-  const displayName  = (isTemplateList ? binder?.name : list?.name) ?? list?.name ?? '';
-  const displayIcon  = isTemplateList ? binder?.icon : list?.icon;
-  const displayColor = isTemplateList ? binder?.color : list?.color;
+  // Auto-Liste = an Vorlagen-Sammlung ODER Deck gekoppelt (read-only, geerbte
+  // Anzeige). Quelle je nachdem der Binder oder das Deck.
+  const isTemplateList = !!(list?.templateBinderId || list?.deckId);
+  const autoSource = list?.templateBinderId ? binder : list?.deckId ? deck : null;
+  const displayName  = (isTemplateList ? autoSource?.name : list?.name) ?? list?.name ?? '';
+  const displayIcon  = isTemplateList ? autoSource?.icon : list?.icon;
+  const displayColor = isTemplateList ? autoSource?.color : list?.color;
   const items = list?.items ?? [];
   const withTcgId = items.filter(i => i.tcgId);
   const freeText  = items.filter(i => !i.tcgId);

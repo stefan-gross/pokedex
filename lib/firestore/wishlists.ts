@@ -25,8 +25,8 @@ const wishlistsCache = createUidCache<WishlistDoc[]>(async uid => {
   // sortOrder ginge nicht (Firestore würde Docs ohne das Feld ausschließen),
   // daher clientseitig sortiert.
   return lists.sort((a, b) => {
-    const at = a.templateBinderId ? 1 : 0;
-    const bt = b.templateBinderId ? 1 : 0;
+    const at = (a.templateBinderId || a.deckId) ? 1 : 0;
+    const bt = (b.templateBinderId || b.deckId) ? 1 : 0;
     if (at !== bt) return at - bt;
     const as = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
     const bs = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
@@ -75,7 +75,7 @@ export async function addWishlist(
  *  falls die zufällig neuer/zuerst in der Sortierung ist. */
 export async function ensureDefaultWishlist(): Promise<WishlistDoc> {
   const lists = await getWishlists();
-  const free = lists.find(l => !l.templateBinderId);
+  const free = lists.find(l => !l.templateBinderId && !l.deckId);
   if (free) return free;
   const id = await addWishlist('Wunschliste');
   return { id, name: 'Wunschliste', description: '', items: [], createdAt: Timestamp.now() };
@@ -101,6 +101,38 @@ export async function deleteWishlistsForBinder(binderId: string, known?: Wishlis
     if (w.templateBinderId === binderId) await deleteDoc(doc(db, COL, w.id));
   }
   invalidateWishlistsCache();
+}
+
+/** Löscht die automatische Wunschliste, die an ein bestimmtes Deck gekoppelt
+ *  ist — aufgerufen beim Löschen des Decks (`deleteDeckCascade`), analog zu
+ *  `deleteWishlistsForBinder`. */
+export async function deleteWishlistsForDeck(deckId: string, known?: WishlistDoc[]): Promise<void> {
+  const lists = known ?? await getWishlists();
+  for (const w of lists) {
+    if (w.deckId === deckId) await deleteDoc(doc(db, COL, w.id));
+  }
+  invalidateWishlistsCache();
+}
+
+/** Räumt verwaiste Deck-Wunschlisten auf: `deckId`-Listen, deren Deck nicht mehr
+ *  existiert. Erwartet bereits geladene Listen + Decks (kein Read, keine Race);
+ *  gibt die überlebenden Listen zurück. Spiegel von `pruneOrphanTemplateWishlists`. */
+export async function pruneOrphanDeckWishlists(
+  lists: WishlistDoc[],
+  decks: { id: string }[],
+): Promise<WishlistDoc[]> {
+  // Wie bei den Vorlagen: nie anhand einer leeren Deck-Liste löschen (Auth-Race).
+  if (decks.length === 0) return lists;
+  const deckIds = new Set(decks.map(d => d.id));
+  const orphans = lists.filter(l => l.deckId && !deckIds.has(l.deckId));
+  for (const o of orphans) {
+    try { await deleteDoc(doc(db, COL, o.id)); }
+    catch (e) { console.error('[wishlists] prune deck orphan error', o.id, e); }
+  }
+  if (orphans.length === 0) return lists;
+  invalidateWishlistsCache();
+  const removed = new Set(orphans.map(o => o.id));
+  return lists.filter(l => !removed.has(l.id));
 }
 
 /** Räumt verwaiste automatische Wunschlisten auf: solche mit `templateBinderId`,

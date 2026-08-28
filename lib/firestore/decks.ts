@@ -5,6 +5,7 @@ import {
 import { db, currentUid, waitForUid } from '../firebase/client';
 import { createUidCache } from './uid-cache';
 import { getDecksRest } from './decks-rest';
+import { deleteWishlistsForDeck } from './wishlists';
 import type { DeckDoc, DeckCardRef } from '@/types';
 import type { CardInfo } from '../card-info';
 
@@ -57,8 +58,15 @@ export async function updateDeck(id: string, data: Partial<DeckDoc>): Promise<vo
 export async function deleteDeck(id: string): Promise<void> {
   await deleteDoc(doc(db, COL, id));
   invalidateDecksCache();
-  // Hinweis: die gekoppelte Auto-Wunschliste (WishlistDoc.deckId) wird in Phase D4
-  // per deleteDeckCascade/deleteWishlistsForDeck mit entfernt — hier noch nicht.
+}
+
+/** Löscht das Deck UND seine gekoppelte automatische Wunschliste
+ *  (WishlistDoc.deckId) — analog zu `deleteBinderCascade`. Aus der Overview
+ *  aufzurufen, damit keine verwaiste Bedarfsliste zurückbleibt. */
+export async function deleteDeckCascade(id: string): Promise<void> {
+  await deleteWishlistsForDeck(id);
+  await deleteDoc(doc(db, COL, id));
+  invalidateDecksCache();
 }
 
 export async function reorderDecks(orderedIds: string[]): Promise<void> {

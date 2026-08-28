@@ -9,7 +9,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { getDecks, deleteDeck, reorderDecks } from '@/lib/firestore/decks';
+import { getDecks, deleteDeckCascade, reorderDecks } from '@/lib/firestore/decks';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { computeDeckStats } from '@/lib/decks/stats';
 import { CreateDeckModal } from '@/components/deck/CreateDeckModal';
@@ -65,7 +65,7 @@ export default function DecksPage() {
 
   const handleDelete = async (deck: DeckDoc) => {
     if (!confirm(`Deck „${deck.name}" löschen?`)) return;
-    await deleteDeck(deck.id);
+    await deleteDeckCascade(deck.id);
     load();
   };
 
