@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
-import { Plus, Minus, Pencil, Check, AlertTriangle } from 'lucide-react';
+import { Plus, Minus, Pencil, Check, AlertTriangle, Layers } from 'lucide-react';
 import { getDeck, setDeckCardCount, addCardToDeck } from '@/lib/firestore/decks';
 import { syncDeckWishlists } from '@/lib/decks/sync';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
@@ -15,6 +15,7 @@ import { CardImage } from '@/components/card/CardImage';
 import { CreateDeckModal } from '@/components/deck/CreateDeckModal';
 import { DeckCardSearchSheet } from '@/components/deck/DeckCardSearchSheet';
 import { DeckStats } from '@/components/deck/DeckStats';
+import { TestHandSheet } from '@/components/deck/TestHandSheet';
 import { Button } from '@/components/ui/button';
 import { formatEUR } from '@/lib/format';
 import type { DeckDoc, DeckCardRef, CardDoc } from '@/types';
@@ -36,6 +37,7 @@ export default function DeckEditorPage() {
   const [loading, setLoading] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [testHandOpen, setTestHandOpen] = useState(false);
 
   const loadDeck = async () => {
     try {
@@ -126,6 +128,13 @@ export default function DeckEditorPage() {
       {/* Statistik (einklappbar) */}
       {stats && deck.cards.length > 0 && <DeckStats stats={stats} />}
 
+      {/* Testhand */}
+      {deck.cards.length > 0 && (
+        <Button variant="secondary" size="lg" onClick={() => setTestHandOpen(true)} icon={<Layers size={18} />} className="w-full mb-4">
+          Testhand ziehen
+        </Button>
+      )}
+
       {/* Kategorie-Sektionen */}
       {deck.cards.length === 0 ? (
         <div className="text-center text-muted-foreground py-12">
@@ -172,6 +181,7 @@ export default function DeckEditorPage() {
       {editOpen && (
         <CreateDeckModal existing={deck} onClose={() => setEditOpen(false)} onSaved={loadDeck} />
       )}
+      <TestHandSheet open={testHandOpen} onClose={() => setTestHandOpen(false)} cards={deck.cards} byId={byId} />
     </div>
   );
 }

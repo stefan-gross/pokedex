@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Heart, ChevronDown, ChevronRight, ChevronLeft, Info, Repeat2, LayoutGrid, Trash2, Check } from 'lucide-react';
+import { X, Plus, Heart, ChevronDown, ChevronRight, ChevronLeft, Info, Repeat2, LayoutGrid, Trash2, Check, Layers } from 'lucide-react';
 import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/modal';
@@ -19,6 +19,7 @@ import { syncTemplateBinders } from '@/lib/template-binders/sync';
 import { getWishlists } from '@/lib/firestore/wishlists';
 import { useWishlist } from '@/lib/hooks/use-wishlist';
 import { WishlistPickerSheet } from '@/components/wishlist/WishlistPickerSheet';
+import { DeckPickerSheet } from '@/components/deck/DeckPickerSheet';
 import { WishlistHeart } from '@/components/card/Card';
 import { getCardsByEvolutionFamily, getCardsByDexNumber } from '@/lib/firestore/catalog';
 import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
@@ -415,6 +416,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   const { manualLists, memberManualListIds, autoListsFor, manualIds, autoIds, toggleOnList } = useWishlist();
   const wlGradId = useId();
   const [wishlistOpen, setWishlistOpen] = useState(false);
+  const [deckPickerOpen, setDeckPickerOpen] = useState(false);
   const [sortingBinderId, setSortingBinderId] = useState<string | null>(null);
 
   // Besessene Exemplare synchron zur angezeigten Karte halten: Initial-Karte →
@@ -1177,6 +1179,19 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
             >
               Wunschlisten
             </Button>
+
+            {/* Zu Deck hinzufügen — öffnet den Deck-Auswahl-Drawer (Anzahl je
+                Deck via Stepper). Fehlende Karten landen automatisch als Bedarf
+                in der Deck-Wunschliste (D4). */}
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => setDeckPickerOpen(true)}
+              icon={<Layers size={19} />}
+              className="w-full"
+            >
+              Zu Deck hinzufügen
+            </Button>
           </div>
 
           {card && (
@@ -1188,6 +1203,14 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
               autoLists={autoListsFor(card.id)}
               onToggle={(listId) => toggleOnList(card, listId)}
               onCreated={(id) => toggleOnList(card, id)}
+            />
+          )}
+
+          {card && (
+            <DeckPickerSheet
+              open={deckPickerOpen}
+              onClose={() => setDeckPickerOpen(false)}
+              card={card}
             />
           )}
       </Sheet>
