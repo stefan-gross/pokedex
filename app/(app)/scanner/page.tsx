@@ -2348,16 +2348,18 @@ export default function ScannerPage() {
         );
       })()}
 
-      {/* ── Erkennen-Modus: Fehler-Anzeige mit differenzierter Diagnose ────
-          Drei Fälle:
-          - Gemini sah keine Karte (error="No card detected")
-          - Gemini erkannte zu wenig (kein setCode + number + nationalDexNumber)
-          - Catalog-Miss (Gemini-Werte ok, aber kein DB-Treffer)
-          Debug-Box zeigt die strukturierten Gemini-Felder. */}
+      {/* ── Erkennen-Modus: „Keine Karte im Bild" (gemini-blind) ───────────
+          Nur DIESER Fall zeigt die gezeichnete Enigmon-Fehlerkarte — hier gibt
+          es nichts zu korrigieren (Gemini sah gar keine Karte). Alle anderen
+          nicht-erkannt-Fälle (nicht vollständig erkannt / Katalog-Miss / Nicht-
+          Western) laufen über RecognizedCardLarge (unresolved) mit Korrigieren-
+          Flow — siehe Block darunter. */}
       {mode === 'scanning' && scanMode === 'recognize' && !recognizedJobId && (() => {
         const errored = jobs.find(j => j.origin === 'recognize' && j.status === 'error');
         if (!errored) return null;
-        const { Icon: HeaderIcon, iconColor, cardName, attackTitle, attackText } = classifyJobError(errored);
+        const ec = classifyJobError(errored);
+        if (ec.kind !== 'gemini-blind') return null;   // korrigierbare Fälle: siehe unten
+        const { Icon: HeaderIcon, iconColor, cardName, attackTitle, attackText } = ec;
         // Normal-Typ-Farbe (Hauptspiel-Normal-Typ-Ton), für eine authentisch
         // wirkende Karte statt der früheren rot eingefärbten Glitch-Optik.
         const normalDark = '#6f6d4e';
@@ -2473,6 +2475,45 @@ export default function ScannerPage() {
               <Flag size={16} /> Richtige Karte wählen
             </button>
           </div>
+        );
+      })()}
+
+      {/* ── Erkennen-Modus: NICHT (vollständig) erkannt → gleiche Ansicht wie
+          eine erkannte Karte (Foto + gelesene Werte), aber mit deaktiviertem
+          „Hinzufügen" und prominentem „Korrigieren". Korrigieren öffnet den
+          ScanCorrectionPanel-Slider; die Auswahl macht daraus via submitReport
+          eine normale erkannte Karte (dann greift der Block darunter). Gilt für
+          alle korrigierbaren Fehler-Arten (nicht gemini-blind). */}
+      {mode === 'scanning' && scanMode === 'recognize' && !recognizedJobId && (() => {
+        const errored = jobs.find(j => j.origin === 'recognize' && j.status === 'error');
+        if (!errored) return null;
+        if (classifyJobError(errored).kind === 'gemini-blind') return null; // → Enigmon-Block oben
+        return (
+          <RecognizedCardLarge
+            key={errored.id}
+            job={errored}
+            onCardTap={() => { /* keine echte Karte → kein Detail */ }}
+            onSubmitReport={result => submitReport(errored, result)}
+            onPickNotInCatalog={pending => {
+              setJobs(prev => prev.map(j => j.id === errored.id && j.result
+                ? { ...j, status: 'done' as const, result: { ...j.result, card: pending }, editedVariant: 'standard' as CardVariant }
+                : j));
+              if (errored.origin === 'recognize') setRecognizedJobId(errored.id);
+              submitReport(errored, { reportType: 'not_in_catalog' });
+            }}
+            onPickCandidate={picked => {
+              setJobs(prev => prev.map(j => j.id === errored.id && j.result
+                ? { ...j, status: 'done' as const, result: { ...j.result, card: picked }, editedVariant: picked.variants?.[0] ?? 'standard' }
+                : j));
+              if (errored.origin === 'recognize') setRecognizedJobId(errored.id);
+              refreshOwnedCount(errored.id, picked.id);
+            }}
+            onSaved={() => {
+              markAdded(errored.id, { keepJob: true });
+              if (errored.result?.card) refreshOwnedCount(errored.id, errored.result.card.id);
+            }}
+            onManage={() => setQuickDeleteJobId(errored.id)}
+          />
         );
       })()}
 
@@ -3153,11 +3194,23 @@ function RecognizedCardLarge({
     };
   })();
   const card      = job.result?.card;
+  // „Noch nicht aufgelöst": Karte wurde nicht (sicher) erkannt (status 'error',
+  // result.card null) — trotzdem wie eine erkannte Karte anzeigen (Foto + soweit
+  // gelesene Werte) und über „Korrigieren" die richtige Karte wählen lassen.
+  const unresolved = !card;
+  // Anzeige-Karte: die echte erkannte Karte, sonst die aus dem Scan gebaute
+  // Pending-Karte (Name/Nummer soweit gelesen), sonst eine neutrale Unbekannt-
+  // Karte, damit die Ansicht + „Korrigieren" immer funktionieren.
+  const displayCard: CardInfo = card ?? pendingFromScan ?? {
+    id: `pending-${job.id}`, name: 'Nicht erkannt', number: '', setId: '',
+    setName: '?', imgSmall: '', imgLarge: '', pendingCatalog: true,
+  };
   // Bild-Kandidaten in Prioritätsreihenfolge — bei 404/Ladefehler eines
   // Kandidaten (z.B. fehlendes TCGdex-DE-Bild) probiert onError automatisch
   // den nächsten, bevor der Platzhalter gezeigt wird (siehe img-Rendering
-  // unten). Während des Scans (processing) gibt's nur das lokale Foto.
-  const imgCandidates = job.status === 'processing' && job.debug?.imageBase64
+  // unten). Während des Scans (processing) UND im unresolved-Fall (keine
+  // Katalog-Karte) gibt's nur das lokale Foto.
+  const imgCandidates = (job.status === 'processing' || unresolved) && job.debug?.imageBase64
     ? [`data:${job.debug.mimeType ?? 'image/jpeg'};base64,${job.debug.imageBase64}`]
     : cardImgUrlsLarge(job);
   const [imgIdx, setImgIdx] = useState(0);
@@ -3247,18 +3300,19 @@ function RecognizedCardLarge({
       ? '0 0 0 1.5px rgba(255,255,255,0.2), 0 8px 24px rgba(53,209,90,0.35)'
       : undefined;
 
-  const setCode  = card?.setCode ?? card?.setId?.toUpperCase();
-  const seriesDe = card?.series ? (SERIES_NAMES_DE[card.series] ?? card.series) : null;
+  const setCode  = displayCard.setCode ?? (displayCard.setId ? displayCard.setId.toUpperCase() : undefined);
+  const seriesDe = displayCard.series ? (SERIES_NAMES_DE[displayCard.series] ?? displayCard.series) : null;
   // Setnummer ("111/159") — direkt unter dem Namen, printedTotal aus tcg_sets
-  // (nicht aus dem Scan-Ergebnis, siehe useSetMeta).
-  const cardNumBase  = card ? card.number.split('/')[0].padStart(3, '0') : null;
+  // (nicht aus dem Scan-Ergebnis, siehe useSetMeta). Nur wenn eine Nummer vorliegt
+  // (im unresolved-Fall evtl. leer).
+  const cardNumBase  = displayCard.number ? displayCard.number.split('/')[0].padStart(3, '0') : null;
   const cardNumTotal = setMeta?.printedTotal ? String(setMeta.printedTotal).padStart(3, '0') : null;
-  const cardDex = card?.nationalDexNumber != null ? `#${String(card.nationalDexNumber).padStart(3, '0')}` : null;
+  const cardDex = displayCard.nationalDexNumber != null ? `#${String(displayCard.nationalDexNumber).padStart(3, '0')}` : null;
   const showLogo = !!setMeta?.logoUrl && !logoFailed;
   // Sets vor Scarlet & Violet tragen KEINEN echten Kürzel-Aufdruck auf der Karte —
   // nur ein grafisches Symbol. `setCode` ist dort nur ein internes pokemontcg.io-
   // Kürzel (z.B. "BS", "JU"), niemals als vermeintlicher Kartendruck anzeigen.
-  const isSymbolOnlySet = !!card?.series && SYMBOL_ONLY_SERIES.includes(card.series);
+  const isSymbolOnlySet = !!displayCard.series && SYMBOL_ONLY_SERIES.includes(displayCard.series);
   // sizeBasePx: die berechnete Kartenbreite (fittedSize, s.o.) — Basis für
   // Logo/Text-Größen darunter, damit die proportional mitskalieren.
   const sizeBasePx = fittedSize?.w ?? null;
@@ -3399,7 +3453,7 @@ function RecognizedCardLarge({
           identisch zur Dark-Variante der globalen .glass-Klasse — der Scanner
           liegt immer über dem (dunklen) Kamerabild. */}
       <div className="absolute inset-x-0 bottom-0 z-10 px-4 flex flex-col gap-3">
-      {card && (
+      {displayCard && (
         <div
           className="relative w-full flex flex-col items-start gap-2 px-4 py-4 rounded-[24px] glass-overlay"
           // Dunkle Basis (überschreibt die helle .glass-overlay-Tönung) mit
@@ -3461,7 +3515,7 @@ function RecognizedCardLarge({
             >
               {seriesDe && <span className="truncate max-w-full text-left font-bold">{seriesDe}</span>}
               <span className="truncate max-w-full text-left" style={{ fontSize: 'calc(1em - 1px)' }}>
-                {setMeta?.nameDe ?? card.setName}
+                {setMeta?.nameDe ?? displayCard.setName}
               </span>
             </div>
           </div>
@@ -3470,7 +3524,7 @@ function RecognizedCardLarge({
             className="text-white font-bold text-3xl truncate text-left max-w-full"
             style={{ textShadow: '0 2px 12px rgba(0,0,0,0.3)' }}
           >
-            <CardNameLabel card={card} secondaryClassName="text-[0.6em] font-semibold text-white/70" />
+            <CardNameLabel card={displayCard} secondaryClassName="text-[0.6em] font-semibold text-white/70" />
           </h2>
           {/* Nummer/Dex links, Preis rechts — eine Zeile, wie im Handoff-
               Referenzbild (design_handoff_scanner_glass, Info-Sheet). */}
@@ -3487,19 +3541,23 @@ function RecognizedCardLarge({
                 )}
               </div>
             )}
-            <CardPrice
-              tcgId={card.id}
-              plain
-              fontSize={44}
-              className="[text-shadow:0_2px_12px_rgba(0,0,0,.25)] ml-auto"
-            />
+            {/* Preis nur bei echter Katalog-Karte — nicht bei Pending/unresolved. */}
+            {card && (
+              <CardPrice
+                tcgId={card.id}
+                plain
+                fontSize={44}
+                className="[text-shadow:0_2px_12px_rgba(0,0,0,.25)] ml-auto"
+              />
+            )}
           </div>
 
           {/* Inline-Hinzufügen: vorbelegte Attribute + Ziel-Sammlung + breiter
               „Hinzufügen"-Button. Ersetzt den früheren +-Button im Footer und
               den AddToCollectionModal-Zwischenschritt für den Normalfall. */}
           <RecognizedAddBar
-            card={card}
+            card={displayCard}
+            unresolved={unresolved}
             preVariant={job.editedVariant ?? job.result?.variant}
             preCondition={job.editedCondition}
             preLanguage={job.result?.language}
@@ -3515,10 +3573,10 @@ function RecognizedCardLarge({
           {/* Korrektur-Panel (B2): gleitet über das Info-Sheet, das große
               Kartenbild dahinter bleibt fix. Auswahl korrigiert die Anzeige
               (via onSubmitReport → submitReport tauscht die Karte) + meldet still. */}
-          {card && (
+          {displayCard && (
             <ScanCorrectionPanel
               open={correcting}
-              card={card}
+              card={displayCard}
               candidates={job.result?.candidates}
               language={job.result?.language}
               pendingCard={pendingFromScan}

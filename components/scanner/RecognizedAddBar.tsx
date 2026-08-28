@@ -44,6 +44,11 @@ interface Props {
   onVariantChange?: (variant: CardVariant) => void;
   /** Öffnet das Korrektur-Panel (falsch erkannt → richtige Karte wählen). */
   onCorrectTap?: () => void;
+  /** „Noch nicht aufgelöst": die Karte wurde nicht (sicher) erkannt — es liegt
+   *  nur eine Platzhalter-/Scan-Karte vor. Dann sind Zustand/Variante/Sprache/
+   *  Sammlung + „Hinzufügen" deaktiviert (leer/sinnlos ohne echte Karte); der
+   *  Nutzer muss erst über „Korrigieren" die richtige Karte wählen. */
+  unresolved?: boolean;
 }
 
 /** Inline-Hinzufügen-Leiste unter der erkannten Karte (Einzelscan): Zustand,
@@ -56,7 +61,7 @@ interface Props {
  *  Sprache eindeutig. */
 export function RecognizedAddBar({
   card, preVariant, preCondition, preLanguage, ownedCount, onSaved, onManage,
-  regionStyle, regionRef, onVariantChange, onCorrectTap,
+  regionStyle, regionRef, onVariantChange, onCorrectTap, unresolved = false,
 }: Props) {
   const variantOptions: CardVariant[] =
     (card.variants && card.variants.length > 0 ? card.variants : ['standard']) as CardVariant[];
@@ -186,7 +191,10 @@ export function RecognizedAddBar({
       <div ref={regionRef} className="flex flex-col gap-2.5">
         <div className="h-px w-full bg-white/15" />
 
-        {/* Zustand · Variante · Sprache */}
+        {/* Zustand · Variante · Sprache · Sammlung — ohne (sicher) erkannte Karte
+            deaktiviert (leer/sinnlos), bis über „Korrigieren" eine echte Karte
+            gewählt wurde. */}
+        <div className={unresolved ? 'flex flex-col gap-2.5 opacity-40 pointer-events-none select-none' : 'contents'}>
         <div className="grid grid-cols-3 gap-2">
           <Field label="Zustand">
             <CustomSelect
@@ -242,6 +250,14 @@ export function RecognizedAddBar({
             <ChevronDown size={16} className="text-white/55 shrink-0" />
           </button>
         </Field>
+        </div>
+
+        {/* Hinweis, wenn noch keine echte Karte feststeht — führt zum Korrigieren. */}
+        {unresolved && (
+          <p className="text-[13px] leading-snug text-white/75 text-center px-2">
+            Karte nicht sicher erkannt — bitte über <span className="font-semibold text-white">Korrigieren</span> die richtige Karte wählen.
+          </p>
+        )}
 
         {/* Hinzufügen (breit) + Korrigieren (gelb, Icon-only). Der Korrektur-
             Button ersetzt den früheren Flag-Button oben rechts: falsch erkannt →
@@ -252,7 +268,7 @@ export function RecognizedAddBar({
             accentColor="#2f855a"
             size="lg"
             className="flex-1"
-            disabled={saving}
+            disabled={saving || unresolved}
             icon={justSaved ? <Check strokeWidth={3} /> : <Plus strokeWidth={3} />}
             onClick={save}
           >
@@ -261,15 +277,19 @@ export function RecognizedAddBar({
           {onCorrectTap && (
             // Getönte secondary: zurückhaltender gelber Tint (nicht die volle
             // CTA-Wucht des grünen „Hinzufügen"), Icon-Farbe theme-neutral.
+            // Im unresolved-Fall ist „Korrigieren" die eigentliche Aktion →
+            // breit mit Label statt Icon-only.
             <Button
               variant="secondary"
               accentColor="#f4c542"
               size="lg"
-              className="shrink-0"
+              className={unresolved ? 'flex-1' : 'shrink-0'}
               icon={<ArrowLeftRight strokeWidth={2.5} />}
               onClick={onCorrectTap}
               aria-label="Falsch erkannt? Richtige Karte wählen"
-            />
+            >
+              {unresolved ? 'Korrigieren' : undefined}
+            </Button>
           )}
         </div>
 
