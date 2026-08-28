@@ -34,7 +34,7 @@ export function PokemonWall({ className = '' }: { className?: string }) {
     <div className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`} aria-hidden>
       {/* Volle Breite füllend: 7 gleich breite Spalten (flex-1), jede zweite
           um eine halbe Kachel nach oben versetzt → Brick-/Wabenmuster. */}
-      <div className="absolute inset-x-0 -top-10 bottom-0 flex opacity-[0.7]">
+      <div className="absolute inset-x-0 -top-10 bottom-0 flex opacity-[0.7] dark:opacity-[0.9]">
         {columns.map((col, ci) => (
           <div
             key={ci}
@@ -48,7 +48,11 @@ export function PokemonWall({ className = '' }: { className?: string }) {
                 src={wallSprite(dex)}
                 alt=""
                 loading="lazy"
-                className="w-full aspect-square object-contain p-1.5 select-none"
+                // Im Dark Mode aufhellen + sättigen: ein schwarzer Scrim (unten)
+                // lässt die dunkel umrandeten Sprites sonst mit dem dunklen
+                // Hintergrund verschmelzen (anders als der weiße Light-Scrim, unter
+                // dem farbige Sprites als Pastell-Tint sichtbar bleiben).
+                className="w-full aspect-square object-contain p-1.5 select-none dark:brightness-[1.35] dark:saturate-[1.2]"
                 draggable={false}
               />
             ))}
@@ -69,7 +73,7 @@ export function PokemonWall({ className = '' }: { className?: string }) {
         className="absolute inset-0 hidden dark:block"
         style={{
           background:
-            'radial-gradient(95% 62% at 50% 46%, rgba(15,17,23,0.88) 0%, rgba(15,17,23,0.66) 42%, rgba(15,17,23,0.18) 100%)',
+            'radial-gradient(95% 62% at 50% 46%, rgba(15,17,23,0.80) 0%, rgba(15,17,23,0.55) 42%, rgba(15,17,23,0.12) 100%)',
         }}
       />
     </div>
