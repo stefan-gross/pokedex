@@ -28,6 +28,10 @@ service cloud.firestore {
       allow read, update, delete: if owns(resource);
       allow create: if createsOwn();
     }
+    match /decks/{id} {
+      allow read, update, delete: if owns(resource);
+      allow create: if createsOwn();
+    }
 
     // Scan-Telemetrie (Optimierung/Fehleranalyse): kompakte Events je Scan,
     // volle Fälle (mit Bild) bei Fehlern/Meldungen, sowie ein Live-Aggregat pro

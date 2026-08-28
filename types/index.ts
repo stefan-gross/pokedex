@@ -137,6 +137,10 @@ export interface WishlistDoc {
    *  `syncTemplateBinders()` verwaltet, nicht manuell entfernbar. Fehlt =
    *  normale/freie Wunschliste (heutiges Standardverhalten). */
   templateBinderId?: string;
+  /** Vorhanden = automatisch generierte Wunschliste eines Decks (fehlende
+   *  Deck-Karten, verwaltet von der Deck-Sync-Logik, nicht manuell entfernbar) —
+   *  Zwilling zu `templateBinderId`. Fehlt = normale/freie Wunschliste. */
+  deckId?: string;
   /** Nutzer-Reihenfolge der manuellen Listen (DnD in der Übersicht). Fehlt bei
    *  Altbestand/automatischen Listen → sortieren ans Ende. */
   sortOrder?: number;
@@ -147,6 +151,58 @@ export interface WishlistDoc {
   color?: string;
   createdAt: Timestamp;
   items: WishlistItem[];
+}
+
+// ── Decks (Deckverwaltung) ────────────────────────────────────────────────
+// Spielbare 60-Karten-TCG-Decks. Eigene Collection `decks` (NICHT binders —
+// Binder referenzieren physische cards-Docs mit Exklusivität; Decks referenzieren
+// Katalog-IDs rein referenziell, Mehrfachnutzung erlaubt). Siehe Feature-Plan
+// in .claude/plans/plan.md.
+
+export type DeckFormat = 'standard' | 'expanded' | 'unlimited';
+
+/** Ein Rezept-Eintrag: Referenz auf einen KONKRETEN Katalog-Druck + Anzahl.
+ *  Rein referenziell — keine Bindung an ein physisches Sammlungs-Exemplar,
+ *  dieselbe Karte darf in mehreren Decks stehen. */
+export interface DeckCardRef {
+  /** tcg_catalog Doc-ID, z.B. "sv04-125". */
+  catalogId: string;
+  /** Anzahl im Deck. Die Regel-Engine erzwingt die Obergrenzen (max. 4 gleiche
+   *  Karte per Name; Basis-Energie unbegrenzt) — das Schema selbst begrenzt nicht. */
+  count: number;
+  // Denormalisierte ANZEIGE-Felder (wie WishlistItem) — für Kategorien/Übersicht/
+  // PTCGL-Export und robust, falls ein Katalog-Doc verschwindet. Preis/Legalität
+  // werden bewusst NICHT eingefroren (Detail/Stats laden den Katalog frisch).
+  /** nameDe ?? name zum Zeitpunkt des Hinzufügens. */
+  name: string;
+  /** Set-ID (→ ptcgoCode via tcg_sets für PTCGL-Export) + Anzeige. */
+  setId: string;
+  number: string;
+  /** 'Pokémon' | 'Trainer' | 'Energy' — für Kategorie-Gruppierung + Statistik. */
+  supertype: string;
+}
+
+export interface DeckDoc {
+  id: string;
+  /** Firebase-uid des Besitzers (IDOR-Härtung, siehe CardDoc.ownerUid). */
+  ownerUid?: string;
+  name: string;
+  /** Notiz. */
+  description?: string;
+  /** Akzentfarbe (Hex), wie BinderDoc.color. */
+  color?: string;
+  /** Icon-String wie BinderDoc.icon (folder/box/`type:`/`set:`/`pokemon:`/Lucide),
+   *  gerendert über BinderIcon. */
+  icon?: string;
+  /** Optional: Katalog-ID einer Deckkarte, deren Artwork als Deck-Cover dient. */
+  coverCardId?: string;
+  format: DeckFormat;
+  /** Das Rezept: konkrete Katalog-Drucke + Anzahl. */
+  cards: DeckCardRef[];
+  /** Nutzer-Reihenfolge in der Übersicht (DnD), wie binders/wishlists. */
+  sortOrder?: number;
+  createdAt: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 export interface PriceHistoryDoc {
