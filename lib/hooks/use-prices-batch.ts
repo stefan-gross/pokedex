@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { fetchPricesCache, fetchPricesRefresh, chunkIds } from '@/lib/prices/fetch-batch';
 import type { PriceResult } from '@/lib/prices/types';
 
@@ -19,7 +19,9 @@ export interface UsePricesBatchState {
 const CHUNK_SIZE = 12;
 
 export function usePricesBatch(tcgIds: string[]): UsePricesBatchState {
-  const key = [...tcgIds].sort().join(',');
+  // Stabiler Inhalts-Key (sortierte IDs) — memoisiert, damit die O(n log n)-
+  // Sortierung nicht bei jedem Render läuft (analog use-catalog-info-map).
+  const key = useMemo(() => [...tcgIds].sort().join(','), [tcgIds]);
   const [state, setState] = useState<UsePricesBatchState>({ prices: new Map(), loading: tcgIds.length > 0 });
 
   useEffect(() => {

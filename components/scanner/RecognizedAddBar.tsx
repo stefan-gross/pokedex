@@ -73,6 +73,12 @@ export function RecognizedAddBar({
   const [binders, setBinders] = useState<BinderDoc[]>([]);
   const [targetId, setTargetId] = useState<string | null>(null);
   const [recommended, setRecommended] = useState<BinderDoc[]>([]);
+  // Ergebnis der TEUREN Pokédex-Auflösung (Slots + ganze Sammlung laden) —
+  // hängt nur an Karte/Bindern, NICHT an der Variante. Der Varianten-Wechsel
+  // rechnet daraus nur noch den billigen Rang-Vergleich (kein Netz).
+  const [pokedexCtx, setPokedexCtx] = useState<
+    { others: BinderDoc[]; pokedex: BinderDoc[]; winnerVariant: CardVariant | null } | null
+  >(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const [saving, setSaving] = useState(false);
@@ -117,12 +123,17 @@ export function RecognizedAddBar({
   // pro Dex-Nummer nur EINE (beste) Karte; sie werden daher nur empfohlen, wenn
   // der Slot noch leer ist (Pokémon fehlt) ODER die gewählte Variante besser
   // (höher priorisiert = wertiger) ist als die aktuell einsortierte.
+  // Teure Auflösung: passende Vorlagen bestimmen; für Pokédex-Sammlungen Slots
+  // + gesamte Sammlung laden und den aktuell einsortierten „Gewinner" ermitteln.
+  // Läuft NUR bei Karten-/Binder-Wechsel — nicht bei jeder Varianten-Auswahl
+  // (sonst pro Dropdown-Umschalten ein voller getCards()-REST-Read).
   useEffect(() => {
     let cancelled = false;
     const matched = matchTemplateBinders(card, binders.filter(b => b.template));
     const others  = matched.filter(b => b.template?.type !== 'pokedex');
     const pokedex = matched.filter(b => b.template?.type === 'pokedex');
     if (pokedex.length === 0 || card.nationalDexNumber == null) {
+      setPokedexCtx(null);
       setRecommended(others);
       return;
     }
@@ -134,18 +145,26 @@ export function RecognizedAddBar({
         ]);
         const [res] = resolveSlotWinners(slots, owned, { languageAware: true });
         const winner = res?.winnerCardId ? owned.find(c => c.id === res.winnerCardId) : null;
-        const rank = (v: CardVariant) => {
-          const i = VARIANT_PRIORITY.indexOf(v);
-          return i === -1 ? VARIANT_PRIORITY.length : i;
-        };
-        const improves = !winner || rank(variant) < rank(winner.variant);
-        if (!cancelled) setRecommended(improves ? [...others, ...pokedex] : others);
+        if (!cancelled) setPokedexCtx({ others, pokedex, winnerVariant: winner?.variant ?? null });
       } catch {
-        if (!cancelled) setRecommended(others); // im Zweifel Pokédex nicht empfehlen
+        if (!cancelled) { setPokedexCtx(null); setRecommended(others); } // im Zweifel Pokédex nicht empfehlen
       }
     })();
     return () => { cancelled = true; };
-  }, [binders, card, variant]);
+  }, [binders, card]);
+
+  // Billiger Rang-Vergleich bei Varianten-Wechsel (kein Netz): Pokédex-Sammlung
+  // nur empfehlen, wenn der Slot leer ist ODER die gewählte Variante wertiger
+  // (höher priorisiert) als die aktuell einsortierte ist.
+  useEffect(() => {
+    if (!pokedexCtx) return;
+    const rank = (v: CardVariant) => {
+      const i = VARIANT_PRIORITY.indexOf(v);
+      return i === -1 ? VARIANT_PRIORITY.length : i;
+    };
+    const improves = pokedexCtx.winnerVariant == null || rank(variant) < rank(pokedexCtx.winnerVariant);
+    setRecommended(improves ? [...pokedexCtx.others, ...pokedexCtx.pokedex] : pokedexCtx.others);
+  }, [variant, pokedexCtx]);
 
   const save = async () => {
     if (saving) return;

@@ -43,8 +43,18 @@ export default function AuthRefresh() {
 
     const unsubscribe = onIdTokenChanged(auth, (user) => { if (user) refreshSessionCookie() })
 
+    // Vordergrund-Refresh drosseln: jedes visibilitychange/focus-Event stieß
+    // sonst einen vollen /api/auth/login-POST an — bei schnellen Fokuswechseln
+    // (Desktop) dutzendfach redundant, obwohl der Cookie 1 h gilt. Max. alle
+    // 5 Min genügt: eine echte Rückkehr nach längerer Hintergrundzeit liegt
+    // immer darüber, kurze Tab-Wechsel darunter werden übersprungen.
+    let lastForegroundRefresh = 0
     const onForeground = () => {
-      if (document.visibilityState === 'visible') refreshSessionCookie()
+      if (document.visibilityState !== 'visible') return
+      const now = Date.now()
+      if (now - lastForegroundRefresh < 5 * 60_000) return
+      lastForegroundRefresh = now
+      refreshSessionCookie()
     }
     document.addEventListener('visibilitychange', onForeground)
     window.addEventListener('focus', onForeground)

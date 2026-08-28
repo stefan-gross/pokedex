@@ -243,8 +243,9 @@ function SetDetailContent() {
     });
   }
 
-  /* Filtered + sorted cards */
-  const displayed = useMemo(() => {
+  /* Gefilterte Karten (OHNE Sortierung) — hängt bewusst NICHT an `priceMap`,
+     damit die ~20 Preis-Chunk-Merges beim Öffnen keinen Re-Filter auslösen. */
+  const filtered = useMemo(() => {
     let result = [...cards];
     if (filter === 'owned')   result = result.filter(c => ownedTcgIds.has(c.id));
     if (filter === 'missing') result = result.filter(c => !ownedTcgIds.has(c.id));
@@ -256,14 +257,21 @@ function SetDetailContent() {
     result = filterCardsByQuery(result, search);
 
     if (rarityFilter.size > 0) {
-      result = result.filter(c => {
-        return rarityFilter.has(rarityLabelOf(c.rarity));
-      });
+      result = result.filter(c => rarityFilter.has(rarityLabelOf(c.rarity)));
     }
+    return result;
+  }, [cards, filter, search, rarityFilter, ownedTcgIds]);
 
+  /* Sortierte Anzeige. `priceMap`/`pricesLoading` sind NUR bei Preis-Sortierung
+     relevant (compareCardInfo nutzt sie nur dann) — deshalb nur dann als Dep,
+     sonst würde jeder Preis-Chunk-Merge einen vollen Re-Sort aller Set-Karten
+     auslösen, obwohl sich die Reihenfolge nicht ändert. */
+  const displayed = useMemo(() => {
+    const result = [...filtered];
     result.sort((a, b) => compareCardInfo(a, b, { field: sortField, dir: sortDir, priceMap, pricesLoading }));
     return result;
-  }, [cards, filter, search, sortField, sortDir, priceMap, pricesLoading, rarityFilter, ownedTcgIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, sortField, sortDir, sortField === 'price' ? priceMap : null, sortField === 'price' ? pricesLoading : false]);
 
   const ownedCount = useMemo(() => cards.filter(c => ownedTcgIds.has(c.id)).length, [cards, ownedTcgIds]);
   const totalCount = cards.length;

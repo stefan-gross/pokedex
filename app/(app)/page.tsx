@@ -98,33 +98,38 @@ export default function DashboardPage() {
     : null;
 
   // Recently added — last 6 cards with image (oder vorläufige Karten, die einen
-  // generierten Platzhalter zeigen).
-  const recentCards = cards
+  // generierten Platzhalter zeigen). Memoisiert (Sort über die ganze Sammlung) —
+  // sonst pro Render (jedes Detail-Öffnen/Set-View-Umschalten) neu berechnet.
+  const recentCards = useMemo(() => cards
     ? [...cards]
         .filter(c => c.tcgId || c.pendingCatalog)
         .sort((a, b) => (b.addedAt?.seconds ?? 0) - (a.addedAt?.seconds ?? 0))
         .slice(0, 6)
-    : [];
+    : [], [cards]);
 
   // Sets grouped by setId. `owned` = EINDEUTIGE Karten des Sets (Duplikate/
   // Varianten zählen als eine — Dedupe über tcgId, vorläufige über Doc-ID).
-  const setMap = new Map<string, SetEntry>();
-  const setUniq = new Map<string, Set<string>>();
-  (cards ?? []).forEach(c => {
-    const cur = setMap.get(c.setId) ?? { setId: c.setId, name: c.setName, owned: 0, total: null, latestAt: 0 };
-    const u = setUniq.get(c.setId) ?? new Set<string>();
-    u.add(c.tcgId ?? c.id);
-    setUniq.set(c.setId, u);
-    cur.owned     = u.size;
-    cur.latestAt  = Math.max(cur.latestAt, c.addedAt?.seconds ?? 0);
-    setMap.set(c.setId, cur);
-  });
-  // Karten ohne echte Set-Zuordnung (leere setId = vorläufige/Pending-Scan-
-  // Karten) NICHT als „?"-Set mit kaputtem Link zeigen — aus der Set-Liste raus.
-  const allSets = [...setMap.values()].filter(s => s.setId !== '');
+  // Memoisiert auf `cards` — die O(n)-Aggregation lief sonst bei jedem Render.
+  const allSets = useMemo(() => {
+    const setMap = new Map<string, SetEntry>();
+    const setUniq = new Map<string, Set<string>>();
+    (cards ?? []).forEach(c => {
+      const cur = setMap.get(c.setId) ?? { setId: c.setId, name: c.setName, owned: 0, total: null, latestAt: 0 };
+      const u = setUniq.get(c.setId) ?? new Set<string>();
+      u.add(c.tcgId ?? c.id);
+      setUniq.set(c.setId, u);
+      cur.owned     = u.size;
+      cur.latestAt  = Math.max(cur.latestAt, c.addedAt?.seconds ?? 0);
+      setMap.set(c.setId, cur);
+    });
+    // Karten ohne echte Set-Zuordnung (leere setId = vorläufige/Pending-Scan-
+    // Karten) NICHT als „?"-Set mit kaputtem Link zeigen — aus der Set-Liste raus.
+    return [...setMap.values()].filter(s => s.setId !== '');
+  }, [cards]);
 
-  // Lade Catalog-Totals für die angezeigten Sets
-  const displayedSets: SetEntry[] = (() => {
+  // Angezeigte Sets (Top 4 je Sortier-Ansicht). Memoisiert auf allSets/setView/
+  // setTotals — nicht mehr pro Render neu sortiert.
+  const displayedSets: SetEntry[] = useMemo(() => {
     if (setView === 'recent') {
       return [...allSets].sort((a, b) => b.latestAt - a.latestAt).slice(0, 4);
     }
@@ -137,7 +142,7 @@ export default function DashboardPage() {
     }
     // favorites: top by owned count
     return [...allSets].sort((a, b) => b.owned - a.owned).slice(0, 4);
-  })();
+  }, [allSets, setView, setTotals]);
 
   useEffect(() => {
     const ids = displayedSets.map(s => s.setId);

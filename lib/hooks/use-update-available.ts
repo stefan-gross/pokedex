@@ -31,8 +31,11 @@ export function useUpdateAvailable(): UpdateInfo {
         .catch(() => { /* offline / egal — serverSha bleibt, Button nicht gesperrt */ });
     };
     check();
-    // Regelmäßig prüfen, damit ein neuer Deploy ohne Reload bemerkt wird …
-    const id = setInterval(check, 30_000);
+    // Regelmäßig prüfen, damit ein neuer Deploy ohne Reload bemerkt wird — 2 Min
+    // reicht: der häufige Fall (App-Rückkehr) ist durch Focus/Visibility unten
+    // ohnehin sofort abgedeckt; ein kürzeres Intervall wäre nur unnötige Netz-/
+    // Batterie-Last im Leerlauf.
+    const id = setInterval(check, 120_000);
     // … und sofort bei Rückkehr in die App (App-Fokus / Tab sichtbar).
     const onVisible = () => { if (document.visibilityState === 'visible') check(); };
     document.addEventListener('visibilitychange', onVisible);
