@@ -10,11 +10,13 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { browseCatalog, browseUnpriced, getBrowseCount, getCatalogCardsByIds, type BrowseSortKey, type BrowseFilter, type CatalogCard } from '@/lib/firestore/catalog';
+import { browseCatalog, getBrowseCount, getCatalogCardsByIds, type BrowseSortKey, type BrowseFilter, type CatalogCard } from '@/lib/firestore/catalog';
+import {
+  browseCatalogRest, browseUnpricedRest, getBrowseCountRest, getCatalogCardsByIdsRest,
+} from '@/lib/firestore/catalog-rest';
 import { trendFromCached } from '@/lib/prices/trend-from-cached';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { rarityLabelOf, rarityMatchValues } from '@/lib/card-constants';
-import type { QueryDocumentSnapshot } from 'firebase/firestore';
 
 export type CardBrowserFilter = {
   setId?:           string;         // Set-ID (z.B. 'sv04') — equality, server-seitig
@@ -120,13 +122,28 @@ function makeBrowseFilter(f: CardBrowserFilter): BrowseFilter {
   return {};
 }
 
+/** Erstseite eines Browse-Reads: REST (schnell, kein WebChannel-Cold-Start);
+ *  scheitert REST, greift der SDK-Weg als Sicherheitsnetz. */
+async function browseFirstPage(filter: BrowseFilter, size: number, sort: BrowseSortKey, desc: boolean) {
+  try {
+    return await browseCatalogRest(filter, null, size, sort, desc);
+  } catch (e) {
+    console.warn('[browse] REST fehlgeschlagen → SDK-Fallback', e);
+    const p = await browseCatalog(filter, null, size, sort, desc);
+    return { cards: p.cards, hasMore: p.hasMore };
+  }
+}
+
 export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, desc = false) {
   const [cards,       setCards]       = useState<CardInfo[]>([]);
   const [loading,     setLoading]     = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore,     setHasMore]     = useState(false);
 
-  const cursorRef = useRef<QueryDocumentSnapshot | null>(null);
+  // Cursor = zuletzt geladene Karte (REST-startAfter). Früher ein SDK-
+  // QueryDocumentSnapshot; die Browse-Reads laufen jetzt über REST (kein
+  // WebChannel-Cold-Start), siehe catalog-rest.ts.
+  const cursorRef = useRef<CatalogCard | null>(null);
   // Ladephase für den ungefilterten Preis-Sort: erst Karten MIT Preis
   // (serverseitig sortiert), dann als Schluss-Block die Karten OHNE Preis.
   const phaseRef = useRef<'main' | 'tail' | 'done'>('main');
@@ -168,7 +185,11 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
         // wären sonst extrem langsam). Alles auf einmal, kein hasMore.
         if (filter.ownedFilter === 'owned') {
           const ids = [...(filter.ownedIds ?? [])];
-          const owned = ids.length ? await getCatalogCardsByIds(ids) : [];
+          let owned: CatalogCard[] = [];
+          if (ids.length) {
+            try { owned = await getCatalogCardsByIdsRest(ids); }
+            catch { owned = await getCatalogCardsByIds(ids); } // SDK-Fallback
+          }
           if (cancelled) return;
           const sorted = sortCatalogCards(applyClientFilters(owned, filter), sort, desc);
           setCards(sorted.map(catalogCardToInfo));
@@ -181,18 +202,15 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
         // ALLE Treffer laden + global clientseitig sortieren (statt nur die
         // geladene Seite). Bounded via Count; darüber bleibt es paginiert.
         if (Object.keys(serverFilter).length > 0) {
-          const total = await getBrowseCount(serverFilter);
+          let total = await getBrowseCountRest(serverFilter);
+          if (total < 0) total = await getBrowseCount(serverFilter); // SDK-Fallback
           if (cancelled) return;
           if (total >= 0 && total <= LOAD_ALL_CAP) {
-            const all: CatalogCard[] = [];
-            let cur: QueryDocumentSnapshot | null = null;
-            for (let guard = 0; guard < 20; guard++) {
-              const p = await browseCatalog(serverFilter, cur, 300, sort, desc);
-              if (cancelled) return;
-              all.push(...p.cards);
-              cur = p.cursor;
-              if (!p.hasMore || !cur) break;
-            }
+            // Ganze (kleine) Treffermenge in EINEM REST-Read; global sortieren.
+            let all: CatalogCard[];
+            try { all = (await browseCatalogRest(serverFilter, null, LOAD_ALL_CAP, sort, desc)).cards; }
+            catch { all = (await browseCatalog(serverFilter, null, LOAD_ALL_CAP, sort, desc)).cards; }
+            if (cancelled) return;
             const sortedAll = sortCatalogCards(applyClientFilters(all, filter), sort, desc);
             setCards(sortedAll.map(catalogCardToInfo));
             setHasMore(false);
@@ -200,10 +218,10 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
           }
         }
 
-        const page = await browseCatalog(serverFilter, null, PAGE_SIZE, sort, desc);
+        const page = await browseFirstPage(serverFilter, PAGE_SIZE, sort, desc);
         if (cancelled) return;
         const sorted = sortCatalogCards(applyClientFilters(page.cards, filter), sort, desc);
-        cursorRef.current = page.cursor;
+        cursorRef.current = page.cards[page.cards.length - 1] ?? null;
         setCards(sorted.map(catalogCardToInfo));
         // Preis-Sort: nach den Karten MIT Preis noch die ohne Preis anhängen →
         // hasMore bleibt true, nächster loadMore lädt den „tail".
@@ -228,8 +246,8 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
     setLoadingMore(true);
     try {
       if (phaseRef.current === 'tail') {
-        const page = await browseUnpriced(cursorRef.current, PAGE_SIZE);
-        cursorRef.current = page.cursor;
+        const page = await browseUnpricedRest(cursorRef.current, PAGE_SIZE);
+        cursorRef.current = page.cards[page.cards.length - 1] ?? cursorRef.current;
         // Karten ohne Preis: Client-Filter (z.B. „Fehlen") respektieren, aber
         // nicht nach Preis sortieren (keiner vorhanden) → Doc-ID-Reihenfolge.
         setCards(prev => [...prev, ...applyClientFilters(page.cards, filter).map(catalogCardToInfo)]);
@@ -237,9 +255,9 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
         else { phaseRef.current = 'done'; setHasMore(false); }
         return;
       }
-      const page = await browseCatalog(makeBrowseFilter(filter), cursorRef.current, PAGE_SIZE, sort, desc);
+      const page = await browseCatalogRest(makeBrowseFilter(filter), cursorRef.current, PAGE_SIZE, sort, desc);
       const sorted = sortCatalogCards(applyClientFilters(page.cards, filter), sort, desc);
-      cursorRef.current = page.cursor;
+      cursorRef.current = page.cards[page.cards.length - 1] ?? cursorRef.current;
       setCards(prev => [...prev, ...sorted.map(catalogCardToInfo)]);
       if (page.hasMore) setHasMore(true);
       else if (unfilteredPriceSort) { phaseRef.current = 'tail'; cursorRef.current = null; setHasMore(true); }

@@ -21,6 +21,9 @@ import { auth } from '@/lib/firebase/client';
 const PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!;
 const API_KEY    = process.env.NEXT_PUBLIC_FIREBASE_API_KEY!;
 export const FIRESTORE_REST_BASE = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
+/** Ressourcen-Pfad-Präfix (OHNE Host) — für `referenceValue`/`__name__`-Cursor
+ *  in REST-Queries: `${DOC_PATH_BASE}/{collection}/{docId}`. */
+export const DOC_PATH_BASE = `projects/${PROJECT_ID}/databases/(default)/documents`;
 
 // `auth.currentUser` ist direkt nach dem Seitenladen oft noch `null` — Firebase
 // Auth stellt die gespeicherte Session erst asynchron wieder her (Login läuft
@@ -173,4 +176,35 @@ export async function runFirestoreQuery<T>(structuredQuery: Record<string, unkno
   return data
     .filter((e): e is { document: NonNullable<RunQueryResponseEntry['document']> } => !!e.document)
     .map(e => decodeDocument<T>(e.document));
+}
+
+/** Exakte Trefferzahl per REST-Aggregation (`runAggregationQuery`, COUNT) —
+ *  überträgt kein Dokument. `structuredQuery` enthält `from` (+ optional `where`),
+ *  KEIN `orderBy`/`limit`. Umgeht wie `runFirestoreQuery` den WebChannel-Cold-
+ *  Start. Wirft bei !ok — der Aufrufer entscheidet über Fallback/„–". */
+export async function runFirestoreCount(structuredQuery: Record<string, unknown>): Promise<number> {
+  const FETCH_TIMEOUT = 12000;
+  const attempt = async (): Promise<Response> => {
+    const authHeader = await getAuthHeader();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT);
+    try {
+      return await fetch(`${FIRESTORE_REST_BASE}:runAggregationQuery?key=${API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeader },
+        body: JSON.stringify({
+          structuredAggregationQuery: { structuredQuery, aggregations: [{ alias: 'count', count: {} }] },
+        }),
+        signal: ctrl.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  let res: Response;
+  try { res = await attempt(); } catch { res = await attempt(); }
+  if (!res.ok) throw new Error(`Firestore count REST ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const raw = data?.[0]?.result?.aggregateFields?.count?.integerValue;
+  return raw != null ? parseInt(String(raw), 10) : -1;
 }

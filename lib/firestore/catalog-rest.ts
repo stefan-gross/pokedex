@@ -6,10 +6,12 @@
  * `*-rest.ts`-Dateien, die dasselbe `runFirestoreQuery` mit Auth-Token nutzen.
  */
 
-import type { CatalogCard } from './catalog';
-import { runFirestoreQuery } from './rest-shared';
+import { BROWSE_SORT_FIELD, type BrowseFilter, type BrowseSortKey, type CatalogCard } from './catalog';
+import { runFirestoreQuery, runFirestoreCount, DOC_PATH_BASE } from './rest-shared';
 
 const runQuery = (structuredQuery: Record<string, unknown>) => runFirestoreQuery<CatalogCard>(structuredQuery);
+
+const docRef = (id: string) => ({ referenceValue: `${DOC_PATH_BASE}/tcg_catalog/${id}` });
 
 /** REST-Variante von getCardBySetCodeAndNumber (catalog.ts). */
 export async function getCardBySetCodeAndNumberRest(
@@ -105,6 +107,114 @@ export async function getCardsByNameAndNumberRest(
     merged.push(c);
   }
   return merged;
+}
+
+/* ── Browse (REST-Variante von catalog.ts) ──────────────────────────────────
+ * Umgeht den Firestore-Web-SDK-WebChannel-Cold-Start (10–30 s auf iOS-PWA), der
+ * beim Öffnen der Suche / Umschalten der Sortierung als „Hänger" spürbar war.
+ * `tcg_catalog` ist public-read → kein Auth nötig, ein simpler HTTPS-Call.
+ * Cursor: die zuletzt geladene Karte (statt SDK-QueryDocumentSnapshot). */
+
+/** Server-seitiger `where`-Filter — gleiche Priorität wie im SDK (`browseCatalog`):
+ *  setId > types > type > rarity > specialMechanics > evolutionStage > supertype.
+ *  null = kein Filter (ungefilterter „Alle"-Browse mit server-`orderBy`). */
+function browseWhere(f: BrowseFilter): Record<string, unknown> | null {
+  const eq        = (field: string, v: string) => ({ fieldFilter: { field: { fieldPath: field }, op: 'EQUAL',              value: { stringValue: v } } });
+  const arrAny    = (field: string, vs: string[]) => ({ fieldFilter: { field: { fieldPath: field }, op: 'ARRAY_CONTAINS_ANY', value: { arrayValue: { values: vs.map(v => ({ stringValue: v })) } } } });
+  const arrHas    = (field: string, v: string) => ({ fieldFilter: { field: { fieldPath: field }, op: 'ARRAY_CONTAINS',     value: { stringValue: v } } });
+  const inOp      = (field: string, vs: string[]) => ({ fieldFilter: { field: { fieldPath: field }, op: 'IN',                value: { arrayValue: { values: vs.map(v => ({ stringValue: v })) } } } });
+  if (f.setId)                    return eq('setId', f.setId);
+  if (f.types?.length)            return arrAny('types', f.types.slice(0, 30));
+  if (f.type)                     return arrHas('types', f.type);
+  if (f.rarityKeys?.length)       return inOp('rarity', f.rarityKeys.slice(0, 30));
+  if (f.specialMechanics?.length) return arrAny('subtypes', f.specialMechanics.slice(0, 30));
+  if (f.evolutionStage)           return arrHas('subtypes', f.evolutionStage);
+  if (f.supertype)                return eq('supertype', f.supertype);
+  return null;
+}
+
+/** Cursor-Wert des Sortierfelds passend typisiert (Firestore vergleicht Cursor
+ *  wertbasiert; Typ muss zum gespeicherten Feld passen). */
+function sortValue(field: string, v: unknown): Record<string, unknown> {
+  if (field === 'nameLower') return { stringValue: String(v ?? '') };
+  if (field === 'priceEur')  return { doubleValue: Number(v ?? 0) };
+  return { integerValue: String(Math.trunc(Number(v ?? 0))) }; // hp, nationalDexNumber
+}
+
+export interface BrowsePageRest {
+  cards: CatalogCard[];
+  hasMore: boolean;
+}
+
+/** REST-Variante von `browseCatalog`. `after` = zuletzt geladene Karte (Cursor).
+ *  Ohne Filter: server-`orderBy` aufs Sortierfeld (+ `__name__` als Tiebreaker);
+ *  mit Filter: keine Sortierung server-seitig (wie SDK) → `__name__`-Reihenfolge,
+ *  der Aufrufer sortiert client-seitig. */
+export async function browseCatalogRest(
+  filter: BrowseFilter,
+  after: CatalogCard | null,
+  pageSize: number,
+  sort: BrowseSortKey,
+  desc: boolean,
+): Promise<BrowsePageRest> {
+  const where = browseWhere(filter);
+  const dir = desc ? 'DESCENDING' : 'ASCENDING';
+  const q: Record<string, unknown> = { from: [{ collectionId: 'tcg_catalog' }], limit: pageSize };
+  if (where) q.where = where;
+
+  if (!where) {
+    const field = BROWSE_SORT_FIELD[sort];
+    q.orderBy = [
+      { field: { fieldPath: field },      direction: dir },
+      { field: { fieldPath: '__name__' }, direction: dir },
+    ];
+    if (after) q.startAt = {
+      values: [sortValue(field, (after as unknown as Record<string, unknown>)[field]), docRef(after.id)],
+      before: false,
+    };
+  } else {
+    q.orderBy = [{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }];
+    if (after) q.startAt = { values: [docRef(after.id)], before: false };
+  }
+
+  const cards = await runQuery(q);
+  return { cards, hasMore: cards.length === pageSize };
+}
+
+/** REST-Variante von `browseUnpriced` (Karten ohne Preis, `__name__`-Reihenfolge). */
+export async function browseUnpricedRest(
+  after: CatalogCard | null,
+  pageSize: number,
+): Promise<BrowsePageRest> {
+  const q: Record<string, unknown> = {
+    from: [{ collectionId: 'tcg_catalog' }],
+    where: { fieldFilter: { field: { fieldPath: 'hasPrice' }, op: 'EQUAL', value: { booleanValue: false } } },
+    orderBy: [{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }],
+    limit: pageSize,
+  };
+  if (after) q.startAt = { values: [docRef(after.id)], before: false };
+  const cards = await runQuery(q);
+  return { cards, hasMore: cards.length === pageSize };
+}
+
+/** REST-Variante von `getBrowseCount` (exakte Trefferzahl per Aggregation). */
+export async function getBrowseCountRest(filter: BrowseFilter = {}): Promise<number> {
+  const where = browseWhere(filter);
+  const sq: Record<string, unknown> = { from: [{ collectionId: 'tcg_catalog' }] };
+  if (where) sq.where = where;
+  try { return await runFirestoreCount(sq); } catch { return -1; }
+}
+
+/** REST-Variante von `getCatalogCardsByIds` — Chunks à 30 (`__name__ IN`), parallel. */
+export async function getCatalogCardsByIdsRest(ids: string[]): Promise<CatalogCard[]> {
+  if (ids.length === 0) return [];
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30));
+  const results = await Promise.all(chunks.map(chunk => runQuery({
+    from: [{ collectionId: 'tcg_catalog' }],
+    where: { fieldFilter: { field: { fieldPath: '__name__' }, op: 'IN', value: { arrayValue: { values: chunk.map(docRef) } } } },
+  })));
+  return results.flat();
 }
 
 /** National-Dex einer Art über ihren deutschen ODER englischen Namen. Für das
