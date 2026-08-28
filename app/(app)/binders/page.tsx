@@ -15,6 +15,7 @@ import { getCards } from '@/lib/firestore/cards';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { CreateTemplateBinderModal } from '@/components/binder/CreateTemplateBinderModal';
 import { BinderCover, BoxCover } from '@/components/binder/BinderCover';
+import { CollectionDeckToggle } from '@/components/deck/CollectionDeckToggle';
 import { CollectionTypeCornerBadge } from '@/components/binder/CollectionTypeBadge';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { LegendButton } from '@/components/ui/LegendButton';
@@ -143,6 +144,8 @@ export default function BindersPage() {
           )}
         </div>
       </div>
+
+      <div className="px-3 pt-1"><CollectionDeckToggle /></div>
 
       <div className="px-4 py-4">
         {loading && (
