@@ -21,6 +21,20 @@ function printedNumber(number: string, printedTotal?: number): string {
   return printedTotal ? `${padded}/${String(printedTotal).padStart(3, '0')}` : padded;
 }
 
+/** Suchbegriff aus einem erkannten Kartennamen für die Prefix-Namenssuche:
+ *  1. trailing TCG-Suffix (ex/GX/V/VMAX …) abschneiden,
+ *  2. Bindestriche → Leerzeichen normalisieren. Gemini liest oft „Ash-Greninja-EX"
+ *     (Bindestriche), der Katalog speichert aber „Ash Greninja EX" (Leerzeichen) —
+ *     ohne Normalisierung würde die Prefix-Suche daran scheitern. „Ash Greninja"
+ *     trifft dann den Katalog-Namen, und die Dex-Brücke zieht die Art nach. */
+function nameSearchTerm(name: string): string {
+  return name
+    .replace(/[\s-]+(ex|gx|v|vmax|vstar|v-?union|break|prime|star|lv\.?x)$/i, '')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 interface Props {
   /** Sichtbar? Steuert die Slide-Animation (B2: Panel gleitet übers Sheet). */
   open: boolean;
@@ -60,6 +74,10 @@ export function ScanCorrectionPanel({
   const [q, setQ] = useState('');
   const [searchResults, setSearchResults] = useState<Item[] | null>(null);
   const [family, setFamily] = useState<CardInfo[]>([]);
+  // Namensbasierte Vorbelegung: greift, wenn die Dex-Brücke leer bleibt, weil
+  // Gemini keine Pokédex-Nr. gelesen hat (häufig bei Promos) — dann kommen die
+  // Vorschläge über den erkannten Namen.
+  const [nameSeed, setNameSeed] = useState<CardInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [setBadges, setSetBadges] = useState<Map<string, SetBadge>>(new Map());
 
@@ -88,6 +106,19 @@ export function ScanCorrectionPanel({
     return () => { cancelled = true; };
   }, [open, card.nationalDexNumber]);
 
+  // Namens-Vorbelegung beim Öffnen — erkannten Namen (ohne ex/GX/…-Suffix) im
+  // Katalog suchen (+ Dex-Brücke). Deckt den häufigen Promo-Fall ab, in dem
+  // keine Dex-Nr. gelesen wurde, der Name aber stimmt (z.B. „Ash-Greninja ex").
+  useEffect(() => {
+    const term = card.name ? nameSearchTerm(card.name) : '';
+    if (!open || term.length < 2) { setNameSeed([]); return; }
+    let cancelled = false;
+    searchCatalogCards(term, { displayLimit: 40, bridgeByDex: true })
+      .then(({ cards }) => { if (!cancelled) setNameSeed(cards.map(catalogCardToInfo)); })
+      .catch(() => { if (!cancelled) setNameSeed([]); });
+    return () => { cancelled = true; };
+  }, [open, card.name]);
+
   // Freitextsuche (Katalog + Dex-Brücke), debounced.
   useEffect(() => {
     const term = q.trim();
@@ -115,6 +146,11 @@ export function ScanCorrectionPanel({
       if (!seen.has(c.id)) { seen.add(c.id); out.push({ info: c, group: 'cand' }); }
     }
     for (const c of family) {
+      if (!seen.has(c.id)) { seen.add(c.id); out.push({ info: c, group: 'family' }); }
+    }
+    // Namens-Treffer anhängen (nur die noch nicht über Kandidaten/Dex-Brücke
+    // gezeigten) — so erscheinen Vorschläge auch ohne gelesene Dex-Nummer.
+    for (const c of nameSeed) {
       if (!seen.has(c.id)) { seen.add(c.id); out.push({ info: c, group: 'family' }); }
     }
     return out;

@@ -277,19 +277,17 @@ export function RecognizedAddBar({
           {onCorrectTap && (
             // Getönte secondary: zurückhaltender gelber Tint (nicht die volle
             // CTA-Wucht des grünen „Hinzufügen"), Icon-Farbe theme-neutral.
-            // Im unresolved-Fall ist „Korrigieren" die eigentliche Aktion →
-            // breit mit Label statt Icon-only.
+            // Größe identisch zum erkannten Modus (Icon-only, shrink-0) — auch im
+            // unresolved-Fall; der Hinweistext darüber führt zum Korrigieren.
             <Button
               variant="secondary"
               accentColor="#f4c542"
               size="lg"
-              className={unresolved ? 'flex-1' : 'shrink-0'}
+              className="shrink-0"
               icon={<ArrowLeftRight strokeWidth={2.5} />}
               onClick={onCorrectTap}
               aria-label="Falsch erkannt? Richtige Karte wählen"
-            >
-              {unresolved ? 'Korrigieren' : undefined}
-            </Button>
+            />
           )}
         </div>
 
