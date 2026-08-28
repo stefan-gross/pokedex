@@ -1317,6 +1317,12 @@ export default function ScannerPage() {
 
         if (ambiguousCandidates && ambiguousCandidates.length > 1) {
           const infos = ambiguousCandidates.map(catalogCardToInfo);
+          // Blinde Vorauswahl vor pHash (Kandidat [0]) — merken, damit die
+          // asynchrone pHash-Rangfolge eine INZWISCHEN vom Nutzer im Picker
+          // getroffene Wahl NICHT überschreibt (Race: der fetch dauert, der Nutzer
+          // tippt in der Zeit einen anderen Kandidaten an). Reihenfolge + Distanz
+          // dürfen weiter aktualisiert werden, nur die Karte bleibt dann stehen.
+          const blindDefaultId = infos[0]?.id;
           void (async () => {
             const scored = await Promise.all(infos.map(async info => {
               const url = pickImageUrl(info);
@@ -1325,11 +1331,19 @@ export default function ScannerPage() {
             }));
             scored.sort((a, b) => a.distance - b.distance);
             const best = scored[0];
-            setJobs(prev => prev.map(j => j.id === id && j.result ? {
-              ...j,
-              result: { ...j.result, card: best.info, candidates: scored.map(s => s.info) },
-              pHashDistance: Number.isFinite(best.distance) ? best.distance : undefined,
-            } : j));
+            setJobs(prev => prev.map(j => {
+              if (j.id !== id || !j.result) return j;
+              const userPicked = !!j.result.card && j.result.card.id !== blindDefaultId;
+              return {
+                ...j,
+                result: {
+                  ...j.result,
+                  card: userPicked ? j.result.card : best.info,
+                  candidates: scored.map(s => s.info),
+                },
+                pHashDistance: Number.isFinite(best.distance) ? best.distance : undefined,
+              };
+            }));
             if (Number.isFinite(best.distance)) void eventIdPromise?.then(eid => { if (eid) void updateScanEventPHash(eid, best.distance); });
           })();
         } else if (catalogCard) {

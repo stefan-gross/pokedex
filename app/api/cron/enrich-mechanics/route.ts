@@ -15,8 +15,9 @@ export const maxDuration = 60;
 const TIME_BUDGET_MS = 50_000;
 
 export async function GET(req: NextRequest) {
+  const expected = process.env.CRON_SECRET;
   const secret = req.headers.get('authorization')?.replace('Bearer ', '');
-  if (secret !== process.env.CRON_SECRET) {
+  if (!expected || secret !== expected) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const once = req.nextUrl.searchParams.get('once') === '1';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Card } from '@/components/card/Card';
 import { CardDetailSheet, type SetMeta } from '@/components/card/CardDetailSheet';
 import { WishlistPickerSheet, type ManualListMeta } from '@/components/wishlist/WishlistPickerSheet';
@@ -134,6 +134,13 @@ export function CardGrid({
   // zentral → Suche/Set-Detail/Auto-Grid bekommen ihn automatisch).
   const [wishlistCard, setWishlistCard] = useState<CardInfo | null>(null);
 
+  // Stabile Callbacks (die Karte kommt als Argument) — damit `Card`'s `memo`
+  // greift und bei Preis-Chunk-Merge/Detail-Öffnen nur die tatsächlich
+  // geänderten Karten neu rendern statt aller (großes Grid = 250+ Karten).
+  const handleCardClick    = useCallback((card: CardInfo) => setSelected(card), []);
+  const handleHeartClick   = useCallback((card: CardInfo) => setWishlistCard(card), []);
+  const handleToggleSelect = useCallback((card: CardInfo) => onToggleSelect?.(card), [onToggleSelect]);
+
   if (cards.length === 0 && emptyState) {
     return <>{emptyState}</>;
   }
@@ -164,20 +171,20 @@ export function CardGrid({
             size="md"
             card={card}
             ownedCards={ownedMap.get(card.id)}
-            onCardClick={() => setSelected(card)}
+            onCardClick={handleCardClick}
             sublabel={getSublabel(card, sortKey, priceMap)}
             sublabelColor={isPriceSort ? PRICE_COLOR : undefined}
             sublabelLoading={isPriceSort && pricesLoading && priceMap?.get(card.id) == null}
             onManualWishlist={manualIds?.has(card.id)}
             onAutoWishlist={autoIds?.has(card.id)}
-            onHeartClick={onToggleList ? () => setWishlistCard(card) : undefined}
+            onHeartClick={onToggleList ? handleHeartClick : undefined}
             setCode={numberPrefixCode}
             numberPrefixCode={showNumberPrefix && !numberPrefixSymbolUrl ? numberPrefixCode : undefined}
             numberPrefixSymbolUrl={showNumberPrefix ? numberPrefixSymbolUrl : undefined}
             selectMode={selectMode}
             selectable={!!selectMode && !!selectableIds?.has(card.id)}
             selected={!!selectedIds?.has(card.id)}
-            onToggleSelect={() => onToggleSelect?.(card)}
+            onToggleSelect={handleToggleSelect}
           />
           );
         })}

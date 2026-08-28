@@ -26,7 +26,12 @@ async function fetchPrice(tcgId: string): Promise<PriceResult | null> {
   pending.set(tcgId, p);
   try {
     const data = await p;
-    cache.set(tcgId, { data, ts: Date.now() });
+    // NUR erfolgreiche Antworten cachen. `data === null` bedeutet hier einen
+    // transienten Fehler (HTTP !ok oder Netzfehler in `fetchPrice`) — ein echtes
+    // „kein Preis vorhanden" ist ein PriceResult-Objekt (truthy). Würde man den
+    // `null` cachen, bliebe der Preis der Karte 30 Min (SESSION_TTL) leer, obwohl
+    // serverseitig einer existiert; nicht-cachen → der nächste Mount holt neu.
+    if (data !== null) cache.set(tcgId, { data, ts: Date.now() });
     return data;
   } finally {
     pending.delete(tcgId);

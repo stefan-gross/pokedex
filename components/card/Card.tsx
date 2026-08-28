@@ -80,7 +80,7 @@ export const CARD_SIZE_PRESETS: Record<CardSize, CardSizePreset> = {
 interface Props {
   card: CardInfo;
   ownedCards?: CardDoc[];
-  onCardClick?: () => void;
+  onCardClick?: (card: CardInfo) => void;
   /** Karte liegt auf mind. einer MANUELLEN Wunschliste (→ rotes Herz). */
   onManualWishlist?: boolean;
   /** Karte liegt auf mind. einer AUTOMATISCHEN (Vorlagen-)Wunschliste, d.h.
@@ -88,7 +88,7 @@ interface Props {
   onAutoWishlist?: boolean;
   /** Tap aufs Herz — öffnet i.d.R. den Wunschlisten-Auswahl-Drawer. Ohne
    *  Handler ist das Herz nur ein (nicht klickbares) Statuskennzeichen. */
-  onHeartClick?: () => void;
+  onHeartClick?: (card: CardInfo) => void;
   sublabel?: string;
   /** Überschreibt die Sublabel-Textfarbe — z.B. Preis-Blau bei Preis-Sortierung. */
   sublabelColor?: string;
@@ -131,7 +131,7 @@ interface Props {
   /** In diesem Kontext auswählbar (z.B. Exemplar liegt in dieser Sammlung). */
   selectable?: boolean;
   selected?: boolean;
-  onToggleSelect?: () => void;
+  onToggleSelect?: (card: CardInfo) => void;
 }
 
 const BORDER_COLORS: Record<'green' | 'yellow' | 'red', string> = {
@@ -182,8 +182,10 @@ export function WishlistHeart({ manual, auto, width, height, gradId, onImage = f
 
 // `memo` (unten): große Grids (Set-Detail 250+, Sammlung) rendern sonst bei
 // jedem Preis-Chunk / Detail-Öffnen ALLE Karten neu. Props sind überwiegend
-// primitiv/stabil; wo Aufrufer Inline-Callbacks übergeben, bringt memo nichts,
-// schadet aber nicht.
+// primitiv/stabil; die Callbacks (`onCardClick`/`onHeartClick`/`onToggleSelect`)
+// tragen die Karte als Argument, damit Aufrufer wie `CardGrid` sie EINMAL per
+// `useCallback` stabilisieren können (statt pro Karte eine neue Closure) — erst
+// dann greift `memo` und nur die tatsächlich geänderten Karten rendern neu.
 function CardImpl({
   card, ownedCards = [], onCardClick, onManualWishlist = false, onAutoWishlist = false, onHeartClick, sublabel, sublabelColor, sublabelLoading,
   numberPrefixCode, numberPrefixSymbolUrl, setCode, price, border, size = 'sm', bare = false,
@@ -245,7 +247,9 @@ function CardImpl({
           boxShadow: selectMode && selected ? '0 0 0 3px var(--pokedex-blue)' : undefined,
           transition: 'opacity 150ms ease-out, box-shadow 150ms ease-out',
         }}
-        onClick={selectMode ? (selectable ? onToggleSelect : undefined) : onCardClick}
+        onClick={selectMode
+          ? (selectable && onToggleSelect ? () => onToggleSelect(card) : undefined)
+          : (onCardClick ? () => onCardClick(card) : undefined)}
       >
         <div
           className="relative overflow-hidden"
@@ -377,7 +381,7 @@ function CardImpl({
           <CardBadge
             size={preset.badgeSize} background={false}
             style={{ bottom: layout.wishlistBadge.bottom, right: layout.wishlistBadge.right }}
-            onClick={onHeartClick ? (e => { e.stopPropagation(); onHeartClick(); }) : undefined} // stoppt Click-Bubbling zum Detail
+            onClick={onHeartClick ? (e => { e.stopPropagation(); onHeartClick(card); }) : undefined} // stoppt Click-Bubbling zum Detail
             ariaLabel="Wunschliste"
           >
             <WishlistHeart
