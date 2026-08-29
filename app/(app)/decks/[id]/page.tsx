@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
-import { Plus, Minus, Pencil, Check, AlertTriangle, Layers, MoreVertical } from 'lucide-react';
+import { Plus, Minus, Pencil, Check, AlertTriangle, Layers, MoreVertical, Sparkles } from 'lucide-react';
 import { getDeck, setDeckCardCount, addCardToDeck } from '@/lib/firestore/decks';
 import { getAllSets } from '@/lib/firestore/sets';
 import { syncDeckWishlists } from '@/lib/decks/sync';
@@ -18,6 +18,7 @@ import { DeckCardSearchSheet } from '@/components/deck/DeckCardSearchSheet';
 import { DeckStats } from '@/components/deck/DeckStats';
 import { TestHandSheet } from '@/components/deck/TestHandSheet';
 import { DeckCodeSheet } from '@/components/deck/DeckCodeSheet';
+import { DeckSuggestionsSheet } from '@/components/deck/DeckSuggestionsSheet';
 import { Button } from '@/components/ui/button';
 import { Menu } from '@/components/ui/menu';
 import { formatCardNumber, formatEUR } from '@/lib/format';
@@ -42,6 +43,7 @@ export default function DeckEditorPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [testHandOpen, setTestHandOpen] = useState(false);
   const [codeSheet, setCodeSheet] = useState<null | 'export' | 'import'>(null);
+  const [suggestOpen, setSuggestOpen] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
 
   const loadDeck = async () => {
@@ -92,6 +94,14 @@ export default function DeckEditorPage() {
   const importResolved = async (resolved: { card: CatalogCard; count: number }[]) => {
     if (!deck) return;
     for (const r of resolved) await addCardToDeck(deck.id, catalogCardToInfo(r.card), r.count);
+    await loadDeck();
+    syncDemand();
+  };
+
+  // Einzelnen Katalog-Vorschlag ins Deck übernehmen.
+  const addCatalogCard = async (card: CatalogCard, count: number) => {
+    if (!deck) return;
+    await addCardToDeck(deck.id, catalogCardToInfo(card), count);
     await loadDeck();
     syncDemand();
   };
@@ -195,11 +205,16 @@ export default function DeckEditorPage() {
       {/* Statistik (einklappbar) */}
       {stats && deck.cards.length > 0 && <DeckStats stats={stats} />}
 
-      {/* Testhand */}
+      {/* Testhand + Vorschläge */}
       {deck.cards.length > 0 && (
-        <Button variant="secondary" size="lg" onClick={() => setTestHandOpen(true)} icon={<Layers size={18} />} className="w-full mb-4">
-          Testhand ziehen
-        </Button>
+        <div className="flex gap-2 mb-4">
+          <Button variant="secondary" size="lg" onClick={() => setTestHandOpen(true)} icon={<Layers size={18} />} className="flex-1">
+            Testhand
+          </Button>
+          <Button variant="secondary" size="lg" onClick={() => setSuggestOpen(true)} icon={<Sparkles size={18} />} className="flex-1">
+            Vorschläge
+          </Button>
+        </div>
       )}
 
       {/* Kategorie-Sektionen */}
@@ -256,6 +271,15 @@ export default function DeckEditorPage() {
         cards={deck.cards}
         byId={byId}
         onImport={importResolved}
+      />
+      <DeckSuggestionsSheet
+        open={suggestOpen}
+        onClose={() => setSuggestOpen(false)}
+        cards={deck.cards}
+        byId={byId}
+        owned={owned}
+        format={deck.format}
+        onAdd={addCatalogCard}
       />
     </div>
   );
