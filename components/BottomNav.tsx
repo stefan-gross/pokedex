@@ -289,7 +289,7 @@ export function BottomNav() {
               >
                 <Icon size={22} strokeWidth={1.8} fill={active ? 'currentColor' : 'none'} />
               </span>
-              <span className="text-[10px]" style={{ fontWeight: active ? 700 : 500 }}>{item.label}</span>
+              <span className="text-[10px] whitespace-nowrap" style={{ fontWeight: active ? 700 : 500 }}>{item.label}</span>
             </Link>
           );
         })}
@@ -430,7 +430,7 @@ export function BottomNav() {
             >
               <Icon size={22} strokeWidth={1.8} fill={active ? 'currentColor' : 'none'} />
             </span>
-            <span className="text-[10px] font-medium" style={{ fontWeight: active ? 700 : 500 }}>{item.label}</span>
+            <span className="text-[10px] font-medium whitespace-nowrap" style={{ fontWeight: active ? 700 : 500 }}>{item.label}</span>
           </Link>
         );
       })}
