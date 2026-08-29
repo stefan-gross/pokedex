@@ -99,8 +99,7 @@ export default function DecksPage() {
         <div className="glass rounded-[20px] px-4 pt-3 pb-3 flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Decks</h1>
-              <p className="text-role-label text-glass-muted">{loading ? '…' : `${decks.length} ${decks.length === 1 ? 'Deck' : 'Decks'}`}</p>
+              <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Meine Karten</h1>
             </div>
             {editMode ? (
               <Button variant="primary" accentColor="#2f855a" onClick={() => setEditMode(false)} icon={<Check />} aria-label="Fertig" className="shrink-0" />
@@ -111,7 +110,7 @@ export default function DecksPage() {
               </div>
             )}
           </div>
-          <CollectionDeckToggle />
+          <CollectionDeckToggle deckCount={loading ? undefined : decks.length} />
         </div>
       </div>
 
