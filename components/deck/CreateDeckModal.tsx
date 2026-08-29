@@ -15,10 +15,13 @@ const ADD_ACCENT = '#2f855a';      // Hinzufügen-Grün
 const PRIMARY_ACCENT = '#3182ce';
 
 const FORMAT_OPTIONS = [
-  { value: 'standard' as DeckFormat,  label: 'Standard' },
-  { value: 'expanded' as DeckFormat,  label: 'Expanded' },
-  { value: 'unlimited' as DeckFormat, label: 'Unlimited' },
+  { value: 'standard' as DeckFormat, label: 'Standard' },
+  { value: 'expanded' as DeckFormat, label: 'Expanded' },
 ];
+const FORMAT_HINT: Record<string, string> = {
+  standard: 'Nur aktuelle, turnierlegale Sets',
+  expanded: 'Alle legalen Sets seit Schwarz & Weiß (2011)',
+};
 
 interface Props {
   existing?: DeckDoc;
@@ -77,6 +80,7 @@ export function CreateDeckModal({ existing, onClose, onSaved }: Props) {
         <label className="flex flex-col gap-1">
           <span className="text-role-label">Format</span>
           <ButtonGroup value={format} onChange={setFormat} options={FORMAT_OPTIONS} accentColor={ACCENT} />
+          <span className="text-role-label text-muted-foreground">{FORMAT_HINT[format]}</span>
         </label>
 
         <div className="flex flex-col gap-1">

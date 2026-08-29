@@ -126,26 +126,28 @@ export default function BindersPage() {
     <div className="min-h-screen">
       {/* Header-Panel (Glas) */}
       <div className="sticky top-safe z-20 px-3 pt-3 pb-1">
-        <div className="glass rounded-[20px] px-4 pt-3 pb-3 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Sammlungen</h1>
-            <p className="text-role-label text-glass-muted">{loading ? '…' : `${binders.length} ${binders.length === 1 ? 'Sammlung' : 'Sammlungen'}`}</p>
-          </div>
-          {/* Rechts: im Bearbeiten-Modus „Fertig", sonst zwei icon-only Buttons —
-              „+“ (neue Sammlung) und ein Stift (Bearbeiten-Modus starten;
-              Löschen + Umsortieren). Kein Long-Press mehr (analog Detailseite). */}
-          {editMode ? (
-            <Button variant="primary" accentColor="#2f855a" onClick={() => setEditMode(false)} icon={<Check />} aria-label="Fertig" className="shrink-0" />
-          ) : (
-            <div className="flex items-center gap-2 shrink-0">
-              <Button variant="primary" accentColor="#2f855a" onClick={() => setCreateMode('choose')} icon={<Plus strokeWidth={2.5} />} aria-label="Neue Sammlung" />
-              <Button variant="secondary" onClick={() => setEditMode(true)} icon={<Pencil />} aria-label="Bearbeiten" />
+        <div className="glass rounded-[20px] px-4 pt-3 pb-3 flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Sammlungen</h1>
+              <p className="text-role-label text-glass-muted">{loading ? '…' : `${binders.length} ${binders.length === 1 ? 'Sammlung' : 'Sammlungen'}`}</p>
             </div>
-          )}
+            {/* Rechts: im Bearbeiten-Modus „Fertig", sonst zwei icon-only Buttons —
+                „+“ (neue Sammlung) und ein Stift (Bearbeiten-Modus starten;
+                Löschen + Umsortieren). Kein Long-Press mehr (analog Detailseite). */}
+            {editMode ? (
+              <Button variant="primary" accentColor="#2f855a" onClick={() => setEditMode(false)} icon={<Check />} aria-label="Fertig" className="shrink-0" />
+            ) : (
+              <div className="flex items-center gap-2 shrink-0">
+                <Button variant="primary" accentColor="#2f855a" onClick={() => setCreateMode('choose')} icon={<Plus strokeWidth={2.5} />} aria-label="Neue Sammlung" />
+                <Button variant="secondary" onClick={() => setEditMode(true)} icon={<Pencil />} aria-label="Bearbeiten" />
+              </div>
+            )}
+          </div>
+          {/* Umschalter Sammlungen ↔ Decks — im Header integriert (zweite Zeile). */}
+          <CollectionDeckToggle />
         </div>
       </div>
-
-      <div className="px-3 pt-1"><CollectionDeckToggle /></div>
 
       <div className="px-4 py-4">
         {loading && (

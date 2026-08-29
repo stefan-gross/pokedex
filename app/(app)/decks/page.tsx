@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useId } from 'react';
 import Link from 'next/link';
 import { Plus, Pencil, Trash2, Check, Layers } from 'lucide-react';
 import {
@@ -14,11 +14,15 @@ import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog'
 import { computeDeckStats } from '@/lib/decks/stats';
 import { CreateDeckModal } from '@/components/deck/CreateDeckModal';
 import { CollectionDeckToggle } from '@/components/deck/CollectionDeckToggle';
-import { BinderCover } from '@/components/binder/BinderCover';
+import { BoxCover } from '@/components/binder/BinderCover';
 import { Button } from '@/components/ui/button';
-import { tintedGlassStyle } from '@/lib/ui/tinted-glass';
-import { readableTextColor } from '@/lib/color-utils';
+import { readableTextColor, lightenColor } from '@/lib/color-utils';
 import { formatEUR } from '@/lib/format';
+
+// Banderole (wie Sammlungs-Boxen): eigene, etwas hellere Farbfläche unten.
+const BANDEROLE_GAP = 6;
+const BANDEROLE_HEIGHT = 28;
+const BANDEROLE_SMALL_RADIUS = 1.5;
 import type { DeckDoc } from '@/types';
 
 const FORMAT_LABEL: Record<string, string> = { standard: 'Standard', expanded: 'Expanded', unlimited: 'Unlimited' };
@@ -88,31 +92,30 @@ export default function DecksPage() {
   };
 
   return (
-    <div className="px-4 pt-safe pb-nav">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2 pt-4 pb-3">
-        <h1 className="text-2xl font-bold">Decks</h1>
-        <div className="flex items-center gap-2">
-          {decks.length > 0 && (
-            <Button
-              variant="ghost"
-              onClick={() => setEditMode(m => !m)}
-              icon={editMode ? <Check size={18} /> : <Pencil size={18} />}
-              aria-label={editMode ? 'Fertig' : 'Bearbeiten'}
-            />
-          )}
-          <Button
-            variant="primary"
-            accentColor="#2f855a"
-            onClick={() => setCreateOpen(true)}
-            icon={<Plus size={18} strokeWidth={2.6} />}
-            aria-label="Deck erstellen"
-          />
+    <div className="min-h-screen pb-nav">
+      {/* Header-Panel (Glas) — Aufbau wie /binders, damit der Umschalter beim
+          Wechseln nicht springt; Umschalter als zweite Zeile integriert. */}
+      <div className="sticky top-safe z-20 px-3 pt-3 pb-1">
+        <div className="glass rounded-[20px] px-4 pt-3 pb-3 flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Decks</h1>
+              <p className="text-role-label text-glass-muted">{loading ? '…' : `${decks.length} ${decks.length === 1 ? 'Deck' : 'Decks'}`}</p>
+            </div>
+            {editMode ? (
+              <Button variant="primary" accentColor="#2f855a" onClick={() => setEditMode(false)} icon={<Check />} aria-label="Fertig" className="shrink-0" />
+            ) : (
+              <div className="flex items-center gap-2 shrink-0">
+                <Button variant="primary" accentColor="#2f855a" onClick={() => setCreateOpen(true)} icon={<Plus strokeWidth={2.5} />} aria-label="Deck erstellen" />
+                {decks.length > 0 && <Button variant="secondary" onClick={() => setEditMode(true)} icon={<Pencil />} aria-label="Bearbeiten" />}
+              </div>
+            )}
+          </div>
+          <CollectionDeckToggle />
         </div>
       </div>
 
-      <div className="mb-4"><CollectionDeckToggle /></div>
-
+      <div className="px-4 py-4">
       {loading ? (
         <div className="grid grid-cols-2 gap-3">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -145,6 +148,7 @@ export default function DecksPage() {
           </SortableContext>
         </DndContext>
       )}
+      </div>
 
       {(createOpen || editDeck) && (
         <CreateDeckModal
@@ -172,36 +176,74 @@ function DeckTile({ deck, meta, editMode, onDelete, onEdit }: {
     touchAction: editMode ? 'none' : undefined,
   };
   const color = deck.color ?? '#4299e1';
-  const banderole = tintedGlassStyle(color, { alpha: 0.9 });
-  const textColor = readableTextColor(color);
+  const bandColor = lightenColor(color, 0.14);
+  const bandTextColor = readableTextColor(bandColor);
+  const grainUid = useId().replace(/:/g, '');
 
-  const inner = (
-    <>
-      <BinderCover color={color} name={deck.name} icon={deck.icon} />
-      <div className="flex items-center justify-between px-2.5 py-1.5 text-[11px] font-semibold" style={{ ...banderole, color: textColor }}>
-        <span>{meta.total}/60</span>
-        <span className="opacity-80">{FORMAT_LABEL[deck.format] ?? deck.format}</span>
-        <span>{formatEUR(meta.value)}</span>
+  // Box-Cover (wie Sammlungs-Boxen) + Banderole mit X/60 · Format · €.
+  const cover = (
+    <div className="relative" style={{ transform: 'scale(0.92)', transformOrigin: 'center' }}>
+      <BoxCover color={color} name={deck.name} icon={deck.icon ?? 'box'} reserveBottom={BANDEROLE_HEIGHT + BANDEROLE_GAP} />
+
+      <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+        <defs>
+          <filter id={`deck-band-grain-${grainUid}`}>
+            <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" result="noise" />
+            <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.1 0.1 0.1 0 0" result="grain" />
+            <feComposite in="grain" in2="SourceAlpha" operator="in" result="grainClipped" />
+            <feBlend in="SourceGraphic" in2="grainClipped" mode="multiply" />
+          </filter>
+        </defs>
+      </svg>
+
+      <div
+        className="absolute flex items-center justify-between gap-1.5 px-3"
+        style={{
+          paddingTop: 6, paddingBottom: 6,
+          bottom: BANDEROLE_GAP,
+          left: 'calc(7 / 300 * 100% - 1px)',
+          right: 'calc(7 / 300 * 100% - 1px)',
+          background: bandColor,
+          boxShadow: '0 3px 6px rgba(0,0,0,.35)',
+          filter: `url(#deck-band-grain-${grainUid})`,
+          borderRadius: BANDEROLE_SMALL_RADIUS,
+        }}
+      >
+        <span className="font-bold tabular-nums" style={{ fontSize: 12, color: bandTextColor }}>{meta.total}/60</span>
+        <span className="font-semibold truncate" style={{ fontSize: 11, color: bandTextColor, opacity: 0.85 }}>{FORMAT_LABEL[deck.format] ?? deck.format}</span>
+        <span className="font-bold tabular-nums shrink-0" style={{ fontSize: 12, color: bandTextColor }}>{formatEUR(meta.value)}</span>
       </div>
-    </>
+
+      {editMode && (
+        <>
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
+            className="absolute -top-1 -left-1 w-11 h-11 rounded-full flex items-center justify-center text-white ring-2 ring-white shadow-lg active:scale-90 transition-transform"
+            style={{ background: '#dc2626' }}
+            aria-label="Deck löschen"
+          >
+            <Trash2 size={18} strokeWidth={2.5} />
+          </button>
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => { e.preventDefault(); e.stopPropagation(); onEdit(); }}
+            className="absolute -top-1 -right-1 w-11 h-11 rounded-full flex items-center justify-center glass-overlay ring-2 ring-white shadow-lg active:scale-90 transition-transform"
+            aria-label="Deck bearbeiten"
+          >
+            <Pencil size={17} color="#fff" strokeWidth={2.4} />
+          </button>
+        </>
+      )}
+    </div>
   );
 
   return (
-    <div ref={setNodeRef} style={style} className="relative rounded-2xl overflow-hidden shadow-sm" {...(editMode ? { ...attributes, ...listeners } : {})}>
+    <div ref={setNodeRef} style={style} className="relative no-callout" {...(editMode ? { ...attributes, ...listeners } : {})}>
       {editMode ? (
-        <div className="cursor-grab">
-          {inner}
-          <div className="absolute top-1.5 right-1.5 flex gap-1.5">
-            <button onClick={onEdit} className="w-8 h-8 rounded-full flex items-center justify-center glass-overlay" aria-label="Deck bearbeiten">
-              <Pencil size={14} color="#fff" />
-            </button>
-            <button onClick={onDelete} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: 'var(--action-delete)' }} aria-label="Deck löschen">
-              <Trash2 size={14} color="#fff" />
-            </button>
-          </div>
-        </div>
+        <div className="cursor-grab">{cover}</div>
       ) : (
-        <Link href={`/decks/${deck.id}`} className="block">{inner}</Link>
+        <Link href={`/decks/${deck.id}`} className="block active:scale-[.98] transition-transform">{cover}</Link>
       )}
     </div>
   );
