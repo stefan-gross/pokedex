@@ -172,50 +172,58 @@ export default function DeckEditorPage() {
   return (
     <div className="px-4 pt-safe pb-28">
       {/* Header */}
-      <div className="flex items-center gap-2 pt-3 pb-2">
-        <Button variant="ghost" href="/decks" className="-ml-2 shrink-0">‹ Decks</Button>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-bold truncate">{deck.name}</h1>
-          <p className="text-role-label text-muted-foreground">{FORMAT_LABEL[deck.format] ?? deck.format} · {formatEUR(valueEur)}</p>
-        </div>
-        <Button variant="ghost" onClick={() => setEditOpen(true)} icon={<Pencil size={18} />} aria-label="Deck bearbeiten" className="shrink-0" />
-        <Menu
-          portal
-          trigger={(open, toggle) => (
-            <Button variant="ghost" onClick={toggle} icon={<MoreVertical size={18} />} aria-label="Mehr" aria-expanded={open} className="shrink-0" />
-          )}
-          items={[
-            { label: 'KI-Deck erstellen', onClick: () => setAiOpen(true) },
-            { label: 'Als Code exportieren', onClick: () => setCodeSheet('export') },
-            { label: 'Code importieren', onClick: () => setCodeSheet('import') },
-            { label: exportingPdf ? 'PDF wird erstellt …' : 'Als PDF', onClick: exportPdf, disabled: exportingPdf || deck.cards.length === 0 },
-          ]}
-        />
-      </div>
-
-      {/* Live-Regel-Leiste */}
-      {validation && (
-        <div className="rounded-2xl px-4 py-3 mb-4 glass flex flex-col gap-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-lg font-bold tabular-nums">{validation.totalCount}/60</span>
-            {validation.valid ? (
-              <span className="flex items-center gap-1 text-sm font-semibold" style={{ color: '#2f855a' }}><Check size={16} /> Spielbar</span>
-            ) : (
-              <span className="flex items-center gap-1 text-sm font-semibold" style={{ color: '#c53030' }}>
-                <AlertTriangle size={15} /> {validation.issues.filter(i => i.severity === 'block').length} Problem(e)
-              </span>
-            )}
+      {/* Header-Panel (Glas): Zurück + Aktionen · Infos/Status · Statistik */}
+      <div className="glass rounded-[20px] px-4 pt-2 pb-3 mb-4 flex flex-col gap-2.5">
+        {/* Zurück + Aktionen */}
+        <div className="flex items-center justify-between gap-2">
+          <Button variant="ghost" href="/decks" className="-ml-2 shrink-0">‹ Decks</Button>
+          <div className="flex items-center gap-1 shrink-0">
+            <Button variant="ghost" onClick={() => setEditOpen(true)} icon={<Pencil size={18} />} aria-label="Deck bearbeiten" />
+            <Menu
+              portal
+              trigger={(open, toggle) => (
+                <Button variant="ghost" onClick={toggle} icon={<MoreVertical size={18} />} aria-label="Mehr" aria-expanded={open} />
+              )}
+              items={[
+                { label: 'KI-Deck erstellen', onClick: () => setAiOpen(true) },
+                { label: 'Als Code exportieren', onClick: () => setCodeSheet('export') },
+                { label: 'Code importieren', onClick: () => setCodeSheet('import') },
+                { label: exportingPdf ? 'PDF wird erstellt …' : 'Als PDF', onClick: exportPdf, disabled: exportingPdf || deck.cards.length === 0 },
+              ]}
+            />
           </div>
-          {validation.issues.map((iss, i) => (
-            <div key={i} className="text-role-label" style={{ color: iss.severity === 'block' ? '#c53030' : '#b7791f' }}>
-              • {iss.message}
-            </div>
-          ))}
         </div>
-      )}
 
-      {/* Statistik (einklappbar) */}
-      {stats && deck.cards.length > 0 && <DeckStats stats={stats} />}
+        {/* Name + Infos/Status */}
+        <div className="min-w-0">
+          <h1 className="text-role-h1 text-glass truncate">{deck.name}</h1>
+          {validation && (
+            <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 text-role-label mt-0.5">
+              <span className="font-semibold tabular-nums">{validation.totalCount}/60</span>
+              <span className="text-muted-foreground">· {FORMAT_LABEL[deck.format] ?? deck.format}</span>
+              <span className="text-muted-foreground">· {formatEUR(valueEur)}</span>
+              {validation.valid ? (
+                <span className="inline-flex items-center gap-1 font-semibold" style={{ color: '#2f855a' }}><Check size={14} /> Spielbar</span>
+              ) : (
+                (() => {
+                  const n = validation.issues.filter(i => i.severity === 'block').length;
+                  return <span className="inline-flex items-center gap-1 font-semibold" style={{ color: '#c53030' }}><AlertTriangle size={13} /> {n} {n === 1 ? 'Problem' : 'Probleme'}</span>;
+                })()
+              )}
+            </div>
+          )}
+          {validation && !validation.valid && (
+            <div className="mt-1 flex flex-col gap-0.5">
+              {validation.issues.map((iss, i) => (
+                <div key={i} className="text-role-label" style={{ color: iss.severity === 'block' ? '#c53030' : '#b7791f' }}>• {iss.message}</div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Statistik (einklappbar, im Panel eingebettet) */}
+        {stats && deck.cards.length > 0 && <DeckStats stats={stats} bare />}
+      </div>
 
       {/* Testhand + Vorschläge */}
       {deck.cards.length > 0 && (

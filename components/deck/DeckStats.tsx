@@ -8,7 +8,7 @@ import type { DeckStats as DeckStatsData } from '@/lib/decks/stats';
 
 /** Einklappbares Statistik-Panel im Deck-Editor (Standard eingeklappt).
  *  Reine Anzeige der von computeDeckStats gerechneten Werte, CSS-Balken. */
-export function DeckStats({ stats }: { stats: DeckStatsData }) {
+export function DeckStats({ stats, bare = false }: { stats: DeckStatsData; bare?: boolean }) {
   const [open, setOpen] = useState(false);
 
   const cat = stats.byCategory;
@@ -21,14 +21,14 @@ export function DeckStats({ stats }: { stats: DeckStatsData }) {
   const maxCost = Math.max(1, ...costEntries.map(c => c[1]));
 
   return (
-    <div className="rounded-2xl glass mb-4 overflow-hidden">
-      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between px-4 py-3">
+    <div className={bare ? 'border-t border-black/10 dark:border-white/10' : 'rounded-2xl glass mb-4 overflow-hidden'}>
+      <button onClick={() => setOpen(o => !o)} className={`w-full flex items-center justify-between ${bare ? 'py-2' : 'px-4 py-3'}`}>
         <span className="font-semibold">Statistik</span>
         <ChevronDown size={18} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
-        <div className="px-4 pb-4 flex flex-col gap-4">
+        <div className={`flex flex-col gap-4 ${bare ? 'pb-2' : 'px-4 pb-4'}`}>
           {/* Kategorie-Aufteilung */}
           <div>
             <div className="flex h-3 rounded-full overflow-hidden">
