@@ -281,7 +281,7 @@ export function BottomNav() {
               key={item.href}
               href={item.href}
               className="flex flex-col items-center gap-0.5 px-3 min-w-[56px] text-glass"
-              style={{ opacity: active ? 1 : 0.75 }}
+              style={{ opacity: active ? 1 : 0.75, color: active ? 'var(--pokedex-blue)' : undefined }}
             >
               <Icon size={22} strokeWidth={active ? 2.6 : 1.8} fill={active ? 'currentColor' : 'none'} />
               <span className="text-[10px]" style={{ fontWeight: active ? 700 : 500 }}>{item.label}</span>
@@ -409,7 +409,7 @@ export function BottomNav() {
         const active = isActive(item.href);
         const itemColor = isScanner
           ? (active ? '#fff' : 'rgba(255,255,255,0.65)')
-          : (active ? 'var(--pokedex-red)' : 'var(--muted-foreground)');
+          : (active ? 'var(--pokedex-blue)' : 'var(--muted-foreground)');
         return (
           <Link
             key={item.href}
