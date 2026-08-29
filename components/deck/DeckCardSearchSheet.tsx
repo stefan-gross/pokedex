@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Minus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { CardImage } from '@/components/card/CardImage';
 import { Sheet } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
+import { Stepper } from '@/components/ui/stepper';
 
 interface Props {
   open: boolean;
@@ -62,15 +63,7 @@ export function DeckCardSearchSheet({ open, onClose, counts, onAdd, onSetCount }
                   <p className="truncate text-role-label text-muted-foreground">{card.setId} · {card.number}</p>
                 </div>
                 {n > 0 ? (
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button onClick={() => onSetCount(card.id, n - 1)} className="w-8 h-8 rounded-full flex items-center justify-center bg-black/10 dark:bg-white/15" aria-label="weniger">
-                      <Minus size={16} />
-                    </button>
-                    <span className="w-5 text-center font-bold tabular-nums">{n}</span>
-                    <button onClick={() => onAdd(card)} className="w-8 h-8 rounded-full flex items-center justify-center bg-black/10 dark:bg-white/15" aria-label="mehr">
-                      <Plus size={16} />
-                    </button>
-                  </div>
+                  <Stepper value={n} onDec={() => onSetCount(card.id, n - 1)} onInc={() => onAdd(card)} />
                 ) : (
                   <button onClick={() => onAdd(card)} className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-white" style={{ background: '#2f855a' }} aria-label="hinzufügen">
                     <Plus size={18} strokeWidth={2.6} />

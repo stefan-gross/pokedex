@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
-import { Plus, Minus, Pencil, Check, AlertTriangle, Layers, MoreVertical, Sparkles } from 'lucide-react';
+import { Plus, Pencil, Check, AlertTriangle, Layers, MoreVertical, Sparkles } from 'lucide-react';
 import { getDeck, setDeckCardCount, addCardToDeck } from '@/lib/firestore/decks';
 import { getAllSets } from '@/lib/firestore/sets';
 import { syncDeckWishlists } from '@/lib/decks/sync';
@@ -23,6 +23,7 @@ import { DeckSuggestionsSheet } from '@/components/deck/DeckSuggestionsSheet';
 import { AiDeckBuilderSheet } from '@/components/deck/AiDeckBuilderSheet';
 import { Button } from '@/components/ui/button';
 import { Menu } from '@/components/ui/menu';
+import { Stepper } from '@/components/ui/stepper';
 import { formatCardNumber, formatEUR } from '@/lib/format';
 import type { DeckDoc, DeckCardRef, CardDoc } from '@/types';
 
@@ -264,13 +265,17 @@ export default function DeckEditorPage() {
       )}
 
       {/* Floating „+ Karte" */}
-      <button
+      <Button
+        variant="primary"
+        accentColor="#2f855a"
+        size="lg"
         onClick={() => setSearchOpen(true)}
-        className="fixed left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 h-12 px-6 rounded-full font-semibold text-white shadow-lg"
-        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)', background: '#2f855a' }}
+        icon={<Plus strokeWidth={2.6} />}
+        className="fixed left-1/2 -translate-x-1/2 z-30 shadow-lg"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)' }}
       >
-        <Plus size={18} strokeWidth={2.6} /> Karte
-      </button>
+        Karte
+      </Button>
 
       <DeckCardSearchSheet
         open={searchOpen}
@@ -338,11 +343,7 @@ function DeckRow({ group, card, demand, onInc, onDec }: {
             : hasOwn ? `habe ${owned}/${need}${owned < need ? ' · fehlt' : ''}` : `${group.primary.setId} · ${group.primary.number}`}
         </p>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <button onClick={onDec} className="w-8 h-8 rounded-full flex items-center justify-center bg-black/10 dark:bg-white/15" aria-label="weniger"><Minus size={16} /></button>
-        <span className="w-5 text-center font-bold tabular-nums">{group.total}</span>
-        <button onClick={onInc} className="w-8 h-8 rounded-full flex items-center justify-center bg-black/10 dark:bg-white/15" aria-label="mehr"><Plus size={16} /></button>
-      </div>
+      <Stepper value={group.total} onDec={onDec} onInc={onInc} />
     </div>
   );
 }

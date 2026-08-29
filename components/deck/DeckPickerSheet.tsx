@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Minus } from 'lucide-react';
+import { Plus } from 'lucide-react';
+import { Stepper } from '@/components/ui/stepper';
 import { Sheet } from '@/components/ui/modal';
 import { BinderIcon } from '@/lib/binder-icons';
 import { getDecks, addCardToDeck, setDeckCardCount } from '@/lib/firestore/decks';
@@ -78,15 +79,7 @@ export function DeckPickerSheet({ open, onClose, card }: {
                   </p>
                 </div>
                 {n > 0 ? (
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button onClick={() => change(deck, n - 1)} disabled={busy} className="w-8 h-8 rounded-full flex items-center justify-center bg-black/10 dark:bg-white/15 disabled:opacity-50" aria-label="weniger">
-                      <Minus size={16} />
-                    </button>
-                    <span className="w-5 text-center font-bold tabular-nums">{n}</span>
-                    <button onClick={() => change(deck, n + 1)} disabled={busy} className="w-8 h-8 rounded-full flex items-center justify-center bg-black/10 dark:bg-white/15 disabled:opacity-50" aria-label="mehr">
-                      <Plus size={16} />
-                    </button>
-                  </div>
+                  <Stepper value={n} onDec={() => change(deck, n - 1)} onInc={() => change(deck, n + 1)} disabled={busy} />
                 ) : (
                   <button onClick={() => change(deck, 1)} disabled={busy} className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-white disabled:opacity-50" style={{ background: '#3182ce' }} aria-label="hinzufügen">
                     <Plus size={18} strokeWidth={2.6} />
