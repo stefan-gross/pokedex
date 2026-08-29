@@ -36,13 +36,22 @@ export function DeckSuggestionsSheet({ open, onClose, cards, byId, owned, format
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  // Vorschläge NUR beim Öffnen berechnen (nicht bei jeder Deck-Mutation) — so
+  // markiert „Hinzufügen" den Vorschlag mit Häkchen, statt die Liste neu zu
+  // berechnen und die Häkchen zu verwerfen. Frische Vorschläge = Sheet erneut
+  // öffnen. `cards`/`byId`/`owned`/`format` bewusst NICHT in den Deps.
+  useEffect(() => {
+    if (!open) return;
+    setAdded(new Set());
     setLoading(true);
-    try { setSuggestions(await computeDeckSuggestions(cards, byId, owned, format)); }
-    catch (e) { console.error('[suggestions] error', e); setSuggestions([]); }
-    finally { setLoading(false); }
-  }, [cards, byId, owned, format]);
-  useEffect(() => { if (open) { setAdded(new Set()); load(); } }, [open, load]);
+    let cancelled = false;
+    computeDeckSuggestions(cards, byId, owned, format)
+      .then(s => { if (!cancelled) setSuggestions(s); })
+      .catch(e => { console.error('[suggestions] error', e); if (!cancelled) setSuggestions([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const add = async (s: DeckSuggestion) => {
     if (busyId) return;

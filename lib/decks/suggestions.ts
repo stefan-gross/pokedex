@@ -129,7 +129,10 @@ async function energySuggestions(ctx: DeckContext): Promise<DeckSuggestion[]> {
     let hits: CatalogCard[] = [];
     try { hits = (await searchCatalogCards(`${type} Energy`, { displayLimit: 20 })).cards; }
     catch (e) { console.error('[suggestions] energy lookup', type, e); continue; }
-    const basic = hits.find(c => isBasicEnergy(c) && (c.types ?? []).includes(type) && isCardLegal(c, ctx.format));
+    // Manche Basis-Energien tragen den Typ nur im Namen, nicht in `types[]` →
+    // Name-Fallback ("Fire Energy" enthält "fire").
+    const basic = hits.find(c => isBasicEnergy(c) && isCardLegal(c, ctx.format)
+      && ((c.types ?? []).includes(type) || c.name.toLowerCase().includes(type.toLowerCase())));
     if (!basic) continue;
     const addCount = accept(ctx, basic, 8);
     if (addCount <= 0) continue;
