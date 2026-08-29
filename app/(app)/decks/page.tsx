@@ -106,20 +106,18 @@ export default function DecksPage() {
           Wechseln nicht springt; Umschalter als zweite Zeile integriert. */}
       <div className="sticky top-safe z-20 px-3 pt-3 pb-1">
         <div className="glass rounded-[20px] px-4 pt-3 pb-3 flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Meine Karten</h1>
-            </div>
-            {editMode ? (
-              <Button variant="primary" accentColor="#2f855a" onClick={() => setEditMode(false)} icon={<Check />} aria-label="Fertig" className="shrink-0" />
-            ) : (
-              <div className="flex items-center gap-2 shrink-0">
-                <Button variant="primary" accentColor="#2f855a" onClick={() => setCreateOpen(true)} icon={<Plus strokeWidth={2.5} />} aria-label="Deck erstellen" />
-                {decks.length > 0 && <Button variant="secondary" onClick={() => setEditMode(true)} icon={<Pencil />} aria-label="Bearbeiten" />}
-              </div>
-            )}
-          </div>
+          <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.18)]">Meine Karten</h1>
           <CollectionDeckToggle deckCount={loading ? undefined : decks.length} />
+          {/* Aktionszeile: beschriftetes Erstellen (bezieht sich klar auf den
+              aktiven Switch). */}
+          {editMode ? (
+            <Button variant="primary" accentColor="#2f855a" onClick={() => setEditMode(false)} icon={<Check />} className="w-full">Fertig</Button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Button variant="primary" accentColor="#2f855a" onClick={() => setCreateOpen(true)} icon={<Plus strokeWidth={2.5} />} className="flex-1">Neues Deck</Button>
+              {decks.length > 0 && <Button variant="secondary" onClick={() => setEditMode(true)} icon={<Pencil />} aria-label="Bearbeiten" className="shrink-0" />}
+            </div>
+          )}
         </div>
       </div>
 
