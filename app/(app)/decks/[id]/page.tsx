@@ -19,6 +19,7 @@ import { DeckStats } from '@/components/deck/DeckStats';
 import { TestHandSheet } from '@/components/deck/TestHandSheet';
 import { DeckCodeSheet } from '@/components/deck/DeckCodeSheet';
 import { DeckSuggestionsSheet } from '@/components/deck/DeckSuggestionsSheet';
+import { AiDeckBuilderSheet } from '@/components/deck/AiDeckBuilderSheet';
 import { Button } from '@/components/ui/button';
 import { Menu } from '@/components/ui/menu';
 import { formatCardNumber, formatEUR } from '@/lib/format';
@@ -44,6 +45,7 @@ export default function DeckEditorPage() {
   const [testHandOpen, setTestHandOpen] = useState(false);
   const [codeSheet, setCodeSheet] = useState<null | 'export' | 'import'>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
 
   const loadDeck = async () => {
@@ -174,6 +176,7 @@ export default function DeckEditorPage() {
             <Button variant="ghost" onClick={toggle} icon={<MoreVertical size={18} />} aria-label="Mehr" aria-expanded={open} className="shrink-0" />
           )}
           items={[
+            { label: 'KI-Deck erstellen', onClick: () => setAiOpen(true) },
             { label: 'Als Code exportieren', onClick: () => setCodeSheet('export') },
             { label: 'Code importieren', onClick: () => setCodeSheet('import') },
             { label: exportingPdf ? 'PDF wird erstellt …' : 'Als PDF', onClick: exportPdf, disabled: exportingPdf || deck.cards.length === 0 },
@@ -280,6 +283,12 @@ export default function DeckEditorPage() {
         owned={owned}
         format={deck.format}
         onAdd={addCatalogCard}
+      />
+      <AiDeckBuilderSheet
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        deck={deck}
+        onApplied={() => { loadDeck(); syncDemand(); }}
       />
     </div>
   );

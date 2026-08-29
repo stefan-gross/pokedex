@@ -25,11 +25,11 @@ export interface DeckSuggestion {
 
 // Kuratierte Standard-Trainer-Staples (englische Katalognamen). Bewusst
 // zeitlose Karten; die konkrete legale Auflage wird zur Laufzeit aufgelöst.
-const TRAINER_STAPLES = ["Professor's Research", 'Iono', "Boss's Orders", 'Ultra Ball', 'Nest Ball', 'Switch'];
+export const TRAINER_STAPLES = ["Professor's Research", 'Iono', "Boss's Orders", 'Ultra Ball', 'Nest Ball', 'Switch'];
 // Für Decks mit Stufe-2-Pokémon zusätzlich.
-const STAGE2_STAPLE = 'Rare Candy';
+export const STAGE2_STAPLE = 'Rare Candy';
 
-const ENERGY_TYPES_WITH_BASIC = ['Grass', 'Fire', 'Water', 'Lightning', 'Psychic', 'Fighting', 'Darkness', 'Metal'];
+export const ENERGY_TYPES_WITH_BASIC = ['Grass', 'Fire', 'Water', 'Lightning', 'Psychic', 'Fighting', 'Darkness', 'Metal'];
 
 interface DeckContext {
   cards: DeckCardRef[];

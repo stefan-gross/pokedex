@@ -129,3 +129,10 @@ export async function setDeckCardCount(deckId: string, catalogId: string, count:
 export async function removeDeckCard(deckId: string, catalogId: string): Promise<void> {
   return setDeckCardCount(deckId, catalogId, 0);
 }
+
+/** Das komplette Rezept überschreiben — für den Deck-Generator (D8), der einen
+ *  fertigen Entwurf übernimmt. Kein Read-Modify-Write nötig (voller Ersatz). */
+export async function setDeckCards(deckId: string, cards: DeckCardRef[]): Promise<void> {
+  await updateDoc(doc(db, COL, deckId), { cards, updatedAt: Timestamp.now() });
+  invalidateDecksCache();
+}
