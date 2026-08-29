@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, BookOpen, Heart, Camera, Pause, LayoutGrid, Square, Layers } from 'lucide-react';
+import { Home, Search, Archive, Heart, Camera, Pause, LayoutGrid, Square, Layers } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ButtonGroup } from '@/components/ui/button-group';
 
@@ -12,7 +12,7 @@ const navItems = [
   { href: '/', icon: Home, label: 'Home' },
   { href: '/collection', icon: Search, label: 'Suchen' },
   null, // FAB placeholder
-  { href: '/binders', icon: BookOpen, label: 'Sammlungen' },
+  { href: '/binders', icon: Archive, label: 'Meine Karten' },
   { href: '/wishlist', icon: Heart, label: 'Wunschliste' },
 ];
 
