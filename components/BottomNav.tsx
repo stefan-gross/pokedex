@@ -281,14 +281,14 @@ export function BottomNav() {
               key={item.href}
               href={item.href}
               className="flex flex-col items-center gap-0.5 px-3 min-w-[56px] text-glass"
-              style={{ opacity: active ? 1 : 0.75 }}
+              style={{ opacity: active ? 1 : 0.75, color: active ? 'var(--pokedex-blue)' : undefined }}
             >
-              <Icon
-                size={22}
-                strokeWidth={active ? 2 : 1.8}
-                fill={active ? 'var(--pokedex-blue)' : 'none'}
-                color={active ? '#fff' : undefined}
-              />
+              <span
+                className="flex items-center justify-center rounded-full transition-colors"
+                style={active ? { padding: '5px 14px', background: 'rgba(49,130,206,0.16)', boxShadow: 'inset 0 0 0 0.5px rgba(49,130,206,0.4)' } : { padding: '5px 0' }}
+              >
+                <Icon size={22} strokeWidth={1.8} fill={active ? 'currentColor' : 'none'} />
+              </span>
               <span className="text-[10px]" style={{ fontWeight: active ? 700 : 500 }}>{item.label}</span>
             </Link>
           );
@@ -412,25 +412,25 @@ export function BottomNav() {
         // Normale Nav-Items
         const Icon = item.icon;
         const active = isActive(item.href);
-        // Label bleibt in der normalen Textfarbe (aktiv: kräftig, sonst gedimmt);
-        // der aktive Zustand steckt in der gefüllten blauen Icon-Pille (weißes Icon).
-        const labelColor = isScanner
+        // iOS-26-Liquid-Glass-Auswahl: getönte Glas-Kapsel hinter dem Icon,
+        // Icon gefüllt + Label in der Akzentfarbe (blau) — beides hervorgehoben.
+        const itemColor = isScanner
           ? (active ? '#fff' : 'rgba(255,255,255,0.65)')
-          : (active ? 'var(--foreground)' : 'var(--muted-foreground)');
+          : (active ? 'var(--pokedex-blue)' : 'var(--muted-foreground)');
         return (
           <Link
             key={item.href}
             href={item.href}
             className="flex flex-col items-center gap-0.5 px-3 min-w-[56px]"
-            style={{ color: labelColor, paddingBottom: 6, paddingTop: 4 }}
+            style={{ color: itemColor, paddingBottom: 6, paddingTop: 4 }}
           >
-            <Icon
-              size={22}
-              strokeWidth={active ? 2 : 1.8}
-              fill={active ? 'var(--pokedex-blue)' : 'none'}
-              color={active ? '#fff' : undefined}
-            />
-            <span className="text-[10px] font-medium">{item.label}</span>
+            <span
+              className="flex items-center justify-center rounded-full transition-colors"
+              style={active && !isScanner ? { padding: '4px 14px', background: 'rgba(49,130,206,0.16)', boxShadow: 'inset 0 0 0 0.5px rgba(49,130,206,0.4)' } : { padding: '4px 0' }}
+            >
+              <Icon size={22} strokeWidth={1.8} fill={active ? 'currentColor' : 'none'} />
+            </span>
+            <span className="text-[10px] font-medium" style={{ fontWeight: active ? 700 : 500 }}>{item.label}</span>
           </Link>
         );
       })}
