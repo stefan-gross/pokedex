@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Sparkles, Check, AlertTriangle, Wand2 } from 'lucide-react';
+import { Sparkles, AlertTriangle, Wand2 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -209,12 +210,13 @@ export function AiDeckBuilderSheet({ open, onClose, deck, onApplied }: {
           </label>
 
           {deck.cards.length > 0 && (
-            <button onClick={() => setKeepExisting(k => !k)} className="flex items-center gap-2 text-role-label text-glass self-start">
-              <span className={`w-5 h-5 rounded-md flex items-center justify-center ${keepExisting ? 'text-white' : 'border border-glass-muted'}`} style={keepExisting ? { background: '#3182ce' } : undefined}>
-                {keepExisting && <Check size={14} />}
-              </span>
-              Bestehende {deck.cards.reduce((s, c) => s + c.count, 0)} Karten behalten (ergänzen)
-            </button>
+            <Checkbox
+              checked={keepExisting}
+              onChange={setKeepExisting}
+              accentColor="#3182ce"
+              className="self-start"
+              label={`Bestehende ${deck.cards.reduce((s, c) => s + c.count, 0)} Karten behalten (ergänzen)`}
+            />
           )}
 
           {error && <p className="text-role-label" style={{ color: '#c53030' }}>{error}</p>}
