@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useId } from 'react';
 import Link from 'next/link';
-import { Plus, Pencil, Trash2, Check, Layers } from 'lucide-react';
+import { Plus, Pencil, Trash2, Check, Layers, AlertTriangle } from 'lucide-react';
 import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors, closestCenter,
   type DragEndEvent,
@@ -11,13 +11,12 @@ import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from '@d
 import { CSS } from '@dnd-kit/utilities';
 import { getDecks, deleteDeckCascade, reorderDecks } from '@/lib/firestore/decks';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
-import { computeDeckStats } from '@/lib/decks/stats';
+import { validateDeck } from '@/lib/decks/rules';
 import { CreateDeckModal } from '@/components/deck/CreateDeckModal';
 import { CollectionDeckToggle } from '@/components/deck/CollectionDeckToggle';
 import { BoxCover } from '@/components/binder/BinderCover';
 import { Button } from '@/components/ui/button';
 import { readableTextColor, lightenColor } from '@/lib/color-utils';
-import { formatEUR } from '@/lib/format';
 
 // Banderole (wie Sammlungs-Boxen): eigene, etwas hellere Farbfläche unten.
 const BANDEROLE_GAP = 6;
@@ -26,6 +25,10 @@ const BANDEROLE_SMALL_RADIUS = 1.5;
 import type { DeckDoc } from '@/types';
 
 const FORMAT_LABEL: Record<string, string> = { standard: 'Standard', expanded: 'Expanded', unlimited: 'Unlimited' };
+
+/** Banderolen-Info je Deck: Größe + Spielbar-Status (valid=null solange der
+ *  Katalog für die Legalitätsprüfung noch lädt). */
+interface DeckMeta { total: number; valid: boolean | null; issues: number }
 
 export default function DecksPage() {
   const [decks, setDecks] = useState<DeckDoc[]>([]);
@@ -47,8 +50,8 @@ export default function DecksPage() {
   };
   useEffect(() => { load(); }, []);
 
-  // Katalog für die Deckkarten nicht-blockierend nachladen — nur für den
-  // Wert-€ in der Banderole. Cover/Namen stehen davon unabhängig sofort.
+  // Katalog für die Deckkarten nicht-blockierend nachladen — für die
+  // Legalitätsprüfung (Spielbar-Status). Cover/Namen stehen davon unabhängig sofort.
   useEffect(() => {
     const ids = [...new Set(decks.flatMap(d => d.cards.map(c => c.catalogId)))];
     if (ids.length === 0) return;
@@ -58,11 +61,17 @@ export default function DecksPage() {
   }, [decks]);
 
   const deckMeta = useMemo(() => {
-    const m = new Map<string, { total: number; value: number }>();
+    const m = new Map<string, DeckMeta>();
     for (const d of decks) {
       const total = d.cards.reduce((s, c) => s + c.count, 0);
-      const value = catalog.size ? computeDeckStats(d.cards, catalog).totalValueEur : 0;
-      m.set(d.id, { total, value });
+      // Spielbar-Status erst wenn der Katalog geladen ist (valid=null = „noch offen").
+      let valid: boolean | null = null, issues = 0;
+      if (catalog.size) {
+        const v = validateDeck(d.cards, catalog, d.format);
+        valid = v.valid;
+        issues = v.issues.filter(i => i.severity === 'block').length;
+      }
+      m.set(d.id, { total, valid, issues });
     }
     return m;
   }, [decks, catalog]);
@@ -137,7 +146,7 @@ export default function DecksPage() {
                 <DeckTile
                   key={deck.id}
                   deck={deck}
-                  meta={deckMeta.get(deck.id) ?? { total: 0, value: 0 }}
+                  meta={deckMeta.get(deck.id) ?? { total: 0, valid: null, issues: 0 }}
                   editMode={editMode}
                   onDelete={() => handleDelete(deck)}
                   onEdit={() => setEditDeck(deck)}
@@ -162,7 +171,7 @@ export default function DecksPage() {
 
 function DeckTile({ deck, meta, editMode, onDelete, onEdit }: {
   deck: DeckDoc;
-  meta: { total: number; value: number };
+  meta: DeckMeta;
   editMode: boolean;
   onDelete: () => void;
   onEdit: () => void;
@@ -179,7 +188,7 @@ function DeckTile({ deck, meta, editMode, onDelete, onEdit }: {
   const bandTextColor = readableTextColor(bandColor);
   const grainUid = useId().replace(/:/g, '');
 
-  // Box-Cover (wie Sammlungs-Boxen) + Banderole mit X/60 · Format · €.
+  // Box-Cover (wie Sammlungs-Boxen) + Banderole: X/60 · Format · Spielbar-Status.
   const cover = (
     <div className="relative" style={{ transform: 'scale(0.92)', transformOrigin: 'center' }}>
       <BoxCover color={color} name={deck.name} icon={deck.icon ?? 'box'} reserveBottom={BANDEROLE_HEIGHT + BANDEROLE_GAP} />
@@ -210,7 +219,17 @@ function DeckTile({ deck, meta, editMode, onDelete, onEdit }: {
       >
         <span className="font-bold tabular-nums" style={{ fontSize: 12, color: bandTextColor }}>{meta.total}/60</span>
         <span className="font-semibold truncate" style={{ fontSize: 11, color: bandTextColor, opacity: 0.85 }}>{FORMAT_LABEL[deck.format] ?? deck.format}</span>
-        <span className="font-bold tabular-nums shrink-0" style={{ fontSize: 12, color: bandTextColor }}>{formatEUR(meta.value)}</span>
+        {meta.valid === null ? (
+          <span />
+        ) : meta.valid ? (
+          <span className="flex items-center gap-1 font-bold shrink-0" style={{ fontSize: 12, color: bandTextColor }}>
+            <Check size={12} strokeWidth={3} /> Spielbar
+          </span>
+        ) : (
+          <span className="flex items-center gap-1 font-bold shrink-0" style={{ fontSize: 11, color: bandTextColor }}>
+            <AlertTriangle size={11} /> {meta.issues} {meta.issues === 1 ? 'Problem' : 'Probleme'}
+          </span>
+        )}
       </div>
 
       {editMode && (
