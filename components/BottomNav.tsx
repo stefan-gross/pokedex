@@ -281,9 +281,14 @@ export function BottomNav() {
               key={item.href}
               href={item.href}
               className="flex flex-col items-center gap-0.5 px-3 min-w-[56px] text-glass"
-              style={{ opacity: active ? 1 : 0.75, color: active ? 'var(--pokedex-blue)' : undefined }}
+              style={{ opacity: active ? 1 : 0.75 }}
             >
-              <Icon size={22} strokeWidth={active ? 2.6 : 1.8} fill={active ? 'currentColor' : 'none'} />
+              <span
+                className="flex items-center justify-center rounded-full transition-colors"
+                style={active ? { background: 'var(--pokedex-blue)', padding: '4px 14px' } : { padding: '4px 0' }}
+              >
+                <Icon size={20} strokeWidth={active ? 2.4 : 1.8} color={active ? '#fff' : undefined} fill="none" />
+              </span>
               <span className="text-[10px]" style={{ fontWeight: active ? 700 : 500 }}>{item.label}</span>
             </Link>
           );
@@ -407,17 +412,24 @@ export function BottomNav() {
         // Normale Nav-Items
         const Icon = item.icon;
         const active = isActive(item.href);
-        const itemColor = isScanner
+        // Label bleibt in der normalen Textfarbe (aktiv: kräftig, sonst gedimmt);
+        // der aktive Zustand steckt in der gefüllten blauen Icon-Pille (weißes Icon).
+        const labelColor = isScanner
           ? (active ? '#fff' : 'rgba(255,255,255,0.65)')
-          : (active ? 'var(--pokedex-blue)' : 'var(--muted-foreground)');
+          : (active ? 'var(--foreground)' : 'var(--muted-foreground)');
         return (
           <Link
             key={item.href}
             href={item.href}
             className="flex flex-col items-center gap-0.5 px-3 min-w-[56px]"
-            style={{ color: itemColor, paddingBottom: 6, paddingTop: 4 }}
+            style={{ color: labelColor, paddingBottom: 6, paddingTop: 4 }}
           >
-            <Icon size={22} strokeWidth={active ? 2.5 : 1.8} />
+            <span
+              className="flex items-center justify-center rounded-full transition-colors"
+              style={active ? { background: 'var(--pokedex-blue)', padding: '3px 13px' } : { padding: '3px 0' }}
+            >
+              <Icon size={21} strokeWidth={active ? 2.4 : 1.8} color={active ? '#fff' : undefined} />
+            </span>
             <span className="text-[10px] font-medium">{item.label}</span>
           </Link>
         );
