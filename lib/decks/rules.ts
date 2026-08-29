@@ -31,6 +31,16 @@ export function cardNameKey(name: string): string {
   return name.trim().toLowerCase();
 }
 
+/** Sprach- und druckübergreifender Identitätsschlüssel einer Deckkarte: der
+ *  ENGLISCHE Katalogname (immer vorhanden, sprachstabil). Damit zählt dieselbe
+ *  Karte unter EN- und DE-Namen (z.B. „Charizard ex" / „Glurak ex") sowie über
+ *  verschiedene Drucke als EINE Karte — für die 4er-Regel UND die Anzeige-
+ *  Gruppierung im Editor. Fällt auf den denormalisierten Ref-Namen zurück, wenn
+ *  die Katalogkarte (noch) nicht geladen ist. */
+export function cardIdentityKey(catalogId: string, byId: Map<string, CatalogCard>, fallbackName: string): string {
+  return cardNameKey(byId.get(catalogId)?.name ?? fallbackName);
+}
+
 /** Ist die Karte im gewählten Format legal? Primär über die Katalog-Felder
  *  `legal.standard/expanded` (vom Sync gepflegt); 'unlimited' = immer legal. */
 export function isCardLegal(card: CatalogCard | undefined, format: DeckFormat): boolean {
@@ -76,8 +86,10 @@ export function validateDeck(
   const byName = new Map<string, { name: string; count: number; ids: string[] }>();
   for (const ref of cards) {
     if (isBasicEnergy(byId.get(ref.catalogId))) continue;
-    const key = cardNameKey(ref.name);
-    const e = byName.get(key) ?? { name: ref.name, count: 0, ids: [] };
+    const key = cardIdentityKey(ref.catalogId, byId, ref.name);
+    // Anzeigename für die Meldung: deutschen Namen bevorzugen.
+    const display = byId.get(ref.catalogId)?.nameDe ?? ref.name;
+    const e = byName.get(key) ?? { name: display, count: 0, ids: [] };
     e.count += ref.count;
     e.ids.push(ref.catalogId);
     byName.set(key, e);

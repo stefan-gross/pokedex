@@ -10,6 +10,7 @@ import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog'
 import { getCards } from '@/lib/firestore/cards';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { validateDeck } from '@/lib/decks/rules';
+import { groupDeckRows, type DeckGroup } from '@/lib/decks/group';
 import { computeDeckDemand, type DeckDemand } from '@/lib/decks/demand';
 import { computeDeckStats } from '@/lib/decks/stats';
 import { CardImage } from '@/components/card/CardImage';
@@ -84,6 +85,14 @@ export default function DeckEditorPage() {
     await setDeckCardCount(deck.id, catalogId, count);
     await loadDeck();
     syncDemand();
+  };
+  // Gruppen-Stepper (dieselbe Karte über mehrere Drucke/Sprachen = eine Zeile):
+  // + erhöht den „Haupt"-Druck; − reduziert zuerst den kleinsten Druck, sodass
+  // ein versehentlicher Zweit-Druck (EN/DE-Mix) beim Runterzählen verschwindet.
+  const incGroup = (g: DeckGroup) => changeCount(g.primary.catalogId, g.primary.count + 1);
+  const decGroup = (g: DeckGroup) => {
+    const target = [...g.prints].filter(p => p.count > 0).sort((a, b) => a.count - b.count)[0];
+    if (target) changeCount(target.catalogId, target.count - 1);
   };
   const addCard = async (card: CardInfo) => {
     if (!deck) return;
@@ -228,17 +237,16 @@ export default function DeckEditorPage() {
       ) : (
         <div className="flex flex-col gap-5">
           {CATEGORIES.map(cat => {
-            const rows = deck.cards
-              .filter(c => (byId.get(c.catalogId)?.supertype ?? c.supertype) === cat.key)
-              .sort((a, b) => a.name.localeCompare(b.name, 'de'));
-            if (rows.length === 0) return null;
-            const catTotal = rows.reduce((s, c) => s + c.count, 0);
+            const refs = deck.cards.filter(c => (byId.get(c.catalogId)?.supertype ?? c.supertype) === cat.key);
+            const groups = groupDeckRows(refs, byId).sort((a, b) => a.displayName.localeCompare(b.displayName, 'de'));
+            if (groups.length === 0) return null;
+            const catTotal = groups.reduce((s, g) => s + g.total, 0);
             return (
               <section key={cat.key}>
                 <h2 className="text-role-label font-bold uppercase tracking-wide text-muted-foreground mb-2">{cat.label} · {catTotal}</h2>
                 <div className="flex flex-col gap-1.5">
-                  {rows.map(ref => (
-                    <DeckRow key={ref.catalogId} refCard={ref} card={byId.get(ref.catalogId)} demand={demand} onChange={changeCount} />
+                  {groups.map(g => (
+                    <DeckRow key={g.key} group={g} card={byId.get(g.primary.catalogId)} demand={demand} onInc={() => incGroup(g)} onDec={() => decGroup(g)} />
                   ))}
                 </div>
               </section>
@@ -294,31 +302,38 @@ export default function DeckEditorPage() {
   );
 }
 
-function DeckRow({ refCard, card, demand, onChange }: {
-  refCard: DeckCardRef;
+function DeckRow({ group, card, demand, onInc, onDec }: {
+  group: DeckGroup;
   card: CatalogCard | undefined;
   demand: DeckDemand | null;
-  onChange: (catalogId: string, count: number) => void;
+  onInc: () => void;
+  onDec: () => void;
 }) {
   const info: CardInfo = card
     ? catalogCardToInfo(card)
-    : { id: refCard.catalogId, name: refCard.name, number: refCard.number, setId: refCard.setId, supertype: refCard.supertype, imgSmall: '', imgLarge: '' } as CardInfo;
-  const own = demand?.perCard.get(refCard.catalogId);
+    : { id: group.primary.catalogId, name: group.displayName, number: group.primary.number, setId: group.primary.setId, supertype: group.primary.supertype, imgSmall: '', imgLarge: '' } as CardInfo;
+  // Besitz/Bedarf über alle Drucke der Gruppe summieren.
+  let need = 0, owned = 0, isBasicEnergy = false, hasOwn = false;
+  for (const p of group.prints) {
+    const o = demand?.perCard.get(p.catalogId);
+    if (!o) continue;
+    hasOwn = true; need += o.need; owned += o.owned; isBasicEnergy = isBasicEnergy || o.isBasicEnergy;
+  }
   return (
     <div className="flex items-center gap-3">
-      <div className="w-9 shrink-0"><CardImage card={info} size="small" alt={refCard.name} width={63} height={88} className="w-full rounded" /></div>
+      <div className="w-9 shrink-0"><CardImage card={info} size="small" alt={group.displayName} width={63} height={88} className="w-full rounded" /></div>
       <div className="flex-1 min-w-0">
-        <p className="truncate text-sm font-semibold">{refCard.name}</p>
+        <p className="truncate text-sm font-semibold">{group.displayName}</p>
         <p className="truncate text-role-label text-muted-foreground">
-          {own?.isBasicEnergy
+          {isBasicEnergy
             ? 'Basis-Energie'
-            : own ? `habe ${own.owned}/${own.need}${own.owned < own.need ? ' · fehlt' : ''}` : `${refCard.setId} · ${refCard.number}`}
+            : hasOwn ? `habe ${owned}/${need}${owned < need ? ' · fehlt' : ''}` : `${group.primary.setId} · ${group.primary.number}`}
         </p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <button onClick={() => onChange(refCard.catalogId, refCard.count - 1)} className="w-8 h-8 rounded-full flex items-center justify-center bg-black/10 dark:bg-white/15" aria-label="weniger"><Minus size={16} /></button>
-        <span className="w-5 text-center font-bold tabular-nums">{refCard.count}</span>
-        <button onClick={() => onChange(refCard.catalogId, refCard.count + 1)} className="w-8 h-8 rounded-full flex items-center justify-center bg-black/10 dark:bg-white/15" aria-label="mehr"><Plus size={16} /></button>
+        <button onClick={onDec} className="w-8 h-8 rounded-full flex items-center justify-center bg-black/10 dark:bg-white/15" aria-label="weniger"><Minus size={16} /></button>
+        <span className="w-5 text-center font-bold tabular-nums">{group.total}</span>
+        <button onClick={onInc} className="w-8 h-8 rounded-full flex items-center justify-center bg-black/10 dark:bg-white/15" aria-label="mehr"><Plus size={16} /></button>
       </div>
     </div>
   );

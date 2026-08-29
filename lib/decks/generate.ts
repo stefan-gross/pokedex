@@ -13,7 +13,9 @@ import type { CatalogCard } from '../firestore/catalog';
 import type { DeckCardRef } from '@/types';
 
 function toRef(card: CatalogCard, count: number): DeckCardRef {
-  return { catalogId: card.id, count, name: card.name, setId: card.setId, number: card.number, supertype: card.supertype };
+  // Deutschen Namen bevorzugen (wie catalogCardToInfo) — sonst zeigten
+  // KI-generierte Karten englische Namen, während UI-Adds deutsche speichern.
+  return { catalogId: card.id, count, name: card.nameDe ?? card.name, setId: card.setId, number: card.number, supertype: card.supertype };
 }
 
 /** Baut ein Deck inkrementell auf und hält dabei die harten Regeln ein

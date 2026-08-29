@@ -14,6 +14,7 @@ import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog'
 import { buildCandidatePool, toPoolLines, hasBasicPokemonInPool, type PoolCard } from '@/lib/decks/pool';
 import { assembleDeck, applyAiPicks, type AiPick } from '@/lib/decks/generate';
 import { validateDeck } from '@/lib/decks/rules';
+import { groupDeckRows } from '@/lib/decks/group';
 import type { DeckCardRef, DeckFormat, DeckDoc } from '@/types';
 
 type Ownership = 'owned' | 'prefer' | 'best';
@@ -257,22 +258,20 @@ function DraftView({ draft, byId, total, validation, usedAi, applying, onApply, 
 
       <div className="flex flex-col gap-3 max-h-[46vh] overflow-auto" data-scroll-lock-allow>
         {CATS.map(cat => {
-          const rows = draft.filter(c => (byId.get(c.catalogId)?.supertype ?? c.supertype) === cat.key).sort((a, b) => a.name.localeCompare(b.name, 'de'));
-          if (rows.length === 0) return null;
-          const catTotal = rows.reduce((s, c) => s + c.count, 0);
+          const refs = draft.filter(c => (byId.get(c.catalogId)?.supertype ?? c.supertype) === cat.key);
+          const groups = groupDeckRows(refs, byId).sort((a, b) => a.displayName.localeCompare(b.displayName, 'de'));
+          if (groups.length === 0) return null;
+          const catTotal = groups.reduce((s, g) => s + g.total, 0);
           return (
             <section key={cat.key}>
               <h3 className="text-role-label font-bold uppercase tracking-wide text-glass-muted mb-1.5">{cat.label} · {catTotal}</h3>
               <div className="flex flex-col gap-1">
-                {rows.map(ref => {
-                  const c = byId.get(ref.catalogId);
-                  return (
-                    <div key={ref.catalogId} className="flex items-center gap-2 text-role-label">
-                      <span className="w-6 text-right font-bold tabular-nums shrink-0">{ref.count}×</span>
-                      <span className="truncate text-glass">{c?.nameDe ?? c?.name ?? ref.name}</span>
-                    </div>
-                  );
-                })}
+                {groups.map(g => (
+                  <div key={g.key} className="flex items-center gap-2 text-role-label">
+                    <span className="w-6 text-right font-bold tabular-nums shrink-0">{g.total}×</span>
+                    <span className="truncate text-glass">{g.displayName}</span>
+                  </div>
+                ))}
               </div>
             </section>
           );
