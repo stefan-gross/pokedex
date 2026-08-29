@@ -283,12 +283,12 @@ export function BottomNav() {
               className="flex flex-col items-center gap-0.5 px-3 min-w-[56px] text-glass"
               style={{ opacity: active ? 1 : 0.75 }}
             >
-              <span
-                className="flex items-center justify-center rounded-full transition-colors"
-                style={active ? { background: 'var(--pokedex-blue)', padding: '4px 14px' } : { padding: '4px 0' }}
-              >
-                <Icon size={20} strokeWidth={active ? 2.4 : 1.8} color={active ? '#fff' : undefined} fill="none" />
-              </span>
+              <Icon
+                size={22}
+                strokeWidth={active ? 2 : 1.8}
+                fill={active ? 'var(--pokedex-blue)' : 'none'}
+                color={active ? '#fff' : undefined}
+              />
               <span className="text-[10px]" style={{ fontWeight: active ? 700 : 500 }}>{item.label}</span>
             </Link>
           );
@@ -424,12 +424,12 @@ export function BottomNav() {
             className="flex flex-col items-center gap-0.5 px-3 min-w-[56px]"
             style={{ color: labelColor, paddingBottom: 6, paddingTop: 4 }}
           >
-            <span
-              className="flex items-center justify-center rounded-full transition-colors"
-              style={active ? { background: 'var(--pokedex-blue)', padding: '3px 13px' } : { padding: '3px 0' }}
-            >
-              <Icon size={21} strokeWidth={active ? 2.4 : 1.8} color={active ? '#fff' : undefined} />
-            </span>
+            <Icon
+              size={22}
+              strokeWidth={active ? 2 : 1.8}
+              fill={active ? 'var(--pokedex-blue)' : 'none'}
+              color={active ? '#fff' : undefined}
+            />
             <span className="text-[10px] font-medium">{item.label}</span>
           </Link>
         );
