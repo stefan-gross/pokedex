@@ -8,6 +8,7 @@ import { getAllSets } from '@/lib/firestore/sets';
 import { syncDeckWishlists } from '@/lib/decks/sync';
 import { getCatalogCardsByIds, getCardsByEvolutionFamily, type CatalogCard } from '@/lib/firestore/catalog';
 import { getCards } from '@/lib/firestore/cards';
+import { getBinders } from '@/lib/firestore/binders';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { validateDeck, isCardLegal } from '@/lib/decks/rules';
 import { groupDeckRows, type DeckGroup } from '@/lib/decks/group';
@@ -58,8 +59,12 @@ const stageRank = (card?: CatalogCard) => { const s = stageKey(card); return s =
 /** Eine Evolutionslinie (oder ein Einzel-Pokémon) im Deck. */
 interface PokemonLine { key: string; header: string | null; counts: number[]; groups: DeckGroup[]; }
 
-/** Fehlende Zwischenstufe einer Linie (Inline-Vorschlag). */
-interface GapItem { dex: number; rank: number; stageLabel: string; card: CatalogCard | null; name: string; }
+// Empfohlene Anzahl je Stufe (Best Practice, Nutzer kann per Stepper anpassen).
+const RECOMMENDED_COUNT = [4, 2, 3];   // Basis / Phase 1 / Phase 2
+
+/** Fehlende Stufe einer Linie (Inline-Vorschlag) mit empfohlener Anzahl +
+ *  Besitz in „Unsortiert". */
+interface GapItem { dex: number; rank: number; stageLabel: string; card: CatalogCard | null; name: string; recommended: number; owned: number; }
 
 /** Gruppiert Pokémon-Zeilen nach ECHTER Evolutionslinie (gemeinsame
  *  evolutionFamily, nur Kettenglieder), sortiert innerhalb nach Stufe. Linien
@@ -107,7 +112,8 @@ function groupPokemonLines(groups: DeckGroup[], byId: Map<string, CatalogCard>):
 
   const lines: PokemonLine[] = [];
   for (const [key, gs] of chainBuckets) {
-    if (gs.length < 2) { singles.push(...gs); continue; }   // Kette mit nur 1 Glied → Einzelkarte
+    // Auch eine einzelne Kettenkarte (z.B. nur die Basis) ist eine Linie —
+    // dann werden die fehlenden Stufen inline vorgeschlagen (manueller Aufbau).
     gs.sort((a, b) => {
       const r = stageRank(byId.get(a.primary.catalogId)) - stageRank(byId.get(b.primary.catalogId));
       return r !== 0 ? r : a.displayName.localeCompare(b.displayName, 'de');
@@ -138,8 +144,10 @@ export default function DeckEditorPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [testHandOpen, setTestHandOpen] = useState(false);
   const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
-  // Fehlende Zwischenstufen je Linie (Inline-Vorschlag): lineKey → Kandidaten.
+  // Fehlende Stufen je Linie (Inline-Vorschlag): lineKey → Kandidaten.
   const [lineGaps, setLineGaps] = useState<Map<string, GapItem[]>>(new Map());
+  // Besitz in „Unsortiert" (lose Karten) je tcgId — für „besitzt X / fehlt M".
+  const [looseOwned, setLooseOwned] = useState<Map<string, number>>(new Map());
   const [codeSheet, setCodeSheet] = useState<null | 'export' | 'import'>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
@@ -165,9 +173,21 @@ export default function DeckEditorPage() {
   useEffect(() => { loadDeck(); /* eslint-disable-next-line */ }, [id]);
   useEffect(() => { getCards().then(setOwned).catch(() => {}); }, []);
 
-  // Fehlende Zwischenstufen je Evolutionslinie ermitteln (z.B. Phase 1 fehlt,
-  // obwohl Basis + Phase 2 im Deck sind) und passende Kandidaten laden — für die
-  // Inline-Vorschläge in der Linie. Nur echte Linien (mit Kopf) betrachten.
+  // Lose Karten in „Unsortiert" (Default-Binder) je tcgId zählen.
+  useEffect(() => {
+    (async () => {
+      const [cards, binders] = await Promise.all([getCards(), getBinders()]);
+      const looseIds = new Set(binders.find(b => b.isDefault)?.cardIds ?? []);
+      const m = new Map<string, number>();
+      for (const c of cards) if (c.tcgId && looseIds.has(c.id)) m.set(c.tcgId, (m.get(c.tcgId) ?? 0) + (c.quantity ?? 1));
+      setLooseOwned(m);
+    })().catch(() => {});
+  }, []);
+
+  // Fehlende Stufen je Evolutionslinie ermitteln (ALLE Stufen der Familie, die
+  // im Deck fehlen — beim manuellen Aufbau schlägt eine Basis so ihre Phase 1/2
+  // vor). Kandidaten: bevorzugt eine besessene Auflage aus „Unsortiert", sonst
+  // eine format-legale Katalogkarte. Empfohlene Anzahl + Besitz mitliefern.
   useEffect(() => {
     if (!deck || byId.size === 0) return;
     let cancelled = false;
@@ -179,25 +199,30 @@ export default function DeckEditorPage() {
         if (!line.key.startsWith('fam:')) continue;
         const dexArr = line.key.slice(4).split('-').map(Number);
         const present = new Set(line.groups.map(g => byId.get(g.primary.catalogId)?.nationalDexNumber).filter((d): d is number => d != null));
-        if (present.size === 0) continue;
-        const maxPresent = Math.max(...present);
-        const gapDex = dexArr.filter(d => !present.has(d) && d < maxPresent);   // fehlende Stufe unter einer vorhandenen höheren
+        const gapDex = dexArr.filter(d => !present.has(d));   // ALLE fehlenden Stufen der Familie
         const items: GapItem[] = [];
         for (const d of gapDex) {
           const rank = dexArr.indexOf(d);
           const wantStage = rank === 0 ? 'Basic' : rank === dexArr.length - 1 ? 'Stage 2' : 'Stage 1';
           let cands: CatalogCard[] = [];
           try { cands = await getCardsByEvolutionFamily(d); } catch { /* skip */ }
-          const legal = cands.filter(c => c.nationalDexNumber === d && isCardLegal(c, deck.format));
-          const pick = legal.find(c => c.subtypes?.includes(wantStage)) ?? legal[0] ?? null;
-          items.push({ dex: d, rank, stageLabel: STAGE_STYLE[wantStage].label, card: pick, name: pick?.nameDe ?? pick?.name ?? `#${d}` });
+          const legal = cands.filter(c => c.nationalDexNumber === d && c.subtypes?.includes(wantStage) && isCardLegal(c, deck.format));
+          const pool = legal.length ? legal : cands.filter(c => c.nationalDexNumber === d && isCardLegal(c, deck.format));
+          // Bevorzugt eine in „Unsortiert" besessene Auflage.
+          const pick = pool.find(c => (looseOwned.get(c.id) ?? 0) > 0) ?? pool[0] ?? null;
+          items.push({
+            dex: d, rank, stageLabel: STAGE_STYLE[wantStage].label, card: pick,
+            name: pick?.nameDe ?? pick?.name ?? `#${d}`,
+            recommended: RECOMMENDED_COUNT[Math.min(rank, 2)],
+            owned: pick ? (looseOwned.get(pick.id) ?? 0) : 0,
+          });
         }
         if (items.length) map.set(line.key, items);
       }
       if (!cancelled) setLineGaps(map);
     })();
     return () => { cancelled = true; };
-  }, [deck, byId]);
+  }, [deck, byId, looseOwned]);
 
   // Bedarfs-Wunschliste des Decks im Hintergrund synchron halten: einmal beim
   // Öffnen (falls sich Besitz/Katalog seit dem letzten Mal geändert hat) und
@@ -422,7 +447,7 @@ export default function DeckEditorPage() {
                                   <div key={r.kind === 'card' ? r.g.key : 'gap' + r.gap.dex} style={{ paddingLeft: r.rank * 14 }}>
                                     {r.kind === 'card'
                                       ? <DeckRow group={r.g} card={byId.get(r.g.primary.catalogId)} demand={demand} onInc={() => incGroup(r.g)} onDec={() => decGroup(r.g)} onOpenDetail={() => openDetail(r.g.primary.catalogId)} />
-                                      : <GapRow gap={r.gap} onAdd={() => r.gap.card && addCatalogCard(r.gap.card, 2)} onOpenDetail={() => r.gap.card && setDetailCard(catalogCardToInfo(r.gap.card))} />}
+                                      : <GapRow gap={r.gap} onAdd={(n) => r.gap.card && addCatalogCard(r.gap.card, n)} onOpenDetail={() => r.gap.card && setDetailCard(catalogCardToInfo(r.gap.card))} />}
                                   </div>
                                 ))}
                               </div>
@@ -604,13 +629,16 @@ function DeckRow({ group, card, demand, onInc, onDec, onOpenDetail }: {
   );
 }
 
-/** Inline-Vorschlag für eine fehlende Zwischenstufe der Linie (gedimmt, mit
- *  „+ hinzufügen"). Bild öffnet das Detail. */
-function GapRow({ gap, onAdd, onOpenDetail }: { gap: GapItem; onAdd: () => void; onOpenDetail: () => void }) {
+/** Inline-Vorschlag für eine fehlende Stufe der Linie: empfohlene Anzahl per
+ *  Stepper wählbar (voll / weniger / nur besessene), zeigt Besitz aus
+ *  „Unsortiert" + fehlende Anzahl. Bild öffnet das Detail. */
+function GapRow({ gap, onAdd, onOpenDetail }: { gap: GapItem; onAdd: (count: number) => void; onOpenDetail: () => void }) {
+  const [count, setCount] = useState(gap.recommended);
   const info = gap.card ? catalogCardToInfo(gap.card) : null;
   const stageColor = [STAGE_STYLE['Basic'], STAGE_STYLE['Stage 1'], STAGE_STYLE['Stage 2']][gap.rank]?.color ?? '#888';
+  const missing = Math.max(0, count - gap.owned);
   return (
-    <div className="flex items-center gap-3 opacity-90">
+    <div className="flex items-start gap-3 rounded-xl py-1.5 pl-1" style={{ boxShadow: 'inset 2px 0 0 rgba(183,121,31,0.55)' }}>
       <button onClick={onOpenDetail} disabled={!gap.card} className="w-11 shrink-0 rounded active:scale-95 transition-transform" aria-label={`${gap.name} – Kartendetail`}>
         {info
           ? <CardImage card={info} size="small" alt={gap.name} width={63} height={88} className="w-full rounded opacity-80" />
@@ -621,17 +649,23 @@ function GapRow({ gap, onAdd, onOpenDetail }: { gap: GapItem; onAdd: () => void;
           <span className="text-sm font-semibold truncate">{gap.name}</span>
           <span className="text-[10px] font-bold px-1.5 py-px rounded shrink-0 text-white" style={{ background: stageColor }}>{gap.stageLabel}</span>
         </div>
-        <p className="text-role-label mt-0.5 text-[#b7791f] dark:text-[#e2b464]">Zwischenstufe fehlt — für die Entwicklung nötig</p>
+        <p className="text-role-label mt-0.5 flex items-center gap-1.5 flex-wrap">
+          <span className="text-[#b7791f] dark:text-[#e2b464] font-semibold">Vorschlag</span>
+          <span className="text-muted-foreground">· besitzt {gap.owned}</span>
+          {missing > 0 && <span className="font-semibold text-[#c53030] dark:text-[#ef9a9a]">· fehlt {missing}</span>}
+        </p>
       </div>
-      <button
-        onClick={onAdd}
-        disabled={!gap.card}
-        className="flex items-center gap-1 h-8 px-3 rounded-full text-white text-sm font-semibold shrink-0 disabled:opacity-40 active:scale-95 transition-transform"
-        style={{ background: '#2f855a' }}
-        aria-label={`${gap.name} hinzufügen`}
-      >
-        <Plus size={15} strokeWidth={2.6} /> 2
-      </button>
+      <div className="flex flex-col items-center gap-1 shrink-0">
+        <Stepper value={count} min={0} onDec={() => setCount(c => Math.max(0, c - 1))} onInc={() => setCount(c => c + 1)} />
+        <button
+          onClick={() => onAdd(count)}
+          disabled={!gap.card || count < 1}
+          className="h-7 px-3 rounded-full text-white text-[13px] font-semibold disabled:opacity-40 active:scale-95 transition-transform"
+          style={{ background: '#2f855a' }}
+        >
+          Hinzufügen
+        </button>
+      </div>
     </div>
   );
 }
