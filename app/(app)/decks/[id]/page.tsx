@@ -37,11 +37,14 @@ const CATEGORIES: { key: string; label: string }[] = [
   { key: 'Energy',  label: 'Energie' },
 ];
 
-// Evolutionsstufe → Badge (Label + Farbcodierung: Basis grün / Ph.1 blau / Ph.2 lila).
-const STAGE_STYLE: Record<'Basic' | 'Stage 1' | 'Stage 2', { label: string; bg: string; color: string }> = {
-  'Basic':   { label: 'Basis',   bg: 'rgba(99,153,34,0.22)',  color: '#3b6d11' },
-  'Stage 1': { label: 'Phase 1', bg: 'rgba(49,130,206,0.22)', color: '#185fa5' },
-  'Stage 2': { label: 'Phase 2', bg: 'rgba(103,80,150,0.24)', color: '#453f9e' },
+// Evolutionsstufe → Badge (Farbcodierung: Basis grün / Ph.1 blau / Ph.2 lila).
+// `color` = voller Pill-Hintergrund (Text darauf weiß) UND Farbe der
+// Stufenzähler-Ziffern; mittelkräftige Töne, damit sie in Light UND Dark lesbar
+// sind.
+const STAGE_STYLE: Record<'Basic' | 'Stage 1' | 'Stage 2', { label: string; color: string }> = {
+  'Basic':   { label: 'Basis',   color: '#3f9e2c' },
+  'Stage 1': { label: 'Phase 1', color: '#3182ce' },
+  'Stage 2': { label: 'Phase 2', color: '#7a5cd8' },
 };
 function stageKey(card?: CatalogCard): keyof typeof STAGE_STYLE | null {
   if (!card || card.supertype !== 'Pokémon') return null;
@@ -270,7 +273,7 @@ export default function DeckEditorPage() {
               ) : (
                 (() => {
                   const n = validation.issues.filter(i => i.severity === 'block').length;
-                  return <span className="inline-flex items-center gap-1 font-semibold" style={{ color: '#c53030' }}><AlertTriangle size={13} /> {n} {n === 1 ? 'Problem' : 'Probleme'}</span>;
+                  return <span className="inline-flex items-center gap-1 font-semibold text-[#c53030] dark:text-[#ef9a9a]"><AlertTriangle size={13} /> {n} {n === 1 ? 'Problem' : 'Probleme'}</span>;
                 })()
               )}
             </div>
@@ -278,7 +281,7 @@ export default function DeckEditorPage() {
           {validation && !validation.valid && (
             <div className="mt-1 flex flex-col gap-0.5">
               {validation.issues.map((iss, i) => (
-                <div key={i} className="text-role-label" style={{ color: iss.severity === 'block' ? '#c53030' : '#b7791f' }}>• {iss.message}</div>
+                <div key={i} className={`text-role-label ${iss.severity === 'block' ? 'text-[#c53030] dark:text-[#ef9a9a]' : 'text-[#b7791f] dark:text-[#e2b464]'}`}>• {iss.message}</div>
               ))}
             </div>
           )}
@@ -458,7 +461,7 @@ function DeckRow({ group, card, demand, onInc, onDec, onOpenDetail }: {
           <span className="flex items-center gap-1.5 min-w-0">
             <span className="text-sm font-semibold truncate">{group.displayName}</span>
             {stage && (
-              <span className="text-[10px] font-bold px-1.5 py-px rounded shrink-0" style={{ background: stage.bg, color: stage.color }}>{stage.label}</span>
+              <span className="text-[10px] font-bold px-1.5 py-px rounded shrink-0 text-white" style={{ background: stage.color }}>{stage.label}</span>
             )}
           </span>
           {isPokemon && card?.hp != null && (
@@ -495,7 +498,7 @@ function DeckRow({ group, card, demand, onInc, onDec, onOpenDetail }: {
       <div className="flex flex-col items-center gap-1 shrink-0 mt-0.5">
         <Stepper value={group.total} onDec={onDec} onInc={onInc} />
         {missing > 0 && (
-          <span className="text-[11px] font-bold" style={{ color: '#c53030' }}>fehlt {missing}</span>
+          <span className="text-[11px] font-bold text-[#c53030] dark:text-[#ef9a9a]">fehlt {missing}</span>
         )}
       </div>
     </div>
