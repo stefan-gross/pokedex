@@ -6,10 +6,10 @@ import { Plus, Pencil, Check, AlertTriangle, Layers, MoreVertical, Sparkles } fr
 import { getDeck, setDeckCardCount, addCardToDeck } from '@/lib/firestore/decks';
 import { getAllSets } from '@/lib/firestore/sets';
 import { syncDeckWishlists } from '@/lib/decks/sync';
-import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
+import { getCatalogCardsByIds, getCardsByEvolutionFamily, type CatalogCard } from '@/lib/firestore/catalog';
 import { getCards } from '@/lib/firestore/cards';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
-import { validateDeck } from '@/lib/decks/rules';
+import { validateDeck, isCardLegal } from '@/lib/decks/rules';
 import { groupDeckRows, type DeckGroup } from '@/lib/decks/group';
 import { computeDeckDemand, type DeckDemand } from '@/lib/decks/demand';
 import { computeDeckStats } from '@/lib/decks/stats';
@@ -57,6 +57,9 @@ const stageRank = (card?: CatalogCard) => { const s = stageKey(card); return s =
 
 /** Eine Evolutionslinie (oder ein Einzel-Pokémon) im Deck. */
 interface PokemonLine { key: string; header: string | null; counts: number[]; groups: DeckGroup[]; }
+
+/** Fehlende Zwischenstufe einer Linie (Inline-Vorschlag). */
+interface GapItem { dex: number; rank: number; stageLabel: string; card: CatalogCard | null; name: string; }
 
 /** Gruppiert Pokémon-Zeilen nach ECHTER Evolutionslinie (gemeinsame
  *  evolutionFamily, nur Kettenglieder), sortiert innerhalb nach Stufe. Linien
@@ -135,6 +138,8 @@ export default function DeckEditorPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [testHandOpen, setTestHandOpen] = useState(false);
   const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
+  // Fehlende Zwischenstufen je Linie (Inline-Vorschlag): lineKey → Kandidaten.
+  const [lineGaps, setLineGaps] = useState<Map<string, GapItem[]>>(new Map());
   const [codeSheet, setCodeSheet] = useState<null | 'export' | 'import'>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
@@ -159,6 +164,40 @@ export default function DeckEditorPage() {
   };
   useEffect(() => { loadDeck(); /* eslint-disable-next-line */ }, [id]);
   useEffect(() => { getCards().then(setOwned).catch(() => {}); }, []);
+
+  // Fehlende Zwischenstufen je Evolutionslinie ermitteln (z.B. Phase 1 fehlt,
+  // obwohl Basis + Phase 2 im Deck sind) und passende Kandidaten laden — für die
+  // Inline-Vorschläge in der Linie. Nur echte Linien (mit Kopf) betrachten.
+  useEffect(() => {
+    if (!deck || byId.size === 0) return;
+    let cancelled = false;
+    (async () => {
+      const refs = deck.cards.filter(c => (byId.get(c.catalogId)?.supertype ?? c.supertype) === 'Pokémon');
+      const lines = groupPokemonLines(groupDeckRows(refs, byId), byId).filter(l => l.header);
+      const map = new Map<string, GapItem[]>();
+      for (const line of lines) {
+        if (!line.key.startsWith('fam:')) continue;
+        const dexArr = line.key.slice(4).split('-').map(Number);
+        const present = new Set(line.groups.map(g => byId.get(g.primary.catalogId)?.nationalDexNumber).filter((d): d is number => d != null));
+        if (present.size === 0) continue;
+        const maxPresent = Math.max(...present);
+        const gapDex = dexArr.filter(d => !present.has(d) && d < maxPresent);   // fehlende Stufe unter einer vorhandenen höheren
+        const items: GapItem[] = [];
+        for (const d of gapDex) {
+          const rank = dexArr.indexOf(d);
+          const wantStage = rank === 0 ? 'Basic' : rank === dexArr.length - 1 ? 'Stage 2' : 'Stage 1';
+          let cands: CatalogCard[] = [];
+          try { cands = await getCardsByEvolutionFamily(d); } catch { /* skip */ }
+          const legal = cands.filter(c => c.nationalDexNumber === d && isCardLegal(c, deck.format));
+          const pick = legal.find(c => c.subtypes?.includes(wantStage)) ?? legal[0] ?? null;
+          items.push({ dex: d, rank, stageLabel: STAGE_STYLE[wantStage].label, card: pick, name: pick?.nameDe ?? pick?.name ?? `#${d}` });
+        }
+        if (items.length) map.set(line.key, items);
+      }
+      if (!cancelled) setLineGaps(map);
+    })();
+    return () => { cancelled = true; };
+  }, [deck, byId]);
 
   // Bedarfs-Wunschliste des Decks im Hintergrund synchron halten: einmal beim
   // Öffnen (falls sich Besitz/Katalog seit dem letzten Mal geändert hat) und
@@ -352,32 +391,61 @@ export default function DeckEditorPage() {
                 right={<span className="text-sm font-bold tabular-nums text-muted-foreground">{catTotal}</span>}
               >
                 {cat.key === 'Pokémon' ? (
-                  // Nach Evolutionslinie gruppiert (Kopf mit „4–0–2"-Stufenzähler).
-                  <div className="flex flex-col gap-3">
-                    {groupPokemonLines(groups, byId).map(line => (
-                      <div key={line.key}>
-                        {line.header && (
-                          <div className="flex items-center justify-between gap-2 px-1 pb-0.5">
-                            <span className="text-role-label font-bold text-glass truncate">{line.header}-Linie</span>
-                            <span className="text-role-label font-bold tabular-nums shrink-0 flex items-center gap-0.5">
-                              <span style={{ color: STAGE_STYLE['Basic'].color }}>{line.counts[0]}</span>
-                              <span className="text-muted-foreground">–</span>
-                              <span style={{ color: STAGE_STYLE['Stage 1'].color }}>{line.counts[1]}</span>
-                              <span className="text-muted-foreground">–</span>
-                              <span style={{ color: STAGE_STYLE['Stage 2'].color }}>{line.counts[2]}</span>
-                            </span>
+                  (() => {
+                    const pokeLines = groupPokemonLines(groups, byId);
+                    const chains = pokeLines.filter(l => l.header);
+                    const solos = pokeLines.filter(l => !l.header);
+                    return (
+                      <div className="flex flex-col gap-4">
+                        {/* Evolutionslinien: Kettenglieder nach Stufe eingerückt, Lücken inline */}
+                        {chains.map(line => {
+                          const rows = [
+                            ...line.groups.map(g => ({ kind: 'card' as const, rank: stageRank(byId.get(g.primary.catalogId)), g })),
+                            ...(lineGaps.get(line.key) ?? []).map(gap => ({ kind: 'gap' as const, rank: gap.rank, gap })),
+                          ].sort((a, b) => a.rank - b.rank);
+                          return (
+                            <div key={line.key}>
+                              <div className="flex items-center justify-between gap-2 px-1 pb-1">
+                                <span className="text-role-label font-bold text-glass truncate">{line.header}-Linie</span>
+                                <span className="text-role-label font-bold tabular-nums shrink-0 flex items-center gap-0.5">
+                                  <span style={{ color: STAGE_STYLE['Basic'].color }}>{line.counts[0]}</span>
+                                  <span className="text-muted-foreground">–</span>
+                                  <span style={{ color: STAGE_STYLE['Stage 1'].color }}>{line.counts[1]}</span>
+                                  <span className="text-muted-foreground">–</span>
+                                  <span style={{ color: STAGE_STYLE['Stage 2'].color }}>{line.counts[2]}</span>
+                                </span>
+                              </div>
+                              <div className="flex flex-col divide-y divide-black/5 dark:divide-white/10">
+                                {rows.map((r, i) => (
+                                  <div key={r.kind === 'card' ? r.g.key : 'gap' + r.gap.dex} className="py-2 first:pt-0 last:pb-0" style={{ paddingLeft: r.rank * 14 }}>
+                                    {r.kind === 'card'
+                                      ? <DeckRow group={r.g} card={byId.get(r.g.primary.catalogId)} demand={demand} onInc={() => incGroup(r.g)} onDec={() => decGroup(r.g)} onOpenDetail={() => openDetail(r.g.primary.catalogId)} />
+                                      : <GapRow gap={r.gap} onAdd={() => r.gap.card && addCatalogCard(r.gap.card, 2)} onOpenDetail={() => r.gap.card && setDetailCard(catalogCardToInfo(r.gap.card))} />}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* Eigenständige Pokémon (V/ex/GX/Radiant) — klar abgetrennt */}
+                        {solos.length > 0 && (
+                          <div>
+                            {chains.length > 0 && (
+                              <div className="text-role-label font-bold uppercase tracking-wide text-muted-foreground px-1 pb-1">Einzelne Pokémon</div>
+                            )}
+                            <div className="flex flex-col divide-y divide-black/5 dark:divide-white/10">
+                              {solos.map(l => (
+                                <div key={l.groups[0].key} className="py-2 first:pt-0 last:pb-0">
+                                  <DeckRow group={l.groups[0]} card={byId.get(l.groups[0].primary.catalogId)} demand={demand} onInc={() => incGroup(l.groups[0])} onDec={() => decGroup(l.groups[0])} onOpenDetail={() => openDetail(l.groups[0].primary.catalogId)} />
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
-                        <div className="flex flex-col divide-y divide-black/5 dark:divide-white/10">
-                          {line.groups.map(g => (
-                            <div key={g.key} className="py-2 first:pt-0 last:pb-0">
-                              <DeckRow group={g} card={byId.get(g.primary.catalogId)} demand={demand} onInc={() => incGroup(g)} onDec={() => decGroup(g)} onOpenDetail={() => openDetail(g.primary.catalogId)} />
-                            </div>
-                          ))}
-                        </div>
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()
                 ) : (
                   <div className="flex flex-col divide-y divide-black/5 dark:divide-white/10">
                     {groups.map(g => (
@@ -530,6 +598,38 @@ function DeckRow({ group, card, demand, onInc, onDec, onOpenDetail }: {
           <span className="text-[11px] font-bold text-[#c53030] dark:text-[#ef9a9a]">fehlt {missing}</span>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Inline-Vorschlag für eine fehlende Zwischenstufe der Linie (gedimmt, mit
+ *  „+ hinzufügen"). Bild öffnet das Detail. */
+function GapRow({ gap, onAdd, onOpenDetail }: { gap: GapItem; onAdd: () => void; onOpenDetail: () => void }) {
+  const info = gap.card ? catalogCardToInfo(gap.card) : null;
+  const stageColor = [STAGE_STYLE['Basic'], STAGE_STYLE['Stage 1'], STAGE_STYLE['Stage 2']][gap.rank]?.color ?? '#888';
+  return (
+    <div className="flex items-center gap-3 opacity-90">
+      <button onClick={onOpenDetail} disabled={!gap.card} className="w-11 shrink-0 rounded active:scale-95 transition-transform" aria-label={`${gap.name} – Kartendetail`}>
+        {info
+          ? <CardImage card={info} size="small" alt={gap.name} width={63} height={88} className="w-full rounded opacity-80" />
+          : <div className="w-full aspect-[63/88] rounded bg-black/10 dark:bg-white/10" />}
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-semibold truncate">{gap.name}</span>
+          <span className="text-[10px] font-bold px-1.5 py-px rounded shrink-0 text-white" style={{ background: stageColor }}>{gap.stageLabel}</span>
+        </div>
+        <p className="text-role-label mt-0.5 text-[#b7791f] dark:text-[#e2b464]">Zwischenstufe fehlt — für die Entwicklung nötig</p>
+      </div>
+      <button
+        onClick={onAdd}
+        disabled={!gap.card}
+        className="flex items-center gap-1 h-8 px-3 rounded-full text-white text-sm font-semibold shrink-0 disabled:opacity-40 active:scale-95 transition-transform"
+        style={{ background: '#2f855a' }}
+        aria-label={`${gap.name} hinzufügen`}
+      >
+        <Plus size={15} strokeWidth={2.6} /> 2
+      </button>
     </div>
   );
 }
