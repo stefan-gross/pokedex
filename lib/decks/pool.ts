@@ -6,6 +6,7 @@
  * Derselbe Pool speist auch den regelbasierten Fallback-Generator (generate.ts).
  */
 import { getCatalogCardsByIds, getCardsByEvolutionFamily, type CatalogCard } from '../firestore/catalog';
+import { browseCatalogRest } from '../firestore/catalog-rest';
 import { searchCatalogCards } from '../search/catalog-search';
 import { isBasicEnergy, isBasicPokemon, isCardLegal, cardNameKey } from './rules';
 import { TRAINER_STAPLES, STAGE2_STAPLE, ENERGY_TYPES_WITH_BASIC } from './suggestions';
@@ -63,8 +64,67 @@ async function resolveByName(name: string, ownedByTcgId: Map<string, number>, fo
   return pickBestPrint(exact.length ? exact : hits, ownedByTcgId, format);
 }
 
-/** Baut den Kandidaten-Pool: Kern-Evolutionslinie + Trainer-Staples + Basis-
- *  Energie des Deck-Typs. Bei ownership='owned' auf Besessenes gefiltert. */
+/** Evolutionsstufe als Rang (2=Stufe2 … 0=Basis) — für Angreifer-Ranking. */
+function stageRank(c: CatalogCard): number {
+  return c.subtypes?.includes('Stage 2') ? 2 : c.subtypes?.includes('Stage 1') ? 1 : 0;
+}
+
+/** Familien-Schlüssel (kleinste Dex-Nr. der Evolutionsfamilie, sonst eigene
+ *  Dex-Nr.) — um Linien-Duplikate zu erkennen. */
+function familyKey(c: CatalogCard): number {
+  return c.evolutionFamily?.length ? Math.min(...c.evolutionFamily) : (c.nationalDexNumber ?? -1);
+}
+
+/** Fügt die komplette Evolutionslinie eines Seed-Pokémon in den Pool (Basis +
+ *  alle Stufen, je Name bester Druck). `primaryId` markiert die Kernkarte. */
+async function addEvolutionLine(
+  seed: CatalogCard,
+  push: (card: CatalogCard, role: PoolRole) => void,
+  ownedByTcgId: Map<string, number>,
+  format: DeckFormat,
+  primaryId?: string,
+): Promise<void> {
+  if (!seed.evolutionFamily?.length) { push(seed, seed.id === primaryId ? 'core' : 'evolution'); return; }
+  const byDex = new Map<number, CatalogCard[]>();
+  for (const dex of new Set(seed.evolutionFamily)) {
+    let fam: CatalogCard[] = [];
+    try { fam = await getCardsByEvolutionFamily(dex); } catch { /* skip */ }
+    for (const c of fam) {
+      if (c.supertype !== 'Pokémon' || !isCardLegal(c, format)) continue;
+      const arr = byDex.get(c.nationalDexNumber ?? -1) ?? [];
+      arr.push(c); byDex.set(c.nationalDexNumber ?? -1, arr);
+    }
+  }
+  for (const [, prints] of byDex) {
+    // je Name (nicht je dex) besten Druck wählen — Formen/Varianten getrennt.
+    const byName = new Map<string, CatalogCard[]>();
+    for (const c of prints) { const k = cardNameKey(c.name); (byName.get(k) ?? byName.set(k, []).get(k)!).push(c); }
+    for (const [, group] of byName) {
+      const best = pickBestPrint(group, ownedByTcgId, format);
+      if (best) push(best, best.id === primaryId ? 'core' : 'evolution');
+    }
+  }
+}
+
+/** Angreifer-Kandidaten eines Typs aus dem Katalog (Sample, clientseitig
+ *  gerankt) — für „Bestes Deck" und die „Bevorzugt eigene"-Vervollständigung.
+ *  Nur Pokémon mit Attacken, format-legal. */
+async function catalogTypeAttackers(type: string, format: DeckFormat): Promise<CatalogCard[]> {
+  try {
+    // types-Filter erlaubt server-seitig kein price-orderBy (Composite-Index) →
+    // größeres Sample holen und clientseitig nach Stufe/KP/Preis ranken.
+    const { cards } = await browseCatalogRest({ types: [type] }, null, 250, 'name', false);
+    return cards.filter(c => c.supertype === 'Pokémon' && (c.attacks?.length ?? 0) > 0 && isCardLegal(c, format));
+  } catch { return []; }
+}
+
+// So viele Angreifer-Linien (inkl. Kern) darf ein Typ-Deck haben — genug für
+// 12–18 Pokémon über mehrere Linien statt einer dünnen Einzel-Linie.
+const MAX_ATTACKER_LINES = 3;
+
+/** Baut den Kandidaten-Pool: Kern-Evolutionslinie + weitere Angreifer-Linien des
+ *  Typs (modusabhängig) + Trainer-Staples + Basis-Energie. Bei ownership='owned'
+ *  am Ende auf Besessenes gefiltert. */
 export async function buildCandidatePool(params: PoolParams, ownedByTcgId: Map<string, number>): Promise<PoolCard[]> {
   const out: PoolCard[] = [];
   const seen = new Set<string>();
@@ -82,28 +142,38 @@ export async function buildCandidatePool(params: PoolParams, ownedByTcgId: Map<s
   const type = params.type ?? core?.types?.[0];
 
   // 2. Kern-Evolutionslinie (Basis + alle Stufen, je Name bester Druck).
-  if (core?.evolutionFamily?.length) {
-    const byDex = new Map<number, CatalogCard[]>();
-    for (const dex of new Set(core.evolutionFamily)) {
-      let fam: CatalogCard[] = [];
-      try { fam = await getCardsByEvolutionFamily(dex); } catch { /* skip */ }
-      for (const c of fam) {
-        if (c.supertype !== 'Pokémon' || !isCardLegal(c, params.format)) continue;
-        const arr = byDex.get(c.nationalDexNumber ?? -1) ?? [];
-        arr.push(c); byDex.set(c.nationalDexNumber ?? -1, arr);
-      }
+  if (core) await addEvolutionLine(core, push, ownedByTcgId, params.format, core.id);
+
+  // 2b. Weitere Angreifer-Linien desselben Typs — Quelle je Sammlungs-Modus:
+  //     • 'best'   → beste Katalog-Angreifer des Typs (Besitz egal)
+  //     • 'owned'  → nur besessene Angreifer des Typs
+  //     • 'prefer' → besessene zuerst, dann Katalog zur Vervollständigung
+  if (type) {
+    const addedFamilies = new Set<number>(out.filter(p => p.card.supertype === 'Pokémon').map(p => familyKey(p.card)));
+
+    let ownedAttackers: CatalogCard[] = [];
+    if (params.ownership !== 'best' && ownedByTcgId.size) {
+      const ownedCatalog = await getCatalogCardsByIds([...ownedByTcgId.keys()]);
+      ownedAttackers = ownedCatalog.filter(c =>
+        c.supertype === 'Pokémon' && (c.types ?? []).includes(type) && (c.attacks?.length ?? 0) > 0 && isCardLegal(c, params.format));
     }
-    for (const [, prints] of byDex) {
-      // je Name (nicht je dex) besten Druck wählen — Formen/Varianten getrennt.
-      const byName = new Map<string, CatalogCard[]>();
-      for (const c of prints) { const k = cardNameKey(c.name); (byName.get(k) ?? byName.set(k, []).get(k)!).push(c); }
-      for (const [, group] of byName) {
-        const best = pickBestPrint(group, ownedByTcgId, params.format);
-        if (best) push(best, best.id === core!.id ? 'core' : 'evolution');
-      }
+    const catAttackers = params.ownership === 'owned' ? [] : await catalogTypeAttackers(type, params.format);
+
+    const rank = (a: CatalogCard, b: CatalogCard) =>
+      (stageRank(b) - stageRank(a)) || ((b.hp ?? 0) - (a.hp ?? 0)) || ((b.priceEur ?? 0) - (a.priceEur ?? 0));
+    ownedAttackers.sort(rank);
+    catAttackers.sort(rank);
+    const ordered = params.ownership === 'owned' ? ownedAttackers
+      : params.ownership === 'best' ? catAttackers
+      : [...ownedAttackers, ...catAttackers];   // 'prefer'
+
+    for (const seed of ordered) {
+      if (addedFamilies.size >= MAX_ATTACKER_LINES) break;
+      const fk = familyKey(seed);
+      if (addedFamilies.has(fk)) continue;
+      addedFamilies.add(fk);
+      await addEvolutionLine(seed, push, ownedByTcgId, params.format);
     }
-  } else if (core) {
-    push(core, 'core');
   }
 
   // 3. Trainer-Staples (bei Stufe-2-Kern zusätzlich Rare Candy).
