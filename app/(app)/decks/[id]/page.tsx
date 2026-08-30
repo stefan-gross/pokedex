@@ -14,6 +14,7 @@ import { groupDeckRows, type DeckGroup } from '@/lib/decks/group';
 import { computeDeckDemand, type DeckDemand } from '@/lib/decks/demand';
 import { computeDeckStats } from '@/lib/decks/stats';
 import { CardImage } from '@/components/card/CardImage';
+import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
 import { CreateDeckModal } from '@/components/deck/CreateDeckModal';
 import { DeckCardSearchSheet } from '@/components/deck/DeckCardSearchSheet';
 import { DeckStats } from '@/components/deck/DeckStats';
@@ -332,18 +333,55 @@ function DeckRow({ group, card, demand, onInc, onDec }: {
     if (!o) continue;
     hasOwn = true; need += o.need; owned += o.owned; isBasicEnergy = isBasicEnergy || o.isBasicEnergy;
   }
+  const isPokemon = (card?.supertype ?? info.supertype) === 'Pokémon';
+  const stage = !isPokemon ? null
+    : card?.subtypes?.includes('Stage 2') ? 'Phase 2'
+    : card?.subtypes?.includes('Stage 1') ? 'Phase 1'
+    : card?.subtypes?.includes('Basic') ? 'Basis' : null;
+  const ownership = isBasicEnergy
+    ? 'Basis-Energie'
+    : hasOwn ? `habe ${owned}/${need}${owned < need ? ' · fehlt' : ''}` : `${group.primary.setId} · ${group.primary.number}`;
+
   return (
-    <div className="flex items-center gap-3">
-      <div className="w-9 shrink-0"><CardImage card={info} size="small" alt={group.displayName} width={63} height={88} className="w-full rounded" /></div>
+    <div className="flex items-start gap-3">
+      <div className="w-9 shrink-0 mt-0.5"><CardImage card={info} size="small" alt={group.displayName} width={63} height={88} className="w-full rounded" /></div>
       <div className="flex-1 min-w-0">
-        <p className="truncate text-sm font-semibold">{group.displayName}</p>
-        <p className="truncate text-role-label text-muted-foreground">
-          {isBasicEnergy
-            ? 'Basis-Energie'
-            : hasOwn ? `habe ${owned}/${need}${owned < need ? ' · fehlt' : ''}` : `${group.primary.setId} · ${group.primary.number}`}
+        {/* Name + Stufe + KP */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-sm font-semibold truncate">{group.displayName}</span>
+          {stage && (
+            <span className="text-[10px] font-bold px-1.5 py-px rounded bg-black/10 dark:bg-white/15 shrink-0">{stage}</span>
+          )}
+          {isPokemon && card?.hp != null && (
+            <span className="text-role-label text-muted-foreground shrink-0">{card.hp} KP</span>
+          )}
+        </div>
+
+        {/* Attacken mit Energiebedarf */}
+        {isPokemon && card?.attacks?.map((at, i) => (
+          <div key={i} className="flex items-center gap-1.5 text-role-label mt-0.5">
+            <span className="flex items-center gap-0.5 shrink-0">
+              {(at.cost ?? []).length
+                ? (at.cost ?? []).map((c, j) => <EnergyIcon key={j} type={c as EnergyType} size={13} />)
+                : <span className="text-muted-foreground">—</span>}
+            </span>
+            <span className="truncate">{at.name}</span>
+            {at.damage && <span className="ml-auto font-semibold tabular-nums shrink-0">{at.damage}</span>}
+          </div>
+        ))}
+
+        {/* Rückzug + Besitz/Bedarf */}
+        <p className="truncate text-role-label text-muted-foreground mt-0.5 flex items-center gap-1">
+          {isPokemon && card?.retreat != null && (
+            <span className="flex items-center gap-0.5 shrink-0">
+              Rückzug {Array.from({ length: card.retreat }).map((_, j) => <EnergyIcon key={j} type="Colorless" size={12} />)}
+              <span className="mx-0.5">·</span>
+            </span>
+          )}
+          <span className="truncate">{ownership}</span>
         </p>
       </div>
-      <Stepper value={group.total} onDec={onDec} onInc={onInc} />
+      <Stepper value={group.total} onDec={onDec} onInc={onInc} className="mt-1" />
     </div>
   );
 }
