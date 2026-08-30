@@ -178,12 +178,12 @@ export default function DeckEditorPage() {
         {/* Zurück + Aktionen */}
         <div className="flex items-center justify-between gap-2">
           <Button variant="ghost" href="/decks" className="-ml-2 shrink-0">‹ Decks</Button>
-          <div className="flex items-center gap-1 shrink-0">
-            <Button variant="ghost" onClick={() => setEditOpen(true)} icon={<Pencil size={18} />} aria-label="Deck bearbeiten" />
+          <div className="flex items-center gap-2 shrink-0">
+            <Button variant="secondary" onClick={() => setEditOpen(true)} icon={<Pencil size={18} />} aria-label="Deck bearbeiten" />
             <Menu
               portal
               trigger={(open, toggle) => (
-                <Button variant="ghost" onClick={toggle} icon={<MoreVertical size={18} />} aria-label="Mehr" aria-expanded={open} />
+                <Button variant="secondary" onClick={toggle} icon={<MoreVertical size={18} />} aria-label="Mehr" aria-expanded={open} />
               )}
               items={[
                 { label: 'KI-Deck erstellen', onClick: () => setAiOpen(true) },
