@@ -58,36 +58,54 @@ const stageRank = (card?: CatalogCard) => { const s = stageKey(card); return s =
 /** Eine Evolutionslinie (oder ein Einzel-Pokémon) im Deck. */
 interface PokemonLine { key: string; header: string | null; counts: number[]; groups: DeckGroup[]; }
 
-/** Gruppiert Pokémon-Zeilen nach Evolutionslinie (gemeinsame evolutionFamily),
- *  sortiert innerhalb nach Stufe (Basis→Ph.1→Ph.2). Linien mit ≥2 Gliedern
- *  bekommen einen Kopf (Name der höchsten Stufe + „4–0–2"-Stufenzähler);
- *  Einzel-Pokémon laufen ohne Kopf. */
+/** Gehört die Karte zu einer echten Evolutionskette? Stufe-1/2 immer; eine
+ *  Basis nur, wenn sie die WURZEL ist (niedrigste Dex-Nummer der Familie) — so
+ *  bleiben eigenständige Basis-Karten desselben Species (V/ex/GX/Radiant, die
+ *  eine hohe Dex-Nummer tragen, aber nicht evolvieren) außen vor. */
+function isChainMember(card: CatalogCard | undefined): boolean {
+  const s = stageKey(card);
+  if (s === 'Stage 1' || s === 'Stage 2') return true;
+  if (s === 'Basic') {
+    const fam = card?.evolutionFamily;
+    return !!fam && fam.length > 1 && card?.nationalDexNumber === Math.min(...fam);
+  }
+  return false;
+}
+
+/** Gruppiert Pokémon-Zeilen nach ECHTER Evolutionslinie (gemeinsame
+ *  evolutionFamily, nur Kettenglieder), sortiert innerhalb nach Stufe. Linien
+ *  mit ≥2 Gliedern bekommen einen Kopf (höchste Stufe + „4–0–2"-Zähler);
+ *  Einzel-/eigenständige Pokémon laufen ohne Kopf (nach Name). */
 function groupPokemonLines(groups: DeckGroup[], byId: Map<string, CatalogCard>): PokemonLine[] {
-  const buckets = new Map<string, DeckGroup[]>();
+  const chainBuckets = new Map<string, DeckGroup[]>();
+  const singles: DeckGroup[] = [];
   for (const g of groups) {
     const card = byId.get(g.primary.catalogId);
     const fam = card?.evolutionFamily;
-    const key = fam && fam.length ? 'fam:' + [...new Set(fam)].sort((a, b) => a - b).join('-') : 'solo:' + (card?.nationalDexNumber ?? g.key);
-    (buckets.get(key) ?? buckets.set(key, []).get(key)!).push(g);
+    if (card && fam && fam.length > 1 && isChainMember(card)) {
+      const key = 'fam:' + [...new Set(fam)].sort((a, b) => a - b).join('-');
+      (chainBuckets.get(key) ?? chainBuckets.set(key, []).get(key)!).push(g);
+    } else {
+      singles.push(g);
+    }
   }
+
   const lines: PokemonLine[] = [];
-  for (const [key, gs] of buckets) {
+  for (const [key, gs] of chainBuckets) {
+    if (gs.length < 2) { singles.push(...gs); continue; }   // Kette mit nur 1 Glied → Einzelkarte
     gs.sort((a, b) => {
       const r = stageRank(byId.get(a.primary.catalogId)) - stageRank(byId.get(b.primary.catalogId));
       return r !== 0 ? r : a.displayName.localeCompare(b.displayName, 'de');
     });
     const counts: number[] = [0, 0, 0];
     for (const g of gs) { const r = stageRank(byId.get(g.primary.catalogId)); if (r <= 2) counts[r] += g.total; }
-    // Linienname = höchste ERKANNTE Stufe (Rang ≤2); Karten ohne Stufenangabe
-    // (z.B. Tag-Team-GX) nicht als Repräsentant nehmen.
-    const ranked = gs.filter(g => stageRank(byId.get(g.primary.catalogId)) <= 2);
-    const rep = ranked.length
-      ? ranked.reduce((best, g) => stageRank(byId.get(g.primary.catalogId)) >= stageRank(byId.get(best.primary.catalogId)) ? g : best)
-      : gs[0];
-    lines.push({ key, header: gs.length >= 2 ? rep.displayName : null, counts, groups: gs });
+    const rep = gs.reduce((best, g) => stageRank(byId.get(g.primary.catalogId)) >= stageRank(byId.get(best.primary.catalogId)) ? g : best);
+    lines.push({ key, header: rep.displayName, counts, groups: gs });
   }
+  for (const g of singles) lines.push({ key: 'single:' + g.key, header: null, counts: [0, 0, 0], groups: [g] });
+
   lines.sort((a, b) => {
-    if (!!a.header !== !!b.header) return a.header ? -1 : 1;   // Linien vor Einzelkarten
+    if (!!a.header !== !!b.header) return a.header ? -1 : 1;   // Ketten-Linien vor Einzelkarten
     return (a.header ?? a.groups[0].displayName).localeCompare(b.header ?? b.groups[0].displayName, 'de');
   });
   return lines;
@@ -444,9 +462,7 @@ function DeckRow({ group, card, demand, onInc, onDec, onOpenDetail }: {
   const isPokemon = (card?.supertype ?? info.supertype) === 'Pokémon';
   const sk = stageKey(card);
   const stage = sk ? STAGE_STYLE[sk] : null;
-  const ownership = isBasicEnergy
-    ? 'Basis-Energie'
-    : hasOwn ? `besitzt ${owned}/${need}` : `${group.primary.setId} · ${group.primary.number}`;
+  const retreat = isPokemon ? card?.retreat ?? null : null;
 
   return (
     <div className="flex items-start gap-3">
@@ -483,15 +499,16 @@ function DeckRow({ group, card, demand, onInc, onDec, onOpenDetail }: {
           </div>
         ))}
 
-        <p className="truncate text-role-label text-muted-foreground mt-0.5 flex items-center gap-1">
-          {isPokemon && card?.retreat != null && (
-            <span className="flex items-center gap-0.5 shrink-0">
-              Rückzug {Array.from({ length: card.retreat }).map((_, j) => <EnergyIcon key={j} type="Colorless" size={12} />)}
-              <span className="mx-0.5">·</span>
-            </span>
-          )}
-          <span className="truncate">{ownership}</span>
-        </p>
+        {(retreat != null || isBasicEnergy) && (
+          <p className="truncate text-role-label text-muted-foreground mt-0.5 flex items-center gap-1">
+            {retreat != null && (
+              <span className="flex items-center gap-0.5 shrink-0">
+                Rückzug {Array.from({ length: retreat }).map((_, j) => <EnergyIcon key={j} type="Colorless" size={12} />)}
+              </span>
+            )}
+            {isBasicEnergy && <span className="truncate">Basis-Energie</span>}
+          </p>
+        )}
       </div>
 
       {/* Rechts: Stepper allein + fehlende Anzahl in Rot darunter */}
