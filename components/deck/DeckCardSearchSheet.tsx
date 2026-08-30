@@ -10,6 +10,7 @@ import { Sheet } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Stepper } from '@/components/ui/stepper';
+import { EnergyIcon, ENERGY_META, type EnergyType } from '@/components/ui/EnergyIcon';
 
 // Evolutionsstufe → Badge (gleiche Farbcodierung wie im Deck-Editor).
 const STAGE_BADGE: Record<string, { label: string; color: string }> = {
@@ -32,6 +33,16 @@ const FILTER_OPTS = [
   { value: 'missing' as Filter, label: 'Fehlend' },
 ];
 
+type Kind = 'all' | 'Pokémon' | 'Trainer' | 'Energy';
+const KIND_OPTS = [
+  { value: 'all' as Kind, label: 'Alle' },
+  { value: 'Pokémon' as Kind, label: 'Pokémon' },
+  { value: 'Trainer' as Kind, label: 'Trainer' },
+  { value: 'Energy' as Kind, label: 'Energie' },
+];
+// Typ-Filter (Pokémon-Typen inkl. Farblos/Drache).
+const TYPE_FILTERS: EnergyType[] = ['Fire', 'Water', 'Grass', 'Lightning', 'Psychic', 'Fighting', 'Darkness', 'Metal', 'Dragon', 'Colorless'];
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -48,6 +59,8 @@ export function DeckCardSearchSheet({ open, onClose, counts, ownedTcgIds, onAdd,
   const [results, setResults] = useState<CardInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
+  const [kind, setKind] = useState<Kind>('all');
+  const [types, setTypes] = useState<Set<EnergyType>>(new Set());
   const [setLogos, setSetLogos] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
@@ -73,16 +86,39 @@ export function DeckCardSearchSheet({ open, onClose, counts, ownedTcgIds, onAdd,
   }, [q]);
 
   const shown = useMemo(() => {
-    if (filter === 'owned') return results.filter(c => ownedTcgIds.has(c.id));
-    if (filter === 'missing') return results.filter(c => !ownedTcgIds.has(c.id));
-    return results;
-  }, [results, filter, ownedTcgIds]);
+    let r = results;
+    if (filter === 'owned') r = r.filter(c => ownedTcgIds.has(c.id));
+    else if (filter === 'missing') r = r.filter(c => !ownedTcgIds.has(c.id));
+    if (kind !== 'all') r = r.filter(c => c.supertype === kind);
+    if (types.size) r = r.filter(c => (c.types ?? []).some(t => types.has(t as EnergyType)));
+    return r;
+  }, [results, filter, ownedTcgIds, kind, types]);
 
   return (
     <Sheet open={open} onClose={onClose} title="Karte hinzufügen">
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 min-h-[72dvh]">
         <Input value={q} onChange={setQ} placeholder="Name, Illustrator … oder #Dex" autoFocus />
         <ButtonGroup value={filter} onChange={setFilter} options={FILTER_OPTS} accentColor="#3182ce" />
+        <ButtonGroup value={kind} onChange={setKind} options={KIND_OPTS} accentColor="#3182ce" />
+        {/* Typ-Filter (Mehrfachauswahl, OR) */}
+        <div className="flex flex-wrap gap-1.5">
+          {TYPE_FILTERS.map(t => {
+            const active = types.has(t);
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTypes(prev => { const n = new Set(prev); if (n.has(t)) n.delete(t); else n.add(t); return n; })}
+                aria-pressed={active}
+                aria-label={ENERGY_META[t].de}
+                className="w-8 h-8 rounded-full flex items-center justify-center transition-transform active:scale-90"
+                style={{ background: active ? ENERGY_META[t].bg : 'transparent', opacity: active ? 1 : 0.5 }}
+              >
+                <EnergyIcon type={t} size={22} />
+              </button>
+            );
+          })}
+        </div>
         {loading && <p className="text-role-label text-muted-foreground px-1">Suche …</p>}
         {!loading && q.trim().length >= 2 && shown.length === 0 && (
           <p className="text-role-label text-muted-foreground px-1">
