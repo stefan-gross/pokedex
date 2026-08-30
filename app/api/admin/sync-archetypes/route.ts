@@ -8,6 +8,7 @@ import { requireAdmin } from '@/lib/admin-auth';
 import { syncArchetypes } from '@/lib/sync-archetypes';
 
 export const maxDuration = 60;
+// rev: engine-blocklist + featured-type enrichment
 
 export async function GET(req: NextRequest) {
   const denied = await requireAdmin(req);

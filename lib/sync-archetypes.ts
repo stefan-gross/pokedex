@@ -5,8 +5,31 @@
  * Lokal-Job gedacht (Vercel fehlen Admin-Env-Vars).
  */
 import { getAdminDb } from './firebase/admin';
+import type { Firestore } from 'firebase-admin/firestore';
 import { fetchTournaments, fetchStandings, standingPlayer, type LtStanding } from './decks/limitless';
-import { clusterArchetypes, type DecklistEntry, type ArchetypeDeck } from './decks/archetypes';
+import { clusterArchetypes, featuredPokemon, type DecklistEntry, type ArchetypeDeck } from './decks/archetypes';
+
+/** Nummer-Varianten (mit/ohne führende Nullen) für den Katalog-Lookup. */
+function numberVariants(n: string): string[] {
+  const set = new Set<string>([n]);
+  const stripped = String(parseInt(n, 10));
+  if (!Number.isNaN(+stripped)) { set.add(stripped); set.add(stripped.padStart(3, '0')); }
+  return [...set];
+}
+
+/** Typ des Featured-Pokémon aus dem Katalog (setCode+Nummer) — damit auch
+ *  Decks mit reiner Spezial-Energie einen Deck-Typ bekommen. */
+async function featuredType(db: Firestore, set: string, number: string): Promise<string | null> {
+  for (const num of numberVariants(number)) {
+    try {
+      const snap = await db.collection('tcg_catalog')
+        .where('setCode', '==', set).where('number', '==', num).limit(1).get();
+      const types = snap.docs[0]?.data()?.types as string[] | undefined;
+      if (types?.length) return types[0];
+    } catch { /* skip */ }
+  }
+  return null;
+}
 
 export interface SyncArchetypesOpts {
   /** Wie viele der neuesten Turniere ziehen (Default 25). */
@@ -59,9 +82,20 @@ export async function syncArchetypes(opts: SyncArchetypesOpts = {}): Promise<Syn
 
   const archetypes = clusterArchetypes(entries);
 
+  const db = getAdminDb();
+
+  // Typ-Anreicherung: Featured-Pokémon-Typ aus dem Katalog voranstellen (deckt
+  // Decks ab, die nur Spezial-Energie fahren und deshalb aus den Energien keinen
+  // Typ ableiten ließen).
+  for (const a of archetypes) {
+    const feat = featuredPokemon(a.decklist);
+    if (!feat?.set || !feat?.number) continue;
+    const t = await featuredType(db, feat.set, feat.number);
+    if (t) a.types = [t, ...a.types.filter(x => x !== t)];
+  }
+
   // Schreiben (Batch, ≤500 Docs) — bestehende Archetypen werden überschrieben
   // (rollierendes Fenster der neuesten Turniere).
-  const db = getAdminDb();
   const col = db.collection(COL);
   let batch = db.batch();
   let n = 0;

@@ -67,13 +67,24 @@ export function isSpecialForm(name: string): boolean {
   return SPECIAL_FORM.test(name.trim());
 }
 
+// Reine Engine-/Support-Pokémon, die fast nie die Deck-Identität sind — sie
+// sollen NICHT zum Archetyp-Namen werden (z.B. „Fezandipiti ex" als eigener
+// Archetyp war Rauschen). Bewusst konservativ: nur eindeutige Utility-Karten,
+// KEINE Karten, die auch mal Haupt-Angreifer sind (Pidgeot, Bloodmoon Ursaluna …).
+const ENGINE_CARDS = new Set([
+  'fezandipiti ex', 'squawkabilly ex', 'lumineon v', 'radiant greninja', 'jirachi', 'manaphy',
+]);
+const isEngine = (name: string) => ENGINE_CARDS.has(name.trim().toLowerCase());
+
 /** „Featured" Pokémon = Namensgeber des Archetyps: bevorzugt eine Sonderform mit
- *  der höchsten Anzahl, sonst das häufigste Pokémon überhaupt. */
+ *  der höchsten Anzahl, Engine-/Support-Karten ausgenommen; sonst das häufigste
+ *  Nicht-Engine-Pokémon (im Notfall irgendein Pokémon). */
 export function featuredPokemon(dl: LtDecklist): LtCard | null {
   const pk = dl.pokemon ?? [];
   if (pk.length === 0) return null;
-  const specials = pk.filter(c => isSpecialForm(c.name));
-  const pool = specials.length ? specials : pk;
+  const specials = pk.filter(c => isSpecialForm(c.name) && !isEngine(c.name));
+  const nonEngine = pk.filter(c => !isEngine(c.name));
+  const pool = specials.length ? specials : nonEngine.length ? nonEngine : pk;
   return [...pool].sort((a, b) => (b.count - a.count) || b.name.length - a.name.length)[0];
 }
 
