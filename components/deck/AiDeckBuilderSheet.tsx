@@ -16,6 +16,7 @@ import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog'
 import { EnergyIcon, ENERGY_META, type EnergyType } from '@/components/ui/EnergyIcon';
 import { buildCandidatePool, toPoolLines, hasBasicPokemonInPool, type PoolCard } from '@/lib/decks/pool';
 import { assembleDeck, applyAiPicks, targetEnergyCount, type AiPick } from '@/lib/decks/generate';
+import { pickArchetypeDeck } from '@/lib/decks/archetype-pick';
 import { validateDeck } from '@/lib/decks/rules';
 import { groupDeckRows } from '@/lib/decks/group';
 import type { DeckCardRef, DeckFormat, DeckDoc } from '@/types';
@@ -73,6 +74,7 @@ export function AiDeckBuilderSheet({ open, onClose, deck, onApplied }: {
   const [draft, setDraft] = useState<DeckCardRef[]>([]);
   const [draftById, setDraftById] = useState<Map<string, CatalogCard>>(new Map());
   const [usedAi, setUsedAi] = useState(true);
+  const [archetypeInfo, setArchetypeInfo] = useState<{ name: string; source: string; popularity: number; placing: number } | null>(null);
   const [applying, setApplying] = useState(false);
 
   useEffect(() => { if (open) { setPhase('form'); setError(''); setCore(null); setCoreQuery(''); setSelectedType(null); setKeepExisting(deck.cards.length > 0); } }, [open, deck.cards.length]);
@@ -91,7 +93,7 @@ export function AiDeckBuilderSheet({ open, onClose, deck, onApplied }: {
   }, [coreQuery]);
 
   const generate = async () => {
-    setPhase('generating'); setError(''); setStatus('Sammle Kandidaten …');
+    setPhase('generating'); setError(''); setArchetypeInfo(null); setStatus('Sammle Kandidaten …');
     try {
       // Besitz-Quelle = NUR lose Karten in „Unsortiert" (Default-Binder), nicht
       // die in Sammlungen einsortierten — so baut der Generator aus dem freien
@@ -107,6 +109,29 @@ export function AiDeckBuilderSheet({ open, onClose, deck, onApplied }: {
       if (!core && !coreQuery.trim() && !selectedType) {
         setError('Wähle eine Kern-Karte oder einen Typ.');
         setPhase('form'); return;
+      }
+
+      // „Bestes Deck": zuerst ein echtes Turnierdeck (Archetyp) versuchen —
+      // resolvte Turnier-Deckliste statt KI-Bau. Fällt auf den KI-Weg zurück,
+      // wenn kein passender Archetyp existiert.
+      if (ownership === 'best') {
+        setStatus('Suche bestes Turnierdeck …');
+        try {
+          const pick = await pickArchetypeDeck({
+            type: core?.types?.[0] ?? selectedType ?? undefined,
+            coreName: coreQuery.trim() || core?.name || undefined,
+          });
+          if (pick && pick.total >= 50) {
+            const ids = [...new Set(pick.refs.map(c => c.catalogId))];
+            const catCards = ids.length ? await getCatalogCardsByIds(ids) : [];
+            setDraftById(new Map(catCards.map(c => [c.id, c])));
+            setDraft(pick.refs);
+            setUsedAi(false);
+            setArchetypeInfo({ name: pick.name, source: pick.sourceLabel, popularity: pick.popularity, placing: pick.bestPlacing });
+            setPhase('draft');
+            return;
+          }
+        } catch (e) { console.error('[ai-deck] archetype pick', e); }
       }
 
       // Typ-Start: besten Angreifer des Typs aus dem Unsortiert-Besitz als Kern.
@@ -197,7 +222,7 @@ export function AiDeckBuilderSheet({ open, onClose, deck, onApplied }: {
           <p className="text-role-label text-glass-muted">{status}</p>
         </div>
       ) : phase === 'draft' ? (
-        <DraftView draft={draft} byId={draftById} total={total} validation={validation} usedAi={usedAi} applying={applying}
+        <DraftView draft={draft} byId={draftById} total={total} validation={validation} usedAi={usedAi} archetypeInfo={archetypeInfo} applying={applying}
           onApply={apply} onBack={() => setPhase('form')} onRegenerate={generate} />
       ) : (
         <div className="flex flex-col gap-4">
@@ -291,12 +316,13 @@ export function AiDeckBuilderSheet({ open, onClose, deck, onApplied }: {
   );
 }
 
-function DraftView({ draft, byId, total, validation, usedAi, applying, onApply, onBack, onRegenerate }: {
+function DraftView({ draft, byId, total, validation, usedAi, archetypeInfo, applying, onApply, onBack, onRegenerate }: {
   draft: DeckCardRef[];
   byId: Map<string, CatalogCard>;
   total: number;
   validation: ReturnType<typeof validateDeck> | null;
   usedAi: boolean;
+  archetypeInfo: { name: string; source: string; popularity: number; placing: number } | null;
   applying: boolean;
   onApply: () => void;
   onBack: () => void;
@@ -307,9 +333,19 @@ function DraftView({ draft, byId, total, validation, usedAi, applying, onApply, 
       <div className="flex items-center justify-between">
         <span className="text-lg font-bold tabular-nums text-glass">{total}/60</span>
         <span className="flex items-center gap-1.5 text-role-label text-glass-muted">
-          <Sparkles size={14} /> {usedAi ? 'Von Gemini gebaut' : 'Regelbasiert gebaut'}
+          <Sparkles size={14} /> {archetypeInfo ? 'Turnierdeck' : usedAi ? 'Von Gemini gebaut' : 'Regelbasiert gebaut'}
         </span>
       </div>
+
+      {archetypeInfo && (
+        <div className="rounded-2xl px-3 py-2 flex flex-col gap-0.5" style={{ background: 'rgba(49,130,206,0.12)' }}>
+          <span className="text-sm font-semibold text-glass">{archetypeInfo.name}</span>
+          <span className="text-role-label text-glass-muted">
+            {archetypeInfo.popularity}× in Turnieren · beste Platzierung #{archetypeInfo.placing}
+          </span>
+          <span className="text-role-label text-glass-muted truncate">Quelle: {archetypeInfo.source}</span>
+        </div>
+      )}
 
       {validation && !validation.valid && (
         <div className="rounded-2xl px-3 py-2 flex flex-col gap-1" style={{ background: 'rgba(183,121,31,0.12)' }}>
