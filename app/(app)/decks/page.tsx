@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo, useId } from 'react';
 import Link from 'next/link';
-import { Plus, Pencil, Trash2, Check, Layers, AlertTriangle } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Plus, Pencil, Trash2, Check, Layers, AlertTriangle, ShoppingBag } from 'lucide-react';
 import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors, closestCenter,
   type DragEndEvent,
@@ -13,6 +14,7 @@ import { getDecks, deleteDeckCascade, reorderDecks } from '@/lib/firestore/decks
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { validateDeck } from '@/lib/decks/rules';
 import { CreateDeckModal } from '@/components/deck/CreateDeckModal';
+import { BattleDeckSheet } from '@/components/deck/BattleDeckSheet';
 import { CollectionDeckToggle } from '@/components/deck/CollectionDeckToggle';
 import { BoxCover } from '@/components/binder/BinderCover';
 import { Button } from '@/components/ui/button';
@@ -34,7 +36,9 @@ export default function DecksPage() {
   const [decks, setDecks] = useState<DeckDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [battleOpen, setBattleOpen] = useState(false);
   const [editDeck, setEditDeck] = useState<DeckDoc | null>(null);
+  const router = useRouter();
   const [editMode, setEditMode] = useState(false);
   const [catalog, setCatalog] = useState<Map<string, CatalogCard>>(new Map());
 
@@ -113,9 +117,12 @@ export default function DecksPage() {
           {editMode ? (
             <Button variant="primary" accentColor="#2f855a" onClick={() => setEditMode(false)} icon={<Check />} className="w-full">Fertig</Button>
           ) : (
-            <div className="flex items-center gap-2">
-              <Button variant="primary" accentColor="#2f855a" onClick={() => setCreateOpen(true)} icon={<Plus strokeWidth={2.5} />} className="flex-1">Neues Deck</Button>
-              {decks.length > 0 && <Button variant="secondary" onClick={() => setEditMode(true)} icon={<Pencil />} aria-label="Bearbeiten" className="shrink-0" />}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Button variant="primary" accentColor="#2f855a" onClick={() => setCreateOpen(true)} icon={<Plus strokeWidth={2.5} />} className="flex-1">Neues Deck</Button>
+                {decks.length > 0 && <Button variant="secondary" onClick={() => setEditMode(true)} icon={<Pencil />} aria-label="Bearbeiten" className="shrink-0" />}
+              </div>
+              <Button variant="secondary" onClick={() => setBattleOpen(true)} icon={<ShoppingBag size={16} />} className="w-full">Fertiges Deck (gekauft)</Button>
             </div>
           )}
         </div>
@@ -163,6 +170,12 @@ export default function DecksPage() {
           onSaved={load}
         />
       )}
+
+      <BattleDeckSheet
+        open={battleOpen}
+        onClose={() => setBattleOpen(false)}
+        onCreated={(id) => { setBattleOpen(false); router.push(`/decks/${id}`); }}
+      />
     </div>
   );
 }
