@@ -191,4 +191,201 @@ Trainer: 31
 Energy: 15
 15 Basic Lightning Energy SVE 004`,
   },
+  {
+    id: 'ampharos-ex-battle-deck',
+    name: 'Ampharos ex',
+    product: 'ex Battle Deck',
+    year: 2023,
+    types: ['Lightning'],
+    format: 'expanded',
+    ptcgl: `Pokémon: 22
+1 Ampharos ex SVP 016
+2 Flaaffy SVP 015
+3 Mareep SVI 066
+3 Kilowattrel SVI 079
+3 Wattrel SVI 077
+1 Staraptor SVI 150
+2 Staravia SVI 149
+3 Starly SVI 148
+1 Miraidon SVI 080
+2 Rotom SVI 069
+1 Flamigo SVI 165
+
+Trainer: 20
+4 Nemona SVI 180
+4 Youngster SVI 198
+1 Jacq SVI 175
+2 Energy Retrieval SVI 171
+2 Nest Ball SVI 181
+2 Potion SVI 188
+2 Switch SVI 194
+2 Ultra Ball SVI 196
+1 Pokégear 3.0 SVI 186
+
+Energy: 18
+18 Basic Lightning Energy SVE 004`,
+  },
+  {
+    id: 'lucario-ex-battle-deck',
+    name: 'Lucario ex',
+    product: 'ex Battle Deck',
+    year: 2023,
+    types: ['Fighting'],
+    format: 'expanded',
+    ptcgl: `Pokémon: 22
+1 Lucario ex SVP 017
+3 Riolu SVI 112
+2 Oinkologne SVI 157
+2 Lechonk SVI 155
+1 Annihilape SVI 109
+2 Primeape SVI 108
+3 Mankey SVI 107
+1 Medicham SVI 111
+2 Meditite SVI 110
+1 Koraidon SVI 124
+3 Squawkabilly SVI 162
+1 Cyclizar SVI 164
+
+Trainer: 20
+4 Nemona SVI 180
+4 Youngster SVI 198
+1 Jacq SVI 175
+2 Energy Retrieval SVI 171
+2 Nest Ball SVI 181
+2 Potion SVI 188
+2 Switch SVI 194
+2 Ultra Ball SVI 196
+1 Pokégear 3.0 SVI 186
+
+Energy: 18
+18 Basic Fighting Energy SVE 006`,
+  },
+  {
+    id: 'chien-pao-ex-battle-deck',
+    name: 'Chien-Pao ex',
+    product: 'ex Battle Deck',
+    year: 2024,
+    types: ['Water'],
+    format: 'expanded',
+    ptcgl: `Pokémon: 22
+1 Chien-Pao ex SVP 030
+2 Baxcalibur PAL 060
+3 Arctibax PAL 059
+3 Frigibax PAL 058
+2 Floatzel SVI 047
+3 Buizel SVI 046
+2 Azumarill PAL 045
+3 Marill PAL 044
+2 Delibird PAL 046
+1 Bruxish SVI 051
+
+Trainer: 20
+4 Nemona SVI 180
+2 Youngster SVI 198
+1 Jacq SVI 175
+4 Great Ball PAL 183
+2 Energy Retrieval SVI 171
+2 Nest Ball SVI 181
+2 Pokégear 3.0 SVI 186
+2 Switch SVI 194
+1 Pal Pad SVI 182
+
+Energy: 18
+18 Basic Water Energy SVE 003`,
+  },
+  {
+    id: 'tinkaton-ex-battle-deck',
+    name: 'Tinkaton ex',
+    product: 'ex Battle Deck',
+    year: 2024,
+    types: ['Psychic'],
+    format: 'expanded',
+    ptcgl: `Pokémon: 22
+1 Tinkaton ex
+3 Tinkatuff PAL 103
+4 Tinkatink PAL 100
+3 Drifblim SVI 090
+4 Drifloon SVI 089
+3 Espathra SVI 103
+3 Flittle SVI 101
+1 Squawkabilly SVI 162
+
+Trainer: 20
+4 Nemona SVI 180
+2 Youngster SVI 198
+1 Jacq SVI 175
+4 Great Ball PAL 183
+2 Nest Ball SVI 181
+2 Pal Pad SVI 182
+2 Pokégear 3.0 SVI 186
+2 Switch SVI 194
+1 Energy Retrieval SVI 171
+
+Energy: 18
+18 Basic Psychic Energy SVE 005`,
+  },
+  {
+    id: 'tapu-koko-ex-battle-deck',
+    name: 'Tapu Koko ex',
+    product: 'ex Battle Deck',
+    year: 2024,
+    types: ['Lightning'],
+    format: 'expanded',
+    ptcgl: `Pokémon: 21
+1 Tapu Koko ex PAR 068
+2 Eelektross OBF 069
+3 Eelektrik OBF 068
+4 Tynamo OBF 067
+2 Bellibolt TWM 074
+3 Tadbulb PAL 078
+2 Boltund TEF 059
+2 Yamper TEF 058
+1 Plusle PAR 060
+1 Zeraora TEF 057
+
+Trainer: 21
+4 Nemona SVI 180
+3 Youngster SVI 198
+2 Rika PAR 172
+1 Jacq SVI 175
+4 Great Ball PAL 183
+3 Nest Ball SVI 181
+2 Electric Generator SVI 170
+2 Switch SVI 194
+
+Energy: 18
+18 Basic Lightning Energy SVE 004`,
+  },
+  {
+    id: 'iron-leaves-ex-battle-deck',
+    name: 'Iron Leaves ex',
+    product: 'ex Battle Deck',
+    year: 2024,
+    types: ['Grass'],
+    format: 'expanded',
+    ptcgl: `Pokémon: 21
+1 Iron Leaves ex TEF 025
+2 Vileplume MEW 045
+3 Gloom OBF 002
+4 Oddish OBF 001
+2 Tangrowth TWM 002
+3 Tangela TWM 001
+2 Trevenant TWM 013
+2 Phantump TWM 012
+1 Maractus PAF 003
+1 Tropius PAL 007
+
+Trainer: 21
+3 Nemona SVI 180
+2 Rika PAR 172
+4 Youngster SVI 198
+2 Professor Turo's Scenario PAR 171
+1 Jacq SVI 175
+4 Great Ball PAL 183
+3 Poké Ball SVI 185
+2 Switch SVI 194
+
+Energy: 18
+18 Basic Grass Energy SVE 001`,
+  },
 ];
