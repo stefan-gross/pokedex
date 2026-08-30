@@ -234,6 +234,7 @@ export default function DeckEditorPage() {
   const demand: DeckDemand | null = useMemo(() => deck ? computeDeckDemand(deck.cards, byId, owned) : null, [deck, byId, owned]);
   const stats = useMemo(() => deck ? computeDeckStats(deck.cards, byId) : null, [deck, byId]);
   const counts = useMemo(() => new Map((deck?.cards ?? []).map(c => [c.catalogId, c.count])), [deck]);
+  const ownedTcgIds = useMemo(() => new Set(owned.map(c => c.tcgId).filter((t): t is string => !!t)), [owned]);
 
   const changeCount = async (catalogId: string, count: number) => {
     if (!deck) return;
@@ -505,6 +506,7 @@ export default function DeckEditorPage() {
         open={searchOpen}
         onClose={() => setSearchOpen(false)}
         counts={counts}
+        ownedTcgIds={ownedTcgIds}
         onAdd={addCard}
         onSetCount={changeCount}
       />
