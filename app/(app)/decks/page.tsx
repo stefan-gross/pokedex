@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useId } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, Pencil, Trash2, Check, Layers, AlertTriangle, ShoppingBag } from 'lucide-react';
+import { Plus, Pencil, Trash2, Check, Layers, AlertTriangle, ShoppingBag, Sparkles } from 'lucide-react';
 import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors, closestCenter,
   type DragEndEvent,
@@ -15,6 +15,7 @@ import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog'
 import { validateDeck } from '@/lib/decks/rules';
 import { CreateDeckModal } from '@/components/deck/CreateDeckModal';
 import { BattleDeckSheet } from '@/components/deck/BattleDeckSheet';
+import { Sheet } from '@/components/ui/modal';
 import { CollectionDeckToggle } from '@/components/deck/CollectionDeckToggle';
 import { BoxCover } from '@/components/binder/BinderCover';
 import { Button } from '@/components/ui/button';
@@ -35,8 +36,7 @@ interface DeckMeta { total: number; valid: boolean | null; issues: number }
 export default function DecksPage() {
   const [decks, setDecks] = useState<DeckDoc[]>([]);
   const [loading, setLoading] = useState(true);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [battleOpen, setBattleOpen] = useState(false);
+  const [createMode, setCreateMode] = useState<'closed' | 'choose' | 'manual' | 'ai' | 'battle'>('closed');
   const [editDeck, setEditDeck] = useState<DeckDoc | null>(null);
   const router = useRouter();
   const [editMode, setEditMode] = useState(false);
@@ -117,12 +117,9 @@ export default function DecksPage() {
           {editMode ? (
             <Button variant="primary" accentColor="#2f855a" onClick={() => setEditMode(false)} icon={<Check />} className="w-full">Fertig</Button>
           ) : (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <Button variant="primary" accentColor="#2f855a" onClick={() => setCreateOpen(true)} icon={<Plus strokeWidth={2.5} />} className="flex-1">Neues Deck</Button>
-                {decks.length > 0 && <Button variant="secondary" onClick={() => setEditMode(true)} icon={<Pencil />} aria-label="Bearbeiten" className="shrink-0" />}
-              </div>
-              <Button variant="secondary" onClick={() => setBattleOpen(true)} icon={<ShoppingBag size={16} />} className="w-full">Fertiges Deck (gekauft)</Button>
+            <div className="flex items-center gap-2">
+              <Button variant="primary" accentColor="#2f855a" onClick={() => setCreateMode('choose')} icon={<Plus strokeWidth={2.5} />} className="flex-1">Neues Deck</Button>
+              {decks.length > 0 && <Button variant="secondary" onClick={() => setEditMode(true)} icon={<Pencil />} aria-label="Bearbeiten" className="shrink-0" />}
             </div>
           )}
         </div>
@@ -139,7 +136,7 @@ export default function DecksPage() {
         <div className="flex flex-col items-center gap-3 text-center py-16 text-muted-foreground">
           <Layers size={40} strokeWidth={1.5} />
           <p className="max-w-xs">Noch keine Decks. Leg dein erstes spielbares 60-Karten-Deck an.</p>
-          <Button variant="primary" accentColor="#2f855a" onClick={() => setCreateOpen(true)} icon={<Plus size={16} strokeWidth={2.6} />}>
+          <Button variant="primary" accentColor="#2f855a" onClick={() => setCreateMode('choose')} icon={<Plus size={16} strokeWidth={2.6} />}>
             Deck erstellen
           </Button>
         </div>
@@ -163,19 +160,54 @@ export default function DecksPage() {
       )}
       </div>
 
-      {(createOpen || editDeck) && (
+      {/* Schritt 1: Modus wählen (wie bei Sammlungen). */}
+      {createMode === 'choose' && (
+        <Sheet open onClose={() => setCreateMode('closed')} title="Neues Deck" onBack={() => setCreateMode('closed')} showClose={false}>
+          <div className="flex flex-col gap-2">
+            {([
+              ['manual', Layers,      'Manuell',            'Leeres Deck — du baust es selbst zusammen'],
+              ['ai',     Sparkles,    'Automatisch (KI)',   'Gemini baut ein Deck aus Kern-Karte oder Typ'],
+              ['battle', ShoppingBag, 'Fertiges Deck',      'Gekauftes Kampfdeck (Battle Deck) übernehmen'],
+            ] as const).map(([mode, Icon, label, sub]) => (
+              <button
+                key={mode}
+                onClick={() => setCreateMode(mode)}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl glass-inner text-left"
+              >
+                <Icon size={20} className="text-glass-muted shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold">{label}</p>
+                  <p className="text-xs text-glass-muted">{sub}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </Sheet>
+      )}
+
+      {/* Schritt 2a: Manuell / KI-Grunddaten (bzw. Bearbeiten). */}
+      {(createMode === 'manual' || createMode === 'ai' || editDeck) && (
         <CreateDeckModal
           existing={editDeck ?? undefined}
-          onClose={() => { setCreateOpen(false); setEditDeck(null); }}
-          onSaved={load}
+          onBack={editDeck ? undefined : () => setCreateMode('choose')}
+          title={createMode === 'ai' ? 'KI-Deck: Grunddaten' : undefined}
+          submitLabel={createMode === 'ai' ? 'Weiter zur KI' : undefined}
+          onClose={() => { setCreateMode('closed'); setEditDeck(null); }}
+          onSaved={(id) => {
+            if (createMode === 'ai' && id) { router.push(`/decks/${id}?ai=1`); return; }
+            load();
+          }}
         />
       )}
 
-      <BattleDeckSheet
-        open={battleOpen}
-        onClose={() => setBattleOpen(false)}
-        onCreated={(id) => { setBattleOpen(false); router.push(`/decks/${id}`); }}
-      />
+      {/* Schritt 2b: Fertiges Deck. */}
+      {createMode === 'battle' && (
+        <BattleDeckSheet
+          open
+          onClose={() => setCreateMode('closed')}
+          onCreated={(id) => { setCreateMode('closed'); router.push(`/decks/${id}`); }}
+        />
+      )}
     </div>
   );
 }

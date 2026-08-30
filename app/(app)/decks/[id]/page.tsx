@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { Plus, Pencil, Check, AlertTriangle, Layers, MoreVertical, Sparkles } from 'lucide-react';
 import { getDeck, setDeckCardCount, addCardToDeck } from '@/lib/firestore/decks';
@@ -152,6 +152,8 @@ export default function DeckEditorPage() {
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  // Von der Übersicht mit ?ai=1 erstellt → KI-Builder einmalig auto-öffnen.
+  const aiFired = useRef(false);
 
   const loadDeck = async () => {
     try {
@@ -172,6 +174,10 @@ export default function DeckEditorPage() {
   };
   useEffect(() => { loadDeck(); /* eslint-disable-next-line */ }, [id]);
   useEffect(() => { getCards().then(setOwned).catch(() => {}); }, []);
+  useEffect(() => {
+    if (aiFired.current || loading || !deck) return;
+    if (new URLSearchParams(window.location.search).get('ai') === '1') { aiFired.current = true; setAiOpen(true); }
+  }, [loading, deck]);
 
   // Lose Karten in „Unsortiert" (Default-Binder) je tcgId zählen.
   useEffect(() => {

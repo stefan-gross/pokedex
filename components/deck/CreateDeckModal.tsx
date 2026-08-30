@@ -26,10 +26,15 @@ const FORMAT_HINT: Record<string, string> = {
 interface Props {
   existing?: DeckDoc;
   onClose: () => void;
-  onSaved: () => void;
+  /** Erhält die (neue oder bestehende) Deck-ID — z.B. um danach den KI-Builder zu öffnen. */
+  onSaved: (id?: string) => void;
+  /** Zurück zum Modus-Chooser (statt Schließen). */
+  onBack?: () => void;
+  title?: string;
+  submitLabel?: string;
 }
 
-export function CreateDeckModal({ existing, onClose, onSaved }: Props) {
+export function CreateDeckModal({ existing, onClose, onSaved, onBack, title, submitLabel }: Props) {
   const [name,   setName]   = useState(existing?.name ?? '');
   const [icon,   setIcon]   = useState(existing?.icon ?? 'cards');
   const [color,  setColor]  = useState(existing?.color ?? '#4299e1');
@@ -42,9 +47,8 @@ export function CreateDeckModal({ existing, onClose, onSaved }: Props) {
     if (saving || !name.trim()) return;
     setSaving(true);
     try {
-      if (isEdit) await updateDeck(existing!.id, { name: name.trim(), icon, color, format });
-      else        await addDeck({ name: name.trim(), icon, color, format });
-      onSaved();
+      if (isEdit) { await updateDeck(existing!.id, { name: name.trim(), icon, color, format }); onSaved(existing!.id); }
+      else        { const id = await addDeck({ name: name.trim(), icon, color, format }); onSaved(id); }
       onClose();
     } catch (e) {
       console.error('[deck] save error', e);
@@ -57,7 +61,8 @@ export function CreateDeckModal({ existing, onClose, onSaved }: Props) {
     <Sheet
       open
       onClose={onClose}
-      title={isEdit ? 'Deck bearbeiten' : 'Neues Deck'}
+      onBack={onBack}
+      title={title ?? (isEdit ? 'Deck bearbeiten' : 'Neues Deck')}
       footer={
         <Button
           variant="primary"
@@ -67,7 +72,7 @@ export function CreateDeckModal({ existing, onClose, onSaved }: Props) {
           disabled={saving || !name.trim()}
           onClick={save}
         >
-          {saving ? 'Wird gespeichert …' : isEdit ? 'Speichern' : 'Deck erstellen'}
+          {saving ? 'Wird gespeichert …' : (submitLabel ?? (isEdit ? 'Speichern' : 'Deck erstellen'))}
         </Button>
       }
     >

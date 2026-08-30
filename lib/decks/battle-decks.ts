@@ -58,4 +58,34 @@ Trainer: 30
 Energy: 10
 10 Basic Fire Energy SVE 002`,
   },
+  {
+    id: 'victini-ex-battle-deck',
+    name: 'Victini ex',
+    product: 'ex Battle Deck',
+    year: 2024,
+    types: ['Fire'],
+    format: 'expanded',
+    ptcgl: `Pokémon: 20
+1 Victini ex SVP 142
+3 Magmortar PAF 010
+3 Magmar PAF 009
+2 Skeledirge SVI 038
+3 Crocalor PAL 036
+4 Fuecoco PAL 034
+2 Paldean Tauros PAL 028
+2 Cyclizar SVI 164
+
+Trainer: 22
+4 Nemona SVI 180
+3 Youngster SVI 198
+2 Rika PAR 172
+1 Jacq SVI 175
+4 Great Ball PAL 183
+3 Nest Ball SVI 181
+3 Switch SVI 194
+2 Energy Sticker MEW 159
+
+Energy: 18
+18 Basic Fire Energy SVE 002`,
+  },
 ];
