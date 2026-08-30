@@ -2,18 +2,24 @@
  * Kuratierte „Fertige Decks" (im Handel gekaufte Kampfdecks: Battle Decks /
  * League Battle Decks). Statische Referenzdaten (versioniert, kein Sync) — die
  * Jungs wählen ihr gekauftes Deck und legen es in einem Schritt an. Jede Liste
- * im PTCGL-Format (`Anzahl Name SET Nummer`) und wird beim Verwenden über
- * resolvePtcglDeck gegen den Katalog aufgelöst (Trefferquote im Preview sichtbar).
+ * im PTCGL-Format (`Anzahl Name SET Nummer`), aufgelöst über resolvePtcglDeck.
  *
  * Quellen: offizielle Produktinhalte (Bulbapedia u.a.). Anzahlen auf 60 geprüft.
+ * Neue Decks hinzufügen: siehe Kurations-Workflow (auf 60 prüfen, Set-Kürzel
+ * mappen, /xxx-Suffix entfernen, dann im Sheet die Trefferquote verifizieren).
  */
 import type { DeckFormat } from '@/types';
 
 export interface BattleDeck {
   id: string;
+  /** Englischer Name (Namensgeber-Pokémon). */
   name: string;
-  /** Produktreihe (z.B. „League Battle Deck"). */
-  product: string;
+  /** Deutscher Name (Anzeige). */
+  nameDe: string;
+  /** Produktreihe (englisch, intern). */
+  product: 'League Battle Deck' | 'ex Battle Deck' | 'Battle Deck';
+  /** Play Level (1 = Einsteiger … 3 = kompetitiv/Liga). */
+  level: number;
   year: number;
   /** Deck-Typen (für Icons/Filter). */
   types: string[];
@@ -23,14 +29,18 @@ export interface BattleDeck {
   ptcgl: string;
 }
 
+/** Deutsche Produktbezeichnung. */
+export const PRODUCT_DE: Record<BattleDeck['product'], string> = {
+  'League Battle Deck': 'Liga-Kampfdeck',
+  'ex Battle Deck': 'ex-Kampfdeck',
+  'Battle Deck': 'Kampfdeck',
+};
+
 export const BATTLE_DECKS: BattleDeck[] = [
   {
     id: 'charizard-ex-league-battle-deck',
-    name: 'Glurak ex',
-    product: 'League Battle Deck',
-    year: 2024,
-    types: ['Fire'],
-    format: 'expanded',
+    name: 'Charizard ex', nameDe: 'Glurak-ex',
+    product: 'League Battle Deck', level: 3, year: 2024, types: ['Fire'], format: 'expanded',
     ptcgl: `Pokémon: 20
 4 Charmander PAF 007
 3 Charmeleon PAF 008
@@ -59,42 +69,9 @@ Energy: 10
 10 Basic Fire Energy SVE 002`,
   },
   {
-    id: 'victini-ex-battle-deck',
-    name: 'Victini ex',
-    product: 'ex Battle Deck',
-    year: 2024,
-    types: ['Fire'],
-    format: 'expanded',
-    ptcgl: `Pokémon: 20
-1 Victini ex SVP 142
-3 Magmortar PAF 010
-3 Magmar PAF 009
-2 Skeledirge SVI 038
-3 Crocalor PAL 036
-4 Fuecoco PAL 034
-2 Paldean Tauros PAL 028
-2 Cyclizar SVI 164
-
-Trainer: 22
-4 Nemona SVI 180
-3 Youngster SVI 198
-2 Rika PAR 172
-1 Jacq SVI 175
-4 Great Ball PAL 183
-3 Nest Ball SVI 181
-3 Switch SVI 194
-2 Energy Sticker MEW 159
-
-Energy: 18
-18 Basic Fire Energy SVE 002`,
-  },
-  {
     id: 'dragapult-ex-league-battle-deck',
-    name: 'Dragapult ex',
-    product: 'League Battle Deck',
-    year: 2024,
-    types: ['Psychic', 'Fire'],
-    format: 'expanded',
+    name: 'Dragapult ex', nameDe: 'Kapuno-ex',
+    product: 'League Battle Deck', level: 3, year: 2024, types: ['Psychic', 'Fire'], format: 'expanded',
     ptcgl: `Pokémon: 21
 4 Dragapult ex TWM 130
 4 Drakloak TWM 129
@@ -128,11 +105,8 @@ Energy: 10
   },
   {
     id: 'gardevoir-ex-league-battle-deck',
-    name: 'Gardevoir ex',
-    product: 'League Battle Deck',
-    year: 2023,
-    types: ['Psychic'],
-    format: 'expanded',
+    name: 'Gardevoir ex', nameDe: 'Guardevoir-ex',
+    product: 'League Battle Deck', level: 3, year: 2023, types: ['Psychic'], format: 'expanded',
     ptcgl: `Pokémon: 18
 3 Gardevoir ex SVI 086
 4 Ralts SIT 067
@@ -161,11 +135,8 @@ Energy: 13
   },
   {
     id: 'miraidon-ex-league-battle-deck',
-    name: 'Miraidon ex',
-    product: 'League Battle Deck',
-    year: 2023,
-    types: ['Lightning'],
-    format: 'expanded',
+    name: 'Miraidon ex', nameDe: 'Miraidon-ex',
+    product: 'League Battle Deck', level: 3, year: 2023, types: ['Lightning'], format: 'expanded',
     ptcgl: `Pokémon: 14
 2 Miraidon ex SVI 081
 2 Regieleki VMAX SIT 058
@@ -192,12 +163,94 @@ Energy: 15
 15 Basic Lightning Energy SVE 004`,
   },
   {
+    id: 'mega-lucario-ex-league-battle-deck',
+    name: 'Mega Lucario ex', nameDe: 'Mega-Lucario-ex',
+    product: 'League Battle Deck', level: 3, year: 2026, types: ['Fighting'], format: 'standard',
+    ptcgl: `Pokémon: 18
+3 Mega Lucario ex MEG 077
+4 Riolu MEG 076
+2 Hariyama MEG 073
+3 Makuhita MEG 072
+2 Solrock MEG 075
+2 Lunatone MEG 074
+1 Fezandipiti ex SFA 038
+1 Bloodmoon Ursaluna ex TWM 141
+
+Trainer: 30
+4 Fighting Gong MEG 116
+4 Lillie's Determination MEG 119
+3 Iris's Fighting Spirit JTG 149
+2 Boss's Orders MEG 114
+1 Surfer SSP 187
+2 Gravity Mountain SSP 177
+4 Premium Power Pro MEG 124
+4 Ultra Ball MEG 131
+2 Night Stretcher SFA 061
+1 Secret Box TWM 163
+1 Switch MEG 130
+2 Air Balloon BLK 079
+
+Energy: 12
+12 Basic Fighting Energy MEE 006`,
+  },
+  {
+    id: 'victini-ex-battle-deck',
+    name: 'Victini ex', nameDe: 'Victini-ex',
+    product: 'ex Battle Deck', level: 1, year: 2024, types: ['Fire'], format: 'expanded',
+    ptcgl: `Pokémon: 20
+1 Victini ex SVP 142
+3 Magmortar PAF 010
+3 Magmar PAF 009
+2 Skeledirge SVI 038
+3 Crocalor PAL 036
+4 Fuecoco PAL 034
+2 Paldean Tauros PAL 028
+2 Cyclizar SVI 164
+
+Trainer: 22
+4 Nemona SVI 180
+3 Youngster SVI 198
+2 Rika PAR 172
+1 Jacq SVI 175
+4 Great Ball PAL 183
+3 Nest Ball SVI 181
+3 Switch SVI 194
+2 Energy Sticker MEW 159
+
+Energy: 18
+18 Basic Fire Energy SVE 002`,
+  },
+  {
+    id: 'miraidon-ex-battle-deck',
+    name: 'Miraidon ex', nameDe: 'Miraidon-ex',
+    product: 'ex Battle Deck', level: 1, year: 2024, types: ['Lightning'], format: 'expanded',
+    ptcgl: `Pokémon: 20
+1 Miraidon ex SVP 143
+3 Electrode PAL 067
+4 Voltorb PAL 066
+2 Raichu PAF 019
+3 Pikachu MEW 025
+2 Kilowattrel SVI 079
+3 Wattrel SVI 077
+2 Cyclizar SVI 164
+
+Trainer: 22
+4 Nemona SVI 180
+3 Youngster SVI 198
+2 Rika PAR 172
+1 Jacq SVI 175
+4 Great Ball PAL 183
+3 Nest Ball SVI 181
+3 Switch SVI 194
+2 Electric Generator SVI 170
+
+Energy: 18
+18 Basic Lightning Energy SVE 004`,
+  },
+  {
     id: 'ampharos-ex-battle-deck',
-    name: 'Ampharos ex',
-    product: 'ex Battle Deck',
-    year: 2023,
-    types: ['Lightning'],
-    format: 'expanded',
+    name: 'Ampharos ex', nameDe: 'Ampharos-ex',
+    product: 'ex Battle Deck', level: 1, year: 2023, types: ['Lightning'], format: 'expanded',
     ptcgl: `Pokémon: 22
 1 Ampharos ex SVP 016
 2 Flaaffy SVP 015
@@ -227,11 +280,8 @@ Energy: 18
   },
   {
     id: 'lucario-ex-battle-deck',
-    name: 'Lucario ex',
-    product: 'ex Battle Deck',
-    year: 2023,
-    types: ['Fighting'],
-    format: 'expanded',
+    name: 'Lucario ex', nameDe: 'Lucario-ex',
+    product: 'ex Battle Deck', level: 1, year: 2023, types: ['Fighting'], format: 'expanded',
     ptcgl: `Pokémon: 22
 1 Lucario ex SVP 017
 3 Riolu SVI 112
@@ -262,11 +312,8 @@ Energy: 18
   },
   {
     id: 'chien-pao-ex-battle-deck',
-    name: 'Chien-Pao ex',
-    product: 'ex Battle Deck',
-    year: 2024,
-    types: ['Water'],
-    format: 'expanded',
+    name: 'Chien-Pao ex', nameDe: 'Chionabyss-ex',
+    product: 'ex Battle Deck', level: 1, year: 2024, types: ['Water'], format: 'expanded',
     ptcgl: `Pokémon: 22
 1 Chien-Pao ex SVP 030
 2 Baxcalibur PAL 060
@@ -295,11 +342,8 @@ Energy: 18
   },
   {
     id: 'tinkaton-ex-battle-deck',
-    name: 'Tinkaton ex',
-    product: 'ex Battle Deck',
-    year: 2024,
-    types: ['Psychic'],
-    format: 'expanded',
+    name: 'Tinkaton ex', nameDe: 'Granforgita-ex',
+    product: 'ex Battle Deck', level: 1, year: 2024, types: ['Psychic'], format: 'expanded',
     ptcgl: `Pokémon: 22
 1 Tinkaton ex
 3 Tinkatuff PAL 103
@@ -326,11 +370,8 @@ Energy: 18
   },
   {
     id: 'tapu-koko-ex-battle-deck',
-    name: 'Tapu Koko ex',
-    product: 'ex Battle Deck',
-    year: 2024,
-    types: ['Lightning'],
-    format: 'expanded',
+    name: 'Tapu Koko ex', nameDe: 'Kapu-Riki-ex',
+    product: 'ex Battle Deck', level: 1, year: 2024, types: ['Lightning'], format: 'expanded',
     ptcgl: `Pokémon: 21
 1 Tapu Koko ex PAR 068
 2 Eelektross OBF 069
@@ -358,11 +399,8 @@ Energy: 18
   },
   {
     id: 'iron-leaves-ex-battle-deck',
-    name: 'Iron Leaves ex',
-    product: 'ex Battle Deck',
-    year: 2024,
-    types: ['Grass'],
-    format: 'expanded',
+    name: 'Iron Leaves ex', nameDe: 'Eisenblatt-ex',
+    product: 'ex Battle Deck', level: 1, year: 2024, types: ['Grass'], format: 'expanded',
     ptcgl: `Pokémon: 21
 1 Iron Leaves ex TEF 025
 2 Vileplume MEW 045
