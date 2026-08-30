@@ -415,9 +415,11 @@ export default function DeckEditorPage() {
                                   <span style={{ color: STAGE_STYLE['Stage 2'].color }}>{line.counts[2]}</span>
                                 </span>
                               </div>
-                              <div className="flex flex-col divide-y divide-black/5 dark:divide-white/10">
-                                {rows.map((r, i) => (
-                                  <div key={r.kind === 'card' ? r.g.key : 'gap' + r.gap.dex} className="py-2 first:pt-0 last:pb-0" style={{ paddingLeft: r.rank * 14 }}>
+                              {/* Innerhalb der Linie KEINE Trennlinien — die Einrückung
+                                  strukturiert bereits; nur Abstand zwischen den Stufen. */}
+                              <div className="flex flex-col gap-2.5">
+                                {rows.map(r => (
+                                  <div key={r.kind === 'card' ? r.g.key : 'gap' + r.gap.dex} style={{ paddingLeft: r.rank * 14 }}>
                                     {r.kind === 'card'
                                       ? <DeckRow group={r.g} card={byId.get(r.g.primary.catalogId)} demand={demand} onInc={() => incGroup(r.g)} onDec={() => decGroup(r.g)} onOpenDetail={() => openDetail(r.g.primary.catalogId)} />
                                       : <GapRow gap={r.gap} onAdd={() => r.gap.card && addCatalogCard(r.gap.card, 2)} onOpenDetail={() => r.gap.card && setDetailCard(catalogCardToInfo(r.gap.card))} />}
