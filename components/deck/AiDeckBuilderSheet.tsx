@@ -15,7 +15,7 @@ import { getBinders } from '@/lib/firestore/binders';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { EnergyIcon, ENERGY_META, type EnergyType } from '@/components/ui/EnergyIcon';
 import { buildCandidatePool, toPoolLines, hasBasicPokemonInPool, type PoolCard } from '@/lib/decks/pool';
-import { assembleDeck, applyAiPicks, type AiPick } from '@/lib/decks/generate';
+import { assembleDeck, applyAiPicks, targetEnergyCount, type AiPick } from '@/lib/decks/generate';
 import { validateDeck } from '@/lib/decks/rules';
 import { groupDeckRows } from '@/lib/decks/group';
 import type { DeckCardRef, DeckFormat, DeckDoc } from '@/types';
@@ -144,7 +144,7 @@ export function AiDeckBuilderSheet({ open, onClose, deck, onApplied }: {
       try {
         const res = await fetch('/api/decks/generate', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ poolLines: toPoolLines(pool), format: deck.format, strategy, freeText: freeText.trim() || undefined, ownership, existingCount: existing.reduce((s, c) => s + c.count, 0) }),
+          body: JSON.stringify({ poolLines: toPoolLines(pool), format: deck.format, strategy, freeText: freeText.trim() || undefined, ownership, existingCount: existing.reduce((s, c) => s + c.count, 0), energyTarget: targetEnergyCount(pool) }),
         });
         const data = await res.json();
         picks = Array.isArray(data.picks) ? data.picks : [];

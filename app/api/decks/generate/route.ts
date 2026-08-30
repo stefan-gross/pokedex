@@ -33,6 +33,7 @@ interface Body {
   freeText?: string;
   ownership: 'owned' | 'prefer' | 'best';
   existingCount?: number;
+  energyTarget?: number;
 }
 
 function buildPrompt(b: Body): string {
@@ -63,7 +64,7 @@ Guidance:
   · Evolution line ratios — the LOWER stage must be >= the higher stage (you start on the Basic and evolve up). For a Stage-2 line WITH Rare Candy in the pool use ~4 Basic / 1-2 middle / 2-3 final + 3-4 Rare Candy; WITHOUT Rare Candy ~4 Basic / 3 middle / 2-3 final. For a Stage-1 line ~4 Basic / 2-3 middle. For a Basic attacker (V/ex/GX) run 2-4 copies.
   · A rough overall shape: ~10-16 Pokémon, ~30-36 Trainer, ~8-15 Energy.
   · A consistency engine most decks want: 4 draw Supporter (e.g. Professor's Research) + 3 Iono, 3-4 Ball search, 2 Boss's Orders (gust), 2-3 Switch, plus 3-4 Rare Candy for any Stage-2 line.
-  · Fill the remainder with basic Energy of the deck's main type(s).
+  · Energy count scales with attack costs — this deck's attackers suggest about ${b.energyTarget ?? 12} basic Energy (more for expensive attacks, fewer for cheap ones). Aim near that, then fill the rest with the Trainer engine.
 ${b.strategy ? `- Strategy: ${b.strategy}.` : ''}
 ${b.freeText ? `- Extra request from the user: ${b.freeText}` : ''}
 ${b.existingCount ? `- The deck already has ${b.existingCount} cards; your picks are ADDED on top — pick roughly ${60 - b.existingCount} more.` : ''}

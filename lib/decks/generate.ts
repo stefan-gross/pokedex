@@ -76,8 +76,9 @@ class DeckBuilder {
 
 // Regelbasierte Zielmengen je Trainer-Staple + Evolutionsstufe.
 const STAPLE_COUNTS: Record<string, number> = {
-  "Professor's Research": 4, 'Iono': 3, "Boss's Orders": 2,
-  'Ultra Ball': 4, 'Nest Ball': 3, 'Switch': 2, 'Rare Candy': 4,
+  "Professor's Research": 4, 'Iono': 3, 'Arven': 4, "Boss's Orders": 2,
+  'Ultra Ball': 4, 'Nest Ball': 3, 'Buddy-Buddy Poffin': 4, 'Switch': 2,
+  'Super Rod': 1, 'Earthen Vessel': 2, 'Rare Candy': 4,
 };
 const STAGE_COUNTS = [4, 2, 3];   // Basis / Stufe 1 / Stufe 2
 
@@ -104,26 +105,44 @@ function fillWithEnergy(b: DeckBuilder, energy: CatalogCard[]) {
   }
 }
 
+/** Empfohlene Basis-Energie-Anzahl aus den Attackenkosten des Decks: teure
+ *  Attacken (viele Energie-Symbole) → mehr Energie. Heuristik 6 + maxKosten*2,
+ *  gedeckelt auf 8–15 (übliche Spanne). */
+export function targetEnergyCount(pool: PoolCard[]): number {
+  let maxCost = 1;
+  for (const p of pool) {
+    if (p.card.supertype !== 'Pokémon') continue;
+    for (const at of p.card.attacks ?? []) maxCost = Math.max(maxCost, (at.cost ?? []).length);
+  }
+  return Math.min(15, Math.max(8, 6 + maxCost * 2));
+}
+
+/** Fügt bis zu `n` Basis-Energie hinzu (spread über den Energie-Pool). */
+function addEnergy(b: DeckBuilder, energy: CatalogCard[], n: number) {
+  if (n <= 0 || energy.length === 0) return;
+  b.add(energy[0], n);
+}
+
 /** Rein regelbasierter Deckbau aus dem Pool (Fallback + „ohne KI"). */
 export function assembleDeck({ pool, existing = [] }: GenerateOpts): DeckCardRef[] {
   const { byId, energy } = poolMaps(pool);
   const b = new DeckBuilder();
   b.seed(existing, byId);
 
-  // Evolutionslinie(n): je Stufe die Zielmenge.
+  // 1. Evolutionslinie(n): je Stufe die Zielmenge.
   for (const p of pool.filter(p => p.role === 'core' || p.role === 'evolution')) {
     b.add(p.card, STAGE_COUNTS[Math.min(p.stage, 2)]);
   }
-  // Trainer-Staples.
+  // 2. Trainer-Staples in empfohlener Anzahl.
   for (const p of pool.filter(p => p.role === 'trainer')) {
     b.add(p.card, STAPLE_COUNTS[p.card.name] ?? 2);
   }
-  // Rest mit Energie auffüllen.
-  fillWithEnergy(b, energy);
-  // Sicherheitsnetz: falls immer noch < 60 (kein Energie im Pool), Staples/Linie aufstocken.
-  if (b.total() < DECK_SIZE) {
-    for (const p of pool) { if (b.total() >= DECK_SIZE) break; b.add(p.card, MAX_COPIES); }
-  }
+  // 3. Energie = Zielmenge aus Attackenkosten (nicht der ganze Rest).
+  addEnergy(b, energy, Math.min(targetEnergyCount(pool), DECK_SIZE - b.total()));
+  // 4. Rest auf 60: erst Trainer-Engine aufstocken (bis 4), dann Energie, dann alles.
+  if (b.total() < DECK_SIZE) for (const p of pool.filter(p => p.role === 'trainer')) { if (b.total() >= DECK_SIZE) break; b.add(p.card, MAX_COPIES); }
+  if (b.total() < DECK_SIZE) fillWithEnergy(b, energy);
+  if (b.total() < DECK_SIZE) for (const p of pool) { if (b.total() >= DECK_SIZE) break; b.add(p.card, MAX_COPIES); }
   b.trimTo(DECK_SIZE);
   return b.refs();
 }

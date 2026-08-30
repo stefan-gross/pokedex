@@ -25,7 +25,7 @@ export interface DeckSuggestion {
 
 // Kuratierte Standard-Trainer-Staples (englische Katalognamen). Bewusst
 // zeitlose Karten; die konkrete legale Auflage wird zur Laufzeit aufgelöst.
-export const TRAINER_STAPLES = ["Professor's Research", 'Iono', "Boss's Orders", 'Ultra Ball', 'Nest Ball', 'Switch'];
+export const TRAINER_STAPLES = ["Professor's Research", 'Iono', 'Arven', "Boss's Orders", 'Ultra Ball', 'Nest Ball', 'Buddy-Buddy Poffin', 'Switch', 'Super Rod', 'Earthen Vessel'];
 // Für Decks mit Stufe-2-Pokémon zusätzlich.
 export const STAGE2_STAPLE = 'Rare Candy';
 
