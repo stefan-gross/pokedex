@@ -14,6 +14,7 @@ import { groupDeckRows, type DeckGroup } from '@/lib/decks/group';
 import { computeDeckDemand, type DeckDemand } from '@/lib/decks/demand';
 import { computeDeckStats } from '@/lib/decks/stats';
 import { CardImage } from '@/components/card/CardImage';
+import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { EnergyIcon, type EnergyType } from '@/components/ui/EnergyIcon';
 import { CreateDeckModal } from '@/components/deck/CreateDeckModal';
 import { DeckCardSearchSheet } from '@/components/deck/DeckCardSearchSheet';
@@ -36,6 +37,59 @@ const CATEGORIES: { key: string; label: string }[] = [
   { key: 'Energy',  label: 'Energie' },
 ];
 
+// Evolutionsstufe → Badge (Label + Farbcodierung: Basis grün / Ph.1 blau / Ph.2 lila).
+const STAGE_STYLE: Record<'Basic' | 'Stage 1' | 'Stage 2', { label: string; bg: string; color: string }> = {
+  'Basic':   { label: 'Basis',   bg: 'rgba(99,153,34,0.22)',  color: '#3b6d11' },
+  'Stage 1': { label: 'Phase 1', bg: 'rgba(49,130,206,0.22)', color: '#185fa5' },
+  'Stage 2': { label: 'Phase 2', bg: 'rgba(103,80,150,0.24)', color: '#453f9e' },
+};
+function stageKey(card?: CatalogCard): keyof typeof STAGE_STYLE | null {
+  if (!card || card.supertype !== 'Pokémon') return null;
+  if (card.subtypes?.includes('Stage 2')) return 'Stage 2';
+  if (card.subtypes?.includes('Stage 1')) return 'Stage 1';
+  if (card.subtypes?.includes('Basic')) return 'Basic';
+  return null;
+}
+const stageRank = (card?: CatalogCard) => { const s = stageKey(card); return s === 'Basic' ? 0 : s === 'Stage 1' ? 1 : s === 'Stage 2' ? 2 : 3; };
+
+/** Eine Evolutionslinie (oder ein Einzel-Pokémon) im Deck. */
+interface PokemonLine { key: string; header: string | null; counts: number[]; groups: DeckGroup[]; }
+
+/** Gruppiert Pokémon-Zeilen nach Evolutionslinie (gemeinsame evolutionFamily),
+ *  sortiert innerhalb nach Stufe (Basis→Ph.1→Ph.2). Linien mit ≥2 Gliedern
+ *  bekommen einen Kopf (Name der höchsten Stufe + „4–0–2"-Stufenzähler);
+ *  Einzel-Pokémon laufen ohne Kopf. */
+function groupPokemonLines(groups: DeckGroup[], byId: Map<string, CatalogCard>): PokemonLine[] {
+  const buckets = new Map<string, DeckGroup[]>();
+  for (const g of groups) {
+    const card = byId.get(g.primary.catalogId);
+    const fam = card?.evolutionFamily;
+    const key = fam && fam.length ? 'fam:' + [...new Set(fam)].sort((a, b) => a - b).join('-') : 'solo:' + (card?.nationalDexNumber ?? g.key);
+    (buckets.get(key) ?? buckets.set(key, []).get(key)!).push(g);
+  }
+  const lines: PokemonLine[] = [];
+  for (const [key, gs] of buckets) {
+    gs.sort((a, b) => {
+      const r = stageRank(byId.get(a.primary.catalogId)) - stageRank(byId.get(b.primary.catalogId));
+      return r !== 0 ? r : a.displayName.localeCompare(b.displayName, 'de');
+    });
+    const counts: number[] = [0, 0, 0];
+    for (const g of gs) { const r = stageRank(byId.get(g.primary.catalogId)); if (r <= 2) counts[r] += g.total; }
+    // Linienname = höchste ERKANNTE Stufe (Rang ≤2); Karten ohne Stufenangabe
+    // (z.B. Tag-Team-GX) nicht als Repräsentant nehmen.
+    const ranked = gs.filter(g => stageRank(byId.get(g.primary.catalogId)) <= 2);
+    const rep = ranked.length
+      ? ranked.reduce((best, g) => stageRank(byId.get(g.primary.catalogId)) >= stageRank(byId.get(best.primary.catalogId)) ? g : best)
+      : gs[0];
+    lines.push({ key, header: gs.length >= 2 ? rep.displayName : null, counts, groups: gs });
+  }
+  lines.sort((a, b) => {
+    if (!!a.header !== !!b.header) return a.header ? -1 : 1;   // Linien vor Einzelkarten
+    return (a.header ?? a.groups[0].displayName).localeCompare(b.header ?? b.groups[0].displayName, 'de');
+  });
+  return lines;
+}
+
 export default function DeckEditorPage() {
   const params = useParams();
   const id = String(params.id);
@@ -47,6 +101,7 @@ export default function DeckEditorPage() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [testHandOpen, setTestHandOpen] = useState(false);
+  const [detailCard, setDetailCard] = useState<CardInfo | null>(null);
   const [codeSheet, setCodeSheet] = useState<null | 'export' | 'import'>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
@@ -92,6 +147,11 @@ export default function DeckEditorPage() {
   // Gruppen-Stepper (dieselbe Karte über mehrere Drucke/Sprachen = eine Zeile):
   // + erhöht den „Haupt"-Druck; − reduziert zuerst den kleinsten Druck, sodass
   // ein versehentlicher Zweit-Druck (EN/DE-Mix) beim Runterzählen verschwindet.
+  // Klick aufs Kartenbild → Kartendetail (mit den besessenen Exemplaren).
+  const openDetail = (catalogId: string) => {
+    const c = byId.get(catalogId);
+    if (c) setDetailCard(catalogCardToInfo(c));
+  };
   const incGroup = (g: DeckGroup) => changeCount(g.primary.catalogId, g.primary.count + 1);
   const decGroup = (g: DeckGroup) => {
     const target = [...g.prints].filter(p => p.count > 0).sort((a, b) => a.count - b.count)[0];
@@ -258,14 +318,42 @@ export default function DeckEditorPage() {
                 title={cat.label}
                 right={<span className="text-sm font-bold tabular-nums text-muted-foreground">{catTotal}</span>}
               >
-                {/* Karten flach, durch feine Linien getrennt (kein Panel-auf-Panel). */}
-                <div className="flex flex-col divide-y divide-black/5 dark:divide-white/10">
-                  {groups.map(g => (
-                    <div key={g.key} className="py-2 first:pt-0 last:pb-0">
-                      <DeckRow group={g} card={byId.get(g.primary.catalogId)} demand={demand} onInc={() => incGroup(g)} onDec={() => decGroup(g)} />
-                    </div>
-                  ))}
-                </div>
+                {cat.key === 'Pokémon' ? (
+                  // Nach Evolutionslinie gruppiert (Kopf mit „4–0–2"-Stufenzähler).
+                  <div className="flex flex-col gap-3">
+                    {groupPokemonLines(groups, byId).map(line => (
+                      <div key={line.key}>
+                        {line.header && (
+                          <div className="flex items-center justify-between gap-2 px-1 pb-0.5">
+                            <span className="text-role-label font-bold text-glass truncate">{line.header}-Linie</span>
+                            <span className="text-role-label font-bold tabular-nums shrink-0 flex items-center gap-0.5">
+                              <span style={{ color: STAGE_STYLE['Basic'].color }}>{line.counts[0]}</span>
+                              <span className="text-muted-foreground">–</span>
+                              <span style={{ color: STAGE_STYLE['Stage 1'].color }}>{line.counts[1]}</span>
+                              <span className="text-muted-foreground">–</span>
+                              <span style={{ color: STAGE_STYLE['Stage 2'].color }}>{line.counts[2]}</span>
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex flex-col divide-y divide-black/5 dark:divide-white/10">
+                          {line.groups.map(g => (
+                            <div key={g.key} className="py-2 first:pt-0 last:pb-0">
+                              <DeckRow group={g} card={byId.get(g.primary.catalogId)} demand={demand} onInc={() => incGroup(g)} onDec={() => decGroup(g)} onOpenDetail={() => openDetail(g.primary.catalogId)} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col divide-y divide-black/5 dark:divide-white/10">
+                    {groups.map(g => (
+                      <div key={g.key} className="py-2 first:pt-0 last:pb-0">
+                        <DeckRow group={g} card={byId.get(g.primary.catalogId)} demand={demand} onInc={() => incGroup(g)} onDec={() => decGroup(g)} onOpenDetail={() => openDetail(g.primary.catalogId)} />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </Collapsible>
             );
           })}
@@ -296,6 +384,14 @@ export default function DeckEditorPage() {
         <CreateDeckModal existing={deck} onClose={() => setEditOpen(false)} onSaved={loadDeck} />
       )}
       <TestHandSheet open={testHandOpen} onClose={() => setTestHandOpen(false)} cards={deck.cards} byId={byId} />
+      {detailCard && (
+        <CardDetailSheet
+          card={detailCard}
+          ownedCopies={owned.filter(c => c.tcgId === detailCard.id)}
+          onClose={() => setDetailCard(null)}
+          onSaved={() => { getCards().then(setOwned).catch(() => {}); }}
+        />
+      )}
       <DeckCodeSheet
         open={codeSheet !== null}
         onClose={() => setCodeSheet(null)}
@@ -323,12 +419,13 @@ export default function DeckEditorPage() {
   );
 }
 
-function DeckRow({ group, card, demand, onInc, onDec }: {
+function DeckRow({ group, card, demand, onInc, onDec, onOpenDetail }: {
   group: DeckGroup;
   card: CatalogCard | undefined;
   demand: DeckDemand | null;
   onInc: () => void;
   onDec: () => void;
+  onOpenDetail: () => void;
 }) {
   const info: CardInfo = card
     ? catalogCardToInfo(card)
@@ -340,44 +437,49 @@ function DeckRow({ group, card, demand, onInc, onDec }: {
     if (!o) continue;
     hasOwn = true; need += o.need; owned += o.owned; isBasicEnergy = isBasicEnergy || o.isBasicEnergy;
   }
+  const missing = !isBasicEnergy && hasOwn ? Math.max(0, need - owned) : 0;
   const isPokemon = (card?.supertype ?? info.supertype) === 'Pokémon';
-  const stage = !isPokemon ? null
-    : card?.subtypes?.includes('Stage 2') ? 'Phase 2'
-    : card?.subtypes?.includes('Stage 1') ? 'Phase 1'
-    : card?.subtypes?.includes('Basic') ? 'Basis' : null;
+  const sk = stageKey(card);
+  const stage = sk ? STAGE_STYLE[sk] : null;
   const ownership = isBasicEnergy
     ? 'Basis-Energie'
-    : hasOwn ? `habe ${owned}/${need}${owned < need ? ' · fehlt' : ''}` : `${group.primary.setId} · ${group.primary.number}`;
+    : hasOwn ? `besitzt ${owned}/${need}` : `${group.primary.setId} · ${group.primary.number}`;
 
   return (
     <div className="flex items-start gap-3">
-      <div className="w-9 shrink-0 mt-0.5"><CardImage card={info} size="small" alt={group.displayName} width={63} height={88} className="w-full rounded" /></div>
+      {/* Klickbares Kartenbild → Kartendetail */}
+      <button onClick={onOpenDetail} className="w-11 shrink-0 mt-0.5 rounded active:scale-95 transition-transform" aria-label={`${group.displayName} – Kartendetail`}>
+        <CardImage card={info} size="small" alt={group.displayName} width={63} height={88} className="w-full rounded" />
+      </button>
+
+      {/* Mitte: Name/Stufe/Attacken links, Zahlen (KP/Schaden) rechtsbündig */}
       <div className="flex-1 min-w-0">
-        {/* Name + Stufe + KP */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-sm font-semibold truncate">{group.displayName}</span>
-          {stage && (
-            <span className="text-[10px] font-bold px-1.5 py-px rounded bg-black/10 dark:bg-white/15 shrink-0">{stage}</span>
-          )}
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1.5 min-w-0">
+            <span className="text-sm font-semibold truncate">{group.displayName}</span>
+            {stage && (
+              <span className="text-[10px] font-bold px-1.5 py-px rounded shrink-0" style={{ background: stage.bg, color: stage.color }}>{stage.label}</span>
+            )}
+          </span>
           {isPokemon && card?.hp != null && (
-            <span className="text-role-label text-muted-foreground shrink-0">{card.hp} KP</span>
+            <span className="text-role-label font-semibold text-muted-foreground shrink-0 tabular-nums">{card.hp} KP</span>
           )}
         </div>
 
-        {/* Attacken mit Energiebedarf */}
         {isPokemon && card?.attacks?.map((at, i) => (
-          <div key={i} className="flex items-center gap-1.5 text-role-label mt-0.5">
-            <span className="flex items-center gap-0.5 shrink-0">
-              {(at.cost ?? []).length
-                ? (at.cost ?? []).map((c, j) => <EnergyIcon key={j} type={c as EnergyType} size={13} />)
-                : <span className="text-muted-foreground">—</span>}
+          <div key={i} className="flex items-center justify-between gap-2 text-role-label mt-0.5">
+            <span className="flex items-center gap-1.5 min-w-0">
+              <span className="flex items-center gap-0.5 shrink-0">
+                {(at.cost ?? []).length
+                  ? (at.cost ?? []).map((c, j) => <EnergyIcon key={j} type={c as EnergyType} size={13} />)
+                  : <span className="text-muted-foreground">—</span>}
+              </span>
+              <span className="truncate">{at.name}</span>
             </span>
-            <span className="truncate">{at.name}</span>
-            {at.damage && <span className="ml-auto font-semibold tabular-nums shrink-0">{at.damage}</span>}
+            {at.damage && <span className="font-semibold tabular-nums shrink-0">{at.damage}</span>}
           </div>
         ))}
 
-        {/* Rückzug + Besitz/Bedarf */}
         <p className="truncate text-role-label text-muted-foreground mt-0.5 flex items-center gap-1">
           {isPokemon && card?.retreat != null && (
             <span className="flex items-center gap-0.5 shrink-0">
@@ -388,7 +490,14 @@ function DeckRow({ group, card, demand, onInc, onDec }: {
           <span className="truncate">{ownership}</span>
         </p>
       </div>
-      <Stepper value={group.total} onDec={onDec} onInc={onInc} className="mt-1" />
+
+      {/* Rechts: Stepper allein + fehlende Anzahl in Rot darunter */}
+      <div className="flex flex-col items-center gap-1 shrink-0 mt-0.5">
+        <Stepper value={group.total} onDec={onDec} onInc={onInc} />
+        {missing > 0 && (
+          <span className="text-[11px] font-bold" style={{ color: '#c53030' }}>fehlt {missing}</span>
+        )}
+      </div>
     </div>
   );
 }
