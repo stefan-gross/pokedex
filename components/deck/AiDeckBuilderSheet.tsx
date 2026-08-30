@@ -13,6 +13,7 @@ import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { getCards } from '@/lib/firestore/cards';
 import { getBinders } from '@/lib/firestore/binders';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
+import { EnergyIcon, ENERGY_META, type EnergyType } from '@/components/ui/EnergyIcon';
 import { buildCandidatePool, toPoolLines, hasBasicPokemonInPool, type PoolCard } from '@/lib/decks/pool';
 import { assembleDeck, applyAiPicks, type AiPick } from '@/lib/decks/generate';
 import { validateDeck } from '@/lib/decks/rules';
@@ -28,6 +29,9 @@ const STRATEGY_OPTS = [
   { value: 'control' as Strategy, label: 'Kontrolle' },
   { value: 'combo' as Strategy, label: 'Combo' },
 ];
+// Deck-relevante Typen (mit Basis-Energie / echten Angreifern).
+const DECK_TYPES: EnergyType[] = ['Fire', 'Water', 'Grass', 'Lightning', 'Psychic', 'Fighting', 'Darkness', 'Metal', 'Dragon'];
+
 const OWNERSHIP_OPTS = [
   { value: 'prefer' as Ownership, label: 'Bevorzugt eigene' },
   { value: 'owned' as Ownership, label: 'Nur eigene' },
@@ -56,6 +60,7 @@ export function AiDeckBuilderSheet({ open, onClose, deck, onApplied }: {
   const [coreQuery, setCoreQuery] = useState('');
   const [coreResults, setCoreResults] = useState<CatalogCard[]>([]);
   const [core, setCore] = useState<CatalogCard | null>(null);
+  const [selectedType, setSelectedType] = useState<EnergyType | null>(null);
   const [strategy, setStrategy] = useState<Strategy>('balanced');
   const [ownership, setOwnership] = useState<Ownership>('prefer');
   const [freeText, setFreeText] = useState('');
@@ -70,7 +75,7 @@ export function AiDeckBuilderSheet({ open, onClose, deck, onApplied }: {
   const [usedAi, setUsedAi] = useState(true);
   const [applying, setApplying] = useState(false);
 
-  useEffect(() => { if (open) { setPhase('form'); setError(''); setCore(null); setCoreQuery(''); setKeepExisting(deck.cards.length > 0); } }, [open, deck.cards.length]);
+  useEffect(() => { if (open) { setPhase('form'); setError(''); setCore(null); setCoreQuery(''); setSelectedType(null); setKeepExisting(deck.cards.length > 0); } }, [open, deck.cards.length]);
 
   // Kern-Pokémon-Suche (nur Pokémon).
   useEffect(() => {
@@ -99,11 +104,32 @@ export function AiDeckBuilderSheet({ open, onClose, deck, onApplied }: {
         ownedByTcgId.set(c.tcgId, (ownedByTcgId.get(c.tcgId) ?? 0) + (c.quantity ?? 1));
       }
 
+      if (!core && !coreQuery.trim() && !selectedType) {
+        setError('Wähle eine Kern-Karte oder einen Typ.');
+        setPhase('form'); return;
+      }
+
+      // Typ-Start: besten Angreifer des Typs aus dem Unsortiert-Besitz als Kern.
+      let coreId = core?.id;
+      if (!coreId && !coreQuery.trim() && selectedType) {
+        setStatus(`Suche ${ENERGY_META[selectedType].de}-Kern aus „Unsortiert" …`);
+        const ownedCatalog = ownedByTcgId.size ? await getCatalogCardsByIds([...ownedByTcgId.keys()]) : [];
+        const stageR = (c: CatalogCard) => c.subtypes?.includes('Stage 2') ? 2 : c.subtypes?.includes('Stage 1') ? 1 : 0;
+        const cands = ownedCatalog
+          .filter(c => c.supertype === 'Pokémon' && (c.types ?? []).includes(selectedType))
+          .sort((a, b) => (stageR(b) - stageR(a)) || ((b.hp ?? 0) - (a.hp ?? 0)));
+        if (!cands[0]) {
+          setError(`Keine besessenen ${ENERGY_META[selectedType].de}-Pokémon in „Unsortiert". Wähle eine Kern-Karte oder einen anderen Typ.`);
+          setPhase('form'); return;
+        }
+        coreId = cands[0].id;
+      }
+
       const params = {
         format: deck.format as DeckFormat,
-        coreId: core?.id,
-        coreName: core ? undefined : coreQuery.trim() || undefined,
-        type: core?.types?.[0],
+        coreId,
+        coreName: coreId ? undefined : coreQuery.trim() || undefined,
+        type: core?.types?.[0] ?? selectedType ?? undefined,
         ownership,
       };
       const pool = await buildCandidatePool(params, ownedByTcgId);
@@ -201,6 +227,32 @@ export function AiDeckBuilderSheet({ open, onClose, deck, onApplied }: {
               </>
             )}
           </label>
+
+          {/* Typ-Start (Alternative zur Kern-Karte): Generator nimmt den besten
+              Angreifer dieses Typs aus deinem Unsortiert-Pool als Kern. */}
+          {!core && (
+            <label className="flex flex-col gap-1">
+              <span className="text-role-label">… oder Typ wählen</span>
+              <div className="flex flex-wrap gap-2">
+                {DECK_TYPES.map(t => {
+                  const active = selectedType === t;
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setSelectedType(active ? null : t)}
+                      aria-pressed={active}
+                      aria-label={ENERGY_META[t].de}
+                      className="w-10 h-10 rounded-full flex items-center justify-center transition-transform active:scale-90"
+                      style={{ background: active ? ENERGY_META[t].bg : 'transparent', outline: active ? `2px solid ${ENERGY_META[t].bg}` : 'none', outlineOffset: 1, opacity: active ? 1 : 0.55 }}
+                    >
+                      <EnergyIcon type={t} size={26} />
+                    </button>
+                  );
+                })}
+              </div>
+            </label>
+          )}
 
           <label className="flex flex-col gap-1">
             <span className="text-role-label">Strategie</span>
