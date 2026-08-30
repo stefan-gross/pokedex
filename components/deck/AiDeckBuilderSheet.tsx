@@ -11,6 +11,7 @@ import { CardImage } from '@/components/card/CardImage';
 import { catalogCardToInfo } from '@/lib/card-info';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { getCards } from '@/lib/firestore/cards';
+import { getBinders } from '@/lib/firestore/binders';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { buildCandidatePool, toPoolLines, hasBasicPokemonInPool, type PoolCard } from '@/lib/decks/pool';
 import { assembleDeck, applyAiPicks, type AiPick } from '@/lib/decks/generate';
@@ -87,9 +88,16 @@ export function AiDeckBuilderSheet({ open, onClose, deck, onApplied }: {
   const generate = async () => {
     setPhase('generating'); setError(''); setStatus('Sammle Kandidaten …');
     try {
-      const owned = await getCards();
+      // Besitz-Quelle = NUR lose Karten in „Unsortiert" (Default-Binder), nicht
+      // die in Sammlungen einsortierten — so baut der Generator aus dem freien
+      // Kartenpool.
+      const [owned, binders] = await Promise.all([getCards(), getBinders()]);
+      const looseIds = new Set(binders.find(b => b.isDefault)?.cardIds ?? []);
       const ownedByTcgId = new Map<string, number>();
-      for (const c of owned) if (c.tcgId) ownedByTcgId.set(c.tcgId, (ownedByTcgId.get(c.tcgId) ?? 0) + (c.quantity ?? 1));
+      for (const c of owned) {
+        if (!c.tcgId || !looseIds.has(c.id)) continue;
+        ownedByTcgId.set(c.tcgId, (ownedByTcgId.get(c.tcgId) ?? 0) + (c.quantity ?? 1));
+      }
 
       const params = {
         format: deck.format as DeckFormat,
@@ -202,6 +210,7 @@ export function AiDeckBuilderSheet({ open, onClose, deck, onApplied }: {
           <label className="flex flex-col gap-1">
             <span className="text-role-label">Sammlung</span>
             <ButtonGroup value={ownership} onChange={setOwnership} options={OWNERSHIP_OPTS} accentColor="#3182ce" />
+            <span className="text-role-label text-muted-foreground">„Eigene" = lose Karten in „Unsortiert" (nicht in Sammlungen einsortierte)</span>
           </label>
 
           <label className="flex flex-col gap-1">
