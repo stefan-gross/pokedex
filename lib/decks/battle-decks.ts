@@ -88,4 +88,107 @@ Trainer: 22
 Energy: 18
 18 Basic Fire Energy SVE 002`,
   },
+  {
+    id: 'dragapult-ex-league-battle-deck',
+    name: 'Dragapult ex',
+    product: 'League Battle Deck',
+    year: 2024,
+    types: ['Psychic', 'Fire'],
+    format: 'expanded',
+    ptcgl: `Pokémon: 21
+4 Dragapult ex TWM 130
+4 Drakloak TWM 129
+4 Dreepy TWM 128
+3 Xatu PAR 072
+3 Natu PAR 073
+2 Tatsugiri TWM 131
+1 Fezandipiti ex SFA 038
+
+Trainer: 29
+3 Iono PAL 185
+3 Arven SVI 166
+1 Boss's Orders PAL 172
+1 Mela PAR 167
+1 Professor Turo's Scenario PAR 171
+4 Buddy-Buddy Poffin TEF 144
+4 Ultra Ball SVI 196
+2 Earthen Vessel PAR 163
+2 Rare Candy SVI 191
+1 Counter Catcher PAR 160
+1 Super Rod PAL 188
+1 Switch SVI 194
+1 Unfair Stamp TWM 165
+2 Rescue Board TEF 159
+1 Technical Machine: Devolution PAR 177
+1 Technical Machine: Evolution PAR 178
+
+Energy: 10
+6 Basic Psychic Energy SVE 013
+4 Basic Fire Energy SVE 010`,
+  },
+  {
+    id: 'gardevoir-ex-league-battle-deck',
+    name: 'Gardevoir ex',
+    product: 'League Battle Deck',
+    year: 2023,
+    types: ['Psychic'],
+    format: 'expanded',
+    ptcgl: `Pokémon: 18
+3 Gardevoir ex SVI 086
+4 Ralts SIT 067
+4 Kirlia SIT 068
+3 Drifloon SVI 089
+1 Cresselia LOR 074
+1 Lumineon V BRS 040
+1 Mew ex MEW 151
+1 Radiant Greninja ASR 046
+
+Trainer: 29
+4 Iono PAL 185
+3 Professor's Research SVI 189
+2 Arven SVI 166
+2 Boss's Orders PAL 172
+1 Jacq SVI 175
+2 Artazon PAL 171
+4 Nest Ball SVI 181
+4 Ultra Ball SVI 196
+3 Rare Candy SVI 191
+1 Super Rod PAL 188
+3 Bravery Charm PAL 173
+
+Energy: 13
+13 Basic Psychic Energy SVE 005`,
+  },
+  {
+    id: 'miraidon-ex-league-battle-deck',
+    name: 'Miraidon ex',
+    product: 'League Battle Deck',
+    year: 2023,
+    types: ['Lightning'],
+    format: 'expanded',
+    ptcgl: `Pokémon: 14
+2 Miraidon ex SVI 081
+2 Regieleki VMAX SIT 058
+2 Regieleki V SIT 057
+2 Regieleki ASR 051
+2 Zeraora SIT 056
+2 Bibarel BRS 121
+2 Bidoof BRS 120
+
+Trainer: 31
+4 Arven SVI 166
+4 Boss's Orders PAL 172
+4 Professor's Research SVI 190
+4 Electric Generator SVI 170
+3 Nest Ball SVI 181
+2 Switch SVI 194
+4 Ultra Ball SVI 196
+1 Forest Seal Stone SIT 156
+1 Leafy Camo Poncho SIT 160
+2 Vitality Band SVI 197
+2 Beach Court SVI 167
+
+Energy: 15
+15 Basic Lightning Energy SVE 004`,
+  },
 ];
