@@ -25,6 +25,7 @@ import { AiDeckBuilderSheet } from '@/components/deck/AiDeckBuilderSheet';
 import { Button } from '@/components/ui/button';
 import { Menu } from '@/components/ui/menu';
 import { Stepper } from '@/components/ui/stepper';
+import { Collapsible } from '@/components/ui/collapsible';
 import { formatCardNumber, formatEUR } from '@/lib/format';
 import type { DeckDoc, DeckCardRef, CardDoc } from '@/types';
 
@@ -245,21 +246,27 @@ export default function DeckEditorPage() {
           <p>Noch keine Karten. Füge über „+ Karte" welche hinzu.</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-3">
           {CATEGORIES.map(cat => {
             const refs = deck.cards.filter(c => (byId.get(c.catalogId)?.supertype ?? c.supertype) === cat.key);
             const groups = groupDeckRows(refs, byId).sort((a, b) => a.displayName.localeCompare(b.displayName, 'de'));
             if (groups.length === 0) return null;
             const catTotal = groups.reduce((s, g) => s + g.total, 0);
             return (
-              <section key={cat.key}>
-                <h2 className="text-role-label font-bold uppercase tracking-wide text-muted-foreground mb-2">{cat.label} · {catTotal}</h2>
-                <div className="flex flex-col gap-1.5">
+              <Collapsible
+                key={cat.key}
+                title={cat.label}
+                right={<span className="text-sm font-bold tabular-nums text-muted-foreground">{catTotal}</span>}
+              >
+                {/* Karten flach, durch feine Linien getrennt (kein Panel-auf-Panel). */}
+                <div className="flex flex-col divide-y divide-black/5 dark:divide-white/10">
                   {groups.map(g => (
-                    <DeckRow key={g.key} group={g} card={byId.get(g.primary.catalogId)} demand={demand} onInc={() => incGroup(g)} onDec={() => decGroup(g)} />
+                    <div key={g.key} className="py-2 first:pt-0 last:pb-0">
+                      <DeckRow group={g} card={byId.get(g.primary.catalogId)} demand={demand} onInc={() => incGroup(g)} onDec={() => decGroup(g)} />
+                    </div>
                   ))}
                 </div>
-              </section>
+              </Collapsible>
             );
           })}
         </div>
