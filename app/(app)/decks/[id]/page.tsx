@@ -58,33 +58,45 @@ const stageRank = (card?: CatalogCard) => { const s = stageKey(card); return s =
 /** Eine Evolutionslinie (oder ein Einzel-Pokémon) im Deck. */
 interface PokemonLine { key: string; header: string | null; counts: number[]; groups: DeckGroup[]; }
 
-/** Gehört die Karte zu einer echten Evolutionskette? Stufe-1/2 immer; eine
- *  Basis nur, wenn sie die WURZEL ist (niedrigste Dex-Nummer der Familie) — so
- *  bleiben eigenständige Basis-Karten desselben Species (V/ex/GX/Radiant, die
- *  eine hohe Dex-Nummer tragen, aber nicht evolvieren) außen vor. */
-function isChainMember(card: CatalogCard | undefined): boolean {
-  const s = stageKey(card);
-  if (s === 'Stage 1' || s === 'Stage 2') return true;
-  if (s === 'Basic') {
-    const fam = card?.evolutionFamily;
-    return !!fam && fam.length > 1 && card?.nationalDexNumber === Math.min(...fam);
-  }
-  return false;
-}
-
 /** Gruppiert Pokémon-Zeilen nach ECHTER Evolutionslinie (gemeinsame
  *  evolutionFamily, nur Kettenglieder), sortiert innerhalb nach Stufe. Linien
  *  mit ≥2 Gliedern bekommen einen Kopf (höchste Stufe + „4–0–2"-Zähler);
  *  Einzel-/eigenständige Pokémon laufen ohne Kopf (nach Name). */
 function groupPokemonLines(groups: DeckGroup[], byId: Map<string, CatalogCard>): PokemonLine[] {
+  // Pass 1: dex → Familien-Key aus allen Karten, die eine echte (mehrstufige)
+  // Familie tragen — damit Karten OHNE eigene Familie (z.B. Promos) über ihre
+  // Dex-Nummer der passenden Linie zugeordnet werden können.
+  const dexToFamily = new Map<number, string>();
+  const familyDex = new Map<string, number[]>();
+  for (const g of groups) {
+    const fam = byId.get(g.primary.catalogId)?.evolutionFamily;
+    if (fam && fam.length > 1) {
+      const dex = [...new Set(fam)].sort((a, b) => a - b);
+      const key = 'fam:' + dex.join('-');
+      familyDex.set(key, dex);
+      for (const d of dex) if (!dexToFamily.has(d)) dexToFamily.set(d, key);
+    }
+  }
+
   const chainBuckets = new Map<string, DeckGroup[]>();
   const singles: DeckGroup[] = [];
   for (const g of groups) {
     const card = byId.get(g.primary.catalogId);
-    const fam = card?.evolutionFamily;
-    if (card && fam && fam.length > 1 && isChainMember(card)) {
-      const key = 'fam:' + [...new Set(fam)].sort((a, b) => a - b).join('-');
-      (chainBuckets.get(key) ?? chainBuckets.set(key, []).get(key)!).push(g);
+    const ownFam = card?.evolutionFamily;
+    const famKey = ownFam && ownFam.length > 1
+      ? 'fam:' + [...new Set(ownFam)].sort((a, b) => a - b).join('-')
+      : (card?.nationalDexNumber != null ? dexToFamily.get(card.nationalDexNumber) : undefined);
+    const s = stageKey(card);
+    // Kettenglied: Stufe 1/2 immer (sofern eine Linie gefunden); Basis nur als
+    // Wurzel (niedrigste Dex-Nummer der Familie).
+    let inChain = false;
+    if (famKey) {
+      const dexArr = familyDex.get(famKey)!;
+      if (s === 'Stage 1' || s === 'Stage 2') inChain = true;
+      else if (s === 'Basic' && card?.nationalDexNumber === Math.min(...dexArr)) inChain = true;
+    }
+    if (inChain && famKey) {
+      (chainBuckets.get(famKey) ?? chainBuckets.set(famKey, []).get(famKey)!).push(g);
     } else {
       singles.push(g);
     }
