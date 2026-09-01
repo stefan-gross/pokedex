@@ -8,18 +8,21 @@ import type { ReactNode } from 'react';
  *  - `mono`: Monospace (z.B. Setkürzel),
  *  - `title`: Tooltip.
  */
-export function HeaderPill({ children, icon, color, mono = false, title, className = '' }: {
+export function HeaderPill({ children, icon, color, mono = false, title, className = '', truncate = false }: {
   children: ReactNode;
   icon?: ReactNode;
   color?: string;
   mono?: boolean;
   title?: string;
   className?: string;
+  /** In schmalen Spalten: Pill darf schrumpfen und den Text abschneiden statt
+   *  horizontal überzulaufen (z.B. lange Rarity-Labels im Kartendetail). */
+  truncate?: boolean;
 }) {
   return (
     <span
       title={title}
-      className={`glass inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[12px] font-bold leading-none shrink-0 ${mono ? 'font-mono ' : ''}${className}`}
+      className={`glass inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[12px] font-bold leading-none ${truncate ? 'min-w-0 max-w-full' : 'shrink-0'} ${mono ? 'font-mono ' : ''}${className}`}
       style={{
         color: color ?? 'var(--foreground)',
         // Akzentfarbe → Rahmen einfärben (z.B. Reguliermarke/Legalität); sonst
@@ -28,7 +31,7 @@ export function HeaderPill({ children, icon, color, mono = false, title, classNa
       }}
     >
       {icon}
-      {children}
+      {truncate ? <span className="truncate">{children}</span> : children}
     </span>
   );
 }

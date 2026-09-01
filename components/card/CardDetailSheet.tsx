@@ -777,23 +777,29 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                     {SERIES_NAMES_DE[card.series] ?? card.series}
                   </div>
                 )}
+                {/* Reguliermarke (H/I …) + Rarity direkt unter dem Zyklusnamen —
+                    umbrechend + schrumpfbar, damit lange Labels (z.B. „Special
+                    Illustration Rare") in der schmalen Spalte nicht horizontal
+                    überlaufen (sonst ließ sich der iPhone-Screen wegschieben). */}
+                {(regMark || rarityInfo) && (
+                  <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                    {regMark && (
+                      <HeaderPill color={legalColor} title={`Reguliermarke ${regMark} · ${legalWord}`}>
+                        {regMark}
+                      </HeaderPill>
+                    )}
+                    {rarityInfo && (
+                      <HeaderPill truncate title={rarityInfo.label} icon={<span style={{ color: rarityInfo.color }}>{rarityInfo.symbol}</span>}>
+                        {rarityInfo.label}
+                      </HeaderPill>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Unten: Nummer + (Legalität links neben) Rarity-Pill */}
-              <div className="flex items-center justify-between gap-2">
+              {/* Unten: Nummer */}
+              <div className="flex items-center">
                 <span className="text-[14px] font-bold tabular-nums">{numFmt}</span>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {regMark && (
-                    <HeaderPill color={legalColor} title={`Reguliermarke ${regMark} · ${legalWord}`}>
-                      {regMark}
-                    </HeaderPill>
-                  )}
-                  {rarityInfo && (
-                    <HeaderPill icon={<span style={{ color: rarityInfo.color }}>{rarityInfo.symbol}</span>}>
-                      {rarityInfo.label}
-                    </HeaderPill>
-                  )}
-                </div>
               </div>
             </div>
           </div>
