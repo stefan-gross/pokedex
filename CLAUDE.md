@@ -16,7 +16,7 @@ Pokémon-Kartensammlung PWA für Stefan Gross.
 - Next.js 16 (App Router, TypeScript) — `middleware.ts` heißt hier `proxy.ts`
 - Tailwind CSS v4 + shadcn/ui
 - Firebase Client SDK (Browser) + Firebase Admin SDK (Server)
-- Dev-Server starten: `/Users/sgr/.nvm/versions/node/v22.3.0/bin/node node_modules/.bin/next dev --webpack --port 3000`
+- Dev-Server starten: `/opt/homebrew/bin/node node_modules/.bin/next dev --webpack --port 3000`
 
 ## Auth
 - Firebase Email/Password, Session-Cookie `__session` auf `.smartfamilyzone.de`
@@ -65,6 +65,6 @@ Pokémon-Kartensammlung PWA für Stefan Gross.
 - Farbe wird per Tailwind-Klasse (`text-*`, `fill-current`) oder CSS-Variable gesteuert, nicht inline im SVG hardcodiert
 
 ## Bekannte Eigenheiten
-- Node.js: System hat v15 — immer v22 nutzen: `/Users/sgr/.nvm/versions/node/v22.3.0/bin/node`
-- Turbopack funktioniert nicht (Node v15 im Subprocess) → `--webpack` Flag nötig
-- `.claude/launch.json` startet den Dev-Server mit v22 direkt
+- Node.js: Homebrew `/opt/homebrew/bin/node` nutzen (aktuell v26). Der frühere nvm-Pfad `~/.nvm/versions/node/v22.3.0/bin/node` existiert NICHT mehr — daher scheitern Startbefehle mit diesem Pfad.
+- Turbopack funktioniert nicht → `--webpack` Flag nötig
+- `.claude/launch.json` (Config „dev") startet den Dev-Server direkt mit `/opt/homebrew/bin/node` — via preview_start nutzbar
