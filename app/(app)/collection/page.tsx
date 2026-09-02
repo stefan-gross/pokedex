@@ -110,6 +110,7 @@ function CollectionContent() {
   const [inputValue,    setInputValue]    = useState(initialQ);
   const [suggestIndex,  setSuggestIndex]  = useState<SuggestIndex | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [relaxedNote,   setRelaxedNote]   = useState<string | null>(null);
   const [results,       setResults]       = useState<CardInfo[]>([]);
   const [ownedCards,    setOwnedCards]    = useState<CardDoc[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -416,6 +417,43 @@ function CollectionContent() {
   const facetState = useMemo<FacetState>(() => ({
     ownedFilter, activeSupertype, activeTypes, activeEvolutions, activeSpecialMechanics, activeRarity, ownedIds,
   }), [ownedFilter, activeSupertype, activeTypesKey, activeEvolutionsKey, activeSpecialMechanicsKey, activeRarity, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Filter + Suche: Wenn ein NEUES Suchergebnis (results) durch die aktiven
+  // Filter auf 0 fällt (obwohl es ungefilterte Treffer gibt), werden GENAU die
+  // Filter automatisch gelockert, die die 0 verursachen — die übrigen bleiben
+  // erhalten. Läuft nur bei Ergebnis-Wechsel (Suchänderung), NICHT beim
+  // manuellen Setzen eines Filters (dep = results), sonst ließe sich kein Filter
+  // setzen, der (noch) 0 trifft.
+  useEffect(() => {
+    if (!inputValue || results.length === 0) return;
+    if (applyFacetFilters(results, facetState).length > 0) return;   // Filter passen
+    const local: FacetState = {
+      ...facetState,
+      activeTypes: new Set(facetState.activeTypes),
+      activeEvolutions: new Set(facetState.activeEvolutions),
+      activeSpecialMechanics: new Set(facetState.activeSpecialMechanics),
+    };
+    // Reihenfolge: erst spezifische/optische Filter lockern, zuletzt Owned.
+    const steps: { active: boolean; label: string; relax: () => void; drop: () => void }[] = [
+      { active: !!local.activeRarity,               label: 'Seltenheit',   relax: () => { local.activeRarity = null; },              drop: () => setActiveRarity(null) },
+      { active: local.activeSpecialMechanics.size > 0, label: 'Sonderformen', relax: () => { local.activeSpecialMechanics = new Set(); }, drop: () => setActiveSpecialMechanics(new Set()) },
+      { active: local.activeEvolutions.size > 0,    label: 'Stufe',        relax: () => { local.activeEvolutions = new Set(); },     drop: () => setActiveEvolutions(new Set()) },
+      { active: local.activeTypes.size > 0,         label: 'Typ',          relax: () => { local.activeTypes = new Set(); },          drop: () => setActiveTypes(new Set()) },
+      { active: local.activeSupertype !== 'all',    label: 'Kartenart',    relax: () => { local.activeSupertype = 'all'; },          drop: () => setActiveSupertype('all') },
+      { active: local.ownedFilter !== 'all',        label: 'Vorhanden',    relax: () => { local.ownedFilter = 'all'; },              drop: () => setOwnedFilter('all') },
+    ];
+    const relaxed: string[] = [];
+    for (const step of steps) {
+      if (applyFacetFilters(results, local).length > 0) break;
+      if (!step.active) continue;
+      step.relax(); step.drop(); relaxed.push(step.label);
+    }
+    setRelaxedNote(relaxed.length ? relaxed.join(', ') : null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results]);
+
+  // Hinweis wieder ausblenden, sobald der Nutzer den Suchtext ändert.
+  useEffect(() => { setRelaxedNote(null); }, [inputValue]);
 
   // Sucherg. durch geteilte Filter gefiltert
   const displayed = useMemo(() => {
@@ -746,6 +784,14 @@ function CollectionContent() {
 
       {/* ── Content ─────────────────────────────────────────────── */}
       <div ref={gridWrapRef} className="flex-1 px-3 py-3">
+
+        {/* Auto-Lockerung: dezenter Hinweis, welche Filter für dieses Ergebnis
+            entfernt wurden (weil sie 0 Treffer ergeben hätten). */}
+        {!isBrowseMode && relaxedNote && (
+          <p className="text-role-label text-muted-foreground text-center mb-2">
+            Filter gelockert: {relaxedNote}
+          </p>
+        )}
 
         {/* Browse-Modus — zeigt initial den gesamten Katalog, dynamisches Nachladen beim Scrollen */}
         {isBrowseMode && (
