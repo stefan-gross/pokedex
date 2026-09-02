@@ -26,6 +26,8 @@ import {
   getBrowseCountRest as getBrowseCount,
 } from '@/lib/firestore/catalog-rest';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
+import { loadSuggestIndex, suggest, correctQuery } from '@/lib/search/suggest-index';
+import type { SuggestIndex } from '@/lib/build-search-index';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { applyFacetFilters, type FacetState, type FacetDim } from '@/lib/search/facet-filter';
@@ -106,6 +108,8 @@ function CollectionContent() {
 
   // ── Suche ─────────────────────────────────────────────────────
   const [inputValue,    setInputValue]    = useState(initialQ);
+  const [suggestIndex,  setSuggestIndex]  = useState<SuggestIndex | null>(null);
+  const [searchFocused, setSearchFocused] = useState(false);
   const [results,       setResults]       = useState<CardInfo[]>([]);
   const [ownedCards,    setOwnedCards]    = useState<CardDoc[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -142,7 +146,19 @@ function CollectionContent() {
     ]).then(([pokedex, hp]) => setSortCounts({ pokedex, hp })).catch(() => {});
     getCatalogFilterCounts().then(setFilterCounts).catch(() => {});
     getAllSets().then(setAllSets).catch(() => {});
+    loadSuggestIndex().then(setSuggestIndex).catch(() => {});
   }, []);
+
+  // Autosuggest-Vorschläge (rein lokal aus dem geladenen Index).
+  const suggestions = useMemo(
+    () => (searchFocused ? suggest(suggestIndex, inputValue, 8) : []),
+    [searchFocused, suggestIndex, inputValue],
+  );
+  // Fuzzy-Korrektur bei 0 Treffern („Meintest du …?").
+  const correction = useMemo(
+    () => (inputValue.trim().length >= 3 ? correctQuery(suggestIndex, inputValue) : null),
+    [suggestIndex, inputValue],
+  );
 
   // Set-Metadaten (Symbol/Kürzel) für die Set-Badges auf Karten-Kacheln —
   // einmalig geladen, ~140 Docs, für die gesamte Seiten-Lebensdauer gecacht.
@@ -587,15 +603,36 @@ function CollectionContent() {
       {/* ── Sticky Header ──────────────────────────────────────── */}
       <div ref={panelRef} className="sticky top-safe z-20 mx-3 mt-2 glass rounded-[20px] px-4 pt-4 pb-3 space-y-2">
 
-        {/* Suchfeld — immer sichtbar */}
-        <Input
-          variant="search"
-          size="lg"
-          value={inputValue}
-          onChange={setInputValue}
-          onClear={clearSearch}
-          placeholder="Name, Illustrator … oder stöbern"
-        />
+        {/* Suchfeld + Autosuggest — immer sichtbar */}
+        <div className="relative">
+          <Input
+            variant="search"
+            size="lg"
+            value={inputValue}
+            onChange={setInputValue}
+            onClear={clearSearch}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setTimeout(() => setSearchFocused(false), 120)}
+            placeholder="Name, Illustrator … oder stöbern"
+          />
+          {suggestions.length > 0 && (
+            <div className="absolute left-0 right-0 top-full mt-1 z-30 glass rounded-2xl overflow-hidden py-1 shadow-lg">
+              {suggestions.map(sug => (
+                <button
+                  key={sug.kind + sug.value}
+                  type="button"
+                  onMouseDown={e => { e.preventDefault(); setInputValue(sug.value); setSearchFocused(false); }}
+                  className="flex items-center justify-between gap-2 w-full px-4 py-2 text-left active:bg-black/5 dark:active:bg-white/10"
+                >
+                  <span className="truncate text-sm text-glass">{sug.value}</span>
+                  <span className="text-role-label text-glass-muted shrink-0">
+                    {sug.kind === 'name' ? 'Karte' : sug.kind === 'artist' ? 'Illustrator' : 'Set'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Owned (Alle|Vorhanden|Fehlen) — immer sichtbar */}
         <ButtonGroup
@@ -741,6 +778,19 @@ function CollectionContent() {
                 <Search size={40} className="text-glass-muted" />
                 <p className="text-role-title text-glass">Keine Karten gefunden</p>
                 <p className="text-role-label text-glass-muted">Kein Ergebnis für „{inputValue}"</p>
+                {correction && (
+                  <p className="text-role-label text-glass-muted">
+                    Meintest du{' '}
+                    <button
+                      type="button"
+                      onClick={() => setInputValue(correction)}
+                      className="font-semibold underline text-glass"
+                    >
+                      {correction}
+                    </button>
+                    ?
+                  </p>
+                )}
               </div>
             )}
             {!searchLoading && results.length > 0 && displayed.length === 0 && inputValue && (

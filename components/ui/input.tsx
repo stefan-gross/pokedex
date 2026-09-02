@@ -28,6 +28,8 @@ export function Input({
   name,
   autoFocus,
   style,
+  onFocus,
+  onBlur,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -38,6 +40,9 @@ export function Input({
   onClear?: () => void;
   className?: string;
   type?: string;
+  /** Fokus-Callbacks (z.B. für Autosuggest-Dropdowns). */
+  onFocus?: () => void;
+  onBlur?: () => void;
   /** Fokussiert das Feld direkt beim Mounten (z.B. Suchfeld in einem gerade
    *  geöffneten Dropdown/Panel). */
   autoFocus?: boolean;
@@ -66,6 +71,8 @@ export function Input({
         type={variant === 'search' ? 'search' : type}
         value={value}
         onChange={e => onChange(e.target.value)}
+        onFocus={onFocus}
+        onBlur={onBlur}
         placeholder={placeholder}
         autoComplete={autoComplete}
         required={required}
