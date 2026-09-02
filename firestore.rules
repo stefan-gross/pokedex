@@ -73,5 +73,16 @@ service cloud.firestore {
       allow read: if true;
       allow write: if false;
     }
+    // Suggest-Index (Autosuggest/Fuzzy) + Turnier-Archetypen — öffentliche
+    // Referenzdaten (keine Nutzerdaten). Client liest sie direkt; Schreiben nur
+    // serverseitig via Admin-SDK (umgeht Rules). Ohne Rule griffe Default-Deny.
+    match /meta/suggest_index {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /deck_archetypes/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
   }
 }

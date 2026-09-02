@@ -1,9 +1,11 @@
 /**
  * Client-seitiger Suggest-Index (Autosuggest + Fuzzy-Korrektur). Lädt EINMAL das
- * Doc `meta/suggest_index` über /api/search/suggest-index, cacht in Memory +
- * localStorage (TTL 7 Tage). Alle Vorschläge/Fuzzy-Vergleiche laufen danach
+ * Doc `meta/suggest_index` direkt via Client-SDK (öffentliche Read-Rule), cacht
+ * in Memory + localStorage (TTL 7 Tage). Alle Vorschläge/Fuzzy laufen danach
  * rein lokal — keine Firestore-Reads pro Tastendruck.
  */
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
 import type { SuggestIndex } from '@/lib/build-search-index';
 
 const LS_KEY = 'pokedex.suggest_index.v1';
@@ -14,9 +16,11 @@ let inflight: Promise<SuggestIndex | null> | null = null;
 
 async function fetchIndex(): Promise<SuggestIndex | null> {
   try {
-    const r = await fetch('/api/search/suggest-index');
-    if (!r.ok) return null;
-    const data = (await r.json()) as SuggestIndex;
+    // Direkt aus Firestore (öffentliche Read-Rule für meta/) — funktioniert auch
+    // in Produktion, wo dem Admin-SDK die Env-Vars fehlen.
+    const snap = await getDoc(doc(db, 'meta', 'suggest_index'));
+    if (!snap.exists()) return null;
+    const data = snap.data() as SuggestIndex;
     if (!data?.names?.length) return null;
     try { localStorage.setItem(LS_KEY, JSON.stringify({ ...data, _cachedAt: Date.now() })); } catch { /* quota */ }
     return data;
