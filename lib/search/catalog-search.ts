@@ -5,7 +5,9 @@ import {
   searchCatalogRest as searchCatalog,
   searchCatalogByArtistRest as searchCatalogByArtist,
   getCardsByDexNumberRest as getCardsByDexNumber,
+  browseCatalogRest,
 } from '@/lib/firestore/catalog-rest';
+import { parseSearchQuery, matchesStructured, SUBTYPE_CATALOG_VALUES, type ParsedQuery } from './query-parser';
 
 export interface CatalogSearchOptions {
   /** Vorfilterung auf ein Set — scopt Namens-, Illustrator- UND Dex-Treffer. */
@@ -78,6 +80,19 @@ export async function searchCatalogCards(
   const minLen = opts.minComboLen ?? 3;
 
   const scopeToSet = (cards: CatalogCard[]) => (setId ? cards.filter(c => c.setId === setId) : cards);
+
+  // Query-Parser: Schlüsselwörter (Typ/Subtyp/Kartenart) als strukturierte Filter
+  // abziehen, der Rest ist Freitext (Name/Illustrator). „Glurak ex" → Freitext
+  // „Glurak" + Subtyp „ex"; „ex" → nur Subtyp; „Feuer ex" → Typ + Subtyp.
+  const parsed = parseSearchQuery(q);
+  const effQ = parsed.hasStructured ? parsed.freeText.trim() : q;
+
+  // Nur strukturierte Filter (kein Freitext, z.B. „ex"/„Feuer ex") → per Browse
+  // über den primären Filter holen, danach der Post-Filter unten grenzt exakt ein.
+  if (parsed.hasStructured && !effQ) {
+    const cards = await browseByStructured(parsed, displayLimit);
+    return { cards: scopeToSet(cards).filter(c => matchesStructured(c, parsed)) };
+  }
   // Namenssuche NICHT server-seitig set-scopen: `searchCatalog(q, setId)` bräuchte
   // einen Composite-Index (setId + nameDeLower/nameLower-Range), der nicht
   // existiert → die Query würfe. Stattdessen ungescopet holen (bei gesetztem Set
@@ -88,17 +103,20 @@ export async function searchCatalogCards(
   const byArtist = async (word: string, limit: number) => scopeToSet(await searchCatalogByArtist(word, limit));
 
   // 0. Pokédex-Nummer
-  const dexMatch = q.match(/^#?(\d{1,4})$/);
+  const dexMatch = effQ.match(/^#?(\d{1,4})$/);
   const dexNum = dexMatch ? parseInt(dexMatch[1], 10) : null;
   if (dexNum && dexNum >= 1 && dexNum <= 1025) {
     const dexHits = scopeToSet(await getCardsByDexNumber(dexNum, displayLimit));
-    if (dexHits.length > 0) return { cards: dexHits, sortHint: 'pokedex' };
+    if (dexHits.length > 0) {
+      const filtered = parsed.hasStructured ? dexHits.filter(c => matchesStructured(c, parsed)) : dexHits;
+      return { cards: filtered, sortHint: 'pokedex' };
+    }
   }
 
-  const words = q.split(/\s+/).filter(Boolean);
+  const words = effQ.split(/\s+/).filter(Boolean);
 
   // 1. Gesamte Eingabe als Name
-  let hits = await byName(q);
+  let hits = await byName(effQ);
 
   // 2. Mehrwort: jedes Wort muss (in Name ODER Illustrator) vorkommen, UND über
   //    alle Wörter. Vorgehen: pro Wort die Kandidaten (Name ∪ Illustrator) holen,
@@ -124,8 +142,8 @@ export async function searchCatalogCards(
   }
 
   // 3. Reine Illustrator-Suche (Einzelwort-Fallback)
-  if (hits.length === 0 && q.length >= minLen) {
-    hits = await byArtist(q, displayLimit);
+  if (hits.length === 0 && effQ.length >= minLen) {
+    hits = await byArtist(effQ, displayLimit);
   }
 
   // 4. Dex-Brücke: sprachübergreifend nachziehen (siehe `bridgeByDex`-Doc). Nur
@@ -147,5 +165,24 @@ export async function searchCatalogCards(
     }
   }
 
+  // Strukturierte Filter (Typ/Subtyp/Kartenart) exakt anwenden — „Glurak ex"
+  // behält nur die ex-Karten unter den Glurak-/Familientreffern.
+  if (parsed.hasStructured) hits = hits.filter(c => matchesStructured(c, parsed));
+
   return { cards: hits };
+}
+
+/** Holt Kandidaten für eine rein strukturierte Suche (kein Freitext) über den
+ *  selektivsten primären Filter; der Post-Filter grenzt danach exakt ein. */
+async function browseByStructured(p: ParsedQuery, limit: number): Promise<CatalogCard[]> {
+  const filter = p.subtypes.length
+    ? { specialMechanics: p.subtypes.flatMap(k => SUBTYPE_CATALOG_VALUES[k] ?? [k]) }
+    : p.types.length
+      ? { types: p.types }
+      : p.supertype
+        ? { supertype: p.supertype }
+        : null;
+  if (!filter) return [];
+  const { cards } = await browseCatalogRest(filter, null, limit, 'name', false);
+  return cards;
 }
