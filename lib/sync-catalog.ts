@@ -1,6 +1,18 @@
 import { getAdminDb } from './firebase/admin';
 import { FieldPath } from 'firebase-admin/firestore';
+import { buildSearchIndex } from './build-search-index';
 import type { CatalogCard, SyncMeta } from './firestore/catalog';
+
+/** Suggest-Index (Autosuggest/Fuzzy) nach Katalog-Änderungen neu bauen —
+ *  best-effort: ein Fehler darf den Sync nicht abbrechen. */
+async function rebuildSuggestIndex() {
+  try {
+    const r = await buildSearchIndex();
+    console.log(`[sync] Suggest-Index neu: ${r.names} Namen · ${r.artists} Illustratoren · ${r.sets} Sets`);
+  } catch (e) {
+    console.error('[sync] Suggest-Index-Rebuild fehlgeschlagen', e);
+  }
+}
 import { CATEGORIES, PAGE_SIZE, fetchEnCardsPage, fetchDeCardsForSet, toCatalogCard,
          fetchSetCardIds, fetchEnCardsByIds, fetchCardMechanics, tcgdexImage,
          type DeCardInfo, type CardMechanicsData } from './tcgdex-source';
@@ -135,7 +147,7 @@ export async function runSync(mode: 'auto' | 'update' | 'reset' = 'auto'): Promi
   }
 
   const done = catIndex >= CATEGORIES.length;
-  if (done) await setMeta({ bootstrapped: true });
+  if (done) { await setMeta({ bootstrapped: true }); await rebuildSuggestIndex(); }
   return {
     status: done ? 'complete' : 'in-progress',
     message: done
@@ -210,6 +222,9 @@ export async function syncNewCards(): Promise<SyncNewResult> {
   if (added > 0) metaUpdate.lastSynced = nowIso;
   if (!hitCap) metaUpdate.phantomTotal = Math.max(0, currentTotal - realCount);
   await setMeta(metaUpdate);
+
+  // Nur wenn der Lauf fertig ist UND wirklich neue Karten dazukamen → Index neu.
+  if (!hitCap && added > 0) await rebuildSuggestIndex();
 
   return {
     status: hitCap ? 'in-progress' : 'complete',
