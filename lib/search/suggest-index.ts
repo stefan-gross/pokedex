@@ -74,6 +74,28 @@ export function suggest(index: SuggestIndex | null, q: string, limit = 8): Sugge
     ...rank(index.artists, 'artist'),
   ];
   for (const [v, k] of ranked) { if (out.length >= limit) break; push(v, k); }
+
+  // Tippfehler-Toleranz: wenn wenige exakte Treffer, das erste Suchwort per
+  // Edit-Distanz gegen die TOKEN der Kandidaten prüfen — so schlägt „Yoka" auch
+  // „Yuka Morii" vor (Token „yuka" ist 1 Tippfehler entfernt).
+  if (out.length < limit) {
+    const key = s.split(/\s+/).filter(Boolean)[0] ?? s;
+    if (key.length >= 3) {
+      const maxD = Math.max(1, Math.floor(key.length / 4));
+      const fuzzyHit = (value: string) =>
+        value.toLowerCase().split(/\s+/).some(tok => Math.abs(tok.length - key.length) <= maxD && levBounded(key, tok, maxD) <= maxD);
+      const fuzzyPass = (arr: string[], kind: Suggestion['kind']) => {
+        for (const v of arr) {
+          if (out.length >= limit) break;
+          if (v.toLowerCase().includes(s)) continue;   // schon exakt drin
+          if (fuzzyHit(v)) push(v, kind);
+        }
+      };
+      fuzzyPass(index.names, 'name');
+      fuzzyPass(index.artists, 'artist');
+      fuzzyPass(index.sets.map(x => x.name), 'set');
+    }
+  }
   return out.slice(0, limit);
 }
 
