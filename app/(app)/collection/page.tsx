@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, Suspense } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Search, SlidersHorizontal } from 'lucide-react';
 import { CardGrid, CardGridSkeleton } from '@/components/card/CardGrid';
@@ -110,6 +111,8 @@ function CollectionContent() {
   const [inputValue,    setInputValue]    = useState(initialQ);
   const [suggestIndex,  setSuggestIndex]  = useState<SuggestIndex | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
+  const searchBoxRef = useRef<HTMLDivElement>(null);
+  const [suggestCoords, setSuggestCoords] = useState<{ top: number; left: number; width: number } | null>(null);
   const [relaxedNote,   setRelaxedNote]   = useState<string | null>(null);
   const [results,       setResults]       = useState<CardInfo[]>([]);
   const [ownedCards,    setOwnedCards]    = useState<CardDoc[]>([]);
@@ -155,6 +158,22 @@ function CollectionContent() {
     () => (searchFocused ? suggest(suggestIndex, inputValue, 8) : []),
     [searchFocused, suggestIndex, inputValue],
   );
+  // Autosuggest-Panel per Portal an document.body positionieren (wie das Menü):
+  // im Glas-Header verschachtelt wäre das backdrop-filter ein No-op → unlesbar.
+  useLayoutEffect(() => {
+    if (suggestions.length === 0 || !searchBoxRef.current) { setSuggestCoords(null); return; }
+    const update = () => {
+      const r = searchBoxRef.current!.getBoundingClientRect();
+      setSuggestCoords({ top: r.bottom + 6, left: r.left, width: r.width });
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [suggestions.length, inputValue]);
   // Fuzzy-Korrektur bei 0 Treffern („Meintest du …?").
   const correction = useMemo(
     () => (inputValue.trim().length >= 3 ? correctQuery(suggestIndex, inputValue) : null),
@@ -641,8 +660,10 @@ function CollectionContent() {
       {/* ── Sticky Header ──────────────────────────────────────── */}
       <div ref={panelRef} className="sticky top-safe z-20 mx-3 mt-2 glass rounded-[20px] px-4 pt-4 pb-3 space-y-2">
 
-        {/* Suchfeld + Autosuggest — immer sichtbar */}
-        <div className="relative">
+        {/* Suchfeld — immer sichtbar. Autosuggest wird per Portal (unten) über
+            document.body gerendert, damit das Glas-Blur wirkt (nicht im Header
+            verschachtelt). */}
+        <div ref={searchBoxRef} className="relative">
           <Input
             variant="search"
             size="lg"
@@ -653,23 +674,6 @@ function CollectionContent() {
             onBlur={() => setTimeout(() => setSearchFocused(false), 120)}
             placeholder="Name, Illustrator … oder stöbern"
           />
-          {suggestions.length > 0 && (
-            <div className="absolute left-0 right-0 top-full mt-1 z-30 glass rounded-2xl overflow-hidden py-1 shadow-lg">
-              {suggestions.map(sug => (
-                <button
-                  key={sug.kind + sug.value}
-                  type="button"
-                  onMouseDown={e => { e.preventDefault(); setInputValue(sug.value); setSearchFocused(false); }}
-                  className="flex items-center justify-between gap-2 w-full px-4 py-2 text-left active:bg-black/5 dark:active:bg-white/10"
-                >
-                  <span className="truncate text-sm text-glass">{sug.value}</span>
-                  <span className="text-role-label text-glass-muted shrink-0">
-                    {sug.kind === 'name' ? 'Karte' : sug.kind === 'artist' ? 'Illustrator' : 'Set'}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* Owned (Alle|Vorhanden|Fehlen) — immer sichtbar */}
@@ -869,6 +873,30 @@ function CollectionContent() {
 
       <ScrollToTopButton />
       <LegendButton symbols={['wishlist-heart', 'unreviewed', 'count', 'foreign-lang', 'pending']} />
+
+      {/* Autosuggest-Panel — als Portal an document.body (fix positioniert unter
+          dem Suchfeld), im selben Glas-Menü-Stil wie die App-Menüs. */}
+      {suggestions.length > 0 && suggestCoords && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed z-[201] glass rounded-2xl overflow-hidden py-1 shadow-xl"
+          style={{ top: suggestCoords.top, left: suggestCoords.left, width: suggestCoords.width }}
+        >
+          {suggestions.map(sug => (
+            <button
+              key={sug.kind + sug.value}
+              type="button"
+              onMouseDown={e => { e.preventDefault(); setInputValue(sug.value); setSearchFocused(false); }}
+              className="flex items-center justify-between gap-2 w-full px-4 py-2.5 text-left hover:bg-white/10 active:bg-white/10"
+            >
+              <span className="truncate text-sm text-glass">{sug.value}</span>
+              <span className="text-role-label text-glass-muted shrink-0">
+                {sug.kind === 'name' ? 'Karte' : sug.kind === 'artist' ? 'Illustrator' : 'Set'}
+              </span>
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
