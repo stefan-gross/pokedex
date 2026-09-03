@@ -672,6 +672,12 @@ function CollectionContent() {
             onClear={clearSearch}
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setTimeout(() => setSearchFocused(false), 120)}
+            onEnter={() => {
+              // Enter: Suche sofort ausführen (Debounce überspringen) + Vorschläge schließen.
+              if (debounceRef.current) clearTimeout(debounceRef.current);
+              setSearchFocused(false);
+              doSearch(inputValue);
+            }}
             placeholder="Name, Illustrator … oder stöbern"
           />
         </div>

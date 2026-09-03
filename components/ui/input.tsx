@@ -30,6 +30,7 @@ export function Input({
   style,
   onFocus,
   onBlur,
+  onEnter,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -43,6 +44,8 @@ export function Input({
   /** Fokus-Callbacks (z.B. für Autosuggest-Dropdowns). */
   onFocus?: () => void;
   onBlur?: () => void;
+  /** Enter-Taste im Feld (z.B. Suche sofort ausführen + Tastatur schließen). */
+  onEnter?: () => void;
   /** Fokussiert das Feld direkt beim Mounten (z.B. Suchfeld in einem gerade
    *  geöffneten Dropdown/Panel). */
   autoFocus?: boolean;
@@ -73,6 +76,7 @@ export function Input({
         onChange={e => onChange(e.target.value)}
         onFocus={onFocus}
         onBlur={onBlur}
+        onKeyDown={onEnter ? e => { if (e.key === 'Enter') { e.preventDefault(); onEnter(); (e.currentTarget as HTMLInputElement).blur(); } } : undefined}
         placeholder={placeholder}
         autoComplete={autoComplete}
         required={required}
