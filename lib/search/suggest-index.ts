@@ -54,9 +54,10 @@ export function baseName(name: string): string {
   let n = name.trim();
   n = n.replace(/^(mega|m)[\s-]+/i, '');                       // Mega-/M-Präfix
   n = n.replace(/[\s-]+(vmax|vstar|ex|gx|break|v)$/i, '');     // Sonderform-Suffix
-  // Form-Marker G (Team Galactic) / X / Y (Mega-Formen). Bewusst NUR g/x/y —
-  // „Porygon-Z" u.ä. sollen NICHT beschnitten werden.
-  n = n.replace(/[\s-]+[gxy]$/i, '');
+  // Einzelbuchstaben-Form-Marker (Glurak „X"/„Y"/„G", Unown „A"…) NUR nach einem
+  // LEERZEICHEN entfernen. Eigenständige Namen mit Bindestrich-Endbuchstaben
+  // („Porygon-Z", „Ho-Oh", „Jangmo-o") bleiben dadurch unangetastet.
+  n = n.replace(/\s[a-z]$/i, '');
   n = n.replace(/\s*[☆★δΔ]+/g, ' ').replace(/\s{2,}/g, ' ').trim(); // Shiny-/Delta-Marker
   return n || name.trim();
 }
