@@ -47,10 +47,41 @@ export interface Suggestion { value: string; kind: 'name' | 'artist' | 'set'; }
 
 /** Vorschläge zur (Teil-)Eingabe: Präfix zuerst, dann Substring. Namen > Sets >
  *  Illustratoren gewichtet. Rein lokal. */
+/** Reduziert einen Kartennamen auf den Basis-Pokémon-Namen: Mega-Präfix und
+ *  Sonderform-Suffixe (ex/V/VMAX/VSTAR/GX/BREAK) sowie ☆/δ-Marker entfernen.
+ *  „Glurak ex" / „Glurak V" / „Mega-Glurak" / „Glurak ☆ δ" → „Glurak". */
+export function baseName(name: string): string {
+  let n = name.trim();
+  n = n.replace(/^(mega|m)[\s-]+/i, '');                       // Mega-/M-Präfix
+  n = n.replace(/[\s-]+(vmax|vstar|ex|gx|break|v)$/i, '');     // Sonderform-Suffix
+  n = n.replace(/\s*[☆★δΔ]+/g, ' ').replace(/\s{2,}/g, ' ').trim(); // Shiny-/Delta-Marker
+  return n || name.trim();
+}
+
+// Deduplizierte Basis-Namen je Index (gecacht — index.names ist nach dem Laden stabil).
+const baseNamesCache = new WeakMap<string[], string[]>();
+function dedupeBaseNames(names: string[]): string[] {
+  const cached = baseNamesCache.get(names);
+  if (cached) return cached;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const n of names) {
+    const b = baseName(n);
+    const key = b.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(b);
+  }
+  baseNamesCache.set(names, out);
+  return out;
+}
+
 export function suggest(index: SuggestIndex | null, q: string, limit = 8): Suggestion[] {
   if (!index) return [];
   const s = q.trim().toLowerCase();
   if (s.length < 2) return [];
+  // Namensvorschläge auf Basis-Pokémon reduzieren (Varianten zusammenfassen).
+  const baseNames = dedupeBaseNames(index.names);
   const out: Suggestion[] = [];
   const seen = new Set<string>();
   const push = (value: string, kind: Suggestion['kind']) => {
@@ -69,7 +100,7 @@ export function suggest(index: SuggestIndex | null, q: string, limit = 8): Sugge
     return [...pref, ...sub].slice(0, limit).map(v => [v, kind] as const);
   };
   const ranked = [
-    ...rank(index.names, 'name'),
+    ...rank(baseNames, 'name'),
     ...rank(index.sets.map(x => x.name), 'set'),
     ...rank(index.artists, 'artist'),
   ];
@@ -91,7 +122,7 @@ export function suggest(index: SuggestIndex | null, q: string, limit = 8): Sugge
           if (fuzzyHit(v)) push(v, kind);
         }
       };
-      fuzzyPass(index.names, 'name');
+      fuzzyPass(baseNames, 'name');
       fuzzyPass(index.artists, 'artist');
       fuzzyPass(index.sets.map(x => x.name), 'set');
     }
