@@ -757,8 +757,14 @@ export async function enrichDeData(setsPerCall = 12): Promise<EnrichSpeciesResul
       const de = deCards.get(c.number as string);
       const update: Record<string, unknown> = {};
 
-      // Name ergänzen (nie entfernen).
-      if (de?.name && !c.nameDe) { update.nameDe = de.name; update.nameDeLower = de.name.toLowerCase(); }
+      // Name ergänzen (nie entfernen). Sortier-Name auf den deutschen heben.
+      if (de?.name && !c.nameDe) {
+        update.nameDe = de.name;
+        update.nameDeLower = de.name.toLowerCase();
+        update.nameSortLower = de.name.toLowerCase();
+      }
+      // Sortier-Name nachtragen, falls (aus Alt-Beständen) noch nicht gesetzt.
+      if (c.nameSortLower == null) update.nameSortLower = (c.nameDe ?? c.name).toLowerCase();
 
       // DE-Bild-Verfügbarkeit als Bool ableiten (Bilder-FELDER NICHT anfassen!):
       // selbst gehostet (deImageSource) ODER TCGdex hat ein echtes DE-Bild.

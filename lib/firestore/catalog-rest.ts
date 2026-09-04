@@ -137,7 +137,7 @@ function browseWhere(f: BrowseFilter): Record<string, unknown> | null {
 /** Cursor-Wert des Sortierfelds passend typisiert (Firestore vergleicht Cursor
  *  wertbasiert; Typ muss zum gespeicherten Feld passen). */
 function sortValue(field: string, v: unknown): Record<string, unknown> {
-  if (field === 'nameLower') return { stringValue: String(v ?? '') };
+  if (field === 'nameLower' || field === 'nameSortLower') return { stringValue: String(v ?? '') };
   if (field === 'priceEur')  return { doubleValue: Number(v ?? 0) };
   return { integerValue: String(Math.trunc(Number(v ?? 0))) }; // hp, nationalDexNumber
 }

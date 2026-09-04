@@ -51,7 +51,11 @@ function sortCatalogCards(cards: CatalogCard[], sort: BrowseSortKey, desc: boole
       if (pb == null) return -1;
       return d * (pa - pb);
     }
-    return d * (a.nameLower ?? a.name.toLowerCase()).localeCompare(b.nameLower ?? b.name.toLowerCase());
+    // Sortier-Name (deutsch, engl. Fallback) — passt zur Anzeige; Fallbacks für
+    // Alt-Bestände ohne das Feld.
+    const an = a.nameSortLower ?? a.nameDeLower ?? a.nameLower ?? a.name.toLowerCase();
+    const bn = b.nameSortLower ?? b.nameDeLower ?? b.nameLower ?? b.name.toLowerCase();
+    return d * an.localeCompare(bn, 'de');
   });
 }
 

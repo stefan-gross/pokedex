@@ -250,6 +250,8 @@ export function toCatalogCard(
     name: en.name,
     nameLower: en.name.toLowerCase(),
     ...(de?.name ? { nameDe: de.name, nameDeLower: de.name.toLowerCase() } : {}),
+    // Sortier-Name: deutsch wenn vorhanden, sonst englisch (immer gesetzt).
+    nameSortLower: (de?.name ?? en.name).toLowerCase(),
     number: en.localId,
     setId: en.set?.id ?? '',
     setName: en.set?.name ?? '',

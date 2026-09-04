@@ -14,6 +14,10 @@ export interface CatalogCard {
   nameLower: string;          // name.toLowerCase() — für case-insensitive Prefix-Suche
   nameDe?: string;            // deutscher Name (TCGdex) — optional, wird via Enrichment befüllt
   nameDeLower?: string;       // nameDe.toLowerCase()
+  // Sortier-Name (klein): deutscher Name, sonst englischer Fallback. IMMER
+  // gesetzt (auch für englisch-only Karten) → serverseitiges orderBy im Stöbern
+  // lässt keine Karte weg. Nur zum Sortieren, nicht zum Suchen.
+  nameSortLower?: string;
   number: string;
   setId: string;
   setName: string;
@@ -320,7 +324,7 @@ export type BrowseSortKey = 'name' | 'hp' | 'pokedex' | 'price';
 /** Firestore-Feld je Sortierschlüssel — für serverseitiges `orderBy` im
  *  ungefilterten Browse (globale Sortierung über den ganzen Katalog). */
 export const BROWSE_SORT_FIELD: Record<BrowseSortKey, string> = {
-  name:    'nameLower',
+  name:    'nameSortLower',   // deutscher Name (engl. Fallback) — passt zur Anzeige
   hp:      'hp',
   pokedex: 'nationalDexNumber',
   price:   'priceEur',
