@@ -57,7 +57,7 @@ const SEARCH_REVEAL_CHUNK = 20;
 // Direkt angezeigte Treffer (Raster blendet ohnehin nur häppchenweise ein,
 // SEARCH_REVEAL_CHUNK) — hoch genug, dass auch generische Kurz-Präfixe wie
 // "Cha" (mehrere Pokémon-Familien über viele Sets) nicht abgeschnitten werden.
-const SEARCH_DISPLAY_LIMIT = 300;
+const SEARCH_DISPLAY_LIMIT = 400;
 // Nur als Zwischenmenge für die Wort-für-Wort-Schnittmenge (Schritt 2) genutzt,
 // nie direkt angezeigt — darf höher liegen, deckt auch sehr produktive
 // Illustratoren (aktuell max. 208 Karten im Katalog) mit Puffer ab.
