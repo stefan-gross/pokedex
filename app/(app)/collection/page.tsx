@@ -187,19 +187,21 @@ function CollectionContent() {
                 {meta?.logoUrl && <img src={meta.logoUrl} alt="" className="max-h-4 max-w-full object-contain" />}
               </span>
             ),
-            // Rechts: Set-Symbol + Kürzel als Pill, dann mit Abstand rechtsbündig
-            // die Trefferzahl (feste Zahlenbreite → über alle Zeilen ausgerichtet).
+            // Rechts: Kürzel als Pill ODER (falls kein Kürzel) das Set-Symbol —
+            // nicht beides. Dann mit Abstand rechtsbündig die Trefferzahl (feste
+            // Zahlenbreite → über alle Zeilen ausgerichtet).
             trailing: (
               <>
-                {meta?.symbolUrl && <img src={meta.symbolUrl} alt="" className="w-3.5 h-3.5 object-contain shrink-0" />}
-                {meta?.ptcgoCode && (
+                {meta?.ptcgoCode ? (
                   <span
                     className="px-1.5 py-0.5 rounded-full text-[11px] font-semibold leading-none text-glass-muted shrink-0"
                     style={{ background: 'var(--muted)' }}
                   >
                     {meta.ptcgoCode}
                   </span>
-                )}
+                ) : meta?.symbolUrl ? (
+                  <img src={meta.symbolUrl} alt="" className="w-3.5 h-3.5 object-contain shrink-0" />
+                ) : null}
                 <span className="ml-2 inline-block min-w-[2.75ch] text-right tabular-nums text-glass font-medium">
                   {s.count.toLocaleString('de')}
                 </span>
