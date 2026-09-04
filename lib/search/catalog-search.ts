@@ -119,26 +119,29 @@ export async function searchCatalogCards(
   let hits = await byName(effQ);
 
   // 2. Mehrwort: jedes Wort muss (in Name ODER Illustrator) vorkommen, UND über
-  //    alle Wörter. Vorgehen: pro Wort die Kandidaten (Name ∪ Illustrator) holen,
-  //    dann die KLEINSTE (selektivste) Menge als Basis nehmen und in-memory
-  //    prüfen, dass ALLE Wörter treffen.
+  //    alle Wörter. Vorgehen: pro Wort die Kandidaten (Name-Präfix ∪ Illustrator-
+  //    Token) holen, ALLE Mengen VEREINIGEN und in-memory prüfen, dass jedes Wort
+  //    per Substring trifft (`matchesWord`).
   //
-  //    Warum die kleinste Menge + in-memory statt Schnittmenge gekappter Server-
-  //    Mengen: ein häufiges Wort (z.B. Vorname „yuka" über viele Illustratoren)
-  //    läuft ins `candidateLimit` und schnitte gültige Treffer ab. Die seltenste
-  //    Abfrage (z.B. ein Pokémon-Name mit ~80 Karten) ist dagegen vollständig; die
-  //    übrigen Wörter werden am `artist`/`name`-Feld der Karte selbst geprüft —
-  //    limit-unabhängig. So findet „Glurak Yuka Morii" die Glurak-Karten von Yuka
-  //    Morii, und „Yuka Morii" liefert alle Yuka-Morii-Karten (korrekte Set-Zähler).
+  //    Warum die Vereinigung statt „kleinste Menge als Basis": die Kandidaten
+  //    werden per PRÄFIX (Name) bzw. EXAKTEM Token (Illustrator) geholt, `matchesWord`
+  //    prüft aber per SUBSTRING. Ein Teilwort wie „mor" liefert daher als eigene
+  //    Kandidatenmenge nur Namen mit Präfix „mor" (die Illustrator-Karten von
+  //    „Morii" fehlen, da das Token „morii" ≠ „mor" ist) — als „kleinste" Basis
+  //    gewählt, gingen die echten Treffer verloren. Das VOLLSTÄNDIGE Wort der
+  //    Anfrage (hier „yuka", exaktes Illustrator-Token) bringt dagegen alle
+  //    Yuka-Morii-Karten mit; über die Vereinigung landen sie in der Basis und der
+  //    Substring-Filter („mor" ⊂ „morii") behält sie. So liefert „Yuka mor"
+  //    dieselben Karten wie „Yuka Morii". Falsch-Positive entstehen nicht, weil
+  //    weiterhin JEDES Wort treffen muss.
   if (hits.length === 0 && words.length > 1 && words.length <= 6 && words.every(w => w.length >= minLen)) {
     const perWord = await Promise.all(words.map(async w => {
       const [nameHits, artistHits] = await Promise.all([byName(w), byArtist(w, candidateLimit)]);
-      const map = new Map<string, CatalogCard>();
-      [...nameHits, ...artistHits].forEach(c => map.set(c.id, c));
-      return map;
+      return [...nameHits, ...artistHits];
     }));
-    const base = perWord.reduce((a, b) => (b.size < a.size ? b : a));
-    hits = [...base.values()].filter(c => words.every(w => matchesWord(c, w)));
+    const union = new Map<string, CatalogCard>();
+    for (const list of perWord) for (const c of list) if (!union.has(c.id)) union.set(c.id, c);
+    hits = [...union.values()].filter(c => words.every(w => matchesWord(c, w)));
   }
 
   // 3. Reine Illustrator-Suche (Einzelwort-Fallback)
