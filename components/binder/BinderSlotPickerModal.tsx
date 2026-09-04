@@ -9,7 +9,7 @@ import { CardImage } from '@/components/card/CardImage';
 import { VARIANT_LABELS } from '@/lib/card-constants';
 import { Sheet } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { CardSearchField } from '@/components/search/CardSearchField';
 import type { CardDoc } from '@/types';
 
 interface Props {
@@ -65,8 +65,7 @@ export function BinderSlotPickerModal({ onClose, onPick }: Props) {
             <Button variant="ghost" onClick={onClose} icon={<X />} aria-label="Schließen" className="shrink-0" />
           </div>
           <div className="px-4 pb-3">
-            <Input
-              variant="search"
+            <CardSearchField
               value={search}
               onChange={setSearch}
               onClear={() => setSearch('')}

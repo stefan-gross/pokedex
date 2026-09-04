@@ -8,7 +8,7 @@ import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { getSetById } from '@/lib/firestore/sets';
 import { CardImage } from '@/components/card/CardImage';
 import { CardTileButton } from '@/components/card/CardTileButton';
-import { Input } from '@/components/ui/input';
+import { CardSearchField } from '@/components/search/CardSearchField';
 import { Button } from '@/components/ui/button';
 
 interface Item { info: CardInfo; group: string }
@@ -227,8 +227,7 @@ export function ScanCorrectionPanel({
       </div>
 
       <div className="px-4 pb-2">
-        <Input
-          variant="search"
+        <CardSearchField
           value={q}
           onChange={setQ}
           onClear={() => setQ('')}

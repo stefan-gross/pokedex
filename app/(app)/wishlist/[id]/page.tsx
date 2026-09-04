@@ -23,7 +23,7 @@ import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { Card } from '@/components/card/Card';
 import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { CardSearchField } from '@/components/search/CardSearchField';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { filterCardsByQuery } from '@/lib/search/card-query';
@@ -427,8 +427,7 @@ export default function WishlistDetailPage({ params }: Props) {
         {withTcgId.length > 0 && (
           <>
             <div className="space-y-2 mt-3">
-              <Input
-                variant="search"
+              <CardSearchField
                 value={search}
                 onChange={setSearch}
                 onClear={() => setSearch('')}

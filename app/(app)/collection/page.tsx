@@ -1,14 +1,13 @@
 'use client';
 
-import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, Suspense } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Search, SlidersHorizontal } from 'lucide-react';
 import { CardGrid, CardGridSkeleton } from '@/components/card/CardGrid';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { Input } from '@/components/ui/input';
+import { CardSearchField } from '@/components/search/CardSearchField';
 import { SearchableSelect, MultiSelect, CustomSelect } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Grabber } from '@/components/ui/Grabber';
@@ -27,8 +26,8 @@ import {
   getBrowseCountRest as getBrowseCount,
 } from '@/lib/firestore/catalog-rest';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
-import { loadSuggestIndex, suggest, correctQuery } from '@/lib/search/suggest-index';
-import type { SuggestIndex } from '@/lib/build-search-index';
+import { correctQuery } from '@/lib/search/suggest-index';
+import { useSuggestIndex } from '@/lib/search/use-suggest-index';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { applyFacetFilters, type FacetState, type FacetDim } from '@/lib/search/facet-filter';
@@ -109,10 +108,9 @@ function CollectionContent() {
 
   // ── Suche ─────────────────────────────────────────────────────
   const [inputValue,    setInputValue]    = useState(initialQ);
-  const [suggestIndex,  setSuggestIndex]  = useState<SuggestIndex | null>(null);
-  const [searchFocused, setSearchFocused] = useState(false);
-  const searchBoxRef = useRef<HTMLDivElement>(null);
-  const [suggestCoords, setSuggestCoords] = useState<{ top: number; left: number; width: number } | null>(null);
+  // Geteilter Autosuggest-/Fuzzy-Index — nur noch für die „Meintest du …?"-
+  // Korrektur unten; das Autosuggest-Panel selbst steckt in `CardSearchField`.
+  const suggestIndex = useSuggestIndex();
   const [relaxedNote,   setRelaxedNote]   = useState<string | null>(null);
   const [results,       setResults]       = useState<CardInfo[]>([]);
   const [ownedCards,    setOwnedCards]    = useState<CardDoc[]>([]);
@@ -150,30 +148,8 @@ function CollectionContent() {
     ]).then(([pokedex, hp]) => setSortCounts({ pokedex, hp })).catch(() => {});
     getCatalogFilterCounts().then(setFilterCounts).catch(() => {});
     getAllSets().then(setAllSets).catch(() => {});
-    loadSuggestIndex().then(setSuggestIndex).catch(() => {});
   }, []);
 
-  // Autosuggest-Vorschläge (rein lokal aus dem geladenen Index).
-  const suggestions = useMemo(
-    () => (searchFocused ? suggest(suggestIndex, inputValue, 8) : []),
-    [searchFocused, suggestIndex, inputValue],
-  );
-  // Autosuggest-Panel per Portal an document.body positionieren (wie das Menü):
-  // im Glas-Header verschachtelt wäre das backdrop-filter ein No-op → unlesbar.
-  useLayoutEffect(() => {
-    if (suggestions.length === 0 || !searchBoxRef.current) { setSuggestCoords(null); return; }
-    const update = () => {
-      const r = searchBoxRef.current!.getBoundingClientRect();
-      setSuggestCoords({ top: r.bottom + 6, left: r.left, width: r.width });
-    };
-    update();
-    window.addEventListener('scroll', update, true);
-    window.addEventListener('resize', update);
-    return () => {
-      window.removeEventListener('scroll', update, true);
-      window.removeEventListener('resize', update);
-    };
-  }, [suggestions.length, inputValue]);
   // Fuzzy-Korrektur bei 0 Treffern („Meintest du …?").
   const correction = useMemo(
     () => (inputValue.trim().length >= 3 ? correctQuery(suggestIndex, inputValue) : null),
@@ -660,27 +636,16 @@ function CollectionContent() {
       {/* ── Sticky Header ──────────────────────────────────────── */}
       <div ref={panelRef} className="sticky top-safe z-20 mx-3 mt-2 glass rounded-[20px] px-4 pt-4 pb-3 space-y-2">
 
-        {/* Suchfeld — immer sichtbar. Autosuggest wird per Portal (unten) über
-            document.body gerendert, damit das Glas-Blur wirkt (nicht im Header
-            verschachtelt). */}
-        <div ref={searchBoxRef} className="relative">
-          <Input
-            variant="search"
-            size="lg"
-            value={inputValue}
-            onChange={setInputValue}
-            onClear={clearSearch}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setTimeout(() => setSearchFocused(false), 120)}
-            onEnter={() => {
-              // Enter: Suche sofort ausführen (Debounce überspringen) + Vorschläge schließen.
-              if (debounceRef.current) clearTimeout(debounceRef.current);
-              setSearchFocused(false);
-              doSearch(inputValue);
-            }}
-            placeholder="Name, Illustrator … oder stöbern"
-          />
-        </div>
+        {/* Suchfeld inkl. Autosuggest — geteilte Komponente (gleiche Suche
+            app-weit). Enter führt die Suche sofort aus (Debounce überspringen). */}
+        <CardSearchField
+          size="lg"
+          value={inputValue}
+          onChange={setInputValue}
+          onClear={clearSearch}
+          onSubmit={q => { if (debounceRef.current) clearTimeout(debounceRef.current); doSearch(q); }}
+          placeholder="Name, Illustrator … oder stöbern"
+        />
 
         {/* Owned (Alle|Vorhanden|Fehlen) — immer sichtbar */}
         <ButtonGroup
@@ -880,29 +845,6 @@ function CollectionContent() {
       <ScrollToTopButton />
       <LegendButton symbols={['wishlist-heart', 'unreviewed', 'count', 'foreign-lang', 'pending']} />
 
-      {/* Autosuggest-Panel — als Portal an document.body (fix positioniert unter
-          dem Suchfeld), im selben Glas-Menü-Stil wie die App-Menüs. */}
-      {suggestions.length > 0 && suggestCoords && typeof document !== 'undefined' && createPortal(
-        <div
-          className="fixed z-[201] glass rounded-2xl overflow-hidden py-1 shadow-xl"
-          style={{ top: suggestCoords.top, left: suggestCoords.left, width: suggestCoords.width }}
-        >
-          {suggestions.map(sug => (
-            <button
-              key={sug.kind + sug.value}
-              type="button"
-              onMouseDown={e => { e.preventDefault(); setInputValue(sug.value); setSearchFocused(false); }}
-              className="flex items-center justify-between gap-2 w-full px-4 py-2.5 text-left hover:bg-white/10 active:bg-white/10"
-            >
-              <span className="truncate text-sm text-glass">{sug.value}</span>
-              <span className="text-role-label text-glass-muted shrink-0">
-                {sug.kind === 'name' ? 'Karte' : sug.kind === 'artist' ? 'Illustrator' : 'Set'}
-              </span>
-            </button>
-          ))}
-        </div>,
-        document.body,
-      )}
     </div>
   );
 }

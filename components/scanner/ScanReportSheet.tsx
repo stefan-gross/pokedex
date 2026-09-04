@@ -10,6 +10,7 @@ import { CardTileButton } from '@/components/card/CardTileButton';
 import { Sheet } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CardSearchField } from '@/components/search/CardSearchField';
 
 interface SetBadge { symbolUrl?: string; nameDe: string }
 
@@ -144,13 +145,13 @@ export function ScanReportSheet({ recognizedName, seedQuery, language, imageSrc,
               // eslint-disable-next-line @next/next/no-img-element
               <img src={imageSrc} alt="Scan" className="w-10 h-14 rounded object-cover shrink-0 border" style={{ borderColor: 'var(--border)' }} />
             )}
-            <Input
-              variant="search"
+            <CardSearchField
               value={q}
               onChange={setQ}
               onClear={() => setQ('')}
               placeholder="Richtige Karte suchen (Name/Nummer)…"
               autoFocus
+              className="flex-1"
             />
           </div>
         </div>

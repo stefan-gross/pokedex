@@ -17,7 +17,7 @@ import { LegendButton } from '@/components/ui/LegendButton';
 import { Grabber } from '@/components/ui/Grabber';
 import { HeaderPill } from '@/components/ui/HeaderPill';
 import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
-import { Input } from '@/components/ui/input';
+import { CardSearchField } from '@/components/search/CardSearchField';
 import { Progress } from '@/components/ui/progress';
 import { CreateTemplateBinderModal } from '@/components/binder/CreateTemplateBinderModal';
 import { CardGrid, CardGridSkeleton } from '@/components/card/CardGrid';
@@ -405,8 +405,7 @@ function SetDetailContent() {
                   style={regionStyle(0)}
                 >
                   <div ref={registerRegion(0)} className="space-y-2 pt-1">
-                    <Input
-                      variant="search"
+                    <CardSearchField
                       value={search}
                       onChange={setSearch}
                       onClear={() => setSearch('')}

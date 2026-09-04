@@ -9,7 +9,7 @@ import { rarityLabelOf } from '@/lib/card-constants';
 import { filterCardsByQuery } from '@/lib/search/card-query';
 import { pickTrendPrice } from '@/lib/prices/value-tier';
 import { useWishlist } from '@/lib/hooks/use-wishlist';
-import { Input } from '@/components/ui/input';
+import { CardSearchField } from '@/components/search/CardSearchField';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { CardGrid, CardGridSkeleton } from '@/components/card/CardGrid';
 import { CardSortBar } from '@/components/card/CardSortBar';
@@ -189,8 +189,7 @@ export function useTemplateGrid({
 
   const filterControls = (
     <div className="space-y-2">
-      <Input
-        variant="search"
+      <CardSearchField
         value={search}
         onChange={setSearch}
         onClear={() => setSearch('')}

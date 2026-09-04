@@ -6,6 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CardSearchField } from '@/components/search/CardSearchField';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { CardImage } from '@/components/card/CardImage';
 import { catalogCardToInfo } from '@/lib/card-info';
@@ -237,7 +238,7 @@ export function AiDeckBuilderSheet({ open, onClose, deck, onApplied }: {
               </div>
             ) : (
               <>
-                <Input value={coreQuery} onChange={setCoreQuery} placeholder="z. B. Glurak ex" autoFocus />
+                <CardSearchField value={coreQuery} onChange={setCoreQuery} onClear={() => setCoreQuery('')} placeholder="z. B. Glurak ex" autoFocus />
                 {coreResults.length > 0 && (
                   <div className="flex flex-col gap-1 mt-1">
                     {coreResults.map(c => (

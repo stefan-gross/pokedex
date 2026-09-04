@@ -7,7 +7,7 @@ import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { getAllSets } from '@/lib/firestore/sets';
 import { CardImage } from '@/components/card/CardImage';
 import { Sheet } from '@/components/ui/modal';
-import { Input } from '@/components/ui/input';
+import { CardSearchField } from '@/components/search/CardSearchField';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { CustomSelect, MultiSelect } from '@/components/ui/select';
 import { CardSortBar } from '@/components/card/CardSortBar';
@@ -157,7 +157,7 @@ export function DeckCardSearchSheet({ open, onClose, counts, ownedTcgIds, onAdd,
   return (
     <Sheet open={open} onClose={onClose} title="Karte hinzufügen">
       <div className="flex flex-col gap-2.5 min-h-[72dvh]">
-        <Input value={q} onChange={setQ} placeholder="Name, Illustrator … oder #Dex" autoFocus />
+        <CardSearchField value={q} onChange={setQ} onClear={() => setQ('')} placeholder="Name, Illustrator … oder #Dex" autoFocus />
 
         {/* Vorhanden/Fehlen */}
         <ButtonGroup
