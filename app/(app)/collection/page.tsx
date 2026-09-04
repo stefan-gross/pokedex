@@ -172,9 +172,19 @@ function CollectionContent() {
             value: s.id,
             label: meta?.nameDe ?? s.name,
             keywords: [meta?.name, s.name, meta?.ptcgoCode].filter(Boolean).join(' '),
-            hint: s.count.toLocaleString('de'),   // Treffer-Anzahl rechts (statt Kürzel)
-            icon: meta?.symbolUrl
-              ? <img src={meta.symbolUrl} alt="" className="w-4 h-4 object-contain shrink-0" />
+            hint: s.count.toLocaleString('de'),   // Treffer-Anzahl ganz rechts
+            // Links: Set-Logo (Wortmarke). Fallback aufs Symbol, wenn kein Logo.
+            icon: meta?.logoUrl
+              ? <img src={meta.logoUrl} alt="" className="h-4 w-auto max-w-[52px] object-contain shrink-0" />
+              : meta?.symbolUrl
+                ? <img src={meta.symbolUrl} alt="" className="w-4 h-4 object-contain shrink-0" />
+                : undefined,
+            // Rechts vor der Anzahl: Set-Symbol + Kürzel.
+            trailing: (meta?.symbolUrl || meta?.ptcgoCode)
+              ? <>
+                  {meta?.symbolUrl && <img src={meta.symbolUrl} alt="" className="w-3.5 h-3.5 object-contain shrink-0" />}
+                  {meta?.ptcgoCode && <span className="font-semibold">{meta.ptcgoCode}</span>}
+                </>
               : undefined,
           };
         })

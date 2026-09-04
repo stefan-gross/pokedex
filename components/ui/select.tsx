@@ -304,12 +304,15 @@ export interface SearchableSelectOption<T extends string> {
    *  — wird beim Filtern mit durchsucht, damit man ein Set auch über den
    *  EN-Namen oder das Kürzel findet, obwohl das Label deutsch ist. */
   keywords?: string;
-  /** Optionales Icon links (z.B. Set-Symbol). */
+  /** Optionales Icon links (z.B. Set-Logo/-Symbol). */
   icon?: React.ReactNode;
   /** Gedämpfter Zusatz rechts (z.B. Set-Kürzel „MEW"). */
   hint?: string;
   /** Optionale zweite Zeile unter dem Label (z.B. Zyklus/Serie eines Sets). */
   sub?: string;
+  /** Optionaler Inhalt rechts VOR dem `hint` (z.B. Set-Symbol + Kürzel). Anders
+   *  als `hint` beliebige Nodes (Bild + Text), rechtsbündig, nicht umbrechend. */
+  trailing?: React.ReactNode;
 }
 
 /**
@@ -411,7 +414,8 @@ export function SearchableSelect<T extends string>({
           ) : (
             <span className="truncate text-glass-muted">{placeholder}</span>
           )}
-          {selected?.hint && <span className="ml-auto shrink-0 opacity-50">{selected.hint}</span>}
+          {selected?.trailing && <span className="ml-auto shrink-0 flex items-center gap-1 opacity-70 text-role-label">{selected.trailing}</span>}
+          {selected?.hint && <span className={`shrink-0 opacity-50 tabular-nums ${selected.trailing ? 'ml-1.5' : 'ml-auto'}`}>{selected.hint}</span>}
         </span>
         <ChevronDown size={12} className="opacity-70 shrink-0" />
       </button>
@@ -454,7 +458,8 @@ export function SearchableSelect<T extends string>({
                     <span className="truncate block">{o.label}</span>
                     {o.sub && <span className="truncate block text-glass-muted text-role-label">{o.sub}</span>}
                   </span>
-                  {o.hint && <span className="shrink-0 text-glass-muted text-role-label">{o.hint}</span>}
+                  {o.trailing && <span className="shrink-0 flex items-center gap-1 text-glass-muted text-role-label">{o.trailing}</span>}
+                  {o.hint && <span className="shrink-0 text-glass-muted text-role-label tabular-nums">{o.hint}</span>}
                 </button>
               ))}
             </div>
