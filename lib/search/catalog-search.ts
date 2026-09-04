@@ -152,7 +152,13 @@ export async function searchCatalogCards(
   // 4. Dex-Brücke: sprachübergreifend nachziehen (siehe `bridgeByDex`-Doc). Nur
   //    wenn es Namens-/Illustrator-Treffer gibt und NICHT bereits eine reine
   //    Dex-Suche lief (die ist schon vollständig). ≤ 4 Arten = fokussierte Suche.
-  if (opts.bridgeByDex && hits.length > 0 && !dexNum) {
+  //
+  //    NUR bei EINWORT-Suchen: die Brücke ist für einen Art-Namen gedacht (z.B.
+  //    „Froxy" → auch die englischen „Froakie"-Auflagen). Bei Mehrwort-Suchen ist
+  //    die Absicht präzise (UND über Name/Illustrator/…) — die Brücke würde über
+  //    die Pokédex-Nr. die GANZE Art nachziehen und den Zusatzfilter aushebeln
+  //    (z.B. „Froxy Yuka Morii" → sonst alle ~20 Froxy statt der 1 von Yuka Morii).
+  if (opts.bridgeByDex && hits.length > 0 && !dexNum && words.length === 1) {
     const dexNums = [...new Set(hits.map(c => c.nationalDexNumber).filter((n): n is number => typeof n === 'number'))];
     if (dexNums.length > 0 && dexNums.length <= 4) {
       const seen = new Set(hits.map(c => c.id));
