@@ -24,7 +24,7 @@ import { Card } from '@/components/card/Card';
 import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
 import { CardSearchField } from '@/components/search/CardSearchField';
-import { RarityFilterBar } from '@/components/card/RarityFilterBar';
+import { CardFilterBar } from '@/components/search/CardFilterBar';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { filterCardsByQuery } from '@/lib/search/card-query';
 import { getRarityGroup } from '@/lib/card-constants';
@@ -222,6 +222,8 @@ export default function WishlistDetailPage({ params }: Props) {
   }, [prices]);
 
   const cardInfos = useMemo(() => entries.map(e => e.info), [entries]);
+  // Such-gefilterter Pool für die kreuzreaktiven Zähler der Filterleiste.
+  const filterPool = useMemo(() => filterCardsByQuery(cardInfos, search), [cardInfos, search]);
 
   const displayedEntries = useMemo(() => {
     let rows = entries;
@@ -434,7 +436,7 @@ export default function WishlistDetailPage({ params }: Props) {
                 placeholder="Suchen (Name, Nummer, Illustrator)"
                 size="sm"
               />
-              <RarityFilterBar cards={cardInfos} ownedIds={ownedTcgIds} activeRarities={rarityFilter} onToggle={toggleRarity} />
+              <CardFilterBar cards={filterPool} ownedIds={ownedTcgIds} rarities={rarityFilter} onRaritiesToggle={toggleRarity} />
             </div>
             <div className="mt-2">
               <CardSortBar

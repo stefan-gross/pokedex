@@ -10,10 +10,9 @@ import { filterCardsByQuery } from '@/lib/search/card-query';
 import { pickTrendPrice } from '@/lib/prices/value-tier';
 import { useWishlist } from '@/lib/hooks/use-wishlist';
 import { CardSearchField } from '@/components/search/CardSearchField';
-import { ButtonGroup } from '@/components/ui/button-group';
+import { CardFilterBar } from '@/components/search/CardFilterBar';
 import { CardGrid, CardGridSkeleton } from '@/components/card/CardGrid';
 import { CardSortBar } from '@/components/card/CardSortBar';
-import { RarityFilterBar } from '@/components/card/RarityFilterBar';
 import type { PriceResult } from '@/lib/prices/types';
 import type { BinderDoc, BinderTemplate, CardDoc } from '@/types';
 
@@ -21,11 +20,6 @@ type Filter    = 'all' | 'owned' | 'missing';
 type SortField = 'number' | 'name' | 'pokedex' | 'hp' | 'price';
 type SortDir   = 'asc' | 'desc';
 
-const FILTER_OPTIONS: { value: Filter; label: string }[] = [
-  { value: 'all',     label: 'Alle' },
-  { value: 'owned',   label: 'Vorhanden' },
-  { value: 'missing', label: 'Fehlen' },
-];
 const SORT_OPTIONS: { value: SortField; label: string }[] = [
   { value: 'number',  label: 'Nummer' },
   { value: 'name',    label: 'Name' },
@@ -157,12 +151,15 @@ export function useTemplateGrid({
   const spansMultipleSets = useMemo(
     () => cards ? new Set(cards.map(c => c.setId)).size > 1 : false, [cards]);
 
+  // Such-gefilterter Pool (VOR Owned/Rarity) — Basis für die kreuzreaktiven
+  // Zähler der Filterleiste UND die Anzeige.
+  const filterPool = useMemo(() => filterCardsByQuery(cards ?? [], search), [cards, search]);
+
   const displayed = useMemo(() => {
     if (!cards) return [];
-    let result = [...cards];
+    let result = [...filterPool];
     if (filter === 'owned')   result = result.filter(c => ownedTcgIds.has(c.id));
     if (filter === 'missing') result = result.filter(c => !ownedTcgIds.has(c.id));
-    result = filterCardsByQuery(result, search);
     if (rarityFilter.size > 0) {
       result = result.filter(c => rarityFilter.has(rarityLabelOf(c.rarity)));
     }
@@ -182,7 +179,7 @@ export function useTemplateGrid({
       return sortDir === 'desc' ? -cmp : cmp;
     });
     return result;
-  }, [cards, filter, search, sortField, sortDir, priceMap, rarityFilter, ownedTcgIds]);
+  }, [cards, filterPool, filter, sortField, sortDir, priceMap, rarityFilter, ownedTcgIds]);
 
   const toggleRarity = (label: string) =>
     setRarityFilter(prev => { const n = new Set(prev); if (n.has(label)) n.delete(label); else n.add(label); return n; });
@@ -196,8 +193,16 @@ export function useTemplateGrid({
         placeholder="Suchen (Name, Nummer, Illustrator)"
         size="sm"
       />
-      <ButtonGroup options={FILTER_OPTIONS} value={filter} onChange={setFilter} />
-      {cards && <RarityFilterBar cards={cards} ownedIds={ownedTcgIds} activeRarities={rarityFilter} onToggle={toggleRarity} />}
+      {cards && (
+        <CardFilterBar
+          cards={filterPool}
+          ownedIds={ownedTcgIds}
+          owned={filter}
+          onOwnedChange={setFilter}
+          rarities={rarityFilter}
+          onRaritiesToggle={toggleRarity}
+        />
+      )}
     </div>
   );
 

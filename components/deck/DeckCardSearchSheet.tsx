@@ -8,13 +8,11 @@ import { getAllSets } from '@/lib/firestore/sets';
 import { CardImage } from '@/components/card/CardImage';
 import { Sheet } from '@/components/ui/modal';
 import { CardSearchField } from '@/components/search/CardSearchField';
-import { ButtonGroup } from '@/components/ui/button-group';
-import { CustomSelect, MultiSelect } from '@/components/ui/select';
+import { CardFilterBar } from '@/components/search/CardFilterBar';
 import { CardSortBar } from '@/components/card/CardSortBar';
 import { Stepper } from '@/components/ui/stepper';
-import { EnergyIcon, ENERGY_META } from '@/components/ui/EnergyIcon';
 import { applyFacetFilters, type FacetState, type OwnedFilter, type Supertype } from '@/lib/search/facet-filter';
-import { TCG_TYPES, type TcgType } from '@/lib/hooks/useCardBrowser';
+import { type TcgType } from '@/lib/hooks/useCardBrowser';
 import { trendFromCached } from '@/lib/prices/trend-from-cached';
 
 // Evolutionsstufe → Badge (gleiche Farbcodierung wie im Deck-Editor).
@@ -30,12 +28,6 @@ function stageOf(card: CardInfo) {
   if (card.subtypes?.includes('Basic')) return STAGE_BADGE['Basic'];
   return null;
 }
-
-const OWNED_OPTIONS: { value: OwnedFilter; label: string }[] = [
-  { value: 'all',     label: 'Alle'      },
-  { value: 'owned',   label: 'Vorhanden' },
-  { value: 'missing', label: 'Fehlen'    },
-];
 
 type SortKey = 'number' | 'name' | 'pokedex' | 'hp' | 'price';
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
@@ -120,38 +112,6 @@ export function DeckCardSearchSheet({ open, onClose, counts, ownedTcgIds, onAdd,
     return r;
   }, [results, facetState, sort, sortDir]);
 
-  // Kreuzreaktive Zähler (jeweils alle aktiven Filter außer der eigenen Dimension).
-  const ownedOptions = useMemo(() => {
-    const base = applyFacetFilters(results, facetState, 'owned');
-    return OWNED_OPTIONS.map(o => ({
-      ...o,
-      count: o.value === 'all' ? base.length
-        : o.value === 'owned' ? base.filter(c => ownedTcgIds.has(c.id)).length
-        : base.filter(c => !ownedTcgIds.has(c.id)).length,
-      disabled: false,
-    }));
-  }, [results, facetState, ownedTcgIds]);
-
-  const supertypeOptions = useMemo(() => {
-    const base = applyFacetFilters(results, facetState, 'supertype');
-    const countFor = (s: string) => base.filter(c => c.supertype?.toLowerCase() === s.toLowerCase()).length;
-    return [
-      { value: 'all' as const,     label: 'Alle',    count: base.length },
-      { value: 'Pokémon' as const, label: 'Pokémon', count: countFor('Pokémon') },
-      { value: 'Trainer' as const, label: 'Trainer', count: countFor('Trainer') },
-      { value: 'Energy' as const,  label: 'Energie', count: countFor('Energy') },
-    ];
-  }, [results, facetState]);
-
-  const typeOptions = useMemo(() => {
-    const base = applyFacetFilters(results, facetState, 'types');
-    return TCG_TYPES.map(t => {
-      const count = base.filter(c => c.types?.includes(t)).length;
-      return { value: t, label: ENERGY_META[t].de, icon: <EnergyIcon type={t} size={16} />, count, disabled: count === 0, color: ENERGY_META[t].bg };
-    });
-  }, [results, facetState]);
-
-  const showTypes = activeSupertype === 'all' || activeSupertype === 'Pokémon';
   const resultCount = shown.length;
 
   return (
@@ -159,33 +119,17 @@ export function DeckCardSearchSheet({ open, onClose, counts, ownedTcgIds, onAdd,
       <div className="flex flex-col gap-2.5 min-h-[72dvh]">
         <CardSearchField value={q} onChange={setQ} onClear={() => setQ('')} placeholder="Name, Illustrator … oder #Dex" autoFocus />
 
-        {/* Vorhanden/Fehlen */}
-        <ButtonGroup
-          options={ownedOptions.map(o => ({ ...o, disabled: o.count === 0 }))}
-          value={ownedFilter}
-          onChange={v => setOwnedFilter(v as OwnedFilter)}
+        {/* Geteilte Filterleiste — hier: Vorhanden + Kartenart + Pokémon-Typ. */}
+        <CardFilterBar
+          cards={results}
+          ownedIds={ownedTcgIds}
+          owned={ownedFilter}
+          onOwnedChange={setOwnedFilter}
+          supertype={activeSupertype}
+          onSupertypeChange={setActiveSupertype}
+          types={activeTypes}
+          onTypesChange={setActiveTypes}
         />
-
-        {/* Kartenart (Alle|Pokémon|Trainer|Energie) */}
-        <CustomSelect
-          value={activeSupertype}
-          onChange={v => { setActiveSupertype(v as Supertype | 'all'); if (v !== 'all' && v !== 'Pokémon') setActiveTypes(new Set()); }}
-          options={supertypeOptions.map(o => ({ value: o.value, label: o.label, count: o.count, disabled: o.count === 0 && o.value !== 'all' }))}
-          height="sm"
-          fullWidth
-          aria-label="Kartenart"
-        />
-
-        {/* Pokémon-Typ (Mehrfach-Auswahl) */}
-        {showTypes && (
-          <MultiSelect
-            values={[...activeTypes]}
-            onChange={vals => setActiveTypes(new Set(vals as TcgType[]))}
-            options={typeOptions}
-            placeholder="Alle Typen"
-            aria-label="Pokémon-Typ"
-          />
-        )}
 
         {/* Sortierung + Ergebniszahl */}
         <CardSortBar

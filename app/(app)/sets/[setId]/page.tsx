@@ -10,7 +10,6 @@ import { getBinders } from '@/lib/firestore/binders';
 import { fetchPricesBatch, fetchPricesCache, fetchPricesRefresh, chunkIds } from '@/lib/prices/fetch-batch';
 import { pickTrendPrice } from '@/lib/prices/value-tier';
 import type { PriceResult } from '@/lib/prices/types';
-import { ButtonGroup } from '@/components/ui/button-group';
 import { Button } from '@/components/ui/button';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { LegendButton } from '@/components/ui/LegendButton';
@@ -25,7 +24,7 @@ import { ErrorRetry } from '@/components/ui/ErrorRetry';
 import { formatEUR } from '@/lib/format';
 import { compareCardInfo } from '@/lib/card-sort';
 import { CardSortBar } from '@/components/card/CardSortBar';
-import { RarityFilterBar } from '@/components/card/RarityFilterBar';
+import { CardFilterBar } from '@/components/search/CardFilterBar';
 import { rarityLabelOf, SYMBOL_ONLY_SERIES } from '@/lib/card-constants';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { filterCardsByQuery } from '@/lib/search/card-query';
@@ -42,12 +41,6 @@ async function loadSetCards(setId: string): Promise<CatalogCard[]> {
 type Filter    = 'all' | 'owned' | 'missing';
 type SortField = 'number' | 'name' | 'pokedex' | 'hp' | 'price';
 type SortDir   = 'asc' | 'desc';
-
-const FILTER_OPTIONS: { value: Filter; label: string }[] = [
-  { value: 'all',     label: 'Alle' },
-  { value: 'owned',   label: 'Vorhanden' },
-  { value: 'missing', label: 'Fehlen' },
-];
 
 const SORT_OPTIONS: { value: SortField; label: string }[] = [
   { value: 'number',  label: 'Nummer' },
@@ -243,24 +236,24 @@ function SetDetailContent() {
     });
   }
 
+  /* Such-gefilterter Pool (VOR Owned/Rarity) — Basis für die kreuzreaktiven
+     Zähler der Filterleiste. In-Set-Suche über die geteilte Such-Logik
+     (`lib/search/card-query`): Name (DE), englischer Name, **Illustrator**,
+     Nummer (mit/ohne führende Nullen), Dex-Nr + strukturierte Schlüsselwörter
+     („ex", Typ) — identische Semantik wie die Suche-Seite. */
+  const filterPool = useMemo(() => filterCardsByQuery(cards, search), [cards, search]);
+
   /* Gefilterte Karten (OHNE Sortierung) — hängt bewusst NICHT an `priceMap`,
      damit die ~20 Preis-Chunk-Merges beim Öffnen keinen Re-Filter auslösen. */
   const filtered = useMemo(() => {
-    let result = [...cards];
+    let result = filterPool;
     if (filter === 'owned')   result = result.filter(c => ownedTcgIds.has(c.id));
     if (filter === 'missing') result = result.filter(c => !ownedTcgIds.has(c.id));
-
-    // In-Set-Suche über die geteilte Such-Logik (`lib/search/card-query`):
-    // Name (DE), englischer Name, **Illustrator**, Nummer (mit/ohne führende
-    // Nullen) und Dex-Nr, inkl. Mehrwort-Schnitt — identische Semantik wie die
-    // Suche-Seite. Alle Set-Karten liegen bereits client-seitig vor.
-    result = filterCardsByQuery(result, search);
-
     if (rarityFilter.size > 0) {
       result = result.filter(c => rarityFilter.has(rarityLabelOf(c.rarity)));
     }
     return result;
-  }, [cards, filter, search, rarityFilter, ownedTcgIds]);
+  }, [filterPool, filter, rarityFilter, ownedTcgIds]);
 
   /* Sortierte Anzeige. `priceMap`/`pricesLoading` sind NUR bei Preis-Sortierung
      relevant (compareCardInfo nutzt sie nur dann) — deshalb nur dann als Dep,
@@ -412,16 +405,13 @@ function SetDetailContent() {
                       placeholder="Suchen (Name, Nummer, Illustrator)"
                       size="sm"
                     />
-                    <ButtonGroup
-                      options={FILTER_OPTIONS}
-                      value={filter}
-                      onChange={setFilter}
-                    />
-                    <RarityFilterBar
-                      cards={cards}
+                    <CardFilterBar
+                      cards={filterPool}
                       ownedIds={ownedTcgIds}
-                      activeRarities={rarityFilter}
-                      onToggle={toggleRarity}
+                      owned={filter}
+                      onOwnedChange={setFilter}
+                      rarities={rarityFilter}
+                      onRaritiesToggle={toggleRarity}
                     />
                   </div>
                 </div>
