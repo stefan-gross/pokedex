@@ -167,9 +167,10 @@ function CollectionContent() {
       // Leere Logo-Spalte, damit auch „Alle Sets" bündig zu den Set-Namen beginnt.
       { value: '', label: 'Alle Sets', icon: <span className="w-12 h-4 shrink-0" /> },
       ...[...sets]
-        // Sortierung: Trefferzahl AUFSTEIGEND, bei Gleichstand Name alphabetisch.
+        // Sortierung: Trefferzahl ABSTEIGEND (vollste Sets oben), bei Gleichstand
+        // Name alphabetisch AUFSTEIGEND.
         .sort((a, b) => {
-          if (a.count !== b.count) return a.count - b.count;
+          if (a.count !== b.count) return b.count - a.count;
           const la = setsMetaMap.get(a.id)?.nameDe ?? a.name;
           const lb = setsMetaMap.get(b.id)?.nameDe ?? b.name;
           return la.localeCompare(lb, 'de');
