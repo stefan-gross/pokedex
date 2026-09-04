@@ -101,6 +101,9 @@ interface Props {
   /** Set-Symbol vor der Nummer statt eines Kürzels — bei alten Sets ohne
    *  aufgedrucktes Kürzel (siehe SYMBOL_ONLY_SERIES). Hat Vorrang vor `numberPrefixCode`. */
   numberPrefixSymbolUrl?: string;
+  /** Set-Logo (Wortmarke) ganz links in der Nummern-Unterzeile — vor Kürzel/Symbol.
+   *  Nur bei Nummern-Sortierung über mehrere Sets sinnvoll. */
+  numberPrefixLogoUrl?: string;
   /** Alt-Text fürs Set-Symbol (Kürzel), falls `numberPrefixSymbolUrl` gesetzt ist. */
   setCode?: string;
   /** Vorformatierter Preis (z.B. "4,59 €") — Badge unten links, Pillenform
@@ -188,7 +191,7 @@ export function WishlistHeart({ manual, auto, width, height, gradId, onImage = f
 // dann greift `memo` und nur die tatsächlich geänderten Karten rendern neu.
 function CardImpl({
   card, ownedCards = [], onCardClick, onManualWishlist = false, onAutoWishlist = false, onHeartClick, sublabel, sublabelColor, sublabelLoading,
-  numberPrefixCode, numberPrefixSymbolUrl, setCode, price, border, size = 'sm', bare = false,
+  numberPrefixCode, numberPrefixSymbolUrl, numberPrefixLogoUrl, setCode, price, border, size = 'sm', bare = false,
   missingStyle = getCardVisualTheme().missingStyle,
   cornerRadius = getCardVisualTheme().cornerRadius[size],
   badgeLayout = getCardVisualTheme().badgeLayout[size],
@@ -418,6 +421,10 @@ function CardImpl({
         <div className="h-2.5 w-3/5 mx-auto mt-1.5 rounded-full animate-pulse bg-[rgba(30,40,80,0.1)] dark:bg-white/10" />
       ) : sublabel && (
         <div className="flex items-center justify-center gap-1 mt-1.5 px-0.5">
+          {numberPrefixLogoUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={numberPrefixLogoUrl} alt="" className="h-3 w-auto max-w-[36px] object-contain shrink-0" />
+          )}
           {numberPrefixSymbolUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={numberPrefixSymbolUrl} alt={setCode ?? ''} className="w-[13px] h-[13px] object-contain shrink-0" />
