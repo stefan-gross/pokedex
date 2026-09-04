@@ -179,7 +179,6 @@ export function CardGrid({
             onAutoWishlist={autoIds?.has(card.id)}
             onHeartClick={onToggleList ? handleHeartClick : undefined}
             setCode={numberPrefixCode}
-            numberPrefixLogoUrl={showNumberPrefix ? set?.logoUrl : undefined}
             numberPrefixCode={showNumberPrefix && !numberPrefixSymbolUrl ? numberPrefixCode : undefined}
             numberPrefixSymbolUrl={showNumberPrefix ? numberPrefixSymbolUrl : undefined}
             selectMode={selectMode}

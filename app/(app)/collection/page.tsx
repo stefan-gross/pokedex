@@ -70,10 +70,10 @@ const OWNED_OPTIONS: { value: OwnedFilter; label: string }[] = [
 ];
 
 const BROWSE_SORT_OPTIONS: { value: BrowseSortKey; label: string }[] = [
-  { value: 'name',    label: 'A–Z'          },
-  { value: 'hp',      label: 'KP (höchste)' },
-  { value: 'pokedex', label: 'Pokédex-Nr.'  },
-  { value: 'price',   label: 'Preis'        },
+  { value: 'name',    label: 'Name'        },
+  { value: 'hp',      label: 'KP'          },
+  { value: 'pokedex', label: 'Pokédex-Nr.' },
+  { value: 'price',   label: 'Preis'       },
 ];
 
 const SEARCH_SORT_OPTIONS: { value: SearchSortKey; label: string }[] = [
