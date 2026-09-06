@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useRouter } from 'next/navigation';
 import { X, Plus, Heart, ChevronDown, ChevronRight, ChevronLeft, Info, Repeat2, LayoutGrid, Trash2, Check, Layers } from 'lucide-react';
 import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
@@ -364,6 +365,7 @@ function AccHeader({
 
 /* ── Component ───────────────────────────────────────────────── */
 export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMeta, onClose, onSaved }: Props) {
+  const router = useRouter();
   // Slide-Animation + Swipe-Down-Drag übernimmt jetzt `Sheet` (components/ui/modal.tsx)
   // selbst — hier nur noch das einfache offen/zu.
   const [sheetOpen,    setSheetOpen]    = useState(true);
@@ -586,6 +588,12 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     setOpenSec(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n; });
   }
   function handleClose() { setSheetOpen(false); setTimeout(onClose, 250); }
+  // Illustrator antippen → zur Suche nach diesem Illustrator (Sheet schließt,
+  // dann Navigation, damit der Slide-Down noch sichtbar durchläuft).
+  function openArtistSearch(artist: string) {
+    setSheetOpen(false);
+    setTimeout(() => { onClose(); router.push(`/collection?q=${encodeURIComponent(artist)}`); }, 250);
+  }
 
   // Verschiebt die Kopie exklusiv in den Ziel-Binder (`null` = „Unsortiert").
   // `setCardExclusiveBinder` entfernt sie aus allen anderen Sammlungen (inkl.
@@ -817,7 +825,14 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
               <div className="px-4 pb-4">
                 {card.artist && (
                   <p className="text-role-body text-glass-muted pt-3">
-                    Illustration: <span className="font-medium text-glass">{card.artist}</span>
+                    Illustration:{' '}
+                    <button
+                      type="button"
+                      onClick={() => openArtistSearch(card.artist!)}
+                      className="font-medium text-glass underline decoration-glass-muted/40 underline-offset-2 hover:decoration-glass"
+                    >
+                      {card.artist}
+                    </button>
                   </p>
                 )}
                 {species ? (

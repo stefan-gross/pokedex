@@ -399,6 +399,15 @@ function CollectionContent() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [inputValue, doSearch, router]);
 
+  // `q` aus der URL in die Eingabe übernehmen, wenn er sich EXTERN ändert (z.B.
+  // Klick auf den Illustrator im Kartendetail navigiert auf /collection?q=…,
+  // während wir schon hier sind). Der Debounce oben hält sonst nur EINE Richtung
+  // synchron (Eingabe → URL). setInputValue(prev=>…) verhindert eine Rück-Schleife.
+  useEffect(() => {
+    const q = searchParams.get('q') ?? '';
+    setInputValue(prev => (prev === q ? prev : q));
+  }, [searchParams]);
+
   // ── Evo-Linie: Ergebnisse um gesamte Evolutionsfamilie erweitern ──
   useEffect(() => {
     if (!evoLineActive) {
