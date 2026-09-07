@@ -1661,9 +1661,10 @@ export default function ScannerPage() {
                 const isError = job.status === 'error';
                 const borderStatus = computeBorderStatus(job);
                 const depthFromTop = addJobs.length - idx;
+                // Antippen → Korrektur-Ansicht (wie im Slider); reine Fehlerkarten
+                // öffnen den Fehler-/Melden-Flow im selben Overlay.
                 const onCardClick = () => {
-                  if (canOpen) setActiveJobId(job.id);
-                  else if (isError) setErrorDetailJobId(job.id);
+                  if (canOpen || isError) setCorrectJobId(job.id);
                 };
               return (
                 <div key={job.id} className="relative flex flex-col">
@@ -2138,9 +2139,8 @@ export default function ScannerPage() {
               const dx = e.clientX - start;
               if (Math.abs(dx) < 40) {
                 setSingleDragX(0);
-                // Kurzer Tap → Detail-Sheet (Markieren erfolgt jetzt per Long-Press)
-                if (canOpen) setActiveJobId(job.id);
-                else if (isError) setErrorDetailJobId(job.id);
+                // Kurzer Tap → Korrektur-Ansicht (wie im Slider/Grid).
+                if (canOpen || isError) setCorrectJobId(job.id);
                 return;
               }
               if (dx > 0) {
@@ -2414,13 +2414,13 @@ export default function ScannerPage() {
           dieselbe UI wie im Einzelscan (Karte groß + Kandidaten/„Korrigieren").
           Overlay über dem Slider mit Schließen-Button; Auswahl aktualisiert die
           Karte im Slider und schließt. */}
-      {mode === 'scanning' && scanMode === 'add' && correctJobId && (() => {
+      {scanMode === 'add' && correctJobId && (() => {
         const job = jobs.find(j => j.id === correctJobId);
         if (!job || job.status === 'processing') return null;
         const close = () => setCorrectJobId(null);
         const isBlind = job.status === 'error' && classifyJobError(job).kind === 'gemini-blind';
         return (
-          <div className="absolute inset-0 z-40" style={{ background: 'rgba(0,0,0,0.85)' }}>
+          <div className="absolute inset-0 z-50" style={{ background: 'rgba(0,0,0,0.9)' }}>
             <button
               type="button"
               onClick={close}
