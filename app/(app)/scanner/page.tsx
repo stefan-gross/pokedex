@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle, EyeOff, SearchX, LayoutGrid, Square, Flag, Trash2 } from 'lucide-react';
+import { X, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle, EyeOff, SearchX, LayoutGrid, Square, Flag, Trash2, CheckSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
@@ -467,6 +467,12 @@ export default function ScannerPage() {
   const [recognizedJobId, setRecognizedJobId] = useState<string | null>(null);
   // Mehrfachscan: angetippte Slider-Karte → Korrektur-Ansicht (wie Einzelscan).
   const [correctJobId, setCorrectJobId] = useState<string | null>(null);
+  // Review-Grid: Mehrfachauswahl zum gebündelten Hinzufügen/Löschen.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const toggleSelected = useCallback((id: string) => {
+    setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  }, []);
   // Ref für scanMode — handleCapture hat empty-deps useCallback,
   // ohne Ref wäre der Wert stale.
   const scanModeRef = useRef(scanMode);
@@ -731,10 +737,12 @@ export default function ScannerPage() {
   // „Alle hinzufügen" öffnet jetzt ein Bulk-Modal zur Bestätigung der Werte.
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const openBulkAdd = useCallback(() => {
-    const targets = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added);
+    // Im Auswahl-Modus nur die ausgewählten Karten, sonst alle unadded.
+    const targets = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added
+      && (selectMode && selectedIds.size ? selectedIds.has(j.id) : true));
     if (targets.length === 0) return;
     setBulkModalOpen(true);
-  }, [jobs]);
+  }, [jobs, selectMode, selectedIds]);
 
   // Auto-Save beim Verlassen des Scanners → Inbox-Binder „Eingang"
   const [closingSaving, setClosingSaving] = useState(false);
@@ -1647,6 +1655,18 @@ export default function ScannerPage() {
                 ? `${filteredReversed.length - Math.min(singleIdx, filteredReversed.length - 1)}/${filteredReversed.length}`
                 : `${filtered.length}/${addJobs.length}`}
             </span>
+            {/* Mehrfachauswahl umschalten (nur Grid-Ansicht sinnvoll). */}
+            {viewMode === 'grid' && (
+              <button
+                type="button"
+                onClick={() => { setSelectMode(m => !m); setSelectedIds(new Set()); }}
+                aria-label="Mehrfachauswahl"
+                className="w-11 h-11 flex items-center justify-center rounded-full"
+                style={{ background: selectMode ? 'var(--pokedex-red)' : 'transparent', color: selectMode ? '#fff' : 'rgba(255,255,255,0.65)' }}
+              >
+                <CheckSquare size={20} />
+              </button>
+            )}
           </div>
 
           {viewMode === 'grid' && (
@@ -1661,9 +1681,11 @@ export default function ScannerPage() {
                 const isError = job.status === 'error';
                 const borderStatus = computeBorderStatus(job);
                 const depthFromTop = addJobs.length - idx;
-                // Antippen → Korrektur-Ansicht (wie im Slider); reine Fehlerkarten
-                // öffnen den Fehler-/Melden-Flow im selben Overlay.
+                // Auswahl-Modus: Antippen (nur erkannte Karten) togglet die
+                // Auswahl. Sonst → Korrektur-Ansicht (Fehlerkarten: Melden-Flow).
+                const selected = selectedIds.has(job.id);
                 const onCardClick = () => {
+                  if (selectMode) { if (canOpen) toggleSelected(job.id); return; }
                   if (canOpen || isError) setCorrectJobId(job.id);
                 };
               return (
@@ -1688,6 +1710,20 @@ export default function ScannerPage() {
                         }}
                       >
                         #{depthFromTop}
+                      </div>
+                    )}
+                    {/* Auswahl-Overlay (Mehrfachauswahl): Ring + Häkchen. */}
+                    {selectMode && canOpen && (
+                      <div
+                        className="absolute inset-0 z-20 pointer-events-none"
+                        style={{ boxShadow: selected ? 'inset 0 0 0 3px #22c55e' : 'inset 0 0 0 2px rgba(255,255,255,0.25)' }}
+                      >
+                        <div
+                          className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center"
+                          style={{ background: selected ? '#22c55e' : 'rgba(0,0,0,0.55)' }}
+                        >
+                          {selected && <Check size={15} color="#fff" strokeWidth={3} />}
+                        </div>
                       </div>
                     )}
                     {job.status === 'processing' ? (
@@ -2714,6 +2750,8 @@ export default function ScannerPage() {
         const visible = mode === 'review' && jobs.length > 0 && viewMode !== 'single';
         if (!visible) return null;
         const unaddedCount = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added).length;
+        const selCount = selectedIds.size;
+        const selAddable = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added && selectedIds.has(j.id)).length;
         return (
           <div
             className="absolute left-0 right-0 z-40 flex gap-2 px-4"
@@ -2728,25 +2766,40 @@ export default function ScannerPage() {
               WebkitBackdropFilter: 'blur(12px)',
             }}
           >
-            <Button
-              variant="primary"
-              accentColor="#c53030"
-              icon={<Trash2 />}
-              onClick={clearAllJobs}
-              className="flex-1"
-            >
-              Alle löschen
-            </Button>
-            <Button
-              variant="primary"
-              accentColor="#2f855a"
-              icon={<Plus />}
-              onClick={openBulkAdd}
-              disabled={unaddedCount === 0}
-              className="flex-1"
-            >
-              {`Alle hinzufügen${unaddedCount > 0 ? ` (${unaddedCount})` : ''}`}
-            </Button>
+            {selectMode ? (
+              <>
+                <Button
+                  variant="primary" accentColor="#c53030" icon={<Trash2 />}
+                  onClick={() => { selectedIds.forEach(id => removeJob(id)); setSelectedIds(new Set()); }}
+                  disabled={selCount === 0}
+                  className="flex-1"
+                >
+                  {`Auswahl löschen${selCount ? ` (${selCount})` : ''}`}
+                </Button>
+                <Button
+                  variant="primary" accentColor="#2f855a" icon={<Plus />}
+                  onClick={openBulkAdd}
+                  disabled={selAddable === 0}
+                  className="flex-1"
+                >
+                  {`Auswahl hinzufügen${selAddable ? ` (${selAddable})` : ''}`}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="primary" accentColor="#c53030" icon={<Trash2 />} onClick={clearAllJobs} className="flex-1">
+                  Alle löschen
+                </Button>
+                <Button
+                  variant="primary" accentColor="#2f855a" icon={<Plus />}
+                  onClick={openBulkAdd}
+                  disabled={unaddedCount === 0}
+                  className="flex-1"
+                >
+                  {`Alle hinzufügen${unaddedCount > 0 ? ` (${unaddedCount})` : ''}`}
+                </Button>
+              </>
+            )}
           </div>
         );
       })()}
@@ -2758,7 +2811,8 @@ export default function ScannerPage() {
 
       {/* ── Bulk-Add-Modal: „Alle hinzufügen" fragt Werte ab ─────────── */}
       {bulkModalOpen && (() => {
-        const targets = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added);
+        const targets = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added
+          && (selectMode && selectedIds.size ? selectedIds.has(j.id) : true));
         const bulkJobs = targets.map(j => ({
           id: j.id,
           card: j.result!.card!,
@@ -2775,7 +2829,7 @@ export default function ScannerPage() {
               const tcgId = jobs.find(j => j.id === id)?.result?.card?.id;
               if (tcgId) refreshOwnedCount(id, tcgId);
             }}
-            onAllSaved={() => setBulkModalOpen(false)}
+            onAllSaved={() => { setBulkModalOpen(false); setSelectedIds(new Set()); }}
           />
         );
       })()}
