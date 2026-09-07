@@ -1603,78 +1603,97 @@ export default function ScannerPage() {
         <div
           className="absolute inset-0 overflow-y-auto bg-black px-4"
           style={{
-            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 130px)',
+            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 124px)',
             paddingBottom: viewMode === 'single'
               ? 'calc(env(safe-area-inset-bottom, 0px) + 20px)'
               : 'calc(env(safe-area-inset-bottom, 0px) + 130px)',
           }}
         >
-          {/* View-Toggle + Status-Filter — direkt unter dem Header */}
+          {/* ── Header-Panel: Zurück + Titel/Zähler + Aktionen (View-Switch,
+              Filter, Mehrfachauswahl) — alles in EINEM festen Panel oben,
+              statt der früher frei schwebenden Toolbar. Zurück verlässt das
+              Prüfen-Grid zurück in die Live-Kamera. */}
           <div
-            className="fixed left-0 right-0 z-20 px-4 flex items-center gap-2 flex-wrap"
-            style={{ top: 'calc(env(safe-area-inset-top, 0px) + 56px)' }}
+            className="fixed left-0 right-0 top-0 z-20 flex flex-col gap-2 px-4 pb-2 bg-black/85 backdrop-blur-md border-b border-white/10"
+            style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}
           >
-            {/* View-Mode-Toggle (Grid / Single) */}
-            <div className="flex rounded-full p-1 bg-black/65 backdrop-blur-sm border border-white/10">
-              {([
-                ['grid', LayoutGrid, 'Grid'],
-                ['single', Square, 'Einzeln'],
-              ] as const).map(([mode, Icon, label]) => (
-                <button
-                  key={mode}
-                  onClick={() => { setViewMode(mode); if (mode === 'single') setSingleIdx(0); }}
-                  className="w-11 h-11 flex items-center justify-center rounded-full"
-                  aria-label={label}
-                  style={{
-                    background: viewMode === mode ? 'var(--pokedex-red)' : 'transparent',
-                    color: viewMode === mode ? '#fff' : 'rgba(255,255,255,0.65)',
-                  }}
-                >
-                  <Icon size={20} />
-                </button>
-              ))}
-            </div>
-            {/* Filter-Chips */}
-            <div className="flex rounded-full p-1 bg-black/65 backdrop-blur-sm border border-white/10">
-              {([
-                ['all', 'Alle'],
-                ['success', '✓'],
-                ['yellow', '!'],
-                ['red', '✕'],
-              ] as const).map(([f, label]) => (
-                <button
-                  key={f}
-                  onClick={() => setStatusFilter(f)}
-                  className="min-w-[44px] px-3.5 h-11 text-sm font-semibold rounded-full"
-                  style={{
-                    background:
-                      statusFilter === f
-                        ? (f === 'yellow' ? '#facc15' : f === 'red' ? '#ef4444' : f === 'success' ? '#22c55e' : 'var(--pokedex-red)')
-                        : 'transparent',
-                    color: statusFilter === f ? (f === 'yellow' ? '#1a1a1a' : '#fff') : 'rgba(255,255,255,0.65)',
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <span className="text-base text-white/75 font-mono ml-auto px-2">
-              {viewMode === 'single' && filteredReversed.length > 0
-                ? `${filteredReversed.length - Math.min(singleIdx, filteredReversed.length - 1)}/${filteredReversed.length}`
-                : `${filtered.length}/${addJobs.length}`}
-            </span>
-            {/* Mehrfachauswahl umschalten (nur Grid-Ansicht sinnvoll). */}
-            {viewMode === 'grid' && (
-              <button
-                type="button"
-                onClick={() => { setSelectMode(m => !m); setSelectedIds(new Set()); }}
-                aria-label="Mehrfachauswahl"
-                className="w-11 h-11 flex items-center justify-center rounded-full"
-                style={{ background: selectMode ? 'var(--pokedex-red)' : 'transparent', color: selectMode ? '#fff' : 'rgba(255,255,255,0.65)' }}
+            {/* Zeile 1: Zurück + Titel + Zähler */}
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setMode('scanning')}
+                className="px-0 -ml-1 text-white"
+                icon={<ChevronLeft size={18} strokeWidth={2} />}
               >
-                <CheckSquare size={20} />
-              </button>
-            )}
+                Scannen
+              </Button>
+              <span className="text-white font-semibold text-role-title ml-1">Prüfen</span>
+              <span className="text-base text-white/75 font-mono ml-auto px-1">
+                {viewMode === 'single' && filteredReversed.length > 0
+                  ? `${filteredReversed.length - Math.min(singleIdx, filteredReversed.length - 1)}/${filteredReversed.length}`
+                  : `${filtered.length}/${addJobs.length}`}
+              </span>
+            </div>
+            {/* Zeile 2: View-Toggle + Filter + Mehrfachauswahl */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* View-Mode-Toggle (Grid / Single) */}
+              <div className="flex rounded-full p-1 bg-black/65 backdrop-blur-sm border border-white/10">
+                {([
+                  ['grid', LayoutGrid, 'Grid'],
+                  ['single', Square, 'Einzeln'],
+                ] as const).map(([mode, Icon, label]) => (
+                  <button
+                    key={mode}
+                    onClick={() => { setViewMode(mode); if (mode === 'single') setSingleIdx(0); }}
+                    className="w-11 h-11 flex items-center justify-center rounded-full"
+                    aria-label={label}
+                    style={{
+                      background: viewMode === mode ? 'var(--pokedex-red)' : 'transparent',
+                      color: viewMode === mode ? '#fff' : 'rgba(255,255,255,0.65)',
+                    }}
+                  >
+                    <Icon size={20} />
+                  </button>
+                ))}
+              </div>
+              {/* Filter-Chips */}
+              <div className="flex rounded-full p-1 bg-black/65 backdrop-blur-sm border border-white/10">
+                {([
+                  ['all', 'Alle'],
+                  ['success', '✓'],
+                  ['yellow', '!'],
+                  ['red', '✕'],
+                ] as const).map(([f, label]) => (
+                  <button
+                    key={f}
+                    onClick={() => setStatusFilter(f)}
+                    className="min-w-[44px] px-3.5 h-11 text-sm font-semibold rounded-full"
+                    style={{
+                      background:
+                        statusFilter === f
+                          ? (f === 'yellow' ? '#facc15' : f === 'red' ? '#ef4444' : f === 'success' ? '#22c55e' : 'var(--pokedex-red)')
+                          : 'transparent',
+                      color: statusFilter === f ? (f === 'yellow' ? '#1a1a1a' : '#fff') : 'rgba(255,255,255,0.65)',
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {/* Mehrfachauswahl umschalten (nur Grid-Ansicht sinnvoll). */}
+              {viewMode === 'grid' && (
+                <button
+                  type="button"
+                  onClick={() => { setSelectMode(m => !m); setSelectedIds(new Set()); }}
+                  aria-label="Mehrfachauswahl"
+                  className="w-11 h-11 flex items-center justify-center rounded-full ml-auto"
+                  style={{ background: selectMode ? 'var(--pokedex-red)' : 'transparent', color: selectMode ? '#fff' : 'rgba(255,255,255,0.65)' }}
+                >
+                  <CheckSquare size={20} />
+                </button>
+              )}
+            </div>
           </div>
 
           {viewMode === 'grid' && (
@@ -2348,18 +2367,10 @@ export default function ScannerPage() {
         className="absolute top-0 left-0 right-0 z-20 flex items-center px-4 pb-3 pointer-events-none"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
       >
-        <div className="flex-1 flex justify-start">
-          {mode === 'review' && (
-            <button
-              onClick={() => setMode('scanning')}
-              className="pointer-events-auto flex items-center gap-1 h-9 px-3 rounded-full bg-white/10 backdrop-blur-sm text-white text-sm font-medium"
-              aria-label="Zurück zum Scannen"
-            >
-              <ChevronLeft size={18} color="#fff" />
-              Scannen
-            </button>
-          )}
-        </div>
+        {/* Der Zurück-Button für den Review-Modus sitzt jetzt im Prüfen-Header-
+            Panel (zusammen mit View-Switch/Filter). Hier bleibt nur die
+            Zentrier-Zone für den Schließen-Button im Scan-Modus. */}
+        <div className="flex-1 flex justify-start" />
         {/* Einzeln/Mehrere-Umschalter ist in die Footer-Leiste gewandert
             (links neben dem Scan-Button) — Header-Mitte bleibt leer für die
             Zentrierung des Schließen-Buttons. */}
