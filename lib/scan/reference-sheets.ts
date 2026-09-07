@@ -85,7 +85,9 @@ async function loadEligibleSetsUncached(): Promise<SetForSheet[]> {
     sets.push({
       ptcgoCode: d.ptcgoCode,
       name: d.nameDe ?? d.name,
-      symbolUrl: d.symbolUrl,
+      // TCGdex `/univ/…/symbol` 404t → auf den existierenden `/en/`-Pfad ziehen
+      // (wie beim Display, s. lib/firestore/sets.ts#fixSetSymbolUrl).
+      symbolUrl: (d.symbolUrl as string).replace('/univ/', '/en/'),
       series: d.series,
     });
   }

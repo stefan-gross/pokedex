@@ -19,22 +19,33 @@ export interface TcgSet {
 
 const COL = 'tcg_sets';
 
+/** TCGdex liefert Symbol-URLs unter `…/univ/…/symbol`, das inzwischen 404t —
+ *  nur der sprachpräfixierte Pfad (`…/en/…/symbol`) existiert noch (Logos nutzen
+ *  ihn längst). Beim Lesen korrigieren, damit auch der Altbestand OHNE Re-Sync
+ *  sofort lädt. Idempotent; betrifft nur die tcgdex-Asset-URL. */
+export function fixSetSymbolUrl(s: TcgSet | null): TcgSet | null {
+  if (s?.symbolUrl?.includes('/univ/')) {
+    return { ...s, symbolUrl: s.symbolUrl.replace('/univ/', '/en/') };
+  }
+  return s;
+}
+
 // REST-first (kein WebChannel-Cold-Start); SDK nur als Fallback.
 export async function getSetById(setId: string): Promise<TcgSet | null> {
   try {
-    return await getSetByIdRest(setId);
+    return fixSetSymbolUrl(await getSetByIdRest(setId));
   } catch {
     const snap = await getDoc(doc(db, COL, setId));
-    return snap.exists() ? (snap.data() as TcgSet) : null;
+    return snap.exists() ? fixSetSymbolUrl(snap.data() as TcgSet) : null;
   }
 }
 
 export async function getAllSets(): Promise<TcgSet[]> {
   try {
-    return await getAllSetsRest();
+    return (await getAllSetsRest()).map(s => fixSetSymbolUrl(s) as TcgSet);
   } catch {
     const snap = await getDocs(query(collection(db, COL), orderBy('releaseDate', 'desc')));
-    return snap.docs.map(d => d.data() as TcgSet);
+    return snap.docs.map(d => fixSetSymbolUrl(d.data() as TcgSet) as TcgSet);
   }
 }
 

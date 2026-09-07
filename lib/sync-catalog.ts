@@ -461,7 +461,9 @@ export async function syncSets(): Promise<SyncSetsResult> {
       ...(code ? { ptcgoCode: code } : {}),
       logoUrl: withExt(de?.logo ?? s.logo) ?? '',
       ...(s.logo ? { logoUrlEn: withExt(s.logo) } : {}),
-      ...(s.symbol ? { symbolUrl: withExt(s.symbol) } : {}),
+      // TCGdex gibt das Symbol unter `/univ/…` zurück, das inzwischen 404t —
+      // nur der sprachpräfixierte Pfad (`/en/…`) existiert (wie beim Logo).
+      ...(s.symbol ? { symbolUrl: withExt(s.symbol.replace('/univ/', '/en/')) } : {}),
       ...(s.releaseDate ? { releaseDate: s.releaseDate } : {}),
     };
   });
