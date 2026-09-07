@@ -10,7 +10,7 @@
  * tatsächliche Request-Zahl höher (Faktor ~Wortlänge) — im UI als Hinweis.
  */
 import { doc, setDoc, getDoc, increment, serverTimestamp } from 'firebase/firestore';
-import { db, currentUid } from '@/lib/firebase/client';
+import { db, waitForUid } from '@/lib/firebase/client';
 
 const COL = 'search_stats';
 
@@ -22,7 +22,10 @@ export function searchMonthKey(d = new Date()): string {
 /** Eine ausgeführte Suche zählen (monatlicher Bucket + Gesamt). Fehler ignorieren. */
 export async function recordSearch(): Promise<void> {
   try {
-    const uid = currentUid();
+    // waitForUid statt currentUid: direkt nach Cold-Load ist auth.currentUser oft
+    // noch null (Session-Restore läuft async) → sonst ginge der erste Zähl-Write
+    // verloren.
+    const uid = await waitForUid();
     if (!uid) return;
     await setDoc(
       doc(db, COL, uid),
@@ -45,7 +48,7 @@ export interface SearchStats {
 /** Eigene Such-Statistik lesen (aktueller Nutzer). */
 export async function getSearchStats(): Promise<SearchStats | null> {
   try {
-    const uid = currentUid();
+    const uid = await waitForUid();
     if (!uid) return null;
     const snap = await getDoc(doc(db, COL, uid));
     if (!snap.exists()) return null;
