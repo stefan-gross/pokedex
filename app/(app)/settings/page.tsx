@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, Sun, Moon, Smartphone, RefreshCw,
-  Database, CheckCircle, Clock, AlertCircle, Trash2, LogOut,
+  Database, CheckCircle, Clock, AlertCircle, Trash2, LogOut, Sparkles,
 } from 'lucide-react';
 import type { SyncMeta } from '@/lib/firestore/catalog';
 import { getCards, deleteCard } from '@/lib/firestore/cards';
@@ -13,6 +13,7 @@ import { reconcilePendingCards } from '@/lib/scan/reconcile-pending';
 import { getBinders, deleteBinder } from '@/lib/firestore/binders';
 import { getWishlists, deleteWishlist } from '@/lib/firestore/wishlists';
 import { getSearchStats, searchMonthKey, type SearchStats } from '@/lib/firestore/search-stats';
+import { setGlassTheme, DEFAULT_GLASS_THEME } from '@/lib/ui/glass-theme';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Button } from '@/components/ui/button';
 import { useUpdateAvailable } from '@/lib/hooks/use-update-available';
@@ -335,6 +336,16 @@ export default function SettingsPage() {
     }
   }
 
+  // Glas-Design (Deckkraft/Blur/… aller .glass-Panels) auf die Defaults
+  // zurücksetzen — behebt einen per-Gerät gespeicherten Override (z.B. über die
+  // Design-Testseite verstellt), der Panels/Dropdowns unlesbar-transparent macht.
+  const [glassReset, setGlassReset] = useState(false);
+  function handleResetGlass() {
+    setGlassTheme(DEFAULT_GLASS_THEME);
+    setGlassReset(true);
+    setTimeout(() => setGlassReset(false), 2500);
+  }
+
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });
     router.push('/login');
@@ -419,6 +430,14 @@ export default function SettingsPage() {
               </span>
             )}
           </Button>
+          <Button
+            variant="secondary" size="lg" className="w-full justify-start"
+            icon={<Sparkles size={18} />}
+            onClick={handleResetGlass}
+          >
+            {glassReset ? 'Glas-Design zurückgesetzt ✓' : 'Glas-Design zurücksetzen'}
+          </Button>
+          <p className="text-role-label text-glass-muted px-1">Stellt Deckkraft/Blur aller Glas-Panels (inkl. Dropdowns) auf die Standardwerte zurück — falls sie unlesbar/zu transparent wirken.</p>
         </section>
 
         {/* 2. Karten-Catalog — ein Panel: Status + Preis-Status + letzter Lauf + Aktionen */}
