@@ -757,6 +757,7 @@ function CollectionContent() {
           onClear={clearSearch}
           onSubmit={q => { if (debounceRef.current) clearTimeout(debounceRef.current); doSearch(q); }}
           placeholder="Name, Illustrator … oder stöbern"
+          inlineComplete
         />
 
         {/* Owned (Alle|Vorhanden|Fehlen) — immer sichtbar */}

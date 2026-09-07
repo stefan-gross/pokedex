@@ -31,6 +31,7 @@ export function CardSearchField({
   size = 'md',
   autoFocus,
   suggestLimit = 5,
+  inlineComplete = false,
   className,
 }: {
   value: string;
@@ -42,6 +43,9 @@ export function CardSearchField({
   size?: 'sm' | 'md' | 'lg';
   autoFocus?: boolean;
   suggestLimit?: number;
+  /** Inline-Autocomplete (Ghost-Text): der oberste Vorschlag wird als
+   *  ausgegrauter Rest hinter der Eingabe gezeigt; Enter oder →/Tab übernimmt. */
+  inlineComplete?: boolean;
   className?: string;
 }) {
   const suggestIndex = useSuggestIndex();
@@ -50,6 +54,15 @@ export function CardSearchField({
   const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const suggestions = focused ? suggest(suggestIndex, value, suggestLimit) : [];
+
+  // Inline-Autocomplete: der oberste Vorschlag, sofern er ein echtes Präfix zur
+  // aktuellen Eingabe ist (unser Ranking stellt exakte/kürzeste Präfixe nach
+  // oben). Wird als Ghost-Text im Feld gezeigt; Enter/→/Tab übernimmt.
+  const top = inlineComplete ? suggestions[0] : undefined;
+  const ghost =
+    top && top.value.length > value.length && top.value.toLowerCase().startsWith(value.toLowerCase())
+      ? top.value
+      : undefined;
 
   // Panel per Portal an document.body positionieren (wie das App-Menü). Bei
   // Scroll/Resize nachführen, solange Vorschläge sichtbar sind.
@@ -81,9 +94,17 @@ export function CardSearchField({
         onFocus={() => setFocused(true)}
         // Verzögert schließen, damit ein Vorschlag-Klick (onMouseDown) noch greift.
         onBlur={() => setTimeout(() => setFocused(false), 120)}
-        // Enter schließt immer Panel + Tastatur (Input blurrt selbst); reaktive
-        // In-Memory-Suchen brauchen kein onSubmit, server-Suchen führen es aus.
-        onEnter={() => { setFocused(false); onSubmit?.(value); }}
+        // Enter: liegt ein Ghost-Vorschlag an, wird ER übernommen + gesucht;
+        // sonst die getippte Eingabe. Schließt Panel + Tastatur (Input blurrt).
+        onEnter={() => {
+          const v = ghost ?? value;
+          if (ghost) onChange(ghost);
+          setFocused(false);
+          onSubmit?.(v);
+        }}
+        ghost={ghost}
+        // →/Tab am Zeilenende übernimmt den Ghost, ohne zu suchen (weiterschreiben).
+        onCompleteGhost={ghost ? () => onChange(ghost) : undefined}
       />
 
       {/* Autosuggest-Panel — Portal an document.body im Glas-Menü-Stil. */}
