@@ -350,6 +350,8 @@ export interface BrowseFilter {
   /** Sonderform-Mechaniken (Subtypes wie 'EX'/'V'/'GX') als OR — array-contains-any.
    *  Server-seitig, damit der ~9%-Filter nicht seitenweise nachladen muss. */
   specialMechanics?: string[];
+  /** Pokémon-Region (z.B. 'Kanto') — equality. Nur Pokémon haben eine Region. */
+  region?: string;
 }
 
 export interface BrowsePage {
@@ -363,6 +365,8 @@ export async function getBrowseCount(filter: BrowseFilter = {}): Promise<number>
   const constraints: QueryConstraint[] = [];
   if (filter.setId) {
     constraints.push(where('setId', '==', filter.setId));
+  } else if (filter.region) {
+    constraints.push(where('region', '==', filter.region));
   } else if (filter.types?.length) {
     constraints.push(where('types', 'array-contains-any', filter.types.slice(0, 30)));
   } else if (filter.type) {
@@ -400,6 +404,10 @@ export async function browseCatalog(
   // durchpaginieren (sehr langsam).
   if (filter.setId) {
     constraints.push(where('setId', '==', filter.setId));
+  } else if (filter.region) {
+    // Region-Gleichheit (nur `__name__`-orderBy bei aktivem where → automatischer
+    // Single-Field-Index, kein Composite nötig).
+    constraints.push(where('region', '==', filter.region));
   } else if (filter.types?.length) {
     // OR über mehrere Typen — array-contains-any (max. 30, einzelnes Array-Feld
     // → kein Composite-Index). Deckt auch den Ein-Typ-Fall ab.

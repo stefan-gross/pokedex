@@ -125,6 +125,7 @@ function browseWhere(f: BrowseFilter): Record<string, unknown> | null {
   const arrHas    = (field: string, v: string) => ({ fieldFilter: { field: { fieldPath: field }, op: 'ARRAY_CONTAINS',     value: { stringValue: v } } });
   const inOp      = (field: string, vs: string[]) => ({ fieldFilter: { field: { fieldPath: field }, op: 'IN',                value: { arrayValue: { values: vs.map(v => ({ stringValue: v })) } } } });
   if (f.setId)                    return eq('setId', f.setId);
+  if (f.region)                   return eq('region', f.region);
   if (f.types?.length)            return arrAny('types', f.types.slice(0, 30));
   if (f.type)                     return arrHas('types', f.type);
   if (f.rarityKeys?.length)       return inOp('rarity', f.rarityKeys.slice(0, 30));

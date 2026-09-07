@@ -34,7 +34,7 @@ const INDEX_SETTINGS = {
   // Reihenfolge = Priorität. Deutscher Name zuerst (= Anzeigename), dann engl.
   searchableAttributes: ['nameDe', 'name', 'unordered(artist)', 'number', 'setName', 'setCode'],
   // Facetten für die Filter (Zähler über die GANZE Treffermenge).
-  attributesForFaceting: ['searchable(setId)', 'rarity', 'supertype', 'types', 'subtypes', 'searchable(artist)'],
+  attributesForFaceting: ['searchable(setId)', 'rarity', 'supertype', 'types', 'subtypes', 'searchable(artist)', 'region'],
   // Tiebreak bei gleicher Relevanz: alphabetisch nach dt. Sortiername.
   customRanking: ['asc(nameSortLower)'],
 };

@@ -89,7 +89,7 @@ export function DeckCardSearchSheet({ open, onClose, counts, ownedTcgIds, onAdd,
   // Geteilte Filterlogik (identisch zur Suche/Set-Detailseite).
   const facetState = useMemo<FacetState>(() => ({
     ownedFilter, activeSupertype, activeTypes,
-    activeEvolutions: new Set(), activeSpecialMechanics: new Set(), activeRarity: null,
+    activeEvolutions: new Set(), activeSpecialMechanics: new Set(), activeRarity: null, activeRegion: '',
     ownedIds: ownedTcgIds,
   }), [ownedFilter, activeSupertype, activeTypesKey, ownedTcgIds]); // eslint-disable-line react-hooks/exhaustive-deps
 

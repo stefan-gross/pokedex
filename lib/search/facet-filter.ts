@@ -9,7 +9,7 @@ export type Supertype = 'Pokémon' | 'Trainer' | 'Energy';
 
 /** Facetten-Dimensionen — u.a. für den `skip`-Parameter der kreuzreaktiven
  *  Zähler (siehe `applyFacetFilters`). */
-export type FacetDim = 'owned' | 'supertype' | 'types' | 'evolutions' | 'specialMechanics' | 'rarity';
+export type FacetDim = 'owned' | 'supertype' | 'types' | 'evolutions' | 'specialMechanics' | 'rarity' | 'region';
 
 export interface FacetState {
   ownedFilter: OwnedFilter;
@@ -18,6 +18,8 @@ export interface FacetState {
   activeEvolutions: Set<string>;
   activeSpecialMechanics: Set<string>;
   activeRarity: string | null;
+  /** Pokémon-Region (z.B. 'Kanto') — leer/'' = alle. */
+  activeRegion: string;
   ownedIds: Set<string>;
 }
 
@@ -51,6 +53,9 @@ export function applyFacetFilters(cards: CardInfo[], f: FacetState, skip?: Facet
   }
   if (skip !== 'rarity' && f.activeRarity) {
     r = r.filter(c => rarityLabelOf(c.rarity) === f.activeRarity);
+  }
+  if (skip !== 'region' && f.activeRegion) {
+    r = r.filter(c => c.region === f.activeRegion);
   }
   return r;
 }

@@ -23,7 +23,7 @@ export interface AlgoliaSearchResult {
  *  (Aufrufer fällt auf die bestehende Suche zurück). */
 export async function searchViaAlgolia(
   query: string,
-  opts: { displayLimit?: number } = {},
+  opts: { displayLimit?: number; region?: string } = {},
 ): Promise<AlgoliaSearchResult | null> {
   const client = getAlgoliaSearchClient();
   if (!client) return null;
@@ -42,6 +42,7 @@ export async function searchViaAlgolia(
     facetFilters.push(vals.map(v => `subtypes:${v}`));
   }
   if (parsed.supertype) facetFilters.push(`supertype:${parsed.supertype}`);
+  if (opts.region) facetFilters.push(`region:${opts.region}`);
 
   // Pokédex-Nummer („#25"/reine Zahl 1–1025) → numericFilter statt Volltext.
   const numericFilters: string[] = [];

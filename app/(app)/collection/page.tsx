@@ -87,6 +87,14 @@ const SEARCH_SORT_OPTIONS: { value: SearchSortKey; label: string }[] = [
   { value: 'price',   label: 'Preis'       },
 ];
 
+// Pokémon-Regionen (deutsch, aus der Generation abgeleitet — siehe
+// GENERATION_REGIONS in lib/pokeapi.ts). Reihenfolge = Generationen.
+const REGION_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: 'Alle Regionen' },
+  ...['Kanto', 'Johto', 'Hoenn', 'Sinnoh', 'Einall', 'Kalos', 'Alola', 'Galar', 'Paldea']
+    .map(r => ({ value: r, label: r })),
+];
+
 function fmt(n: number) { return n.toLocaleString('de'); }
 
 function CollectionContent() {
@@ -99,6 +107,7 @@ function CollectionContent() {
   const [activeSupertype,  setActiveSupertype]  = useState<Supertype | 'all'>('all');
   const [ownedFilter,      setOwnedFilter]      = useState<OwnedFilter>('all');
   const [activeRarity,     setActiveRarity]     = useState<string | null>(null);
+  const [activeRegion,     setActiveRegion]     = useState('');
   const [activeEvolutions, setActiveEvolutions] = useState<Set<string>>(new Set());
   const [activeSpecialMechanics, setActiveSpecialMechanics] = useState<Set<string>>(new Set());
   const [evoLineActive,    setEvoLineActive]    = useState(false);
@@ -255,7 +264,7 @@ function CollectionContent() {
 
   // ── Exakte Gesamtzahl für aktuellen Browse-Filter ─────────────
   const activeEvolutionsKey = useMemo(() => [...activeEvolutions].sort().join(','), [activeEvolutions]);
-  const hasActiveFilterForCount = !!(filterSet || activeTypes.size || activeSupertype !== 'all' || activeEvolutions.size || activeSpecialMechanics.size || ownedFilter !== 'all' || activeRarity);
+  const hasActiveFilterForCount = !!(filterSet || activeTypes.size || activeSupertype !== 'all' || activeEvolutions.size || activeSpecialMechanics.size || ownedFilter !== 'all' || activeRarity || activeRegion);
   useEffect(() => {
     if (!hasActiveFilterForCount) { setBrowseTotal(null); return; }
     // "Vorhanden" wird per ID komplett geladen (kein Server-Count nötig) → null,
@@ -266,20 +275,22 @@ function CollectionContent() {
     // fälschlich den ganzen Katalog statt der Treffer).
     const browseFilter = filterSet
       ? { setId: filterSet }
-      : activeTypes.size > 0
-        ? { types: [...activeTypes] }
-        : activeRarity
-          ? { rarityKeys: rarityMatchValues(activeRarity) }
-          : activeSpecialMechanics.size > 0
-            ? { specialMechanics: [...activeSpecialMechanics] }
-            : activeEvolutions.size === 1
-              ? { evolutionStage: [...activeEvolutions][0] }
-              : activeSupertype !== 'all'
-                ? { supertype: activeSupertype }
-                : {};
+      : activeRegion
+        ? { region: activeRegion }
+        : activeTypes.size > 0
+          ? { types: [...activeTypes] }
+          : activeRarity
+            ? { rarityKeys: rarityMatchValues(activeRarity) }
+            : activeSpecialMechanics.size > 0
+              ? { specialMechanics: [...activeSpecialMechanics] }
+              : activeEvolutions.size === 1
+                ? { evolutionStage: [...activeEvolutions][0] }
+                : activeSupertype !== 'all'
+                  ? { supertype: activeSupertype }
+                  : {};
     getBrowseCount(browseFilter).then(n => setBrowseTotal(n >= 0 ? n : null)).catch(() => setBrowseTotal(null));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterSet, activeTypesKey, activeSupertype, activeEvolutionsKey, activeRarity, activeSpecialMechanics, ownedFilter, hasActiveFilterForCount]);
+  }, [filterSet, activeTypesKey, activeSupertype, activeEvolutionsKey, activeRarity, activeRegion, activeSpecialMechanics, ownedFilter, hasActiveFilterForCount]);
 
   // ── Derived ───────────────────────────────────────────────────
   const ownedMap = useMemo(() => {
@@ -305,9 +316,10 @@ function CollectionContent() {
     evolutionStages: activeEvolutions.size > 0 ? [...activeEvolutions] : undefined,
     specialMechanics: activeSpecialMechanics.size > 0 ? [...activeSpecialMechanics] : undefined,
     rarity:          activeRarity ?? undefined,
+    region:          activeRegion || undefined,
     ownedFilter,
     ownedIds,
-  }), [filterSet, activeSupertype, activeTypesKey, activeEvolutionsKey, activeSpecialMechanicsKey, activeRarity, ownedFilter, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [filterSet, activeSupertype, activeTypesKey, activeEvolutionsKey, activeSpecialMechanicsKey, activeRarity, activeRegion, ownedFilter, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const {
     cards: browseCards, loading: browseLoading,
@@ -356,6 +368,9 @@ function CollectionContent() {
       let cards: CatalogCard[]; let sortHint: 'pokedex' | undefined;
       const killed = (() => { try { return localStorage.getItem('pokedex.search.algolia') === '0'; } catch { return false; } })();
       const useAlgolia = !killed && isAlgoliaConfigured();
+      // Region NICHT an Algolia geben: sie wird client-seitig über den Facetten-
+      // Filter angewandt (wie Rarity), damit das Auto-Lockern bei 0 Treffern
+      // greift (server-seitig gefiltert käme der Fetch leer zurück → kein Relax).
       const algolia = useAlgolia ? await searchViaAlgolia(q, { displayLimit: SEARCH_DISPLAY_LIMIT }) : null;
       if (algolia) {
         cards = algolia.cards; sortHint = undefined;
@@ -468,8 +483,8 @@ function CollectionContent() {
   }, [evoLineActive, results.length > 0 && results[0]?.id]);
 
   const facetState = useMemo<FacetState>(() => ({
-    ownedFilter, activeSupertype, activeTypes, activeEvolutions, activeSpecialMechanics, activeRarity, ownedIds,
-  }), [ownedFilter, activeSupertype, activeTypesKey, activeEvolutionsKey, activeSpecialMechanicsKey, activeRarity, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
+    ownedFilter, activeSupertype, activeTypes, activeEvolutions, activeSpecialMechanics, activeRarity, activeRegion, ownedIds,
+  }), [ownedFilter, activeSupertype, activeTypesKey, activeEvolutionsKey, activeSpecialMechanicsKey, activeRarity, activeRegion, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filter + Suche: Wenn ein NEUES Suchergebnis (results) durch die aktiven
   // Filter auf 0 fällt (obwohl es ungefilterte Treffer gibt), werden GENAU die
@@ -489,6 +504,7 @@ function CollectionContent() {
     // Reihenfolge: erst spezifische/optische Filter lockern, zuletzt Owned.
     const steps: { active: boolean; label: string; relax: () => void; drop: () => void }[] = [
       { active: !!local.activeRarity,               label: 'Seltenheit',   relax: () => { local.activeRarity = null; },              drop: () => setActiveRarity(null) },
+      { active: !!local.activeRegion,               label: 'Region',       relax: () => { local.activeRegion = ''; },               drop: () => setActiveRegion('') },
       { active: local.activeSpecialMechanics.size > 0, label: 'Sonderformen', relax: () => { local.activeSpecialMechanics = new Set(); }, drop: () => setActiveSpecialMechanics(new Set()) },
       { active: local.activeEvolutions.size > 0,    label: 'Stufe',        relax: () => { local.activeEvolutions = new Set(); },     drop: () => setActiveEvolutions(new Set()) },
       { active: local.activeTypes.size > 0,         label: 'Typ',          relax: () => { local.activeTypes = new Set(); },          drop: () => setActiveTypes(new Set()) },
@@ -741,6 +757,19 @@ function CollectionContent() {
                 options={typeOptions}
                 placeholder="Alle Typen"
                 aria-label="Pokémon-Typ"
+              />
+            )}
+
+            {/* Pokémon-Region (nur Pokémon haben eine Region → im Pokémon/Alle-Kontext). */}
+            {showTypePills && (
+              <CustomSelect
+                value={activeRegion}
+                onChange={v => setActiveRegion(v)}
+                onClear={activeRegion ? () => setActiveRegion('') : undefined}
+                options={REGION_OPTIONS}
+                height="sm"
+                fullWidth
+                aria-label="Region"
               />
             )}
 

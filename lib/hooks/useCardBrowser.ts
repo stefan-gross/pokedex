@@ -25,6 +25,7 @@ export type CardBrowserFilter = {
   evolutionStages?: string[];       // ['Basic'] | ['Stage 1', 'Stage 2'] etc. — leer = alle
   specialMechanics?: string[];      // ['VMAX'] | ['EX', 'V'] etc. — leer = alle, rein clientseitig
   rarity?:          string;         // Rarity-Label aus RARITY_GROUPS
+  region?:          string;         // Pokémon-Region (z.B. 'Kanto') — nur Pokémon
   ownedFilter?:     'all' | 'owned' | 'missing';
   ownedIds?:        Set<string>;
 };
@@ -88,6 +89,9 @@ function applyClientFilters(cards: CatalogCard[], f: CardBrowserFilter): Catalog
   if (f.rarity) {
     r = r.filter(c => rarityLabelOf(c.rarity) === f.rarity);
   }
+  if (f.region) {
+    r = r.filter(c => c.region === f.region);
+  }
   if (f.ownedFilter === 'owned')   r = r.filter(c => f.ownedIds?.has(c.id));
   if (f.ownedFilter === 'missing') r = r.filter(c => !f.ownedIds?.has(c.id));
   return r;
@@ -99,6 +103,11 @@ function makeBrowseFilter(f: CardBrowserFilter): BrowseFilter {
   // (client-seitig über die kleine Set-Menge) ohnehin billig.
   if (f.setId) {
     return { setId: f.setId };
+  }
+  // Region server-seitig (eq + __name__-orderBy → automatischer Einzelfeld-Index,
+  // kein Composite nötig). Moderat selektiv (~5–22 %) → macht den Rest client-billig.
+  if (f.region) {
+    return { region: f.region };
   }
   if (f.types?.length) {
     // ALLE gewählten Typen (OR) server-seitig — vorher nur types[0], wodurch
@@ -240,7 +249,7 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
     run();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter.setId, typesKey, filter.supertype, evolutionStagesKey, specialMechanicsKey, filter.rarity, filter.ownedFilter, ownedKey, sort, desc]);
+  }, [filter.setId, filter.region, typesKey, filter.supertype, evolutionStagesKey, specialMechanicsKey, filter.rarity, filter.ownedFilter, ownedKey, sort, desc]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
