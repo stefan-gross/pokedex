@@ -16,14 +16,28 @@ import type { CatalogCard } from '@/lib/firestore/catalog';
 export interface AlgoliaSearchResult {
   cards: CatalogCard[];
   processingMs?: number;
+  /** Wahre Gesamttrefferzahl laut Algolia (kann > cards.length sein, wenn die
+   *  Menge über `maxHits` hinaus gedeckelt wurde). */
   nbHits?: number;
+  /** Anzahl Algolia-Such-Requests, die dieser Aufruf verbraucht hat (Seiten). */
+  requests?: number;
 }
 
-/** Volltext-/Facetten-Suche via Algolia. `null` = nicht konfiguriert/Fehler
- *  (Aufrufer fällt auf die bestehende Suche zurück). */
+/** Wie viele Records maximal materialisiert werden (Deckel gegen Riesen-Payloads
+ *  bei sehr breiten Suchen). Deckt praktisch alle echten Suchen ab; darüber wird
+ *  die wahre Gesamtzahl trotzdem via `nbHits` angezeigt. Algolia liefert je
+ *  Request bis zu 1000 Hits → maxHits/1000 = max. Requests pro Suche. */
+const ALGOLIA_MAX_HITS = 4000;
+const ALGOLIA_PAGE_SIZE = 1000;
+
+/** Volltext-/Facetten-Suche via Algolia. Holt die KOMPLETTE Treffermenge
+ *  (mehrseitig, gedeckelt bei `ALGOLIA_MAX_HITS`), damit Facetten-Zähler,
+ *  Sortierung und Gesamtzahl clientseitig über alle Treffer exakt sind.
+ *  `null` = nicht konfiguriert/Fehler (Aufrufer fällt auf die bestehende Suche
+ *  zurück). */
 export async function searchViaAlgolia(
   query: string,
-  opts: { displayLimit?: number; region?: string } = {},
+  opts: { region?: string; maxHits?: number } = {},
 ): Promise<AlgoliaSearchResult | null> {
   const client = getAlgoliaSearchClient();
   if (!client) return null;
@@ -55,20 +69,38 @@ export async function searchViaAlgolia(
     textQuery = ''; // die Zahl nicht zusätzlich als Volltext suchen
   }
 
-  const hitsPerPage = Math.min(opts.displayLimit ?? 400, 1000);
+  const maxHits = Math.min(opts.maxHits ?? ALGOLIA_MAX_HITS, ALGOLIA_MAX_HITS);
+  const commonParams = {
+    query: textQuery,
+    hitsPerPage: ALGOLIA_PAGE_SIZE,
+    ...(facetFilters.length ? { facetFilters } : {}),
+    ...(numericFilters.length ? { numericFilters } : {}),
+  };
   try {
-    const res = await client.searchSingleIndex({
+    // Erste Seite holen — liefert nbHits (wahre Gesamtzahl) + Seite 0.
+    const first = await client.searchSingleIndex({
       indexName: ALGOLIA_INDEX,
-      searchParams: {
-        query: textQuery,
-        hitsPerPage,
-        page: 0,
-        ...(facetFilters.length ? { facetFilters } : {}),
-        ...(numericFilters.length ? { numericFilters } : {}),
-      },
+      searchParams: { ...commonParams, page: 0 },
     });
-    const cards = (res.hits as unknown as CatalogCard[]).map(h => ({ ...h }));
-    return { cards, processingMs: res.processingTimeMS, nbHits: res.nbHits };
+    const cards = (first.hits as unknown as CatalogCard[]).map(h => ({ ...h }));
+    const nbHits = first.nbHits ?? cards.length;
+    let requests = 1;
+
+    // Weitere Seiten nachladen, bis die Menge komplett (oder der Deckel erreicht)
+    // ist. So sind Facetten/Sortierung/Gesamtzahl clientseitig über ALLE Treffer.
+    const wanted = Math.min(nbHits, maxHits);
+    for (let page = 1; cards.length < wanted; page++) {
+      const res = await client.searchSingleIndex({
+        indexName: ALGOLIA_INDEX,
+        searchParams: { ...commonParams, page },
+      });
+      requests++;
+      const more = (res.hits as unknown as CatalogCard[]).map(h => ({ ...h }));
+      cards.push(...more);
+      if (more.length === 0) break; // Sicherheitsausstieg
+    }
+
+    return { cards, processingMs: first.processingTimeMS, nbHits, requests };
   } catch {
     return null;
   }

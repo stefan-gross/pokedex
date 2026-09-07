@@ -130,6 +130,10 @@ function CollectionContent() {
   const suggestIndex = useSuggestIndex();
   const [relaxedNote,   setRelaxedNote]   = useState<string | null>(null);
   const [results,       setResults]       = useState<CardInfo[]>([]);
+  // Wahre Gesamttrefferzahl aus Algolia, falls die materialisierte Menge am
+  // Sicherheits-Deckel (ALGOLIA_MAX_HITS) abgeschnitten wurde. null = nicht
+  // gedeckelt (dann ist results bereits vollständig und displayed.length exakt).
+  const [searchTotalHint, setSearchTotalHint] = useState<number | null>(null);
   const [ownedCards,    setOwnedCards]    = useState<CardDoc[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchSort,    setSearchSort]    = useState<SearchSortKey>('number');
@@ -376,12 +380,19 @@ function CollectionContent() {
       // Region NICHT an Algolia geben: sie wird client-seitig über den Facetten-
       // Filter angewandt (wie Rarity), damit das Auto-Lockern bei 0 Treffern
       // greift (server-seitig gefiltert käme der Fetch leer zurück → kein Relax).
-      const algolia = useAlgolia ? await searchViaAlgolia(q, { displayLimit: SEARCH_DISPLAY_LIMIT }) : null;
+      // Algolia holt die KOMPLETTE Treffermenge (mehrseitig, gedeckelt in
+      // searchViaAlgolia) — kein 400er-Limit mehr. So sind Facetten-Zähler,
+      // Sortierung und Gesamtzahl clientseitig über ALLE Treffer exakt.
+      const algolia = useAlgolia ? await searchViaAlgolia(q) : null;
       if (algolia) {
-        // Genutzte Algolia-Suche global zählen (Budget/Anzeige) + lokal hochzählen.
-        void recordAlgoliaSearch();
-        algoliaUsageRef.current += 1; setAlgoliaUsage(algoliaUsageRef.current);
+        // Genutzte Algolia-Suche(n) global zählen (Budget/Anzeige) + lokal
+        // hochzählen. Eine breite Suche kann mehrere Seiten-Requests kosten.
+        const reqs = algolia.requests ?? 1;
+        for (let i = 0; i < reqs; i++) void recordAlgoliaSearch();
+        algoliaUsageRef.current += reqs; setAlgoliaUsage(algoliaUsageRef.current);
         cards = algolia.cards; sortHint = undefined;
+        // Nur setzen, wenn tatsächlich am Deckel abgeschnitten (nbHits > geladen).
+        setSearchTotalHint((algolia.nbHits ?? cards.length) > cards.length ? (algolia.nbHits ?? null) : null);
       } else {
         // Gemeinsame Server-Such-Pipeline (Dex → Name → Mehrwort Name∪Illustrator
         // → Illustrator-Fallback) — bewusst OHNE `setId`: wir holen ALLE Treffer,
@@ -397,9 +408,10 @@ function CollectionContent() {
           // (nur bei fokussierter Suche ≤ 4 Arten aktiv, s. searchCatalogCards).
           bridgeByDex: true,
         }));
+        setSearchTotalHint(null); // Firestore-Pfad liefert bereits die volle Menge
       }
 
-      if (cards.length === 0) { setResults([]); setSets([]); return; }
+      if (cards.length === 0) { setResults([]); setSets([]); setSearchTotalHint(null); return; }
 
       const infos = cards.map(catalogCardToInfo);
       // Set-Liste fürs Dropdown aus ALLEN Treffern (unabhängig vom gewählten Set),
@@ -606,6 +618,11 @@ function CollectionContent() {
       : !hasActiveFilterForCount && catalogCount > 0
         ? fmt(catalogCount)
         : browseCards.length > 0 ? `${browseCards.length}${hasMore ? '+' : ''}` : null
+    // Suche: displayed.length ist die (gefilterte) Gesamtzahl — results hält die
+    // komplette Algolia-Menge. Nur wenn am Deckel abgeschnitten UND kein Facetten-
+    // Filter aktiv ist, die wahre Gesamtzahl mit „+" zeigen (sehr breite Suchen).
+    : searchTotalHint != null && displayed.length === results.length
+      ? `${fmt(searchTotalHint)}+`
     : displayed.length > 0 ? fmt(displayed.length) : null;
   const showResultCount = true;
 

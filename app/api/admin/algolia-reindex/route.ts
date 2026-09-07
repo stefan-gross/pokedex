@@ -37,6 +37,10 @@ const INDEX_SETTINGS = {
   attributesForFaceting: ['searchable(setId)', 'rarity', 'supertype', 'types', 'subtypes', 'searchable(artist)', 'region'],
   // Tiebreak bei gleicher Relevanz: alphabetisch nach dt. Sortiername.
   customRanking: ['asc(nameSortLower)'],
+  // Pagination-Grenze anheben (Default 1000), damit breite Suchen ihre komplette
+  // Treffermenge holen können (→ exakte Facetten-Zähler, globale Sortierung,
+  // echte Gesamtzahl). Deckungsgleich mit ALGOLIA_MAX_HITS in algolia-search.ts.
+  paginationLimitedTo: 4000,
 };
 
 /**
@@ -73,6 +77,11 @@ export async function POST(req: NextRequest) {
     if (!after) {
       await client.setSettings({ indexName: ALGOLIA_INDEX, indexSettings: INDEX_SETTINGS });
       settingsSet = true;
+      // Nur Settings anwenden (kein Re-Scan der 21k Docs) — z.B. um allein
+      // paginationLimitedTo/customRanking zu aktualisieren.
+      if (req.nextUrl.searchParams.get('settingsOnly') === '1') {
+        return NextResponse.json({ ok: true, settingsSet, scanned: 0, indexed: 0, hasMore: false });
+      }
     }
 
     while (Date.now() - startedAt < BUDGET_MS) {
