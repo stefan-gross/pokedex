@@ -24,6 +24,11 @@ setCode — the printed set abbreviation (2–4 contiguous uppercase letters):
       "<RegMark> <CODE> <LANG> <NNN>/<TTT>",  e.g. "J ASC DE 005/217" → setCode = "ASC".
     The CODE sits between the regulation-mark (single letter D/E/F/G/H/I/J)
     and the language marker (DE/EN/FR/ES/IT/PT).
+  - Some newer cards — especially BASIC ENERGY cards and some special sets — print
+    the code at BOTTOM-LEFT WITHOUT a regulation mark and WITHOUT a slash-total, as
+    "<CODE> <LANG> <NNN>", e.g. "MEE DE 004" → setCode = "MEE", number = "004".
+    Here the CODE is the 2–4 uppercase letters IMMEDIATELY BEFORE the language
+    marker (DE/EN/FR/ES/IT/PT). Read it even though there is no reg mark and no "/".
   - ALL pre-Scarlet&Violet cards (Sword&Shield, Sun&Moon, XY, B&W, HGSS, DPP,
     EX-era, Neo, Base/Jungle/Fossil) have only a GRAPHICAL set symbol at the
     stamp position — no letter code. → setCode = null.
@@ -38,7 +43,9 @@ number — the COLLECTOR number: 1–3 digits IMMEDIATELY before the slash in th
   CRITICAL — do NOT confuse it with the Pokédex number:
   - The collector number is ALWAYS the part before a "/". If you cannot find a
     "NNN/TTT" slash pair AND there is no letter-prefixed promo number (see below),
-    number is null — do NOT substitute another number.
+    number is null — do NOT substitute another number. EXCEPTION: the
+    "<CODE> <LANG> <NNN>" bottom-left format (see setCode, e.g. "MEE DE 004") — the
+    digits after the language marker ARE the collector number (→ "004").
   - A standalone 3–4 digit value after "Nr."/"NO."/"#" (e.g. "Nr. 0877") is the
     POKÉDEX number → it goes in nationalDexNumber, NEVER in number.
   - A 4-digit value (e.g. "0877", "1025") is virtually never a collector number
