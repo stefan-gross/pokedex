@@ -30,7 +30,7 @@ export function CardSearchField({
   placeholder,
   size = 'md',
   autoFocus,
-  suggestLimit = 8,
+  suggestLimit = 5,
   className,
 }: {
   value: string;

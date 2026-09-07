@@ -80,10 +80,12 @@ function dedupeBaseNames(names: string[]): string[] {
   return out;
 }
 
-export function suggest(index: SuggestIndex | null, q: string, limit = 8): Suggestion[] {
+export function suggest(index: SuggestIndex | null, q: string, limit = 5): Suggestion[] {
   if (!index) return [];
   const s = q.trim().toLowerCase();
-  if (s.length < 2) return [];
+  // Erst ab 3 Zeichen vorschlagen — kürzere Eingaben liefern zu viel Rauschen und
+  // ein überhohes Panel; ab 3 sind die Vorschläge trennscharf.
+  if (s.length < 3) return [];
   // Namensvorschläge auf Basis-Pokémon reduzieren (Varianten zusammenfassen).
   const baseNames = dedupeBaseNames(index.names);
   const out: Suggestion[] = [];
@@ -93,7 +95,10 @@ export function suggest(index: SuggestIndex | null, q: string, limit = 8): Sugge
     if (seen.has(key)) return; seen.add(key);
     out.push({ value, kind });
   };
-  // Ranking: Präfix-Treffer vor Substring; Namen zuerst.
+  // Ranking: Präfix-Treffer vor Substring; Namen zuerst. Innerhalb der Präfix-
+  // Treffer: exakte Gleichheit ganz oben, dann kürzere Namen (= näher an der
+  // Eingabe, meist der „Haupt"-Name) vor längeren, dann alphabetisch. So steht
+  // bei „glurak" auch wirklich „Glurak" oben statt alphabetisch „Glumanda".
   const rank = (arr: string[], kind: Suggestion['kind']) => {
     const pref: string[] = [], sub: string[] = [];
     for (const v of arr) {
@@ -101,6 +106,12 @@ export function suggest(index: SuggestIndex | null, q: string, limit = 8): Sugge
       if (lv.startsWith(s)) pref.push(v);
       else if (lv.includes(s)) sub.push(v);
     }
+    pref.sort((a, b) => {
+      const ae = a.toLowerCase() === s ? 0 : 1, be = b.toLowerCase() === s ? 0 : 1;
+      if (ae !== be) return ae - be;            // exakter Treffer zuerst
+      if (a.length !== b.length) return a.length - b.length; // kürzere zuerst
+      return a.localeCompare(b, 'de');           // sonst alphabetisch
+    });
     return [...pref, ...sub].slice(0, limit).map(v => [v, kind] as const);
   };
   const ranked = [
