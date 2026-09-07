@@ -15,7 +15,7 @@ import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { LegendButton } from '@/components/ui/LegendButton';
 import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
 import { getCards } from '@/lib/firestore/cards';
-import type { FilterCounts } from '@/lib/firestore/catalog';
+import type { FilterCounts, CatalogCard } from '@/lib/firestore/catalog';
 // REST-Varianten (kein WebChannel-Cold-Start) — Aliase, Aufrufstellen unverändert.
 import {
   getCardsByDexNumberRest as getCardsByDexNumber,
@@ -26,6 +26,7 @@ import {
   getBrowseCountRest as getBrowseCount,
 } from '@/lib/firestore/catalog-rest';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
+import { searchViaAlgolia } from '@/lib/search/algolia-search';
 import { recordSearch } from '@/lib/firestore/search-stats';
 import { correctQuery } from '@/lib/search/suggest-index';
 import { useSuggestIndex } from '@/lib/search/use-suggest-index';
@@ -348,20 +349,30 @@ function CollectionContent() {
       // blockiert die Suche nicht.
       void recordSearch();
 
-      // Gemeinsame Server-Such-Pipeline (Dex → Name → Mehrwort Name∪Illustrator
-      // → Illustrator-Fallback) — bewusst OHNE `setId`: wir holen ALLE Treffer,
-      // damit das Set-Dropdown genau die Sets zeigt, in denen der Suchbegriff
-      // vorkommt. Die Eingrenzung auf das gewählte Set passiert danach
-      // client-seitig (kein zweiter Query, kein Composite-Index nötig).
-      const { cards, sortHint } = await searchCatalogCards(q, {
-        displayLimit: SEARCH_DISPLAY_LIMIT,
-        candidateLimit: SEARCH_CANDIDATE_LIMIT,
-        minComboLen: MIN_COMBO_LEN,
-        // Dex-Brücke: über die Pokédex-Nr. der Namens-Treffer die GANZE Art
-        // nachziehen — „Glurak" findet so auch „Mega-Glurak"/„Glurak ex" usw.
-        // (nur bei fokussierter Suche ≤ 4 Arten aktiv, s. searchCatalogCards).
-        bridgeByDex: true,
-      });
+      // Prototyp-Umschalter: mit localStorage-Flag `pokedex.search.algolia=1`
+      // läuft die Suche über Algolia (Volltext/Facetten/Sortierung server-seitig).
+      // Fällt bei Fehler/nicht konfiguriert auf die bestehende Suche zurück.
+      let cards: CatalogCard[]; let sortHint: 'pokedex' | undefined;
+      const useAlgolia = (() => { try { return localStorage.getItem('pokedex.search.algolia') === '1'; } catch { return false; } })();
+      const algolia = useAlgolia ? await searchViaAlgolia(q, { displayLimit: SEARCH_DISPLAY_LIMIT }) : null;
+      if (algolia) {
+        cards = algolia.cards; sortHint = undefined;
+      } else {
+        // Gemeinsame Server-Such-Pipeline (Dex → Name → Mehrwort Name∪Illustrator
+        // → Illustrator-Fallback) — bewusst OHNE `setId`: wir holen ALLE Treffer,
+        // damit das Set-Dropdown genau die Sets zeigt, in denen der Suchbegriff
+        // vorkommt. Die Eingrenzung auf das gewählte Set passiert danach
+        // client-seitig (kein zweiter Query, kein Composite-Index nötig).
+        ({ cards, sortHint } = await searchCatalogCards(q, {
+          displayLimit: SEARCH_DISPLAY_LIMIT,
+          candidateLimit: SEARCH_CANDIDATE_LIMIT,
+          minComboLen: MIN_COMBO_LEN,
+          // Dex-Brücke: über die Pokédex-Nr. der Namens-Treffer die GANZE Art
+          // nachziehen — „Glurak" findet so auch „Mega-Glurak"/„Glurak ex" usw.
+          // (nur bei fokussierter Suche ≤ 4 Arten aktiv, s. searchCatalogCards).
+          bridgeByDex: true,
+        }));
+      }
 
       if (cards.length === 0) { setResults([]); setSets([]); return; }
 
