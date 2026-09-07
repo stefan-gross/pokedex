@@ -2413,14 +2413,16 @@ export default function ScannerPage() {
       {mode === 'scanning' && scanMode === 'add' && jobs.length > 0 && (
         <div
           className="absolute left-0 right-0 z-10 px-4"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)' }}
+          // Über der „prüfen"-Pille (bottom 90, ~40px) und der BottomNav-Leiste,
+          // damit weder Pille noch die vergrößerte letzte Karte überlappen.
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 140px)' }}
         >
           {/* „Prüfen"-Aktion sitzt jetzt als fest verankerte Pille in der
               BottomNav-Leiste (gridVisible) — nicht mehr floatend über dem
               Slider. */}
           <div
             ref={sliderRef}
-            className="flex gap-2 overflow-x-auto pb-3 pt-3"
+            className="flex gap-2 overflow-x-auto pb-3 pt-8"
             style={{ scrollbarWidth: 'none', scrollSnapType: 'x mandatory' }}
           >
             {(() => {
@@ -2450,7 +2452,7 @@ export default function ScannerPage() {
         const close = () => setCorrectJobId(null);
         const isBlind = job.status === 'error' && classifyJobError(job).kind === 'gemini-blind';
         return (
-          <div className="absolute inset-0 z-50" style={{ background: 'rgba(0,0,0,0.9)' }}>
+          <div className="fixed inset-0 z-[60]" style={{ background: 'rgba(0,0,0,0.9)' }}>
             <button
               type="button"
               onClick={close}
@@ -3121,18 +3123,26 @@ interface ScannedCardTileProps {
 // Varianten-/Zustand-Pillen, kein Wert-/Tiefen-Badge — die Feinbearbeitung
 // passiert beim Antippen (Korrektur-Ansicht) bzw. im Review-Grid/Bulk-Add.
 function ScannedCardTile({ job, isLatest, onRemove, onOpen }: ScannedCardTileProps) {
-  const img       = cardImgUrl(job);
   const card      = job.result?.card;
   const isError   = job.status === 'error';
   const borderStatus = computeBorderStatus(job);
-  // Scan-Foto als Fallback — bei nicht erkannter Karte ODER kaputtem/fehlendem
-  // Katalogbild zeigen wir das Foto (wie im Einzelscan) statt eines „?".
+  // Scan-Foto als LETZTER Fallback — bei nicht erkannter Karte ODER wenn alle
+  // Katalogbild-Kandidaten scheitern, zeigen wir das Foto (wie im Einzelscan)
+  // statt eines „?".
   const scanPhoto = job.debug?.imageBase64
     ? `data:${job.debug?.mimeType ?? 'image/jpeg'};base64,${job.debug.imageBase64}`
     : null;
-  const [cardImgFailed, setCardImgFailed] = useState(false);
-  const cardImg = (!isError && img && !cardImgFailed) ? img : null;   // Katalogbild, sofern es lädt
-  const shown   = cardImg ?? scanPhoto;                                // sonst das Scan-Foto
+  // ALLE Katalog-Bild-Kandidaten durchprobieren (wie RecognizedCardLarge) — nicht
+  // nur den ersten. So zeigt die Kachel dasselbe Bild wie das Korrektur-Overlay
+  // (und fällt nur bei echtem Fehlschlag aufs Scan-Foto zurück).
+  const cardCandidates = (!isError && card)
+    ? cardImageCandidates(card, { size: 'small', language: job.result?.language })
+    : [];
+  const [candIdx, setCandIdx] = useState(0);
+  // Karte gewechselt (z.B. nach Korrigieren) → Kandidaten neu von vorn probieren.
+  useEffect(() => { setCandIdx(0); }, [card?.id]);
+  const cardImg = candIdx < cardCandidates.length ? cardCandidates[candIdx] : null;
+  const shown   = cardImg ?? scanPhoto;
 
   return (
     <div
@@ -3140,7 +3150,7 @@ function ScannedCardTile({ job, isLatest, onRemove, onOpen }: ScannedCardTilePro
       style={{
         width: TILE_WIDTH_CSS,
         scrollSnapAlign: 'end',
-        transform: isLatest ? 'scale(1.06)' : undefined,
+        transform: isLatest ? 'scale(1.16)' : undefined,
         transformOrigin: 'right bottom',
         transition: 'transform 0.2s ease-out',
         zIndex: isLatest ? 2 : 1,
@@ -3172,7 +3182,9 @@ function ScannedCardTile({ job, isLatest, onRemove, onOpen }: ScannedCardTilePro
             src={shown}
             alt={card?.name ?? 'Scan'}
             className="w-full h-full object-cover"
-            onError={() => setCardImgFailed(true)}
+            // Katalogbild fehlgeschlagen → nächsten Kandidaten; sind alle durch,
+            // greift das Scan-Foto (shown = scanPhoto).
+            onError={() => { if (cardImg) setCandIdx(i => i + 1); }}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-red-500/10">

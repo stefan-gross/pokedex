@@ -149,6 +149,28 @@ export function BottomNav() {
   if (isScanner) {
     return (
       <>
+        {/* „N prüfen"-Chip — fest über der Footer-Leiste, rechtsbündig, mit Text
+            + Zähler-Badge. Nur im Mehrfachscan mit gesammelten Karten. */}
+        {scanState.gridVisible && (
+          <button
+            onClick={() => window.dispatchEvent(new Event(SCAN_GRID_TOGGLE_EVENT))}
+            className="fixed z-50 flex items-center gap-1.5 rounded-full glass-overlay px-3.5 text-white text-[13px] font-semibold active:opacity-90"
+            aria-label="Gescannte Karten prüfen"
+            style={{ bottom: 90, right: 14, height: 40 }}
+          >
+            <LayoutGrid size={16} color="#fff" />
+            <span>prüfen</span>
+            {scanState.jobsCount > 0 && (
+              <span
+                className="min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center"
+                style={{ background: 'var(--pokedex-red)', color: '#fff' }}
+              >
+                {scanState.jobsCount}
+              </span>
+            )}
+          </button>
+        )}
+
         <nav
           className="fixed z-50 flex items-center justify-center"
           style={{
@@ -177,28 +199,6 @@ export function BottomNav() {
               ]}
             />
           </div>
-
-          {/* Grid-/Übersicht-Umschalter — IN der Leiste, zwischen Modus-Switch
-              (links) und Scan-FAB (Mitte). Icon-only mit Zähler-Badge. Nur im
-              Mehrfachscan mit gesammelten Karten. */}
-          {scanState.gridVisible && (
-            <button
-              onClick={() => window.dispatchEvent(new Event(SCAN_GRID_TOGGLE_EVENT))}
-              className="absolute flex items-center justify-center rounded-full active:scale-90 transition-transform"
-              aria-label="Gescannte Karten prüfen"
-              style={{ left: 100, top: '50%', transform: 'translateY(-50%)', width: 44, height: 44 }}
-            >
-              <LayoutGrid size={20} color="#fff" />
-              {scanState.jobsCount > 0 && (
-                <span
-                  className="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center"
-                  style={{ background: 'var(--pokedex-red)', color: '#fff' }}
-                >
-                  {scanState.jobsCount}
-                </span>
-              )}
-            </button>
-          )}
 
           {/* Mittig: nur der Scan-FAB. Karten-Aktionen (Hinzufügen/Entfernen)
               leben jetzt im Kartenblatt (RecognizedAddBar) — der Footer ist rein

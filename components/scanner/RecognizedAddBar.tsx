@@ -214,11 +214,11 @@ export function RecognizedAddBar({
           vom overflow-hidden hier abgeschnitten. */}
       <div className="w-full overflow-hidden" style={regionStyle}>
       <div ref={regionRef} className="flex flex-col gap-2.5">
+        {/* Zustand/Variante/Sprache/Sammlung — im Nur-Korrektur-Modus (Slider/
+            Grid) komplett ausgeblendet (Hinzufügen passiert im Review-Grid). */}
+        {!correctionOnly && (<>
         <div className="h-px w-full bg-white/15" />
 
-        {/* Zustand · Variante · Sprache · Sammlung — ohne (sicher) erkannte Karte
-            deaktiviert (leer/sinnlos), bis über „Korrigieren" eine echte Karte
-            gewählt wurde. */}
         <div className={unresolved ? 'flex flex-col gap-2.5 opacity-40 pointer-events-none select-none' : 'contents'}>
         <div className="grid grid-cols-3 gap-2">
           <Field label="Zustand">
@@ -276,9 +276,10 @@ export function RecognizedAddBar({
           </button>
         </Field>
         </div>
+        </>)}
 
         {/* Hinweis, wenn noch keine echte Karte feststeht — führt zum Korrigieren. */}
-        {unresolved && (
+        {!correctionOnly && unresolved && (
           <p className="text-[13px] leading-snug text-white/75 text-center px-2">
             Karte nicht sicher erkannt — bitte über <span className="font-semibold text-white">Korrigieren</span> die richtige Karte wählen.
           </p>
@@ -334,7 +335,7 @@ export function RecognizedAddBar({
         {/* Verwalten/Entfernen — nur wenn schon Exemplare existieren. Öffnet den
             Exemplar-Drawer; dort wird das konkrete Exemplar (Sammlung + Zustand +
             Variante + Sprache) zum Löschen gewählt. */}
-        {ownedCount > 0 && (
+        {!correctionOnly && ownedCount > 0 && (
           <button
             onClick={onManage}
             className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[13px] font-semibold"
