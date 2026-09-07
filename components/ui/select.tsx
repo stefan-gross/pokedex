@@ -264,10 +264,11 @@ export function CustomSelect<T extends string>({
           <span
             role="button"
             aria-label="Auswahl zurücksetzen"
+            onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); onClear(); }}
-            className="shrink-0 -mr-1 p-1 rounded-full text-glass-muted hover:bg-white/10"
+            className="shrink-0 -mr-1.5 -my-2 p-2.5 rounded-full text-glass-muted hover:bg-white/10 active:bg-white/15"
           >
-            <X size={13} />
+            <X size={15} />
           </span>
         ) : (
           <ChevronDown size={12} className="opacity-70 shrink-0" />
@@ -441,10 +442,11 @@ export function SearchableSelect<T extends string>({
           <span
             role="button"
             aria-label="Auswahl zurücksetzen"
+            onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); onClear(); }}
-            className="shrink-0 -mr-1 p-1 rounded-full text-glass-muted hover:bg-white/10"
+            className="shrink-0 -mr-1.5 -my-2 p-2.5 rounded-full text-glass-muted hover:bg-white/10 active:bg-white/15"
           >
-            <X size={13} />
+            <X size={15} />
           </span>
         ) : (
           <ChevronDown size={12} className="opacity-70 shrink-0" />
