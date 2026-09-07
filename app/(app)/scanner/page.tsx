@@ -615,7 +615,9 @@ export default function ScannerPage() {
         scanMode,
         captureMode,
         jobsCount: addJobsCount,
-        gridVisible: scanMode === 'add' && addJobsCount > 0,
+        // Grid-Umschalter läuft NICHT mehr über die BottomNav, sondern als
+        // beschriftete „Prüfen"-Aktion direkt über dem Slider (s. unten).
+        gridVisible: false,
         reviewMode: mode === 'review',
         canAdd: canAddRecognized,
         canDelete: canDeleteRecognized,
@@ -2343,6 +2345,22 @@ export default function ScannerPage() {
           className="absolute left-0 right-0 z-10 px-4"
           style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)' }}
         >
+          {/* „Prüfen"-Aktion (früher Grid-Button in der BottomNav): beschriftet,
+              rechtsbündig direkt über dem Slider — klarer Abschluss des Scans. */}
+          {addJobsCount > 0 && (
+            <div className="flex justify-end mb-1">
+              <button
+                type="button"
+                onClick={() => toggleGridMode()}
+                aria-label="Gescannte Karten prüfen"
+                className="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-semibold text-white shadow-md active:opacity-90"
+                style={{ background: 'rgba(0,0,0,0.62)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+              >
+                <LayoutGrid size={15} />
+                {addJobsCount} prüfen
+              </button>
+            </div>
+          )}
           <div
             ref={sliderRef}
             className="flex gap-2 overflow-x-auto pb-3 pt-3"
@@ -2356,12 +2374,7 @@ export default function ScannerPage() {
                   key={job.id}
                   job={job}
                   isLatest={idx === addJobs.length - 1}
-                  onToggleFlag={() => toggleManualFlag(job.id)}
                   onRemove={() => removeJob(job.id)}
-                  depthFromTop={addJobs.length - idx}
-                  onFakeReasons={() => setFakeReasonsJobId(job.id)}
-                  onVariantChange={v => setJobVariant(job.id, v)}
-                  onConditionChange={c => setJobCondition(job.id, c)}
                 />
               ));
             })()}
@@ -2951,43 +2964,33 @@ export default function ScannerPage() {
 }
 
 // ───── Scanned-Card-Tile ─────────────────────────────────────────────────
-// Tile-Breite: (100vw − 32px Container-Padding − 24px für 3 Gaps) / 4
-const TILE_WIDTH_CSS = 'calc((100vw - 56px) / 4)';
+// Tile-Breite: so gewählt, dass ~3 Karten voll sichtbar sind und links eine
+// vierte angeschnitten „hervorlugt" (Slider-Hinweis). Container-Padding px-4
+// (32px) + gap-2. Divisor 3.15 statt glatt 3 → der linke Peek.
+const TILE_WIDTH_CSS = 'calc((100vw - 32px) / 3.15)';
 
 interface ScannedCardTileProps {
   job: ScanJob;
   isLatest:          boolean;
-  /** Tap im Slider — nur für none / manual-yellow aktiv (toggelt Flag). */
-  onToggleFlag:      () => void;
   onRemove:          () => void;
-  /** Aktuelle Position des Jobs „von oben" in der Auffang-Box (für Badge). */
-  depthFromTop:      number;
-  onFakeReasons:     () => void;
-  onVariantChange:   (v: CardVariant) => void;
-  onConditionChange: (c: PersistedCondition) => void;
 }
 
-function ScannedCardTile({
-  job, isLatest, onToggleFlag, onRemove, depthFromTop, onFakeReasons,
-  onVariantChange, onConditionChange,
-}: ScannedCardTileProps) {
+// Bewusst reduziert (Nutzerwunsch): nur Kartenbild + EIN Löschen-Button. Keine
+// Varianten-/Zustand-Pillen, kein Wert-/Tiefen-Badge, kein Flag-Tap — die
+// Feinbearbeitung passiert im Review-Grid bzw. beim Bulk-Add.
+function ScannedCardTile({ job, isLatest, onRemove }: ScannedCardTileProps) {
   const img       = cardImgUrl(job);
   const card      = job.result?.card;
   const isError   = job.status === 'error';
   const borderStatus = computeBorderStatus(job);
-  const tappable  = borderStatus === 'none' || borderStatus === 'manual-yellow';
-  const cardVariants = card?.variants?.length ? card.variants : (['standard'] as CardVariant[]);
-  const variant   = job.editedVariant   ?? cardVariants[0];
-  const condition = job.editedCondition ?? 'NM';
-  const condColor = PERSISTED_CONDITION_COLOR[condition];
 
   return (
     <div
-      className="shrink-0 flex flex-col gap-1.5"
+      className="shrink-0"
       style={{
         width: TILE_WIDTH_CSS,
         scrollSnapAlign: 'end',
-        transform: isLatest ? 'scale(1.08)' : undefined,
+        transform: isLatest ? 'scale(1.06)' : undefined,
         transformOrigin: 'right bottom',
         transition: 'transform 0.2s ease-out',
         zIndex: isLatest ? 2 : 1,
@@ -3000,9 +3003,7 @@ function ScannedCardTile({
           aspectRatio: '63 / 88',
           ...borderStyleFor(borderStatus, job.result?.fakeRisk),
           background: '#1a1a1a',
-          cursor: tappable ? 'pointer' : 'default',
         }}
-        onClick={tappable ? onToggleFlag : undefined}
       >
         {job.status === 'processing' ? (
           <div className="w-full h-full flex items-center justify-center">
@@ -3074,102 +3075,16 @@ function ScannedCardTile({
           <img src={img} alt={card?.name ?? ''} className="w-full h-full object-cover" />
         )}
 
-        {/* Depth-Badge — Position in der Auffang-Box (nur für markierte/problem Tiles) */}
-        {(borderStatus === 'manual-yellow' || borderStatus === 'auto-yellow' || borderStatus === 'auto-red') && (
-          <div
-            className="absolute top-0.5 left-0.5 px-1 py-0 rounded text-[8px] font-mono font-bold"
-            style={{
-              background: borderStatus === 'auto-red' ? 'rgba(239,68,68,0.92)' : 'rgba(250,204,21,0.92)',
-              color: borderStatus === 'auto-red' ? '#fff' : '#1a1a1a',
-            }}
-          >
-            #{depthFromTop}
-          </div>
-        )}
-
-        {/* Trash unten rechts (~2 px Abstand zum Rand) */}
+        {/* Einziger Bedien-Button: Löschen — Stil wie im Review-Grid
+            (rundes-eckiges rotes Feld mit Minus, var(--action-delete)). */}
         <button
           onClick={e => { e.stopPropagation(); onRemove(); }}
-          className="absolute bottom-0.5 right-0.5 w-8 h-8 rounded-md flex items-center justify-center text-white"
+          className="absolute bottom-1 right-1 w-8 h-8 rounded-md flex items-center justify-center shadow-md text-white"
           style={{ background: 'var(--action-delete)' }}
           aria-label="Entfernen"
         >
           <Minus size={16} strokeWidth={2.5} />
         </button>
-
-        {/* Wert-Badge unten links — sichtbar nur ab Tier 'wertvoll' */}
-        {card && (
-          <div className="absolute bottom-0.5 left-0.5">
-            <ValueBadge tcgId={card.id} iconOnly />
-          </div>
-        )}
-
-        {/* Fake-Warnung (Mitte oben, über Variant/Condition-Pills) */}
-        {(job.result?.fakeRisk === 'medium' || job.result?.fakeRisk === 'high') && (
-          <button
-            onClick={e => { e.stopPropagation(); onFakeReasons(); }}
-            className="absolute left-1/2 -translate-x-1/2 w-8 h-8 rounded-full flex items-center justify-center"
-            style={{ top: 2, background: 'rgba(0,0,0,0.75)' }}
-            aria-label="Fake-Verdacht-Gründe"
-          >
-            <AlertTriangle
-              size={14}
-              color={job.result?.fakeRisk === 'high' ? '#ef4444' : '#facc15'}
-              fill={job.result?.fakeRisk === 'high' ? '#ef4444' : '#facc15'}
-            />
-          </button>
-        )}
-
-        {/* Variant-Pill (top-left) */}
-        {card && (
-          <div className="absolute top-0.5 left-0.5">
-            <span
-              className="text-[10px] font-bold px-1.5 py-0.5 rounded inline-block"
-              style={{ background: 'rgba(0,0,0,0.78)', color: '#fff' }}
-            >
-              {VARIANT_LABELS[variant]}
-            </span>
-            <select
-              value={variant}
-              onClick={e => e.stopPropagation()}
-              onChange={e => onVariantChange(e.target.value as CardVariant)}
-              className="absolute inset-0 opacity-0 cursor-pointer"
-              aria-label="Variante ändern"
-            >
-              {cardVariants.map(v => (
-                <option key={v} value={v}>{VARIANT_LABELS[v]}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {/* Condition-Pill (top-right) — Kurzcode statt Vollname: die Pille sitzt
-            frei schwebend in der linken oberen bzw. hier rechten oberen Ecke
-            einer sehr schmalen Slider-Kachel (~80-170px) neben der ebenfalls
-            frei schwebenden Varianten-Pille; "Near Mint" würde mit "Standard"
-            kollidieren. Das ausgeschriebene Label steht trotzdem im nativen
-            Auswahl-Menü (Vollbild-Picker, kein Platzproblem). */}
-        {card && (
-          <div className="absolute top-0.5 right-0.5">
-            <span
-              className="text-[10px] font-bold px-1.5 py-0.5 rounded inline-block"
-              style={{ background: condColor.bg, color: condColor.text }}
-            >
-              {condition}
-            </span>
-            <select
-              value={condition}
-              onClick={e => e.stopPropagation()}
-              onChange={e => onConditionChange(e.target.value as PersistedCondition)}
-              className="absolute inset-0 opacity-0 cursor-pointer"
-              aria-label="Zustand ändern"
-            >
-              {CONDITIONS.map(c => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-            </select>
-          </div>
-        )}
 
         {/* Added-Overlay */}
         {job.added && (
