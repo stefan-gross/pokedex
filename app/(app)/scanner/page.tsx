@@ -465,6 +465,8 @@ export default function ScannerPage() {
   // Im Erkennen-Modus: ID des aktuell zentral angezeigten Jobs. Wird beim
   // erfolgreichen Recognize-Scan gesetzt; Resume-Tap räumt ihn zurück.
   const [recognizedJobId, setRecognizedJobId] = useState<string | null>(null);
+  // Mehrfachscan: angetippte Slider-Karte → Korrektur-Ansicht (wie Einzelscan).
+  const [correctJobId, setCorrectJobId] = useState<string | null>(null);
   // Ref für scanMode — handleCapture hat empty-deps useCallback,
   // ohne Ref wäre der Wert stale.
   const scanModeRef = useRef(scanMode);
@@ -2386,12 +2388,75 @@ export default function ScannerPage() {
                   job={job}
                   isLatest={idx === addJobs.length - 1}
                   onRemove={() => removeJob(job.id)}
+                  onOpen={() => setCorrectJobId(job.id)}
                 />
               ));
             })()}
           </div>
         </div>
       )}
+
+      {/* ── Mehrfachscan: Korrektur-Ansicht einer angetippten Slider-Karte —
+          dieselbe UI wie im Einzelscan (Karte groß + Kandidaten/„Korrigieren").
+          Overlay über dem Slider mit Schließen-Button; Auswahl aktualisiert die
+          Karte im Slider und schließt. */}
+      {mode === 'scanning' && scanMode === 'add' && correctJobId && (() => {
+        const job = jobs.find(j => j.id === correctJobId);
+        if (!job || job.status === 'processing') return null;
+        const close = () => setCorrectJobId(null);
+        const isBlind = job.status === 'error' && classifyJobError(job).kind === 'gemini-blind';
+        return (
+          <div className="absolute inset-0 z-40" style={{ background: 'rgba(0,0,0,0.85)' }}>
+            <button
+              type="button"
+              onClick={close}
+              aria-label="Schließen"
+              className="absolute right-3 z-50 w-10 h-10 rounded-full flex items-center justify-center text-white"
+              style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)', background: 'rgba(0,0,0,0.5)' }}
+            >
+              <X size={20} />
+            </button>
+            {isBlind ? (
+              <div
+                className="absolute inset-x-0 flex flex-col items-center justify-center gap-4 px-8 text-center"
+                style={{ top: 'calc(env(safe-area-inset-top, 0px) + 64px)', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
+              >
+                <p className="text-white/85 text-role-title">Karte nicht erkannt</p>
+                <p className="text-white/50 text-role-label">Wähle die richtige Karte, um sie zu übernehmen.</p>
+                <Button icon={<Flag />} onClick={() => { setReportJobId(job.id); close(); }}>
+                  Richtige Karte wählen
+                </Button>
+              </div>
+            ) : (
+              <RecognizedCardLarge
+                key={job.id}
+                job={job}
+                onCardTap={() => { /* Detail nicht nötig — Korrektur-Overlay */ }}
+                onSubmitReport={result => { submitReport(job, result); close(); }}
+                onPickNotInCatalog={pending => {
+                  setJobs(prev => prev.map(j => j.id === job.id && j.result
+                    ? { ...j, status: 'done' as const, result: { ...j.result, card: pending }, editedVariant: 'standard' as CardVariant }
+                    : j));
+                  submitReport(job, { reportType: 'not_in_catalog' });
+                  close();
+                }}
+                onPickCandidate={picked => {
+                  setJobs(prev => prev.map(j => j.id === job.id && j.result
+                    ? { ...j, status: 'done' as const, result: { ...j.result, card: picked }, editedVariant: picked.variants?.[0] ?? 'standard' }
+                    : j));
+                  refreshOwnedCount(job.id, picked.id);
+                  close();
+                }}
+                onSaved={() => {
+                  markAdded(job.id, { keepJob: true });
+                  if (job.result?.card) refreshOwnedCount(job.id, job.result.card.id);
+                }}
+                onManage={() => setQuickDeleteJobId(job.id)}
+              />
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── Erkennen-Modus: kompakter „wird erkannt"-Hinweis während Gemini lädt.
           Sitzt unten (über der Footer-Leiste), damit das eingefrorene Foto mit
@@ -2985,12 +3050,14 @@ interface ScannedCardTileProps {
   job: ScanJob;
   isLatest:          boolean;
   onRemove:          () => void;
+  /** Antippen der Karte → Korrektur-/Detail-Ansicht (wie Einzelscan). */
+  onOpen:            () => void;
 }
 
 // Bewusst reduziert (Nutzerwunsch): nur Kartenbild + EIN Löschen-Button. Keine
-// Varianten-/Zustand-Pillen, kein Wert-/Tiefen-Badge, kein Flag-Tap — die
-// Feinbearbeitung passiert im Review-Grid bzw. beim Bulk-Add.
-function ScannedCardTile({ job, isLatest, onRemove }: ScannedCardTileProps) {
+// Varianten-/Zustand-Pillen, kein Wert-/Tiefen-Badge — die Feinbearbeitung
+// passiert beim Antippen (Korrektur-Ansicht) bzw. im Review-Grid/Bulk-Add.
+function ScannedCardTile({ job, isLatest, onRemove, onOpen }: ScannedCardTileProps) {
   const img       = cardImgUrl(job);
   const card      = job.result?.card;
   const isError   = job.status === 'error';
@@ -3008,14 +3075,17 @@ function ScannedCardTile({ job, isLatest, onRemove }: ScannedCardTileProps) {
         zIndex: isLatest ? 2 : 1,
       }}
     >
-      {/* Karten-Body */}
+      {/* Karten-Body — antippen öffnet die Korrektur-/Detail-Ansicht (außer
+          während der Verarbeitung). */}
       <div
         className="relative w-full rounded-md overflow-hidden"
         style={{
           aspectRatio: '63 / 88',
           ...borderStyleFor(borderStatus, job.result?.fakeRisk),
           background: '#1a1a1a',
+          cursor: job.status === 'processing' ? 'default' : 'pointer',
         }}
+        onClick={job.status === 'processing' ? undefined : onOpen}
       >
         {job.status === 'processing' ? (
           <div className="w-full h-full flex items-center justify-center">
