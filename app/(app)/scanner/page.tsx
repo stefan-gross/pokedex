@@ -637,14 +637,15 @@ export default function ScannerPage() {
         captureMode,
         jobsCount: addJobsCount,
         // „Prüfen"-Chip in der BottomNav-Leiste (fest verankert) — nur im
-        // Mehrfachscan mit gesammelten Karten.
-        gridVisible: scanMode === 'add' && addJobsCount > 0,
+        // Mehrfachscan mit gesammelten Karten, NICHT während das Korrektur-
+        // Overlay offen ist (dort verdeckt der Chip sonst die Ansicht).
+        gridVisible: scanMode === 'add' && addJobsCount > 0 && !correctJobId,
         reviewMode: mode === 'review',
         canAdd: canAddRecognized,
         canDelete: canDeleteRecognized,
       },
     }));
-  }, [streamPaused, scanMode, captureMode, addJobsCount, mode, canAddRecognized, canDeleteRecognized]);
+  }, [streamPaused, scanMode, captureMode, addJobsCount, mode, canAddRecognized, canDeleteRecognized, correctJobId]);
 
   // Beim Unmount: Reset, damit andere Seiten nicht den Scan-Pause-FAB sehen
   useEffect(() => {
