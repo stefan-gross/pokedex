@@ -12,6 +12,7 @@ import { getCards, deleteCard } from '@/lib/firestore/cards';
 import { reconcilePendingCards } from '@/lib/scan/reconcile-pending';
 import { getBinders, deleteBinder } from '@/lib/firestore/binders';
 import { getWishlists, deleteWishlist } from '@/lib/firestore/wishlists';
+import { getSearchStats, searchMonthKey, type SearchStats } from '@/lib/firestore/search-stats';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Button } from '@/components/ui/button';
 import { useUpdateAvailable } from '@/lib/hooks/use-update-available';
@@ -102,6 +103,10 @@ export default function SettingsPage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   useEffect(() => onAuthStateChanged(auth, u => setUserEmail(u?.email ?? null)), []);
 
+  // Such-Nutzung (eigener Zähler, monatlich) — u.a. um das Free-Limit einer
+  // externen Such-Engine (Algolia: 10.000/Monat) einzuschätzen.
+  const [searchStats, setSearchStats] = useState<SearchStats | null>(null);
+
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncLoading, setSyncLoading] = useState(true);
   const [syncing, setSyncing]         = useState(false);
@@ -119,6 +124,7 @@ export default function SettingsPage() {
   useEffect(() => {
     setMounted(true);
     loadSyncStatus();
+    getSearchStats().then(setSearchStats).catch(() => {});
     try {
       const raw = localStorage.getItem(LAST_RUN_KEY);
       if (raw) setLastDataRun(JSON.parse(raw));
@@ -503,7 +509,38 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* 3. Gefahren-Zone */}
+        {/* 3. Such-Nutzung */}
+        <section>
+          <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-3">Suche</p>
+          <div className="glass rounded-[20px] px-4 py-3 space-y-2">
+            {(() => {
+              const ALGOLIA_FREE = 10_000;
+              const month = searchStats?.months?.[searchMonthKey()] ?? 0;
+              const pctFree = Math.min(100, Math.round((month / ALGOLIA_FREE) * 100));
+              return (
+                <>
+                  <div className="flex justify-between text-role-label">
+                    <span className="text-glass tabular-nums"><span className="text-glass-muted">Suchen (Monat) </span>{month.toLocaleString('de-DE')}</span>
+                    <span className="text-glass tabular-nums">{pctFree} %<span className="text-glass-muted"> / {ALGOLIA_FREE.toLocaleString('de-DE')}</span></span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-[rgba(30,40,80,0.10)] dark:bg-white/25 overflow-hidden">
+                    <div className="h-full rounded-full transition-all" style={{ width: `${pctFree}%`, background: barColor(pctFree) }} />
+                  </div>
+                  <div className="flex justify-between text-role-label pt-1">
+                    <span className="text-glass-muted">Gesamt</span>
+                    <span className="text-glass tabular-nums">{(searchStats?.total ?? 0).toLocaleString('de-DE')}</span>
+                  </div>
+                  <p className="text-role-label text-glass-muted pt-1">
+                    Ausgeführte Suchen dieses Geräts-Kontos. Referenz: Algolia-Free = 10.000 Suchen/Monat.
+                    Bei „Suche&nbsp;beim&nbsp;Tippen" läge die echte Request-Zahl höher.
+                  </p>
+                </>
+              );
+            })()}
+          </div>
+        </section>
+
+        {/* 4. Gefahren-Zone */}
         <section className="space-y-1.5">
           <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-2">Gefahren-Zone</p>
           <Button

@@ -50,6 +50,11 @@ service cloud.firestore {
       allow read, delete: if owns(resource);
       allow write: if createsOwn();
     }
+    // search_stats: Such-Nutzungszähler je Nutzer (Doc-ID == uid), gleiche Semantik.
+    match /search_stats/{uid} {
+      allow read, delete: if owns(resource);
+      allow write: if createsOwn();
+    }
 
     // Pokémon-Kartenkatalog — öffentliche Daten, kein Auth nötig
     // Schreibzugriff nur vom Server (geschützt durch API-Route + Session)

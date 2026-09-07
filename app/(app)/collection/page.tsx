@@ -26,6 +26,7 @@ import {
   getBrowseCountRest as getBrowseCount,
 } from '@/lib/firestore/catalog-rest';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
+import { recordSearch } from '@/lib/firestore/search-stats';
 import { correctQuery } from '@/lib/search/suggest-index';
 import { useSuggestIndex } from '@/lib/search/use-suggest-index';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
@@ -342,6 +343,10 @@ function CollectionContent() {
     try {
       // Kein lokaler Katalog (vor dem ersten Sync) → keine Treffer.
       if (catalogCountRef.current === 0) { setResults([]); setSets([]); return; }
+
+      // Ausgeführte Suche zählen (Nutzungsstatistik in den Settings) — fire&forget,
+      // blockiert die Suche nicht.
+      void recordSearch();
 
       // Gemeinsame Server-Such-Pipeline (Dex → Name → Mehrwort Name∪Illustrator
       // → Illustrator-Fallback) — bewusst OHNE `setId`: wir holen ALLE Treffer,
