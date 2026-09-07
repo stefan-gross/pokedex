@@ -629,9 +629,9 @@ export default function ScannerPage() {
         scanMode,
         captureMode,
         jobsCount: addJobsCount,
-        // Grid-Umschalter läuft NICHT mehr über die BottomNav, sondern als
-        // beschriftete „Prüfen"-Aktion direkt über dem Slider (s. unten).
-        gridVisible: false,
+        // „Prüfen"-Chip in der BottomNav-Leiste (fest verankert) — nur im
+        // Mehrfachscan mit gesammelten Karten.
+        gridVisible: scanMode === 'add' && addJobsCount > 0,
         reviewMode: mode === 'review',
         canAdd: canAddRecognized,
         canDelete: canDeleteRecognized,
@@ -2408,22 +2408,9 @@ export default function ScannerPage() {
           className="absolute left-0 right-0 z-10 px-4"
           style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)' }}
         >
-          {/* „Prüfen"-Aktion (früher Grid-Button in der BottomNav): beschriftet,
-              rechtsbündig direkt über dem Slider — klarer Abschluss des Scans. */}
-          {addJobsCount > 0 && (
-            <div className="flex justify-end mb-1">
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={<LayoutGrid />}
-                onClick={() => toggleGridMode()}
-                aria-label="Gescannte Karten prüfen"
-                className="shadow-md"
-              >
-                {addJobsCount} prüfen
-              </Button>
-            </div>
-          )}
+          {/* „Prüfen"-Aktion sitzt jetzt als fest verankerte Pille in der
+              BottomNav-Leiste (gridVisible) — nicht mehr floatend über dem
+              Slider. */}
           <div
             ref={sliderRef}
             className="flex gap-2 overflow-x-auto pb-3 pt-3"

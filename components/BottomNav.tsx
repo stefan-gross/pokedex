@@ -153,7 +153,7 @@ export function BottomNav() {
           <button
             onClick={() => window.dispatchEvent(new Event(SCAN_GRID_TOGGLE_EVENT))}
             className="fixed z-50 flex items-center justify-center rounded-full glass-overlay"
-            aria-label="Übersicht öffnen"
+            aria-label="Gescannte Karten prüfen"
             style={{ bottom: 90, left: 14, width: 44, height: 44 }}
           >
             <LayoutGrid size={19} color="#fff" />
