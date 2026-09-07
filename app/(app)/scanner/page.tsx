@@ -17,6 +17,7 @@ import { getCardBySetCodeAndNumberRest as getCardBySetCodeAndNumber,
          getCardsByNamePrefixRest     as getCardsByNamePrefix,
          getDexForNameRest            as getDexForName } from '@/lib/firestore/catalog-rest';
 import { resolveScannedCard } from '@/lib/scan/resolve-card';
+import { ScanTestPanel } from '@/components/scanner/ScanTestPanel';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { addCard, getCardsByTcgId, updateCard } from '@/lib/firestore/cards';
 import { addCardToBinder, ensureDefaultBinder, getBinders } from '@/lib/firestore/binders';
@@ -466,6 +467,8 @@ export default function ScannerPage() {
   // ohne Ref wäre der Wert stale.
   const scanModeRef = useRef(scanMode);
   useEffect(() => { scanModeRef.current = scanMode; }, [scanMode]);
+  // Testmodus-Panel (gespeicherte Scans erneut durch die Pipeline, ohne Kamera).
+  const [testPanelOpen, setTestPanelOpen] = useState(false);
 
   // Auslöse-Modus: 'auto' (grün-gegatetes Auto-Auslösen, wie bisher) vs.
   // 'manual' (kein Live-Erkennen/Ampel, nur Ziel-Rahmen; Foto per Footer-Scan-
@@ -777,6 +780,10 @@ export default function ScannerPage() {
   const handleCapture = useCallback(async (imageBase64: string, mimeType: string, meta?: CaptureMeta) => {
     const id = Math.random().toString(36).slice(2);
     const t0 = Date.now();
+    // Testmodus-Einspeisung (gespeicherte Bilder erneut durch die Pipeline):
+    // KEINE Telemetrie/Statistik schreiben, sonst verfälschen Testläufe den
+    // Fehler-Korpus (scan_cases) und die Scan-Stats.
+    const isTest = meta?.trigger === 'test';
     const imageSizeKb = Math.round((imageBase64.length * 3 / 4) / 1024);
 
     const debug: ScanDebug = { imageBase64, mimeType, imageSizeKb, lookupSteps: [] };
@@ -887,15 +894,17 @@ export default function ScannerPage() {
             hp: gemini.hp, language: gemini.language, confidence: gemini.confidence, error: gemini.error,
             model: gemini._debug?.model, ms: gemini._debug?.ms, attempts: gemini._debug?.attempts?.length,
           };
-          void recordScanEvent({ outcome, quality, gemini: gm }).then(eventId => {
-            if (eventId) setJobs(prev => prev.map(j => j.id === id ? { ...j, eventId, outcome } : j));
-            void recordScanCase({
-              outcome, quality, gemini: gm, reportType: 'auto_fail',
-              warpedCropBase64: imageBase64, originalFrameBase64: meta?.originalFrameBase64, mimeType,
-              lookupSteps: debug.lookupSteps, geminiRaw: gemini._debug?.rawText, eventId: eventId ?? undefined,
+          if (!isTest) {
+            void recordScanEvent({ outcome, quality, gemini: gm }).then(eventId => {
+              if (eventId) setJobs(prev => prev.map(j => j.id === id ? { ...j, eventId, outcome } : j));
+              void recordScanCase({
+                outcome, quality, gemini: gm, reportType: 'auto_fail',
+                warpedCropBase64: imageBase64, originalFrameBase64: meta?.originalFrameBase64, mimeType,
+                lookupSteps: debug.lookupSteps, geminiRaw: gemini._debug?.rawText, eventId: eventId ?? undefined,
+              });
             });
-          });
-          void bumpScanStats(outcome, quality, undefined, gemini._debug?.ms);
+            void bumpScanStats(outcome, quality, undefined, gemini._debug?.ms);
+          }
         }
         scheduleImageCleanup(id);
         return;
@@ -1248,19 +1257,21 @@ export default function ScannerPage() {
           model: gemini._debug?.model, ms: gemini._debug?.ms, attempts: gemini._debug?.attempts?.length,
         };
         const lookup = { via: gemini._preLookup?.via, stepsCount: finalDebug.lookupSteps?.length, recognizedCardId: finalCard?.id ?? undefined };
-        eventIdPromise = recordScanEvent({ outcome: scanOutcome, quality, gemini: gm, lookup });
-        void eventIdPromise.then(eventId => {
-          if (eventId) setJobs(prev => prev.map(j => j.id === id ? { ...j, eventId, outcome: scanOutcome } : j));
-          if (eventId && scanOutcome !== 'recognized') {
-            void recordScanCase({
-              outcome: scanOutcome, quality, gemini: gm, lookup, reportType: 'auto_fail',
-              warpedCropBase64: imageBase64, originalFrameBase64: meta?.originalFrameBase64, mimeType,
-              lookupSteps: finalDebug.lookupSteps, geminiRaw: gemini._debug?.rawText,
-              catalogMatch: finalDebug.catalogMatch, eventId,
-            });
-          }
-        });
-        void bumpScanStats(scanOutcome, quality, undefined, gemini._debug?.ms);
+        if (!isTest) {
+          eventIdPromise = recordScanEvent({ outcome: scanOutcome, quality, gemini: gm, lookup });
+          void eventIdPromise.then(eventId => {
+            if (eventId) setJobs(prev => prev.map(j => j.id === id ? { ...j, eventId, outcome: scanOutcome } : j));
+            if (eventId && scanOutcome !== 'recognized') {
+              void recordScanCase({
+                outcome: scanOutcome, quality, gemini: gm, lookup, reportType: 'auto_fail',
+                warpedCropBase64: imageBase64, originalFrameBase64: meta?.originalFrameBase64, mimeType,
+                lookupSteps: finalDebug.lookupSteps, geminiRaw: gemini._debug?.rawText,
+                catalogMatch: finalDebug.catalogMatch, eventId,
+              });
+            }
+          });
+          void bumpScanStats(scanOutcome, quality, undefined, gemini._debug?.ms);
+        }
       }
 
       // Erkennen-Modus: nach erfolgreicher Erkennung Job zentral anzeigen —
@@ -1366,7 +1377,7 @@ export default function ScannerPage() {
       setJobs(prev => prev.map(j => j.id === id
         ? { ...j, status: 'error', result: { card: null, language: 'de' }, debugInfo: `Netzwerkfehler: ${msg}`, debug: errDebug }
         : j));
-      {
+      if (!isTest) {
         const quality = metaToQuality(meta);
         void recordScanEvent({ outcome: 'error', quality, gemini: { error: msg } }).then(eventId => {
           if (eventId) setJobs(prev => prev.map(j => j.id === id ? { ...j, eventId, outcome: 'error' } : j));
@@ -1507,7 +1518,26 @@ export default function ScannerPage() {
             batchMode={scanMode === 'add'}
             hideFrame={scanMode === 'recognize' && streamPaused && (captureMode === 'auto' || recognizedJobId != null)}
           />
+          {/* Testmodus-Einstieg — dezenter Button oben links (nur Scan-Modus).
+              Die Admin-Route hinter dem Panel prüft die Berechtigung selbst. */}
+          <button
+            type="button"
+            onClick={() => setTestPanelOpen(true)}
+            aria-label="Testmodus"
+            className="absolute left-3 z-30 rounded-full bg-black/40 px-3 py-1.5 text-[11px] font-medium text-white/80 backdrop-blur active:bg-black/60"
+            style={{ top: 'calc(env(safe-area-inset-top) + 12px)' }}
+          >
+            Test
+          </button>
         </div>
+      )}
+
+      {testPanelOpen && (
+        <ScanTestPanel
+          onClose={() => setTestPanelOpen(false)}
+          onRecognize={handleCapture}
+          scanMode={scanMode}
+        />
       )}
 
       {/* ── Review-Modus: schwarzer Hintergrund, scrollbar ──────── */}
