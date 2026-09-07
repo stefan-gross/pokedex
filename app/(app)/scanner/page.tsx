@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Loader2, AlertCircle, Check, Plus, Minus, ChevronLeft, AlertTriangle, EyeOff, SearchX, LayoutGrid, Square, Flag } from 'lucide-react';
+import { X, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle, EyeOff, SearchX, LayoutGrid, Square, Flag, Trash2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
@@ -1540,15 +1541,16 @@ export default function ScannerPage() {
           />
           {/* Testmodus-Einstieg — dezenter Button oben links (nur Scan-Modus).
               Die Admin-Route hinter dem Panel prüft die Berechtigung selbst. */}
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => setTestPanelOpen(true)}
             aria-label="Testmodus"
-            className="absolute left-3 z-30 rounded-full bg-black/40 px-3 py-1.5 text-[11px] font-medium text-white/80 backdrop-blur active:bg-black/60"
+            className="absolute left-3 z-30"
             style={{ top: 'calc(env(safe-area-inset-top) + 12px)' }}
           >
             Test
-          </button>
+          </Button>
         </div>
       )}
 
@@ -1828,23 +1830,25 @@ export default function ScannerPage() {
                       style={{ right: 2, bottom: 2 }}
                       onClick={e => e.stopPropagation()}
                     >
-                      <button
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        accentColor="var(--action-delete)"
+                        icon={<Trash2 />}
                         onClick={e => { e.stopPropagation(); removeJob(job.id); }}
-                        className="w-8 h-8 rounded-md flex items-center justify-center shadow-md text-white"
-                        style={{ background: 'var(--action-delete)' }}
                         aria-label="Entfernen"
-                      >
-                        <Minus size={16} strokeWidth={2.5} />
-                      </button>
+                        className="shadow-md"
+                      />
                       {canOpen && !job.added && (
-                        <button
+                        <Button
+                          variant="primary"
+                          size="md"
+                          accentColor="var(--action-add)"
+                          icon={<Plus />}
                           onClick={e => { e.stopPropagation(); setQuickAddJobId(job.id); }}
-                          className="w-11 h-11 rounded-md flex items-center justify-center shadow-md text-white"
-                          style={{ background: 'var(--action-add)' }}
                           aria-label="Zur Sammlung hinzufügen"
-                        >
-                          <Plus size={22} strokeWidth={3} />
-                        </button>
+                          className="shadow-md"
+                        />
                       )}
                     </div>
                   </div>
@@ -1992,7 +1996,11 @@ export default function ScannerPage() {
                       onPointerDown={e => e.stopPropagation()}
                       onClick={e => e.stopPropagation()}
                     >
-                      <button
+                      <Button
+                        variant="primary"
+                        size="md"
+                        accentColor="var(--action-delete)"
+                        icon={<Trash2 />}
                         onClick={e => {
                           e.stopPropagation();
                           removeJob(j.id);
@@ -2000,21 +2008,19 @@ export default function ScannerPage() {
                             setSingleIdx(safeIdx - 1);
                           }
                         }}
-                        className="w-11 h-11 rounded-md flex items-center justify-center shadow-md text-white"
-                        style={{ background: 'var(--action-delete)' }}
                         aria-label="Entfernen"
-                      >
-                        <Minus size={20} strokeWidth={2.5} />
-                      </button>
+                        className="shadow-md"
+                      />
                       {jCanOpen && !j.added && (
-                        <button
+                        <Button
+                          variant="primary"
+                          size="lg"
+                          accentColor="var(--action-add)"
+                          icon={<Plus />}
                           onClick={e => { e.stopPropagation(); setQuickAddJobId(j.id); }}
-                          className="w-16 h-16 rounded-md flex items-center justify-center shadow-lg text-white"
-                          style={{ background: 'var(--action-add)' }}
                           aria-label="Zur Sammlung hinzufügen"
-                        >
-                          <Plus size={32} strokeWidth={3} />
-                        </button>
+                          className="shadow-lg"
+                        />
                       )}
                     </div>
 
@@ -2367,16 +2373,16 @@ export default function ScannerPage() {
               rechtsbündig direkt über dem Slider — klarer Abschluss des Scans. */}
           {addJobsCount > 0 && (
             <div className="flex justify-end mb-1">
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<LayoutGrid />}
                 onClick={() => toggleGridMode()}
                 aria-label="Gescannte Karten prüfen"
-                className="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-semibold text-white shadow-md active:opacity-90"
-                style={{ background: 'rgba(0,0,0,0.62)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+                className="shadow-md"
               >
-                <LayoutGrid size={15} />
                 {addJobsCount} prüfen
-              </button>
+              </Button>
             </div>
           )}
           <div
@@ -2692,23 +2698,25 @@ export default function ScannerPage() {
               WebkitBackdropFilter: 'blur(12px)',
             }}
           >
-            <button
+            <Button
+              variant="primary"
+              accentColor="var(--action-delete)"
+              icon={<Trash2 />}
               onClick={clearAllJobs}
-              className="flex-1 h-11 rounded-md text-sm font-semibold text-white flex items-center justify-center gap-1.5"
-              style={{ background: 'var(--action-delete)' }}
+              className="flex-1"
             >
-              <Minus size={16} strokeWidth={2.5} color="#fff" />
               Alle löschen
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
+              accentColor="var(--action-add)"
+              icon={<Plus />}
               onClick={openBulkAdd}
               disabled={unaddedCount === 0}
-              className="flex-1 h-11 rounded-md text-sm font-semibold text-white flex items-center justify-center gap-1.5 disabled:opacity-50"
-              style={{ background: 'var(--action-add)' }}
+              className="flex-1"
             >
-              <Plus size={16} strokeWidth={3} />
               {`Alle hinzufügen${unaddedCount > 0 ? ` (${unaddedCount})` : ''}`}
-            </button>
+            </Button>
           </div>
         );
       })()}
@@ -2849,28 +2857,27 @@ export default function ScannerPage() {
                 </div>
               )}
 
-              <button
+              <Button
+                variant="primary"
+                icon={<Flag />}
                 onClick={() => { setReportJobId(job.id); close(); }}
-                className="w-full h-11 rounded-full font-semibold text-sm text-white flex items-center justify-center gap-1.5 mt-1"
-                style={{ background: 'var(--pokedex-blue)' }}
+                className="w-full mt-1"
               >
-                <Flag size={15} /> Richtige Karte wählen
-              </button>
+                Richtige Karte wählen
+              </Button>
               <div className="flex gap-2 pt-1">
-                <button
+                <Button
+                  variant="primary"
+                  accentColor="var(--action-delete)"
+                  icon={<Trash2 />}
                   onClick={removeAndClose}
-                  className="flex-1 h-11 rounded-full font-semibold text-sm text-white flex items-center justify-center gap-1.5"
-                  style={{ background: 'var(--action-delete)' }}
+                  className="flex-1"
                 >
-                  <Minus size={15} strokeWidth={2.5} />
                   Entfernen
-                </button>
-                <button
-                  onClick={close}
-                  className="flex-1 h-11 rounded-full font-semibold text-sm text-white border border-white/25"
-                >
+                </Button>
+                <Button variant="secondary" onClick={close} className="flex-1">
                   Schließen
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -3130,16 +3137,17 @@ function ScannedCardTile({ job, isLatest, onRemove }: ScannedCardTileProps) {
           <img src={img} alt={card?.name ?? ''} className="w-full h-full object-cover" />
         )}
 
-        {/* Einziger Bedien-Button: Löschen — Stil wie im Review-Grid
-            (rundes-eckiges rotes Feld mit Minus, var(--action-delete)). */}
-        <button
-          onClick={e => { e.stopPropagation(); onRemove(); }}
-          className="absolute bottom-1 right-1 w-8 h-8 rounded-md flex items-center justify-center shadow-md text-white"
-          style={{ background: 'var(--action-delete)' }}
+        {/* Einziger Bedien-Button: Löschen — App-Standard-Button (rund, rot,
+            Trash2) statt eines eigenen eckigen Roh-Buttons. */}
+        <Button
+          variant="primary"
+          size="sm"
+          accentColor="var(--action-delete)"
+          icon={<Trash2 />}
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
           aria-label="Entfernen"
-        >
-          <Minus size={16} strokeWidth={2.5} />
-        </button>
+          className="absolute bottom-1 right-1 shadow-md"
+        />
 
         {/* Added-Overlay */}
         {job.added && (
