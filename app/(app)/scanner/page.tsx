@@ -199,7 +199,14 @@ type BorderStatus = 'none' | 'manual-yellow' | 'auto-yellow' | 'auto-red' | 'err
 function computeBorderStatus(job: ScanJob): BorderStatus {
   if (job.status === 'error') return 'error';
   const dist = job.pHashDistance;
-  if (typeof dist === 'number') {
+  // pHash-Mismatch-Warnung (gelb/rot) NUR bei MEHRDEUTIGER Erkennung — dort diente
+  // der pHash zur Auswahl des besten Kandidaten, eine hohe Distanz heißt „auch der
+  // beste passt schlecht" (echter Prüf-Hinweis). Bei einem EINDEUTIGEN, starken
+  // Treffer (setCode+Nummer etc.) ist eine hohe Distanz dagegen meist ein Foto-
+  // Artefakt (Glanz/Winkel/abweichendes Katalogbild) — dann KEINE Warnung, sonst
+  // werden korrekt erkannte Karten fälschlich rot umrahmt.
+  const ambiguous = (job.result?.candidates?.length ?? 0) > 1;
+  if (typeof dist === 'number' && ambiguous) {
     // Schwellwerte synchron mit classifyPHashDistance() in lib/scan/image-hash.ts
     if (dist >= 32) return 'auto-red';
     if (dist >= 21) return 'auto-yellow';
