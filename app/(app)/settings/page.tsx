@@ -245,8 +245,23 @@ export default function SettingsPage() {
 
       // Vorläufige (nicht katalogisierte) Karten gegen den frischen Katalog
       // prüfen und eindeutige Treffer verknüpfen.
-      step('🔗 Vorläufige Karten werden geprüft…', 96);
+      step('🔗 Vorläufige Karten werden geprüft…', 94);
       const { linked } = await reconcilePendingCards().catch(() => ({ linked: 0, checked: 0 }));
+
+      // Algolia-Suchindex auffrischen (nur wenn konfiguriert; Route liefert sonst
+      // 400 → still übersprungen). Zeitgeboxt/cursor-basiert bis fertig.
+      step('🔎 Suchindex wird aktualisiert…', 97);
+      try {
+        let after2: string | null = null, guard = 0;
+        while (guard++ < 60) {
+          const url = '/api/admin/algolia-reindex?pageSize=1000&budgetMs=30000' + (after2 ? `&after=${encodeURIComponent(after2)}` : '');
+          const res = await fetch(url, { method: 'POST' });
+          if (!res.ok) break; // 400 = nicht konfiguriert
+          const j = await res.json() as { hasMore?: boolean; nextAfter?: string | null };
+          if (!j.hasMore) break;
+          after2 = j.nextAfter ?? null;
+        }
+      } catch { /* Suchindex best-effort */ }
 
       // Nachher-Stand → NETTO-Diff. Nur die TATSÄCHLICH geänderten Werte auflisten.
       const after = await loadSyncStatus();

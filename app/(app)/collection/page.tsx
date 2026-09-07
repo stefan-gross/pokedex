@@ -27,6 +27,7 @@ import {
 } from '@/lib/firestore/catalog-rest';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { searchViaAlgolia } from '@/lib/search/algolia-search';
+import { isAlgoliaConfigured } from '@/lib/search/algolia';
 import { recordSearch } from '@/lib/firestore/search-stats';
 import { correctQuery } from '@/lib/search/suggest-index';
 import { useSuggestIndex } from '@/lib/search/use-suggest-index';
@@ -349,11 +350,12 @@ function CollectionContent() {
       // blockiert die Suche nicht.
       void recordSearch();
 
-      // Prototyp-Umschalter: mit localStorage-Flag `pokedex.search.algolia=1`
-      // läuft die Suche über Algolia (Volltext/Facetten/Sortierung server-seitig).
-      // Fällt bei Fehler/nicht konfiguriert auf die bestehende Suche zurück.
+      // Suche über Algolia, sobald konfiguriert (Volltext/Facetten/Sortierung
+      // server-seitig, ~konstant schnell). Fällt bei Fehler auf die bestehende
+      // Suche zurück. Kill-Switch: localStorage `pokedex.search.algolia=0`.
       let cards: CatalogCard[]; let sortHint: 'pokedex' | undefined;
-      const useAlgolia = (() => { try { return localStorage.getItem('pokedex.search.algolia') === '1'; } catch { return false; } })();
+      const killed = (() => { try { return localStorage.getItem('pokedex.search.algolia') === '0'; } catch { return false; } })();
+      const useAlgolia = !killed && isAlgoliaConfigured();
       const algolia = useAlgolia ? await searchViaAlgolia(q, { displayLimit: SEARCH_DISPLAY_LIMIT }) : null;
       if (algolia) {
         cards = algolia.cards; sortHint = undefined;
