@@ -151,6 +151,13 @@ name — the LARGE card title in the TOP row (Pokémon name, Trainer card name, 
   Ability name (after "Fähigkeit"/"Ability") and the flavor text are also NOT the
   card name. The card name is ONLY the bold title in the top row.
 
+energyType — ONLY for a BASIC Energy card. A basic Energy card has the title
+  "Basic <type> Energy" / "Basis-<Typ>-Energie" (the <type> is usually a colored
+  SYMBOL in the title, not a word) and ONE big type symbol in the card center,
+  no attacks, no HP. Read that central symbol and output the type: one of Grass,
+  Fire, Water, Lightning, Psychic, Fighting, Darkness, Metal, Fairy. For Pokémon,
+  Trainer, and special/non-basic Energy cards, energyType is null.
+
 If no Pokémon card is visible at all: set "error" to "No card detected" and
 leave the other fields null.`;
 
@@ -202,6 +209,12 @@ const SCHEMA = {
       type: SchemaType.INTEGER,
       nullable: true,
       description: 'KP/HP value next to the Pokémon name (integer); null for Trainer/Energy',
+    },
+    energyType: {
+      type: SchemaType.STRING,
+      nullable: true,
+      enum: ['Grass', 'Fire', 'Water', 'Lightning', 'Psychic', 'Fighting', 'Darkness', 'Metal', 'Fairy'],
+      description: 'ONLY for a BASIC Energy card: the energy type read from the large central symbol. null for everything else.',
     },
   },
   required: ['language', 'confidence'],

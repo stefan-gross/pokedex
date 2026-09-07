@@ -76,6 +76,7 @@ interface GeminiResponse {
   confidence?: string;
   nationalDexNumber?: number | null;
   hp?: number | null;                    // KP/HP neben dem Kartennamen (für Platzhalter)
+  energyType?: string | null;            // NUR Basis-Energie: Typ aus dem Zentralsymbol
   condition?: CardCondition;
   fakeRisk?: 'low' | 'medium' | 'high';
   fakeReasons?: string[];
@@ -957,6 +958,7 @@ export default function ScannerPage() {
           printedTotal: gemini.printedTotal ?? null,
           name: gemini.name ?? null,
           nationalDexNumber: gemini.nationalDexNumber ?? null,
+          energyType: gemini.energyType ?? null,
         },
         {
           bySetCodeAndNumber: getCardBySetCodeAndNumber,

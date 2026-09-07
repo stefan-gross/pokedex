@@ -30,6 +30,11 @@ export interface ScanSignals {
   printedTotal?: number | null;
   name?: string | null;
   nationalDexNumber?: number | null;
+  /** Nur Basis-Energie: der aus dem Zentralsymbol gelesene Typ (EN, z.B.
+   *  "Lightning"). Der gedruckte Name trägt den Typ oft nur als Symbol → Gemini
+   *  liest generisch „Basis-Energie". Damit lässt sich der kanonische Name
+   *  bilden (R0-Energy). */
+  energyType?: string | null;
 }
 
 export interface ResolveDeps {
@@ -158,6 +163,37 @@ export async function resolveScannedCard(s: ScanSignals, deps: ResolveDeps): Pro
       }
     }
     trace.push(`R1 setCode+number (${s.setCode}): kein bestätigter Treffer`);
+  }
+
+  // ── R0-Energy: Basis-Energie über den (zuverlässig gelesenen) Typ ────────
+  // Basis-Energie-Karten tragen den Typ im Namen oft nur als SYMBOL → Gemini
+  // liest generisch „Basis-Energie" (Typ verloren). Mit `energyType` den
+  // kanonischen EN-Namen bilden (beide Ären: „Basic X Energy" SV / „X Energy"
+  // älter) und per Name+Nummer auflösen. Nur für Basis-Energie aktiv.
+  if (s.energyType && numbers.length) {
+    const names = [`Basic ${s.energyType} Energy`, `${s.energyType} Energy`];
+    const all: CatalogCard[] = [];
+    const seen = new Set<string>();
+    for (const nm of names) {
+      for (const n of numbers) {
+        for (const c of await deps.byNameAndNumber(nm, n)) {
+          if (!seen.has(c.id)) { seen.add(c.id); all.push(c); }
+        }
+      }
+    }
+    trace.push(`R0-energy ${s.energyType}+number: ${all.length} Treffer`);
+    if (all.length === 1) {
+      return { status: 'unique', card: all[0], matchedBy: 'energyType+number', trace };
+    }
+    if (all.length > 1) {
+      if (s.setCode) {
+        const byCode = all.filter(c => c.setCode === s.setCode);
+        if (byCode.length === 1) {
+          return { status: 'unique', card: byCode[0], matchedBy: 'energyType+number+setCode', trace };
+        }
+      }
+      return { status: 'ambiguous', candidates: all, matchedBy: 'energyType+number', trace };
+    }
   }
 
   // ── R2: printedTotal + number → Set → Karte ─────────────────────────────
