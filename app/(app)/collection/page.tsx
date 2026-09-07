@@ -56,6 +56,10 @@ const MIN_COMBO_LEN = 3;
 // Anzahl Karten, die pro Scroll-Schritt zusätzlich sichtbar gemacht werden
 const SEARCH_REVEAL_CHUNK = 20;
 
+// Suche/Filterung startet erst ab dieser Eingabelänge — darunter bleibt die
+// Ansicht im Browse-Modus (kein Fetch, keine „0 Treffer"-Anzeige bei 1 Zeichen).
+const MIN_SEARCH_CHARS = 2;
+
 // Limits sind reine Kosten-/Sicherheitsbremsen gegen einen extrem generischen
 // Suchbegriff (z.B. 1 Buchstabe), der sonst den ganzen Katalog laden würde —
 // keine Notwendigkeit für die Korrektheit der Suche selbst.
@@ -441,9 +445,12 @@ function CollectionContent() {
     // Ladezustand SOFORT beim Tippen setzen (nicht erst im Fetch) — sonst blieben
     // während der 350ms-Debounce die alten Treffer stehen. So erscheint das
     // Karten-Skeleton unmittelbar und bleibt bis die neuen Ergebnisse da sind.
-    if (inputValue.trim()) setSearchLoading(true);
+    const enoughChars = inputValue.trim().length >= MIN_SEARCH_CHARS;
+    if (enoughChars) setSearchLoading(true);
     debounceRef.current = setTimeout(() => {
-      doSearch(inputValue);
+      // Unter der Schwelle NICHT suchen — leere Suche räumt Treffer weg, die
+      // Ansicht fällt in den Browse-Modus zurück.
+      doSearch(enoughChars ? inputValue : '');
       router.replace(
         inputValue ? `/collection?q=${encodeURIComponent(inputValue)}` : '/collection',
         { scroll: false },
@@ -578,7 +585,7 @@ function CollectionContent() {
     return m;
   }, [displayed]);
 
-  const isBrowseMode = !inputValue;
+  const isBrowseMode = inputValue.trim().length < MIN_SEARCH_CHARS;
   // Zeigt an, ob die Suchergebnisse mehrere unterschiedliche Sets enthalten —
   // nur dann macht das Set-Badge auf den Karten-Kacheln Sinn (sonst redundant).
   const resultsSpanMultipleSets = useMemo(
@@ -755,7 +762,7 @@ function CollectionContent() {
           value={inputValue}
           onChange={setInputValue}
           onClear={clearSearch}
-          onSubmit={q => { if (debounceRef.current) clearTimeout(debounceRef.current); doSearch(q); }}
+          onSubmit={q => { if (debounceRef.current) clearTimeout(debounceRef.current); doSearch(q.trim().length >= MIN_SEARCH_CHARS ? q : ''); }}
           placeholder="Name, Illustrator … oder stöbern"
           inlineComplete
         />
