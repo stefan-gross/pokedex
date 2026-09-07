@@ -49,6 +49,11 @@ interface Props {
    *  Sammlung + „Hinzufügen" deaktiviert (leer/sinnlos ohne echte Karte); der
    *  Nutzer muss erst über „Korrigieren" die richtige Karte wählen. */
   unresolved?: boolean;
+  /** Nur-Korrektur-Modus (Mehrfachscan-Slider/Grid): der breite „Hinzufügen"-
+   *  Button wird zum breiten gelben „Korrigieren"-Button (Tausch-Pfeile); der
+   *  separate kleine Korrigieren-Button entfällt. Layout/Höhe bleiben identisch
+   *  zum Einzelscan. Hinzufügen passiert dort gebündelt im Review-Grid. */
+  correctionOnly?: boolean;
 }
 
 /** Inline-Hinzufügen-Leiste unter der erkannten Karte (Einzelscan): Zustand,
@@ -62,6 +67,7 @@ interface Props {
 export function RecognizedAddBar({
   card, preVariant, preCondition, preLanguage, ownedCount, onSaved, onManage,
   regionStyle, regionRef, onVariantChange, onCorrectTap, unresolved = false,
+  correctionOnly = false,
 }: Props) {
   const variantOptions: CardVariant[] =
     (card.variants && card.variants.length > 0 ? card.variants : ['standard']) as CardVariant[];
@@ -282,31 +288,46 @@ export function RecognizedAddBar({
             Button ersetzt den früheren Flag-Button oben rechts: falsch erkannt →
             richtige Karte wählen (tauscht die Anzeige + meldet still). */}
         <div className="flex gap-2">
-          <Button
-            variant="primary"
-            accentColor="#2f855a"
-            size="lg"
-            className="flex-1"
-            disabled={saving || unresolved}
-            icon={justSaved ? <Check strokeWidth={3} /> : <Plus strokeWidth={3} />}
-            onClick={save}
-          >
-            {justSaved ? 'Hinzugefügt' : saving ? 'Wird gespeichert …' : 'Hinzufügen'}
-          </Button>
-          {onCorrectTap && (
-            // Getönte secondary: zurückhaltender gelber Tint (nicht die volle
-            // CTA-Wucht des grünen „Hinzufügen"), Icon-Farbe theme-neutral.
-            // Größe identisch zum erkannten Modus (Icon-only, shrink-0) — auch im
-            // unresolved-Fall; der Hinweistext darüber führt zum Korrigieren.
+          {correctionOnly ? (
+            // Nur-Korrektur (Slider/Grid): der breite Button ist der gelbe
+            // „Korrigieren"-Button (Tausch-Pfeile) — kein Hinzufügen hier.
             <Button
-              variant="secondary"
+              variant="primary"
               accentColor="#f4c542"
               size="lg"
-              className="shrink-0"
+              className="flex-1"
               icon={<ArrowLeftRight strokeWidth={2.5} />}
               onClick={onCorrectTap}
-              aria-label="Falsch erkannt? Richtige Karte wählen"
-            />
+            >
+              Korrigieren
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="primary"
+                accentColor="#2f855a"
+                size="lg"
+                className="flex-1"
+                disabled={saving || unresolved}
+                icon={justSaved ? <Check strokeWidth={3} /> : <Plus strokeWidth={3} />}
+                onClick={save}
+              >
+                {justSaved ? 'Hinzugefügt' : saving ? 'Wird gespeichert …' : 'Hinzufügen'}
+              </Button>
+              {onCorrectTap && (
+                // Getönte secondary: zurückhaltender gelber Tint (nicht die volle
+                // CTA-Wucht des grünen „Hinzufügen"), Icon-Farbe theme-neutral.
+                <Button
+                  variant="secondary"
+                  accentColor="#f4c542"
+                  size="lg"
+                  className="shrink-0"
+                  icon={<ArrowLeftRight strokeWidth={2.5} />}
+                  onClick={onCorrectTap}
+                  aria-label="Falsch erkannt? Richtige Karte wählen"
+                />
+              )}
+            </>
           )}
         </div>
 

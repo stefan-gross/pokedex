@@ -3118,6 +3118,14 @@ function ScannedCardTile({ job, isLatest, onRemove, onOpen }: ScannedCardTilePro
   const card      = job.result?.card;
   const isError   = job.status === 'error';
   const borderStatus = computeBorderStatus(job);
+  // Scan-Foto als Fallback — bei nicht erkannter Karte ODER kaputtem/fehlendem
+  // Katalogbild zeigen wir das Foto (wie im Einzelscan) statt eines „?".
+  const scanPhoto = job.debug?.imageBase64
+    ? `data:${job.debug?.mimeType ?? 'image/jpeg'};base64,${job.debug.imageBase64}`
+    : null;
+  const [cardImgFailed, setCardImgFailed] = useState(false);
+  const cardImg = (!isError && img && !cardImgFailed) ? img : null;   // Katalogbild, sofern es lädt
+  const shown   = cardImg ?? scanPhoto;                                // sonst das Scan-Foto
 
   return (
     <div
@@ -3137,7 +3145,9 @@ function ScannedCardTile({ job, isLatest, onRemove, onOpen }: ScannedCardTilePro
         className="relative w-full rounded-md overflow-hidden"
         style={{
           aspectRatio: '63 / 88',
-          ...borderStyleFor(borderStatus, job.result?.fakeRisk),
+          // Nicht erkannt → roter Rahmen als „bitte prüfen"-Hinweis; sonst die
+          // normale Rahmenlogik (pHash-Mismatch/Fake/none).
+          ...(isError ? { border: '2.5px solid #ef4444' } : borderStyleFor(borderStatus, job.result?.fakeRisk)),
           background: '#1a1a1a',
           cursor: job.status === 'processing' ? 'default' : 'pointer',
         }}
@@ -3147,70 +3157,20 @@ function ScannedCardTile({ job, isLatest, onRemove, onOpen }: ScannedCardTilePro
           <div className="w-full h-full flex items-center justify-center">
             <Loader2 size={24} color="rgba(255,255,255,0.4)" className="animate-spin" />
           </div>
-        ) : isError ? (() => {
-          const ec = classifyJobError(job);
-          const snap = job.debug?.imageBase64;
-          const snapSrc = snap
-            ? `data:${job.debug?.mimeType ?? 'image/jpeg'};base64,${snap}`
-            : null;
-          return (
-            <div
-              className="w-full h-full flex flex-col"
-              style={{
-                background: 'linear-gradient(180deg, #d9d4b0 0%, #b8b287 100%)',
-                padding: 3,
-              }}
-            >
-              <div
-                className="flex-1 flex flex-col"
-                style={{
-                  background: 'linear-gradient(180deg, #f7f4e4 0%, #ece5c4 100%)',
-                  borderRadius: 3,
-                  overflow: 'hidden',
-                }}
-              >
-                <div
-                  className="flex items-center justify-between px-1 py-0.5 gap-0.5"
-                  style={{ background: 'rgba(111,109,78,0.16)' }}
-                >
-                  <span className="text-[8px] font-extrabold truncate" style={{ color: '#1a1a1a' }}>
-                    {ec.cardName}
-                  </span>
-                  <span className="text-[8px] font-extrabold shrink-0" style={{ color: '#6f6d4e' }}>
-                    ???
-                  </span>
-                </div>
-                <div
-                  className="flex-1 mx-0.5 my-0.5 relative overflow-hidden"
-                  style={{
-                    border: '1.5px solid rgba(0,0,0,0.55)',
-                    borderRadius: 2,
-                  }}
-                >
-                  {snapSrc ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={snapSrc} alt="Scan" className="w-full h-full object-cover" />
-                  ) : (
-                    <ErrorLandscapeArtwork className="w-full h-full" />
-                  )}
-                </div>
-                <div
-                  className="px-1 py-0.5 text-[7px] font-mono flex items-center justify-between"
-                  style={{ background: 'rgba(0,0,0,0.06)', color: '#1a1a1a' }}
-                >
-                  <span className="font-bold" style={{ color: '#6f6d4e' }}>???</span>
-                  <span>0/0</span>
-                </div>
-              </div>
-            </div>
-          );
-        })() : !img ? (
+        ) : shown ? (
+          /* Katalogbild (mit Fallback aufs Scan-Foto) bzw. — bei nicht erkannter
+             Karte — direkt das Scan-Foto. */
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={shown}
+            alt={card?.name ?? 'Scan'}
+            className="w-full h-full object-cover"
+            onError={() => setCardImgFailed(true)}
+          />
+        ) : (
           <div className="w-full h-full flex items-center justify-center bg-red-500/10">
             <AlertCircle size={22} color="#f87171" />
           </div>
-        ) : (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={img} alt={card?.name ?? ''} className="w-full h-full object-cover" />
         )}
 
         {/* Einziger Bedien-Button: Löschen — App-Standard-Button (rund, rot,
@@ -3655,37 +3615,25 @@ function RecognizedCardLarge({
             )}
           </div>
 
-          {/* Nur-Korrektur-Modus (Slider-Tipp im Mehrfachscan): keine Hinzufügen-/
-              Verwalten-Leiste, nur ein „Korrigieren"-Button. Hinzufügen/Löschen
-              passiert gebündelt im Review-Grid. */}
-          {correctionOnly ? (
-            <Button
-              variant="secondary"
-              icon={<Flag />}
-              onClick={() => setCorrecting(true)}
-              className="w-full"
-            >
-              Karte korrigieren
-            </Button>
-          ) : (
-            /* Inline-Hinzufügen: vorbelegte Attribute + Ziel-Sammlung + breiter
-               „Hinzufügen"-Button. Ersetzt den früheren +-Button im Footer und
-               den AddToCollectionModal-Zwischenschritt für den Normalfall. */
-            <RecognizedAddBar
-              card={displayCard}
-              unresolved={unresolved}
-              preVariant={job.editedVariant ?? job.result?.variant}
-              preCondition={job.editedCondition}
-              preLanguage={job.result?.language}
-              ownedCount={ownedCount ?? 0}
-              onSaved={onSaved}
-              onManage={onManage}
-              regionStyle={regionStyle(0)}
-              regionRef={registerRegion(0)}
-              onVariantChange={setShimmerVariant}
-              onCorrectTap={() => setCorrecting(true)}
-            />
-          )}
+          {/* Inline-Leiste unter der erkannten Karte — im Mehrfachscan-Slider/Grid
+              (correctionOnly) wird der breite „Hinzufügen"-Button zum gelben
+              „Korrigieren"-Button; Layout/Höhe bleiben identisch zum Einzelscan
+              (Hinzufügen/Löschen passiert dort gebündelt im Review-Grid). */}
+          <RecognizedAddBar
+            card={displayCard}
+            unresolved={unresolved}
+            correctionOnly={correctionOnly}
+            preVariant={job.editedVariant ?? job.result?.variant}
+            preCondition={job.editedCondition}
+            preLanguage={job.result?.language}
+            ownedCount={ownedCount ?? 0}
+            onSaved={onSaved}
+            onManage={onManage}
+            regionStyle={regionStyle(0)}
+            regionRef={registerRegion(0)}
+            onVariantChange={setShimmerVariant}
+            onCorrectTap={() => setCorrecting(true)}
+          />
 
           {/* Korrektur-Panel (B2): gleitet über das Info-Sheet, das große
               Kartenbild dahinter bleibt fix. Auswahl korrigiert die Anzeige
