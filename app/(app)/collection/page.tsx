@@ -89,11 +89,7 @@ const SEARCH_SORT_OPTIONS: { value: SearchSortKey; label: string }[] = [
 
 // Pokémon-Regionen (deutsch, aus der Generation abgeleitet — siehe
 // GENERATION_REGIONS in lib/pokeapi.ts). Reihenfolge = Generationen.
-const REGION_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: 'Alle Regionen' },
-  ...['Kanto', 'Johto', 'Hoenn', 'Sinnoh', 'Einall', 'Kalos', 'Alola', 'Galar', 'Paldea']
-    .map(r => ({ value: r, label: r })),
-];
+const REGIONS = ['Kanto', 'Johto', 'Hoenn', 'Sinnoh', 'Einall', 'Kalos', 'Alola', 'Galar', 'Paldea'];
 
 function fmt(n: number) { return n.toLocaleString('de'); }
 
@@ -108,6 +104,8 @@ function CollectionContent() {
   const [ownedFilter,      setOwnedFilter]      = useState<OwnedFilter>('all');
   const [activeRarity,     setActiveRarity]     = useState<string | null>(null);
   const [activeRegion,     setActiveRegion]     = useState('');
+  // Katalog-weite Trefferzahl je Region (Stöber-Modus) — einmalig geladen.
+  const [regionCounts,     setRegionCounts]     = useState<Record<string, number>>({});
   const [activeEvolutions, setActiveEvolutions] = useState<Set<string>>(new Set());
   const [activeSpecialMechanics, setActiveSpecialMechanics] = useState<Set<string>>(new Set());
   const [evoLineActive,    setEvoLineActive]    = useState(false);
@@ -160,6 +158,11 @@ function CollectionContent() {
     ]).then(([pokedex, hp]) => setSortCounts({ pokedex, hp })).catch(() => {});
     getCatalogFilterCounts().then(setFilterCounts).catch(() => {});
     getAllSets().then(setAllSets).catch(() => {});
+    // Region-Zähler (Katalog-weit) einmalig — für den Stöber-Modus. Im Such-Modus
+    // werden sie kreuzreaktiv aus den Treffern berechnet.
+    Promise.all(REGIONS.map(async r => [r, await getBrowseCount({ region: r })] as const))
+      .then(pairs => setRegionCounts(Object.fromEntries(pairs.filter(([, n]) => n >= 0))))
+      .catch(() => {});
   }, []);
 
   // Fuzzy-Korrektur bei 0 Treffern („Meintest du …?").
@@ -618,6 +621,14 @@ function CollectionContent() {
     return Object.fromEntries(TCG_TYPES.map(t => [t, base.filter(c => c.types?.includes(t)).length]));
   }, [isBrowseMode, filterCounts, results, facetState]);
 
+  // Region-Zähler: Browse = katalogweit (regionCounts), Suche = kreuzreaktiv aus
+  // den Treffern (alle anderen aktiven Filter angewandt, ohne Region selbst).
+  const regionCountInContext = useMemo<Record<string, number> | null>(() => {
+    if (isBrowseMode) return Object.keys(regionCounts).length ? regionCounts : null;
+    const base = applyFacetFilters(results, facetState, 'region');
+    return Object.fromEntries(REGIONS.map(r => [r, base.filter(c => c.region === r).length]));
+  }, [isBrowseMode, regionCounts, results, facetState]);
+
   // „Sonderformen" fasst alle Spezial-Mechaniken (GX/ex/V/VMAX/VSTAR/V-Union …)
   // zu EINEM Filter zusammen — aktiv = irgendeine Mechanik gewählt.
   const specialFormsActive = activeSpecialMechanics.size > 0;
@@ -766,7 +777,15 @@ function CollectionContent() {
                 value={activeRegion}
                 onChange={v => setActiveRegion(v)}
                 onClear={activeRegion ? () => setActiveRegion('') : undefined}
-                options={REGION_OPTIONS}
+                options={[
+                  { value: '', label: 'Alle Regionen' },
+                  ...REGIONS.map(r => ({
+                    value: r,
+                    label: r,
+                    count: regionCountInContext?.[r],
+                    disabled: regionCountInContext?.[r] === 0,
+                  })),
+                ]}
                 height="sm"
                 fullWidth
                 aria-label="Region"
