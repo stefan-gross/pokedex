@@ -2431,6 +2431,7 @@ export default function ScannerPage() {
               <RecognizedCardLarge
                 key={job.id}
                 job={job}
+                correctionOnly
                 onCardTap={() => { /* Detail nicht nötig — Korrektur-Overlay */ }}
                 onSubmitReport={result => { submitReport(job, result); close(); }}
                 onPickNotInCatalog={pending => {
@@ -3202,10 +3203,15 @@ interface RecognizedCardLargeProps {
   onSaved: () => void;
   /** Öffnet den Exemplar-Verwalten/Löschen-Drawer. */
   onManage: () => void;
+  /** Nur-Korrektur-Modus (Mehrfachscan-Slider-Tipp): blendet die Hinzufügen-/
+   *  Verwalten-Leiste aus, zeigt nur „Korrigieren" + Kandidaten-Auswahl.
+   *  Hinzufügen/Löschen passiert dort gebündelt im Review-Grid. */
+  correctionOnly?: boolean;
 }
 
 function RecognizedCardLarge({
   job, onCardTap, onSubmitReport, onPickCandidate, onPickNotInCatalog, onSaved, onManage,
+  correctionOnly = false,
 }: RecognizedCardLargeProps) {
   const [correcting, setCorrecting] = useState(false);
 
@@ -3594,23 +3600,37 @@ function RecognizedCardLarge({
             )}
           </div>
 
-          {/* Inline-Hinzufügen: vorbelegte Attribute + Ziel-Sammlung + breiter
-              „Hinzufügen"-Button. Ersetzt den früheren +-Button im Footer und
-              den AddToCollectionModal-Zwischenschritt für den Normalfall. */}
-          <RecognizedAddBar
-            card={displayCard}
-            unresolved={unresolved}
-            preVariant={job.editedVariant ?? job.result?.variant}
-            preCondition={job.editedCondition}
-            preLanguage={job.result?.language}
-            ownedCount={ownedCount ?? 0}
-            onSaved={onSaved}
-            onManage={onManage}
-            regionStyle={regionStyle(0)}
-            regionRef={registerRegion(0)}
-            onVariantChange={setShimmerVariant}
-            onCorrectTap={() => setCorrecting(true)}
-          />
+          {/* Nur-Korrektur-Modus (Slider-Tipp im Mehrfachscan): keine Hinzufügen-/
+              Verwalten-Leiste, nur ein „Korrigieren"-Button. Hinzufügen/Löschen
+              passiert gebündelt im Review-Grid. */}
+          {correctionOnly ? (
+            <Button
+              variant="secondary"
+              icon={<Flag />}
+              onClick={() => setCorrecting(true)}
+              className="w-full"
+            >
+              Karte korrigieren
+            </Button>
+          ) : (
+            /* Inline-Hinzufügen: vorbelegte Attribute + Ziel-Sammlung + breiter
+               „Hinzufügen"-Button. Ersetzt den früheren +-Button im Footer und
+               den AddToCollectionModal-Zwischenschritt für den Normalfall. */
+            <RecognizedAddBar
+              card={displayCard}
+              unresolved={unresolved}
+              preVariant={job.editedVariant ?? job.result?.variant}
+              preCondition={job.editedCondition}
+              preLanguage={job.result?.language}
+              ownedCount={ownedCount ?? 0}
+              onSaved={onSaved}
+              onManage={onManage}
+              regionStyle={regionStyle(0)}
+              regionRef={registerRegion(0)}
+              onVariantChange={setShimmerVariant}
+              onCorrectTap={() => setCorrecting(true)}
+            />
+          )}
 
           {/* Korrektur-Panel (B2): gleitet über das Info-Sheet, das große
               Kartenbild dahinter bleibt fix. Auswahl korrigiert die Anzeige
