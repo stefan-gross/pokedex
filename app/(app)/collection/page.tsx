@@ -28,7 +28,8 @@ import {
 import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { searchViaAlgolia } from '@/lib/search/algolia-search';
 import { isAlgoliaConfigured } from '@/lib/search/algolia';
-import { recordSearch } from '@/lib/firestore/search-stats';
+import { recordAlgoliaSearch, getAlgoliaUsage } from '@/lib/firestore/search-usage';
+import { getSearchMode, shouldUseAlgolia } from '@/lib/search/search-mode';
 import { getRegionStats } from '@/lib/firestore/region-stats';
 import { correctQuery } from '@/lib/search/suggest-index';
 import { useSuggestIndex } from '@/lib/search/use-suggest-index';
@@ -108,6 +109,10 @@ function CollectionContent() {
   // Katalog-weite Statistik je Region (Karten + Arten) für den Stöber-Modus —
   // aus meta/region_stats (Firestore kann „distinct" nicht zählen).
   const [regionStats,      setRegionStats]      = useState<Record<string, { cards: number; species: number }>>({});
+  // Globaler Algolia-Monatszähler (für das Budget in „Auto"). Ref = in doSearch
+  // ohne Neuaufbau lesbar; State nur, damit ein Reload den Serverstand übernimmt.
+  const [, setAlgoliaUsage] = useState(0);
+  const algoliaUsageRef = useRef(0);
   const [activeEvolutions, setActiveEvolutions] = useState<Set<string>>(new Set());
   const [activeSpecialMechanics, setActiveSpecialMechanics] = useState<Set<string>>(new Set());
   const [evoLineActive,    setEvoLineActive]    = useState(false);
@@ -163,6 +168,8 @@ function CollectionContent() {
     // Region-Statistik (Katalog-weit: Karten + Arten) einmalig — für den Stöber-
     // Modus. Im Such-Modus wird beides kreuzreaktiv aus den Treffern berechnet.
     getRegionStats().then(s => { if (s) setRegionStats(s); }).catch(() => {});
+    // Globalen Algolia-Zählerstand laden (für die Budget-Entscheidung in „Auto").
+    getAlgoliaUsage().then(n => { algoliaUsageRef.current = n; setAlgoliaUsage(n); }).catch(() => {});
   }, []);
 
   // Fuzzy-Korrektur bei 0 Treffern („Meintest du …?").
@@ -361,21 +368,19 @@ function CollectionContent() {
       // Kein lokaler Katalog (vor dem ersten Sync) → keine Treffer.
       if (catalogCountRef.current === 0) { setResults([]); setSets([]); return; }
 
-      // Ausgeführte Suche zählen (Nutzungsstatistik in den Settings) — fire&forget,
-      // blockiert die Suche nicht.
-      void recordSearch();
-
-      // Suche über Algolia, sobald konfiguriert (Volltext/Facetten/Sortierung
-      // server-seitig, ~konstant schnell). Fällt bei Fehler auf die bestehende
-      // Suche zurück. Kill-Switch: localStorage `pokedex.search.algolia=0`.
+      // Such-Backend wählen: Modus (Auto/Algolia/Firestore, pro Gerät) + globales
+      // Monats-Budget. „Auto" nutzt Algolia bis zum Budget, danach Firestore.
+      // Fällt bei Algolia-Fehler ebenfalls auf die bestehende Suche zurück.
       let cards: CatalogCard[]; let sortHint: 'pokedex' | undefined;
-      const killed = (() => { try { return localStorage.getItem('pokedex.search.algolia') === '0'; } catch { return false; } })();
-      const useAlgolia = !killed && isAlgoliaConfigured();
+      const useAlgolia = isAlgoliaConfigured() && shouldUseAlgolia(getSearchMode(), algoliaUsageRef.current);
       // Region NICHT an Algolia geben: sie wird client-seitig über den Facetten-
       // Filter angewandt (wie Rarity), damit das Auto-Lockern bei 0 Treffern
       // greift (server-seitig gefiltert käme der Fetch leer zurück → kein Relax).
       const algolia = useAlgolia ? await searchViaAlgolia(q, { displayLimit: SEARCH_DISPLAY_LIMIT }) : null;
       if (algolia) {
+        // Genutzte Algolia-Suche global zählen (Budget/Anzeige) + lokal hochzählen.
+        void recordAlgoliaSearch();
+        algoliaUsageRef.current += 1; setAlgoliaUsage(algoliaUsageRef.current);
         cards = algolia.cards; sortHint = undefined;
       } else {
         // Gemeinsame Server-Such-Pipeline (Dex → Name → Mehrwort Name∪Illustrator

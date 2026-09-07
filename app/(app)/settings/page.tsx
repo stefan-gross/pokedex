@@ -12,7 +12,9 @@ import { getCards, deleteCard } from '@/lib/firestore/cards';
 import { reconcilePendingCards } from '@/lib/scan/reconcile-pending';
 import { getBinders, deleteBinder } from '@/lib/firestore/binders';
 import { getWishlists, deleteWishlist } from '@/lib/firestore/wishlists';
-import { getSearchStats, searchMonthKey, type SearchStats } from '@/lib/firestore/search-stats';
+import { getAlgoliaUsage } from '@/lib/firestore/search-usage';
+import { getSearchMode, setSearchMode, ALGOLIA_MONTHLY_BUDGET, type SearchMode } from '@/lib/search/search-mode';
+import { isAlgoliaConfigured } from '@/lib/search/algolia';
 import { setGlassTheme, DEFAULT_GLASS_THEME } from '@/lib/ui/glass-theme';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Button } from '@/components/ui/button';
@@ -104,9 +106,9 @@ export default function SettingsPage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   useEffect(() => onAuthStateChanged(auth, u => setUserEmail(u?.email ?? null)), []);
 
-  // Such-Nutzung (eigener Zähler, monatlich) — u.a. um das Free-Limit einer
-  // externen Such-Engine (Algolia: 10.000/Monat) einzuschätzen.
-  const [searchStats, setSearchStats] = useState<SearchStats | null>(null);
+  // Algolia-Nutzung (global, monatlich) + Suchmodus (Auto/Algolia/Firestore).
+  const [algoliaUsage, setAlgoliaUsage] = useState<number | null>(null);
+  const [searchMode, setSearchModeState] = useState<SearchMode>('auto');
 
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncLoading, setSyncLoading] = useState(true);
@@ -125,7 +127,8 @@ export default function SettingsPage() {
   useEffect(() => {
     setMounted(true);
     loadSyncStatus();
-    getSearchStats().then(setSearchStats).catch(() => {});
+    getAlgoliaUsage().then(setAlgoliaUsage).catch(() => setAlgoliaUsage(0));
+    setSearchModeState(getSearchMode());
     try {
       const raw = localStorage.getItem(LAST_RUN_KEY);
       if (raw) setLastDataRun(JSON.parse(raw));
@@ -548,35 +551,52 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* 3. Such-Nutzung */}
-        <section>
-          <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-3">Suche</p>
-          <div className="glass rounded-[20px] px-4 py-3 space-y-2">
-            {(() => {
-              const ALGOLIA_FREE = 10_000;
-              const month = searchStats?.months?.[searchMonthKey()] ?? 0;
-              const pctFree = Math.min(100, Math.round((month / ALGOLIA_FREE) * 100));
-              return (
-                <>
-                  <div className="flex justify-between text-role-label">
-                    <span className="text-glass tabular-nums"><span className="text-glass-muted">Suchen (Monat) </span>{month.toLocaleString('de-DE')}</span>
-                    <span className="text-glass tabular-nums">{pctFree} %<span className="text-glass-muted"> / {ALGOLIA_FREE.toLocaleString('de-DE')}</span></span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-[rgba(30,40,80,0.10)] dark:bg-white/25 overflow-hidden">
-                    <div className="h-full rounded-full transition-all" style={{ width: `${pctFree}%`, background: barColor(pctFree) }} />
-                  </div>
-                  <div className="flex justify-between text-role-label pt-1">
-                    <span className="text-glass-muted">Gesamt</span>
-                    <span className="text-glass tabular-nums">{(searchStats?.total ?? 0).toLocaleString('de-DE')}</span>
-                  </div>
-                  <p className="text-role-label text-glass-muted pt-1">
-                    Ausgeführte Suchen dieses Geräts-Kontos. Referenz: Algolia-Free = 10.000 Suchen/Monat.
-                    Bei „Suche&nbsp;beim&nbsp;Tippen" läge die echte Request-Zahl höher.
-                  </p>
-                </>
-              );
-            })()}
-          </div>
+        {/* 3. Suche (Modus + Algolia-Nutzung) */}
+        <section className="space-y-2">
+          <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-2">Suche</p>
+
+          {/* Modus-Umschalter */}
+          <ButtonGroup
+            options={[
+              { value: 'auto',      label: 'Auto' },
+              { value: 'algolia',   label: 'Algolia' },
+              { value: 'firestore', label: 'Firestore' },
+            ]}
+            value={searchMode}
+            onChange={v => { setSearchMode(v as SearchMode); setSearchModeState(v as SearchMode); }}
+          />
+          <p className="text-role-label text-glass-muted px-1">
+            <strong className="text-glass">Auto</strong>: Algolia bis zum Monats-Budget ({ALGOLIA_MONTHLY_BUDGET.toLocaleString('de-DE')}), danach automatisch Firestore.
+            {' '}<strong className="text-glass">Algolia</strong>: immer schnell (kostet Requests). <strong className="text-glass">Firestore</strong>: die bisherige Suche (kostenlos). Gilt für dieses Gerät.
+          </p>
+
+          {/* Algolia-Nutzung (global, diesen Monat) — nur relevant, wenn konfiguriert */}
+          {isAlgoliaConfigured() && (
+            <div className="glass rounded-[20px] px-4 py-3 space-y-2">
+              {(() => {
+                const LIMIT = 10_000;
+                const used = algoliaUsage ?? 0;
+                const pct = Math.min(100, Math.round((used / LIMIT) * 100));
+                const overBudget = used >= ALGOLIA_MONTHLY_BUDGET;
+                return (
+                  <>
+                    <div className="flex justify-between text-role-label">
+                      <span className="text-glass tabular-nums"><span className="text-glass-muted">Algolia-Suchen (Monat) </span>{used.toLocaleString('de-DE')}</span>
+                      <span className="text-glass tabular-nums">{pct} %<span className="text-glass-muted"> / {LIMIT.toLocaleString('de-DE')}</span></span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-[rgba(30,40,80,0.10)] dark:bg-white/25 overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: barColor(pct) }} />
+                    </div>
+                    <p className="text-role-label text-glass-muted pt-1">
+                      App-weit (alle Geräte). {overBudget
+                        ? 'Budget erreicht — „Auto" nutzt diesen Monat Firestore.'
+                        : `Referenz: Free = ${LIMIT.toLocaleString('de-DE')}/Monat.`}
+                    </p>
+                  </>
+                );
+              })()}
+            </div>
+          )}
         </section>
 
         {/* 4. Gefahren-Zone */}

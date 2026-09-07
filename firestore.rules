@@ -89,6 +89,12 @@ service cloud.firestore {
       allow read: if true;
       allow write: if false;
     }
+    // Globaler Algolia-Nutzungszähler (app-weit) — jeder eingeloggte Nutzer darf
+    // inkrementieren (unkritisch), öffentlich lesbar.
+    match /meta/search_usage {
+      allow read: if true;
+      allow write: if signedIn();
+    }
     match /deck_archetypes/{id} {
       allow read: if true;
       allow write: if false;
