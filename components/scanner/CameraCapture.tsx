@@ -424,6 +424,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const stableRef    = useRef(0);
   const cooldownRef  = useRef(false);
+  // Re-Entrancy-Sperre: verhindert einen zweiten Manuell-Auslöser, während der
+  // erste noch läuft (Doppel-Tap / doppeltes Shutter-Event → sonst zwei Karten).
+  const capturingRef = useRef(false);
   const onCaptureRef = useRef(onCapture);
   // Auslöse-Modus als Ref (Detection-Tick liest ihn ohne Re-Setup).
   const autoDetectRef = useRef(autoDetect);
@@ -904,9 +907,12 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
   // Reflexions-/Schärfe-Metriken am Standbild messen (nur Hinweis, nicht-blockierend).
   const doManualCapture = useCallback(async () => {
     if (paused) return;
+    if (capturingRef.current) return;   // schon ein Auslöser in Arbeit → Doppel-Tap ignorieren
     setManualRetry(false); // neuer Versuch → alten Retry-Hinweis weg
     const video = videoRef.current, canvas = canvasRef.current;
     if (!video || !canvas || video.readyState < 2) return;
+    capturingRef.current = true;
+    try {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d')!.drawImage(video, 0, 0);
@@ -1040,6 +1046,9 @@ export function CameraCapture({ onCapture, pendingCount = 0, paused = false, act
       manualHoldRef.current = false;
       onnxBoxRef.current = null;
       setFrozenStill(false);
+    }
+    } finally {
+      capturingRef.current = false;   // Sperre lösen (auch bei Fehler/Retry)
     }
   }, [paused]);
 
