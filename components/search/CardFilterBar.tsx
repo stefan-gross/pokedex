@@ -149,6 +149,7 @@ export function CardFilterBar({
             // Typ-Auswahl verwerfen, wenn auf Nicht-Pokémon gewechselt wird.
             if (v !== 'all' && v !== 'Pokémon') onTypesChange?.(new Set());
           }}
+          onClear={supertype !== 'all' ? () => { onSupertypeChange!('all'); } : undefined}
           options={supertypeOptions.map(o => ({ value: o.value, label: o.label, count: o.count, disabled: o.count === 0 && o.value !== 'all' }))}
           height="sm"
           fullWidth

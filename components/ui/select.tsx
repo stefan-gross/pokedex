@@ -198,6 +198,7 @@ export function CustomSelect<T extends string>({
   accentColor,
   fullWidth = false,
   panelWide = false,
+  onClear,
   'aria-label': ariaLabel,
 }: {
   value: T | null;
@@ -219,6 +220,10 @@ export function CustomSelect<T extends string>({
    *  für schmale Trigger (z.B. 3-spaltige Auswahl), deren Optionen sonst mit
    *  „…" abgeschnitten würden. Mindestbreite bleibt die Trigger-Breite. */
   panelWide?: boolean;
+  /** Wenn gesetzt, erscheint ein „×" am Trigger, das die aktuelle Auswahl
+   *  zurücksetzt (z.B. auf „Alle"). Der Aufrufer übergibt es nur, wenn es etwas
+   *  zu löschen gibt (Auswahl ≠ Default). */
+  onClear?: () => void;
   'aria-label'?: string;
 }) {
   useGlassTheme();
@@ -255,7 +260,18 @@ export function CustomSelect<T extends string>({
           {selected?.icon}
           <span className="truncate">{selected?.label ?? placeholder}</span>
         </span>
-        <ChevronDown size={12} className="opacity-70 shrink-0" />
+        {onClear ? (
+          <span
+            role="button"
+            aria-label="Auswahl zurücksetzen"
+            onClick={e => { e.stopPropagation(); onClear(); }}
+            className="shrink-0 -mr-1 p-1 rounded-full text-glass-muted hover:bg-white/10"
+          >
+            <X size={13} />
+          </span>
+        ) : (
+          <ChevronDown size={12} className="opacity-70 shrink-0" />
+        )}
       </button>
 
       {open && pos && createPortal(
@@ -335,6 +351,7 @@ export function SearchableSelect<T extends string>({
   fullWidth = false,
   onQueryChange,
   emptyMessage = 'Keine Treffer',
+  onClear,
   'aria-label': ariaLabel,
 }: {
   value: T | null;
@@ -342,6 +359,9 @@ export function SearchableSelect<T extends string>({
   options: SearchableSelectOption<T>[];
   /** Angezeigt, wenn `value` zu keiner Option passt. */
   placeholder?: string;
+  /** Wenn gesetzt, „×" am Trigger zum Zurücksetzen der Auswahl (Aufrufer gibt es
+   *  nur, wenn eine Auswahl aktiv ist). */
+  onClear?: () => void;
   searchPlaceholder?: string;
   className?: string;
   height?: 'sm' | 'md';
@@ -417,7 +437,18 @@ export function SearchableSelect<T extends string>({
           {selected?.trailing && <span className="ml-auto shrink-0 flex items-center gap-1 opacity-70 text-role-label">{selected.trailing}</span>}
           {selected?.hint && <span className={`shrink-0 opacity-50 tabular-nums ${selected.trailing ? 'ml-1.5' : 'ml-auto'}`}>{selected.hint}</span>}
         </span>
-        <ChevronDown size={12} className="opacity-70 shrink-0" />
+        {onClear ? (
+          <span
+            role="button"
+            aria-label="Auswahl zurücksetzen"
+            onClick={e => { e.stopPropagation(); onClear(); }}
+            className="shrink-0 -mr-1 p-1 rounded-full text-glass-muted hover:bg-white/10"
+          >
+            <X size={13} />
+          </span>
+        ) : (
+          <ChevronDown size={12} className="opacity-70 shrink-0" />
+        )}
       </button>
 
       {open && pos && createPortal(

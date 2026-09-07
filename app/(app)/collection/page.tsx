@@ -721,6 +721,7 @@ function CollectionContent() {
             <CustomSelect
               value={activeSupertype}
               onChange={v => { setActiveSupertype(v as Supertype | 'all'); setActiveTypes(new Set()); setActiveEvolutions(new Set()); }}
+              onClear={activeSupertype !== 'all' ? () => { setActiveSupertype('all'); setActiveTypes(new Set()); setActiveEvolutions(new Set()); } : undefined}
               options={supertypeOptions.map(o => ({
                 value: o.value,
                 label: o.label,
@@ -781,6 +782,7 @@ function CollectionContent() {
             <SearchableSelect
               value={filterSet}
               onChange={setFilterSet}
+              onClear={filterSet ? () => setFilterSet('') : undefined}
               options={isBrowseMode ? browseSetOptions : setFilterOptions}
               height="sm"
               fullWidth
