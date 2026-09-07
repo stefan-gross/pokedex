@@ -464,9 +464,6 @@ export default function ScannerPage() {
   // Im Erkennen-Modus: ID des aktuell zentral angezeigten Jobs. Wird beim
   // erfolgreichen Recognize-Scan gesetzt; Resume-Tap räumt ihn zurück.
   const [recognizedJobId, setRecognizedJobId] = useState<string | null>(null);
-  // Mehrfachscan: die eben erkannte Karte wird kurz groß gezeigt und „fliegt"
-  // dann in den Slider. `previewFlying` schaltet die Flug-Animation scharf.
-  const [previewFlying, setPreviewFlying] = useState(false);
   // Ref für scanMode — handleCapture hat empty-deps useCallback,
   // ohne Ref wäre der Wert stale.
   const scanModeRef = useRef(scanMode);
@@ -478,9 +475,6 @@ export default function ScannerPage() {
   // 'manual' (kein Live-Erkennen/Ampel, nur Ziel-Rahmen; Foto per Footer-Scan-
   // Button, Erkennung/Zuschnitt danach auf dem Standbild). In localStorage gemerkt.
   const [captureMode, setCaptureMode] = useState<'auto' | 'manual'>('auto');
-  // Ref-Spiegel — handleCapture (empty-deps) liest den Modus beim Flug-Timeout.
-  const captureModeRef = useRef(captureMode);
-  useEffect(() => { captureModeRef.current = captureMode; }, [captureMode]);
   useEffect(() => {
     try { const v = localStorage.getItem('scanner-capture-mode'); if (v === 'manual' || v === 'auto') setCaptureMode(v); } catch { /* ignore */ }
   }, []);
@@ -811,11 +805,13 @@ export default function ScannerPage() {
         : prev;
       return [...base, { id, origin, status: 'processing', result: null, debug, captureLevel: meta?.level, captureReason: meta?.reason, captureMeta: meta }];
     });
-    // Stream SOFORT pausieren (BEIDE Modi — Mehrfachscan nutzt jetzt dieselbe
-    // Einzelscan-Logik): verhindert Folge-Snaps während Gemini arbeitet. Bei
-    // Erfolg im Mehrfachscan gibt der „Flug in den Slider" den Stream automatisch
-    // wieder frei (Auto); bei Fehlschlag bleibt er pausiert → Auto stoppt.
-    setStreamPaused(true);
+    // Im Einzeln-Modus Stream SOFORT pausieren — verhindert Folge-Snaps während
+    // Gemini noch arbeitet, die Seite zeigt die erkannte Karte groß. Im
+    // Mehrfachscan NICHT pausieren: die Karte landet direkt im Slider und wird
+    // im Hintergrund erkannt, während der Nutzer weiterscannt.
+    if (origin === 'recognize') {
+      setStreamPaused(true);
+    }
 
     try {
       // ── FIFO-Upload-Queue: warten bis vorheriger Upload fertig ist ────────
@@ -875,13 +871,11 @@ export default function ScannerPage() {
         ? `Gemini: ${gemini.error}`
         : `Gemini: ${gemini.setCode ?? (gemini.candidateSetCodes?.length ? `[${gemini.candidateSetCodes.join('/')}]` : '?')}/${gemini.number ?? '?'} ${gemini.language ?? '?'} (${gemini.confidence ?? '?'})${fakeTag}`;
 
-      // Im Mehrere-Modus: "No card detected" (leeres Bild, KEINE unscharfe/
-      // reflektierende Karte) stillschweigend verwerfen — kein echter Fehlschlag,
-      // der User muss nichts korrigieren. Im Auto sofort weiterscannen (sonst
-      // bliebe der Stream durch das Pause-nach-Capture stehen). Einzeln: zeigen.
+      // Im Mehrere-Modus: "No card detected" stillschweigend verwerfen, statt
+      // den Slider mit nutzlosen Error-Tiles zu fluten. Im Einzeln-Modus zeigen
+      // wir den Fehler weiterhin (User will Feedback).
       if (gemini.error === 'No card detected' && scanModeRef.current === 'add') {
         setJobs(prev => prev.filter(j => j.id !== id));
-        if (captureModeRef.current === 'auto') setStreamPaused(false);
         return;
       }
 
@@ -1285,21 +1279,11 @@ export default function ScannerPage() {
         }
       }
 
-      // Nach erfolgreicher Erkennung Job zentral GROSS anzeigen (beide Modi —
-      // vereinheitlichte Logik), auch für vorläufige (nicht katalogisierte) Karten.
-      if (finalCard) {
+      // Erkennen-Modus: nach erfolgreicher Erkennung Job zentral GROSS anzeigen —
+      // auch für vorläufige (nicht katalogisierte) Karten. Im Mehrfachscan bleibt
+      // die Karte im Slider (Hintergrund-Erkennung), keine große Anzeige.
+      if (finalCard && scanModeRef.current === 'recognize') {
         setRecognizedJobId(id);
-        setPreviewFlying(false);
-        // Mehrfachscan: kurz groß zeigen → in den Slider „fliegen" → im Auto
-        // sofort weiterscannen. (Einzelscan: bleibt stehen, User tippt weiter.)
-        if (scanModeRef.current === 'add') {
-          window.setTimeout(() => setPreviewFlying(true), 720);   // Flug-Animation starten
-          window.setTimeout(() => {
-            setRecognizedJobId(cur => (cur === id ? null : cur)); // Karte ist jetzt im Slider
-            setPreviewFlying(false);
-            if (captureModeRef.current === 'auto') setStreamPaused(false); // Auto: weiter
-          }, 1040);
-        }
       }
       scheduleImageCleanup(id);
 
@@ -1537,7 +1521,8 @@ export default function ScannerPage() {
             autoDetect={captureMode === 'auto'}
             shutterSignal={shutterSignal}
             recognized={recognizedJobId != null}
-            hideFrame={streamPaused && (captureMode === 'auto' || recognizedJobId != null)}
+            batchMode={scanMode === 'add'}
+            hideFrame={scanMode === 'recognize' && streamPaused && (captureMode === 'auto' || recognizedJobId != null)}
           />
           {/* Testmodus-Einstieg — dezenter Button oben links (nur Scan-Modus).
               Die Admin-Route hinter dem Panel prüft die Berechtigung selbst. */}
@@ -2391,10 +2376,8 @@ export default function ScannerPage() {
             style={{ scrollbarWidth: 'none', scrollSnapType: 'x mandatory' }}
           >
             {(() => {
-              // Nur Add-Origin-Jobs im Slider (recognize sind temporär + werden
-              // gepurged). Die eben erkannte Karte, die gerade GROSS als Vorschau
-              // läuft, hier ausblenden — sie „fliegt" danach in den Slider.
-              const addJobs = jobs.filter(j => j.origin === 'add' && j.id !== recognizedJobId);
+              // Nur Add-Origin-Jobs im Slider (recognize sind temporär + werden gepurged)
+              const addJobs = jobs.filter(j => j.origin === 'add');
               return addJobs.map((job, idx) => (
                 <ScannedCardTile
                   key={job.id}
@@ -2407,41 +2390,6 @@ export default function ScannerPage() {
           </div>
         </div>
       )}
-
-      {/* ── Mehrfachscan: kurze GROSSE Vorschau der eben erkannten Karte, die
-          dann in den Slider „fliegt" (previewFlying → skaliert + wandert nach
-          rechts unten zur Slider-Position). Rein visuell, nicht interaktiv. */}
-      {mode === 'scanning' && scanMode === 'add' && recognizedJobId && (() => {
-        const rec  = jobs.find(j => j.id === recognizedJobId);
-        const img  = rec ? cardImgUrl(rec) : null;
-        const card = rec?.result?.card;
-        if (!rec || !img || !card) return null;
-        return (
-          <div
-            className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none px-10"
-            style={{
-              top: 'calc(env(safe-area-inset-top, 0px) + 56px)',
-              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)',
-            }}
-          >
-            <div
-              style={{
-                transition: 'transform 320ms cubic-bezier(0.4,0,1,1), opacity 320ms ease-in',
-                transform: previewFlying ? 'translate(34vw, 42vh) scale(0.2)' : 'none',
-                opacity: previewFlying ? 0 : 1,
-              }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={img}
-                alt={card.name}
-                className="rounded-2xl shadow-2xl object-cover"
-                style={{ height: 'min(62vh, 100%)', aspectRatio: '63 / 88', ...borderStyleFor(computeBorderStatus(rec)) }}
-              />
-            </div>
-          </div>
-        );
-      })()}
 
       {/* ── Erkennen-Modus: kompakter „wird erkannt"-Hinweis während Gemini lädt.
           Sitzt unten (über der Footer-Leiste), damit das eingefrorene Foto mit
