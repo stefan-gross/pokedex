@@ -249,6 +249,11 @@ export default function SettingsPage() {
       step('🔗 Vorläufige Karten werden geprüft…', 94);
       const { linked } = await reconcilePendingCards().catch(() => ({ linked: 0, checked: 0 }));
 
+      // Region-Statistik (Karten + Arten je Region) neu berechnen — hängt an den
+      // via enrich-species gesetzten `region`-Feldern.
+      step('🗺️ Region-Statistik wird aktualisiert…', 96);
+      await fetch('/api/admin/build-region-stats').catch(() => {});
+
       // Algolia-Suchindex auffrischen (nur wenn konfiguriert; Route liefert sonst
       // 400 → still übersprungen). Zeitgeboxt/cursor-basiert bis fertig.
       step('🔎 Suchindex wird aktualisiert…', 97);

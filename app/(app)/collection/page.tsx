@@ -29,6 +29,7 @@ import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { searchViaAlgolia } from '@/lib/search/algolia-search';
 import { isAlgoliaConfigured } from '@/lib/search/algolia';
 import { recordSearch } from '@/lib/firestore/search-stats';
+import { getRegionStats } from '@/lib/firestore/region-stats';
 import { correctQuery } from '@/lib/search/suggest-index';
 import { useSuggestIndex } from '@/lib/search/use-suggest-index';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
@@ -104,8 +105,9 @@ function CollectionContent() {
   const [ownedFilter,      setOwnedFilter]      = useState<OwnedFilter>('all');
   const [activeRarity,     setActiveRarity]     = useState<string | null>(null);
   const [activeRegion,     setActiveRegion]     = useState('');
-  // Katalog-weite Trefferzahl je Region (Stöber-Modus) — einmalig geladen.
-  const [regionCounts,     setRegionCounts]     = useState<Record<string, number>>({});
+  // Katalog-weite Statistik je Region (Karten + Arten) für den Stöber-Modus —
+  // aus meta/region_stats (Firestore kann „distinct" nicht zählen).
+  const [regionStats,      setRegionStats]      = useState<Record<string, { cards: number; species: number }>>({});
   const [activeEvolutions, setActiveEvolutions] = useState<Set<string>>(new Set());
   const [activeSpecialMechanics, setActiveSpecialMechanics] = useState<Set<string>>(new Set());
   const [evoLineActive,    setEvoLineActive]    = useState(false);
@@ -158,11 +160,9 @@ function CollectionContent() {
     ]).then(([pokedex, hp]) => setSortCounts({ pokedex, hp })).catch(() => {});
     getCatalogFilterCounts().then(setFilterCounts).catch(() => {});
     getAllSets().then(setAllSets).catch(() => {});
-    // Region-Zähler (Katalog-weit) einmalig — für den Stöber-Modus. Im Such-Modus
-    // werden sie kreuzreaktiv aus den Treffern berechnet.
-    Promise.all(REGIONS.map(async r => [r, await getBrowseCount({ region: r })] as const))
-      .then(pairs => setRegionCounts(Object.fromEntries(pairs.filter(([, n]) => n >= 0))))
-      .catch(() => {});
+    // Region-Statistik (Katalog-weit: Karten + Arten) einmalig — für den Stöber-
+    // Modus. Im Such-Modus wird beides kreuzreaktiv aus den Treffern berechnet.
+    getRegionStats().then(s => { if (s) setRegionStats(s); }).catch(() => {});
   }, []);
 
   // Fuzzy-Korrektur bei 0 Treffern („Meintest du …?").
@@ -621,13 +621,18 @@ function CollectionContent() {
     return Object.fromEntries(TCG_TYPES.map(t => [t, base.filter(c => c.types?.includes(t)).length]));
   }, [isBrowseMode, filterCounts, results, facetState]);
 
-  // Region-Zähler: Browse = katalogweit (regionCounts), Suche = kreuzreaktiv aus
-  // den Treffern (alle anderen aktiven Filter angewandt, ohne Region selbst).
-  const regionCountInContext = useMemo<Record<string, number> | null>(() => {
-    if (isBrowseMode) return Object.keys(regionCounts).length ? regionCounts : null;
+  // Region-Statistik im Kontext (Karten + Arten): Browse = katalogweit
+  // (meta/region_stats), Suche = kreuzreaktiv aus den Treffern (alle anderen
+  // aktiven Filter angewandt, ohne Region selbst; Arten = distinct Pokédex-Nr.).
+  const regionStatInContext = useMemo<Record<string, { cards: number; species: number }> | null>(() => {
+    if (isBrowseMode) return Object.keys(regionStats).length ? regionStats : null;
     const base = applyFacetFilters(results, facetState, 'region');
-    return Object.fromEntries(REGIONS.map(r => [r, base.filter(c => c.region === r).length]));
-  }, [isBrowseMode, regionCounts, results, facetState]);
+    return Object.fromEntries(REGIONS.map(r => {
+      const inR = base.filter(c => c.region === r);
+      const species = new Set(inR.map(c => c.nationalDexNumber).filter((n): n is number => typeof n === 'number')).size;
+      return [r, { cards: inR.length, species }];
+    }));
+  }, [isBrowseMode, regionStats, results, facetState]);
 
   // „Sonderformen" fasst alle Spezial-Mechaniken (GX/ex/V/VMAX/VSTAR/V-Union …)
   // zu EINEM Filter zusammen — aktiv = irgendeine Mechanik gewählt.
@@ -779,12 +784,16 @@ function CollectionContent() {
                 onClear={activeRegion ? () => setActiveRegion('') : undefined}
                 options={[
                   { value: '', label: 'Alle Regionen' },
-                  ...REGIONS.map(r => ({
-                    value: r,
-                    label: r,
-                    count: regionCountInContext?.[r],
-                    disabled: regionCountInContext?.[r] === 0,
-                  })),
+                  ...REGIONS.map(r => {
+                    const s = regionStatInContext?.[r];
+                    return {
+                      value: r,
+                      label: r,
+                      // Rechts: „Karten (Arten)" — z.B. „4.720 (151)".
+                      hint: s ? `${s.cards.toLocaleString('de')} (${s.species})` : undefined,
+                      disabled: s?.cards === 0,
+                    };
+                  }),
                 ]}
                 height="sm"
                 fullWidth
