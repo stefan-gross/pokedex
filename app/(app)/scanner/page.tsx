@@ -1833,7 +1833,7 @@ export default function ScannerPage() {
                       <Button
                         variant="primary"
                         size="sm"
-                        accentColor="var(--action-delete)"
+                        accentColor="#c53030"
                         icon={<Trash2 />}
                         onClick={e => { e.stopPropagation(); removeJob(job.id); }}
                         aria-label="Entfernen"
@@ -1843,7 +1843,7 @@ export default function ScannerPage() {
                         <Button
                           variant="primary"
                           size="md"
-                          accentColor="var(--action-add)"
+                          accentColor="#2f855a"
                           icon={<Plus />}
                           onClick={e => { e.stopPropagation(); setQuickAddJobId(job.id); }}
                           aria-label="Zur Sammlung hinzufügen"
@@ -1999,7 +1999,7 @@ export default function ScannerPage() {
                       <Button
                         variant="primary"
                         size="md"
-                        accentColor="var(--action-delete)"
+                        accentColor="#c53030"
                         icon={<Trash2 />}
                         onClick={e => {
                           e.stopPropagation();
@@ -2015,7 +2015,7 @@ export default function ScannerPage() {
                         <Button
                           variant="primary"
                           size="lg"
-                          accentColor="var(--action-add)"
+                          accentColor="#2f855a"
                           icon={<Plus />}
                           onClick={e => { e.stopPropagation(); setQuickAddJobId(j.id); }}
                           aria-label="Zur Sammlung hinzufügen"
@@ -2700,7 +2700,7 @@ export default function ScannerPage() {
           >
             <Button
               variant="primary"
-              accentColor="var(--action-delete)"
+              accentColor="#c53030"
               icon={<Trash2 />}
               onClick={clearAllJobs}
               className="flex-1"
@@ -2709,7 +2709,7 @@ export default function ScannerPage() {
             </Button>
             <Button
               variant="primary"
-              accentColor="var(--action-add)"
+              accentColor="#2f855a"
               icon={<Plus />}
               onClick={openBulkAdd}
               disabled={unaddedCount === 0}
@@ -2868,7 +2868,7 @@ export default function ScannerPage() {
               <div className="flex gap-2 pt-1">
                 <Button
                   variant="primary"
-                  accentColor="var(--action-delete)"
+                  accentColor="#c53030"
                   icon={<Trash2 />}
                   onClick={removeAndClose}
                   className="flex-1"
@@ -3142,7 +3142,7 @@ function ScannedCardTile({ job, isLatest, onRemove }: ScannedCardTileProps) {
         <Button
           variant="primary"
           size="sm"
-          accentColor="var(--action-delete)"
+          accentColor="#c53030"
           icon={<Trash2 />}
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
           aria-label="Entfernen"
