@@ -478,6 +478,10 @@ export default function ScannerPage() {
   // 'manual' (kein Live-Erkennen/Ampel, nur Ziel-Rahmen; Foto per Footer-Scan-
   // Button, Erkennung/Zuschnitt danach auf dem Standbild). In localStorage gemerkt.
   const [captureMode, setCaptureMode] = useState<'auto' | 'manual'>('auto');
+  // Ref-Spiegel — handleCapture (empty-deps) liest den Modus asynchron nach der
+  // Hintergrund-Erkennung (Auto-Stopp bei Fehler im Mehrfachscan).
+  const captureModeRef = useRef(captureMode);
+  useEffect(() => { captureModeRef.current = captureMode; }, [captureMode]);
   useEffect(() => {
     try { const v = localStorage.getItem('scanner-capture-mode'); if (v === 'manual' || v === 'auto') setCaptureMode(v); } catch { /* ignore */ }
   }, []);
@@ -801,6 +805,13 @@ export default function ScannerPage() {
     // doppelten Speicherverbrauch (vorher: capturedImageBase64 + debug.imageBase64
     // hat iOS PWA bei vielen Scans gecrasht).
     const origin = scanModeRef.current;
+    // Auto-Stopp bei Fehler: kommt eine Karte im Mehrfachscan-AUTOMATIK als nicht
+    // erkannt (Fehler/unauflösbar) aus der Hintergrund-Erkennung zurück, den
+    // Stream (async) pausieren — so kann der Nutzer reagieren, ohne dass der
+    // schnelle Flow pro Karte blockiert.
+    const stopAutoOnFail = () => {
+      if (origin === 'add' && captureModeRef.current === 'auto') setStreamPaused(true);
+    };
     setJobs(prev => {
       // Im Einzeln-Modus immer nur EIN Recognize-Job gleichzeitig: alte raus.
       const base = origin === 'recognize'
@@ -892,6 +903,7 @@ export default function ScannerPage() {
         setJobs(prev => prev.map(j => j.id === id
           ? { ...j, status: 'error', result: { card: null, language: (gemini.language ?? 'de') as CardLanguage }, debugInfo: geminiSummary, debug: errDebug }
           : j));
+        stopAutoOnFail();
         // Telemetrie: Fehl-/Nichterkennung als Event + vollen Fall (mit Bildern).
         {
           const outcome: ScanOutcome = gemini.error ? 'error' : 'not_recognized';
@@ -1251,6 +1263,7 @@ export default function ScannerPage() {
           candidates: ambiguousCandidates ? ambiguousCandidates.map(catalogCardToInfo) : undefined,
         },
       } : j));
+      if (!finalCard) stopAutoOnFail();   // unauflösbar → Auto-Stopp (Mehrfachscan)
 
       // ── Telemetrie ────────────────────────────────────────────────────────
       // Für JEDEN Scan ein kompaktes Event (Qualität/Gemini/Lookup, kein Bild) +
@@ -1387,6 +1400,7 @@ export default function ScannerPage() {
       setJobs(prev => prev.map(j => j.id === id
         ? { ...j, status: 'error', result: { card: null, language: 'de' }, debugInfo: `Netzwerkfehler: ${msg}`, debug: errDebug }
         : j));
+      stopAutoOnFail();
       if (!isTest) {
         const quality = metaToQuality(meta);
         void recordScanEvent({ outcome: 'error', quality, gemini: { error: msg } }).then(eventId => {
