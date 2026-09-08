@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle, EyeOff, SearchX, LayoutGrid, Square, Flag, Trash2, CheckSquare } from 'lucide-react';
+import { X, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle, EyeOff, SearchX, Flag, Trash2, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Dialog } from '@/components/ui/modal';
@@ -1608,7 +1608,7 @@ export default function ScannerPage() {
         <div
           className="absolute inset-0 overflow-y-auto bg-black px-4"
           style={{
-            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 138px)',
+            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 186px)',
             paddingBottom: viewMode === 'single'
               ? 'calc(env(safe-area-inset-bottom, 0px) + 20px)'
               : 'calc(env(safe-area-inset-bottom, 0px) + 130px)',
@@ -1643,54 +1643,57 @@ export default function ScannerPage() {
                   : `${filtered.length}/${addJobs.length}`}
               </span>
             </div>
-            {/* Zeile 2: View-Switch (ButtonGroup) + Statusfilter + Mehrfachauswahl */}
+            {/* Zeile 2: Statusfilter — volle Breite, eigene Zeile. Klartext-
+                Beschriftung (statt ✓/!/✕) + Ampel-Farbe der aktiven Option. */}
+            <div className="flex w-full rounded-full p-0.5 bg-black/30 backdrop-blur-sm">
+              {([
+                ['all', 'Alle'],
+                ['success', 'Erkannt'],
+                ['yellow', 'Unsicher'],
+                ['red', 'Fehler'],
+              ] as const).map(([f, label]) => (
+                <button
+                  key={f}
+                  onClick={() => setStatusFilter(f)}
+                  className="flex-1 h-10 text-sm font-semibold rounded-full transition-colors"
+                  style={{
+                    background:
+                      statusFilter === f
+                        ? (f === 'yellow' ? '#facc15' : f === 'red' ? '#ef4444' : f === 'success' ? '#22c55e' : 'var(--pokedex-red)')
+                        : 'transparent',
+                    color: statusFilter === f ? (f === 'yellow' ? '#1a1a1a' : '#fff') : 'var(--glass-muted, rgba(255,255,255,0.6))',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {/* Zeile 3: Ansicht-Switch (Klartext) links + „Bearbeiten"-Button
+                rechts — Bearbeiten exakt wie in den Sammlungen (Stift → Fertig). */}
             <div className="flex items-center gap-2">
-              {/* View-Mode-Toggle (Grid / Einzeln) — geteilte ButtonGroup */}
               <ButtonGroup
-                iconOnly
                 options={[
-                  { value: 'grid',   label: <LayoutGrid size={18} />, ariaLabel: 'Grid' },
-                  { value: 'single', label: <Square size={18} />,     ariaLabel: 'Einzeln' },
+                  { value: 'grid',   label: 'Raster' },
+                  { value: 'single', label: 'Einzeln' },
                 ]}
                 value={viewMode}
                 onChange={v => { setViewMode(v as 'grid' | 'single'); if (v === 'single') setSingleIdx(0); }}
+                className="min-w-[180px]"
               />
-              {/* Statusfilter — bewusst eigene Chips (Farbe = Status: grün/gelb/
-                  rot), da eine ButtonGroup nur EINE Akzentfarbe kennt und die
-                  Ampel-Semantik verlöre. */}
-              <div className="flex rounded-full p-0.5 bg-black/30 backdrop-blur-sm">
-                {([
-                  ['all', 'Alle'],
-                  ['success', '✓'],
-                  ['yellow', '!'],
-                  ['red', '✕'],
-                ] as const).map(([f, label]) => (
-                  <button
-                    key={f}
-                    onClick={() => setStatusFilter(f)}
-                    className="min-w-[40px] px-3 h-10 text-sm font-semibold rounded-full transition-colors"
-                    style={{
-                      background:
-                        statusFilter === f
-                          ? (f === 'yellow' ? '#facc15' : f === 'red' ? '#ef4444' : f === 'success' ? '#22c55e' : 'var(--pokedex-red)')
-                          : 'transparent',
-                      color: statusFilter === f ? (f === 'yellow' ? '#1a1a1a' : '#fff') : 'var(--glass-muted, rgba(255,255,255,0.6))',
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {/* Mehrfachauswahl umschalten (nur Grid-Ansicht sinnvoll). */}
               {viewMode === 'grid' && (
-                <Button
-                  variant={selectMode ? 'primary' : 'secondary'}
-                  size="md"
-                  icon={<CheckSquare />}
-                  aria-label="Mehrfachauswahl"
-                  onClick={() => { setSelectMode(m => !m); setSelectedIds(new Set()); }}
-                  className="ml-auto"
-                />
+                selectMode ? (
+                  <Button
+                    variant="primary" size="sm" accentColor="#2f855a" icon={<Check />}
+                    aria-label="Fertig" className="shrink-0 ml-auto"
+                    onClick={() => { setSelectMode(false); setSelectedIds(new Set()); }}
+                  />
+                ) : (
+                  <Button
+                    variant="secondary" size="sm" icon={<Pencil />}
+                    aria-label="Bearbeiten" className="shrink-0 ml-auto"
+                    onClick={() => { setSelectMode(true); setSelectedIds(new Set()); }}
+                  />
+                )
               )}
             </div>
           </div>
@@ -2883,7 +2886,7 @@ export default function ScannerPage() {
             {selectMode ? (
               <>
                 <Button
-                  variant="primary" size="lg" accentColor="#c53030" icon={<Trash2 />}
+                  variant="primary" size="md" accentColor="#c53030" icon={<Trash2 />}
                   onClick={() => { selectedIds.forEach(id => removeJob(id)); setSelectedIds(new Set()); }}
                   disabled={selCount === 0}
                   className="flex-1"
@@ -2891,7 +2894,7 @@ export default function ScannerPage() {
                   {`Löschen${selCount ? ` (${selCount})` : ''}`}
                 </Button>
                 <Button
-                  variant="primary" size="lg" accentColor="#2f855a" icon={<Plus />}
+                  variant="primary" size="md" accentColor="#2f855a" icon={<Plus />}
                   onClick={openBulkAdd}
                   disabled={selAddable === 0}
                   className="flex-1"
@@ -2901,11 +2904,11 @@ export default function ScannerPage() {
               </>
             ) : (
               <>
-                <Button variant="primary" size="lg" accentColor="#c53030" icon={<Trash2 />} onClick={() => setConfirmClearAll(true)} className="flex-1">
+                <Button variant="primary" size="md" accentColor="#c53030" icon={<Trash2 />} onClick={() => setConfirmClearAll(true)} className="flex-1">
                   {`Alle löschen${totalCount ? ` (${totalCount})` : ''}`}
                 </Button>
                 <Button
-                  variant="primary" size="lg" accentColor="#2f855a" icon={<Plus />}
+                  variant="primary" size="md" accentColor="#2f855a" icon={<Plus />}
                   onClick={openBulkAdd}
                   disabled={unaddedCount === 0}
                   className="flex-1"
