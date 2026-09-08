@@ -106,6 +106,20 @@ export default function DashboardPage() {
         .slice(0, 6)
     : [], [cards]);
 
+  // Alle besessenen Exemplare je Karte (tcgId) — damit die Kachel den GESAMT-
+  // Zähler (×N) und „ungeprüft" (!) über ALLE Exemplare zeigt, nicht nur über das
+  // eine zuletzt hinzugefügte (sonst fehlten Zähler/„!", siehe „Zuletzt
+  // hinzugefügt": vorher ownedCards={[card]}).
+  const ownedByTcg = useMemo(() => {
+    const m = new Map<string, CardDoc[]>();
+    (cards ?? []).forEach(c => {
+      const key = c.tcgId ?? c.id;
+      const arr = m.get(key);
+      if (arr) arr.push(c); else m.set(key, [c]);
+    });
+    return m;
+  }, [cards]);
+
   // Sets grouped by setId. `owned` = EINDEUTIGE Karten des Sets (Duplikate/
   // Varianten zählen als eine — Dedupe über tcgId, vorläufige über Doc-ID).
   // Memoisiert auf `cards` — die O(n)-Aggregation lief sonst bei jedem Render.
@@ -319,7 +333,7 @@ export default function DashboardPage() {
               <Card
                 key={card.id}
                 card={ownedCardToInfo(card, catalogById)}
-                ownedCards={[card]}
+                ownedCards={ownedByTcg.get(card.tcgId ?? card.id) ?? [card]}
                 sublabel={card.name}
                 onCardClick={() => openDetail(card)}
               />
