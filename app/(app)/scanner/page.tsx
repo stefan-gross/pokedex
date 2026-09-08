@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { X, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle, EyeOff, SearchX, LayoutGrid, Square, Flag, Trash2, CheckSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
+import { Dialog } from '@/components/ui/modal';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
@@ -475,6 +476,8 @@ export default function ScannerPage() {
   const [recognizedJobId, setRecognizedJobId] = useState<string | null>(null);
   // Mehrfachscan: angetippte Slider-Karte → Korrektur-Ansicht (wie Einzelscan).
   const [correctJobId, setCorrectJobId] = useState<string | null>(null);
+  // „Alle löschen" fragt vor dem Verwerfen nach (Bulk-Aktion, nicht umkehrbar).
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
   // Review-Grid: Mehrfachauswahl zum gebündelten Hinzufügen/Löschen.
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -1696,7 +1699,6 @@ export default function ScannerPage() {
               return filteredReversed.map((job) => {
                 const origIdx = addJobs.indexOf(job);
                 const idx = origIdx; // for depth calc — but our depth uses addJobs index
-                const img = cardImgUrl(job);
                 const card = job.result?.card;
                 const canOpen = job.status === 'done' && !!card;
                 const isError = job.status === 'error';
@@ -1828,14 +1830,9 @@ export default function ScannerPage() {
                           </div>
                         </div>
                       );
-                    })() : !img ? (
-                      <div className="w-full h-full flex items-center justify-center bg-red-500/10">
-                        <AlertCircle size={24} color="#f87171" />
-                      </div>
-                    ) : (
+                    })() : (
                       <>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={img} alt={card?.name ?? ''} className="w-full h-full object-cover" />
+                        <ScanCardImage job={job} />
                         {/* Holo-Glanz nur bei EINDEUTIG-Foil-Karten (Katalog ohne
                             standard-Variante) — die Scan-Variante selbst ist nur
                             geraten, daher nicht als Glanz-Signal genutzt. */}
@@ -2752,6 +2749,7 @@ export default function ScannerPage() {
         const visible = mode === 'review' && jobs.length > 0 && viewMode !== 'single';
         if (!visible) return null;
         const unaddedCount = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added).length;
+        const totalCount = jobs.filter(j => j.origin === 'add').length;
         const selCount = selectedIds.size;
         const selAddable = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added && selectedIds.has(j.id)).length;
         return (
@@ -2759,9 +2757,11 @@ export default function ScannerPage() {
             className="absolute left-0 right-0 z-40 px-3"
             style={{
               // BottomNav ist im Review-Modus ausgeblendet → Bulk-Row übernimmt
-              // die Footer-Rolle. Schwebende Glas-Karte wie das Kopf-Panel, statt
-              // einer flachen schwarzen Leiste — konsistente App-Chrome.
-              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 10px)',
+              // die Footer-Rolle und sitzt GANZ unten am Bildschirmrand (dort wo
+              // sonst die Footer-Navi ist), nur um die Safe-Area eingerückt.
+              bottom: 0,
+              paddingTop: 8,
+              paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)',
             }}
           >
           <div className="glass rounded-[20px] p-2 flex gap-2">
@@ -2773,7 +2773,7 @@ export default function ScannerPage() {
                   disabled={selCount === 0}
                   className="flex-1"
                 >
-                  {`Auswahl löschen${selCount ? ` (${selCount})` : ''}`}
+                  {`Löschen${selCount ? ` (${selCount})` : ''}`}
                 </Button>
                 <Button
                   variant="primary" accentColor="#2f855a" icon={<Plus />}
@@ -2781,13 +2781,13 @@ export default function ScannerPage() {
                   disabled={selAddable === 0}
                   className="flex-1"
                 >
-                  {`Auswahl hinzufügen${selAddable ? ` (${selAddable})` : ''}`}
+                  {`Hinzufügen${selAddable ? ` (${selAddable})` : ''}`}
                 </Button>
               </>
             ) : (
               <>
-                <Button variant="primary" accentColor="#c53030" icon={<Trash2 />} onClick={clearAllJobs} className="flex-1">
-                  Alle löschen
+                <Button variant="primary" accentColor="#c53030" icon={<Trash2 />} onClick={() => setConfirmClearAll(true)} className="flex-1">
+                  {`Alle löschen${totalCount ? ` (${totalCount})` : ''}`}
                 </Button>
                 <Button
                   variant="primary" accentColor="#2f855a" icon={<Plus />}
@@ -2803,6 +2803,27 @@ export default function ScannerPage() {
           </div>
         );
       })()}
+
+      {/* ── „Alle löschen" — Sicherheitsabfrage (Bulk-Aktion) ───────────── */}
+      <Dialog open={confirmClearAll} onClose={() => setConfirmClearAll(false)} title="Alle löschen?">
+        <p className="text-glass-muted text-role-body mb-5">
+          {(() => {
+            const n = jobs.filter(j => j.origin === 'add').length;
+            return `${n} gescannte ${n === 1 ? 'Karte wird' : 'Karten werden'} verworfen. Bereits hinzugefügte Karten bleiben in deiner Sammlung.`;
+          })()}
+        </p>
+        <div className="flex gap-2">
+          <Button variant="secondary" className="flex-1" onClick={() => setConfirmClearAll(false)}>
+            Abbrechen
+          </Button>
+          <Button
+            variant="primary" accentColor="#c53030" icon={<Trash2 />} className="flex-1"
+            onClick={() => { clearAllJobs(); setConfirmClearAll(false); }}
+          >
+            Alle löschen
+          </Button>
+        </div>
+      </Dialog>
 
 
       {/* Footer wird jetzt von der globalen BottomNav übernommen.
@@ -3109,6 +3130,42 @@ export default function ScannerPage() {
   );
 }
 
+// ───── Scan-Karten-Bild ──────────────────────────────────────────────────
+// Gemeinsame Bildanzeige für Slider-Kachel UND Review-Grid: probiert ALLE
+// Katalogbild-Kandidaten (nicht nur den ersten) und fällt bei echtem Fehlschlag
+// aufs Scan-Foto zurück — sonst zeigte das Grid ein „?" (kaputtes <img>), wenn
+// der erste Kandidat 404 lieferte (z.B. fehlendes TCGdex-DE-Bild).
+function ScanCardImage({ job, className = 'w-full h-full object-cover' }: { job: ScanJob; className?: string }) {
+  const card    = job.result?.card;
+  const isError = job.status === 'error';
+  const scanPhoto = job.debug?.imageBase64
+    ? `data:${job.debug?.mimeType ?? 'image/jpeg'};base64,${job.debug.imageBase64}`
+    : null;
+  const cardCandidates = (!isError && card)
+    ? cardImageCandidates(card, { size: 'small', language: job.result?.language })
+    : [];
+  const [candIdx, setCandIdx] = useState(0);
+  useEffect(() => { setCandIdx(0); }, [card?.id]);
+  const cardImg = candIdx < cardCandidates.length ? cardCandidates[candIdx] : null;
+  const shown   = cardImg ?? scanPhoto;
+  if (!shown) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-red-500/10">
+        <AlertCircle size={24} color="#f87171" />
+      </div>
+    );
+  }
+  return (
+    /* eslint-disable-next-line @next/next/no-img-element */
+    <img
+      src={shown}
+      alt={card?.name ?? ''}
+      className={className}
+      onError={() => { if (cardImg) setCandIdx(i => i + 1); }}
+    />
+  );
+}
+
 // ───── Scanned-Card-Tile ─────────────────────────────────────────────────
 // Tile-Breite: so gewählt, dass ~3 Karten voll sichtbar sind und links eine
 // vierte angeschnitten „hervorlugt" (Slider-Hinweis). Container-Padding px-4
@@ -3343,9 +3400,9 @@ function RecognizedCardLarge({
     // Karte bewusst auf 80 % des verfügbaren Slots (nicht full-contain) — die
     // Karte wird groß gezeigt, aber das Glas-Overlay unten verdeckt sonst zu
     // viel; kleinere Karte lässt oben/unten Luft. Im reinen Korrektur-Modus
-    // (correctionOnly) fällt der Info-Text weg → die Karte darf fast den ganzen
-    // Slot füllen und wird mittig zentriert (siehe slotRef unten).
-    const CARD_SCALE = correctionOnly ? 0.96 : 0.8;
+    // (correctionOnly) ist der Slot eine eigene flex-1-Zeile ÜBER dem Info-Block
+    // (kein Overlay) — die Karte darf ihn fast füllen.
+    const CARD_SCALE = correctionOnly ? 0.98 : 0.8;
     const base = slotRatio > cardRatio
       ? { w: slotSize.h * cardRatio, h: slotSize.h }
       : { w: slotSize.w, h: slotSize.w / cardRatio };
@@ -3442,7 +3499,9 @@ function RecognizedCardLarge({
           *Bildes* auf Inhaltsgröße schrumpfen ließ — brach zusammen, wenn das
           Bild nicht lud). Varianten-/Zustand-Auswahl passiert nicht mehr hier,
           sondern beim Hinzufügen im AddToCollectionModal. */}
-      <div ref={slotRef} className={`absolute inset-0 z-0 flex justify-center ${correctionOnly ? 'items-center' : 'items-start'}`}>
+      <div ref={slotRef} className={correctionOnly
+        ? 'relative z-0 flex-1 min-h-0 w-full flex items-center justify-center'
+        : 'absolute inset-0 z-0 flex items-start justify-center'}>
       <div
         ref={containerRef}
         className="relative overflow-hidden"
@@ -3541,7 +3600,9 @@ function RecognizedCardLarge({
           dahinter die ganze Fläche (Slot absolute inset-0). Feste rgba()-Werte
           identisch zur Dark-Variante der globalen .glass-Klasse — der Scanner
           liegt immer über dem (dunklen) Kamerabild. */}
-      <div className="absolute inset-x-0 bottom-0 z-10 px-4 flex flex-col gap-3">
+      <div className={correctionOnly
+        ? 'relative w-full z-10 flex flex-col gap-3'
+        : 'absolute inset-x-0 bottom-0 z-10 px-4 flex flex-col gap-3'}>
       {displayCard && (
         <div
           className="relative w-full flex flex-col items-start gap-2 px-4 py-4 rounded-[24px] glass-overlay"
@@ -3552,12 +3613,11 @@ function RecognizedCardLarge({
           // unlesbar. Blur/Border/Schatten kommen weiter aus .glass-overlay.
           style={{ background: 'linear-gradient(to bottom, rgba(10,12,18,0.86) 0%, rgba(10,12,18,0.64) 48%, rgba(10,12,18,0.56) 100%)' }}
         >
-          {/* Im reinen Korrektur-Modus (correctionOnly) entfällt der komplette
-              Info-Kopf (Griff, Set-Logo/Name, Kartenname, Nummer/Preis) — die
-              Karte selbst zeigt all das bereits, und ohne den Kopf bleibt sie in
-              voller Höhe sichtbar. Es bleibt nur der „Korrigieren"-Button. */}
-          {!correctionOnly && (<>
-          {/* Griff: Panel einklappen (Dropdowns aus → mehr Karte sichtbar). */}
+          {/* Griff nur außerhalb des Korrektur-Modus — dort liegt der Info-Block
+              als kompakte Zeile UNTER der Karte (kein Overlay), es gibt nichts
+              einzuklappen. Set-Logo/Name, Kartenname und Nummer bleiben aber
+              sichtbar (Nutzerwunsch: Karten-Infos auch beim Korrigieren zeigen). */}
+          {!correctionOnly && (
           <Grabber
             expanded={stage === 0}
             barClassName="bg-white/40"
@@ -3565,6 +3625,7 @@ function RecognizedCardLarge({
             className="w-full -mt-1"
             {...grabberProps}
           />
+          )}
 
           {/* Logo + Zyklus/Setname als ein Block — Logo links, rechts daneben
               Zyklus- und Setname linksbündig in zwei Zeilen übereinander,
@@ -3645,7 +3706,6 @@ function RecognizedCardLarge({
               />
             )}
           </div>
-          </>)}
 
           {/* Inline-Leiste unter der erkannten Karte — im Mehrfachscan-Slider/Grid
               (correctionOnly) wird der breite „Hinzufügen"-Button zum gelben
@@ -3673,6 +3733,7 @@ function RecognizedCardLarge({
           {displayCard && (
             <ScanCorrectionPanel
               open={correcting}
+              fullScreen={correctionOnly}
               card={displayCard}
               candidates={job.result?.candidates}
               language={job.result?.language}

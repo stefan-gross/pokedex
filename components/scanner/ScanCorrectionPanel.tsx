@@ -53,6 +53,10 @@ interface Props {
   /** „Nicht im Katalog": Pending-Karte übernehmen (falls baubar) + melden. */
   onNotInCatalog: () => void;
   onClose: () => void;
+  /** Vollbild statt „im Info-Sheet andocken": im Mehrfachscan-Korrektur-Overlay
+   *  gibt es kein hohes Info-Sheet, an dem das Panel andocken könnte — dann muss
+   *  es den ganzen Bildschirm füllen, sonst sind Suchfeld + Treffer abgeschnitten. */
+  fullScreen?: boolean;
 }
 
 /**
@@ -63,7 +67,7 @@ interface Props {
  * korrigiert die Anzeige UND meldet still (Grundwahrheit). Kein Notizfeld.
  */
 export function ScanCorrectionPanel({
-  open, card, candidates, language, pendingCard, onPick, onNotInCatalog, onClose,
+  open, card, candidates, language, pendingCard, onPick, onNotInCatalog, onClose, fullScreen = false,
 }: Props) {
   const english = language === 'en';
 
@@ -205,10 +209,17 @@ export function ScanCorrectionPanel({
 
   return (
     <div
-      className="dark absolute inset-0 z-30 rounded-[24px] flex flex-col overflow-hidden"
+      className={`dark flex flex-col overflow-hidden ${
+        fullScreen
+          ? 'fixed inset-0 z-[70]'
+          : 'absolute inset-0 z-30 rounded-[24px]'
+      }`}
       style={{
         background: '#0d1017',
-        border: '1px solid rgba(255,255,255,0.10)',
+        border: fullScreen ? 'none' : '1px solid rgba(255,255,255,0.10)',
+        // Vollbild slidet von unten mit sichtbarem Safe-Area-Abstand oben.
+        paddingTop: fullScreen ? 'env(safe-area-inset-top, 0px)' : undefined,
+        paddingBottom: fullScreen ? 'env(safe-area-inset-bottom, 0px)' : undefined,
         transform: shown ? 'translateY(0)' : 'translateY(102%)',
         transition: 'transform .3s cubic-bezier(.22,.9,.3,1)',
       }}
