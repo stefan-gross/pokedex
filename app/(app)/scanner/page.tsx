@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle, EyeOff, SearchX, Flag, Trash2, Pencil } from 'lucide-react';
+import { X, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle, EyeOff, SearchX, Flag, Trash2, Pencil, LayoutGrid, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Dialog } from '@/components/ui/modal';
@@ -1674,13 +1674,13 @@ export default function ScannerPage() {
                 rechts — Bearbeiten exakt wie in den Sammlungen (Stift → Fertig). */}
             <div className="flex items-center gap-2">
               <ButtonGroup
+                iconOnly
                 options={[
-                  { value: 'grid',   label: 'Raster' },
-                  { value: 'single', label: 'Einzeln' },
+                  { value: 'grid',   label: <LayoutGrid size={18} />, ariaLabel: 'Raster' },
+                  { value: 'single', label: <Square size={18} />,     ariaLabel: 'Einzeln' },
                 ]}
                 value={viewMode}
                 onChange={v => { setViewMode(v as 'grid' | 'single'); if (v === 'single') setSingleIdx(0); }}
-                className="min-w-[180px]"
               />
               {viewMode === 'grid' && (
                 selectMode ? (
