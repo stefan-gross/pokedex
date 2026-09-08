@@ -131,6 +131,9 @@ interface ScanState {
   language: CardLanguage;
   variant?: CardVariant;
   ownedCount?: number;
+  /** Mind. ein besessenes Exemplar ist noch ungeprüft (needsReview) → gelbes
+   *  „!"-Badge auf der Kachel, solange nicht alle Exemplare geprüft sind. */
+  ownedNeedsReview?: boolean;
   condition?: CardCondition;
   fakeRisk?: 'low' | 'medium' | 'high';
   fakeReasons?: string[];
@@ -714,8 +717,9 @@ export default function ScannerPage() {
   // Scan (ownedCount wurde bisher nur einmal direkt nach dem Erkennen gesetzt).
   const refreshOwnedCount = useCallback((jobId: string, tcgId: string) => {
     getCardsByTcgId(tcgId).then(copies => {
+      const ownedNeedsReview = copies.some(c => c.needsReview);
       setJobs(prev => prev.map(j =>
-        j.id === jobId && j.result ? { ...j, result: { ...j.result, ownedCount: copies.length } } : j
+        j.id === jobId && j.result ? { ...j, result: { ...j.result, ownedCount: copies.length, ownedNeedsReview } } : j
       ));
     });
   }, []);
@@ -1333,7 +1337,7 @@ export default function ScannerPage() {
             setJobs(prev => prev.map(j => j.id === id && j.result
               ? {
                   ...j,
-                  result: { ...j.result, ownedCount: copies.length },
+                  result: { ...j.result, ownedCount: copies.length, ownedNeedsReview: copies.some(c => c.needsReview) },
                   debug: { ...j.debug, ownedMs: Date.now() - tOwned } as ScanDebug,
                 }
               : j));
@@ -1734,6 +1738,8 @@ export default function ScannerPage() {
                   const symbolUrl = card.setId ? setSymbolMap.get(card.setId) : undefined;
                   const cond = job.result?.condition ? GEMINI_TO_PERSISTED[job.result.condition] : null;
                   const owned = job.result?.ownedCount ?? 0;
+                  const ownedNeedsReview = job.result?.ownedNeedsReview ?? false;
+                  const hasDepthBadge = borderStatus === 'manual-yellow' || borderStatus === 'auto-yellow' || borderStatus === 'auto-red';
                   return (
                     <div key={job.id} className="relative">
                       <Card
@@ -1750,16 +1756,32 @@ export default function ScannerPage() {
                       {/* Scan-Overlay — deckt sich exakt mit dem 2.5:3.5-Bildbereich
                           der Card (gleiche Breite, top ausgerichtet). */}
                       <div className="absolute inset-x-0 top-0 aspect-[2.5/3.5] pointer-events-none">
-                        {/* Tiefe/Status-Badge oben links */}
-                        {(borderStatus === 'manual-yellow' || borderStatus === 'auto-yellow' || borderStatus === 'auto-red') && (
-                          <div
-                            className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold z-10"
-                            style={{
-                              background: borderStatus === 'auto-red' ? 'rgba(239,68,68,0.92)' : 'rgba(250,204,21,0.92)',
-                              color: borderStatus === 'auto-red' ? '#fff' : '#1a1a1a',
-                            }}
-                          >
-                            #{depthFromTop}
+                        {/* Oben links: Tiefe/Status-Badge + „ungeprüft"-Badge
+                            (gelb „!", solange mind. ein besessenes Exemplar noch
+                            nicht geprüft ist) — nebeneinander, keine Kollision. */}
+                        {(hasDepthBadge || ownedNeedsReview) && (
+                          <div className="absolute top-1 left-1 flex items-center gap-1 z-10">
+                            {hasDepthBadge && (
+                              <span
+                                className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold"
+                                style={{
+                                  background: borderStatus === 'auto-red' ? 'rgba(239,68,68,0.92)' : 'rgba(250,204,21,0.92)',
+                                  color: borderStatus === 'auto-red' ? '#fff' : '#1a1a1a',
+                                }}
+                              >
+                                #{depthFromTop}
+                              </span>
+                            )}
+                            {ownedNeedsReview && (
+                              <span
+                                className="w-5 h-5 rounded-full flex items-center justify-center text-[12px] font-bold shadow-md"
+                                style={{ background: 'var(--pokedex-yellow, #facc15)', color: '#1a1a1a' }}
+                                aria-label="Besitz ungeprüft"
+                                title="Mind. ein Exemplar ungeprüft"
+                              >
+                                !
+                              </span>
+                            )}
                           </div>
                         )}
                         {/* Auswahl-Overlay (Ring + Häkchen) */}
@@ -3404,14 +3426,27 @@ function ScannedCardTile({ job, isLatest, onRemove, onOpen }: ScannedCardTilePro
           className="absolute bottom-1 right-1 shadow-md"
         />
 
-        {/* Besitz-Zähler oben links (grün, ×N) — „diese Karte hast du schon". */}
-        {(job.result?.ownedCount ?? 0) > 0 && (
-          <span
-            className="absolute top-1 left-1 text-[11px] font-bold px-1.5 py-0.5 rounded-md shadow-md z-10"
-            style={{ background: 'rgba(53,209,90,0.95)', color: '#fff' }}
-          >
-            ×{job.result!.ownedCount}
-          </span>
+        {/* Oben links: Besitz-Zähler (grün ×N) + „ungeprüft"-Badge (gelb „!"). */}
+        {((job.result?.ownedCount ?? 0) > 0 || job.result?.ownedNeedsReview) && (
+          <div className="absolute top-1 left-1 flex items-center gap-1 z-10">
+            {(job.result?.ownedCount ?? 0) > 0 && (
+              <span
+                className="text-[11px] font-bold px-1.5 py-0.5 rounded-md shadow-md"
+                style={{ background: 'rgba(53,209,90,0.95)', color: '#fff' }}
+              >
+                ×{job.result!.ownedCount}
+              </span>
+            )}
+            {job.result?.ownedNeedsReview && (
+              <span
+                className="w-5 h-5 rounded-full flex items-center justify-center text-[12px] font-bold shadow-md"
+                style={{ background: 'var(--pokedex-yellow, #facc15)', color: '#1a1a1a' }}
+                aria-label="Besitz ungeprüft"
+              >
+                !
+              </span>
+            )}
+          </div>
         )}
 
         {/* Added-Overlay */}
