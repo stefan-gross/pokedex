@@ -1544,7 +1544,11 @@ export default function ScannerPage() {
   }, [refreshOwnedCount]);
 
   return (
-    <div className="fixed inset-0 bg-black overflow-hidden">
+    // `dark`: der Scanner ist IMMER eine dunkle Fläche (schwarzes Kamerabild /
+    // schwarzer Review-Grund), unabhängig vom App-Theme. Ohne erzwungenen Dark-
+    // Kontext lösen `text-glass(-muted)` und die Glas-Komponenten (ButtonGroup)
+    // im Light-Theme zu DUNKLEM Text auf → auf dem schwarzen Grund unlesbar.
+    <div className="dark fixed inset-0 bg-black overflow-hidden">
 
       {/* ── Kamera fullscreen (nur im Scan-Modus) ──────────────────
           Beim Wechsel zu Review wird CameraCapture unmounted → Stream stoppt.
@@ -1604,6 +1608,16 @@ export default function ScannerPage() {
         // Die Liste/Single zeigen "neueste oben" — wir reversen die Reihenfolge für die Anzeige
         const filteredReversed = [...filtered].reverse();
 
+        // Zähler je Statusfilter (für die Segment-Beschriftung).
+        const statusCounts = addJobs.reduce((acc, j) => {
+          const s = computeBorderStatus(j);
+          acc.all++;
+          if (s === 'none') acc.success++;
+          else if (s === 'manual-yellow' || s === 'auto-yellow') acc.yellow++;
+          else if (s === 'auto-red' || s === 'error') acc.red++;
+          return acc;
+        }, { all: 0, success: 0, yellow: 0, red: 0 });
+
         return (
         <div
           className="absolute inset-0 overflow-y-auto bg-black px-4"
@@ -1643,31 +1657,19 @@ export default function ScannerPage() {
                   : `${filtered.length}/${addJobs.length}`}
               </span>
             </div>
-            {/* Zeile 2: Statusfilter — volle Breite, eigene Zeile. Klartext-
-                Beschriftung (statt ✓/!/✕) + Ampel-Farbe der aktiven Option. */}
-            <div className="flex w-full rounded-full p-0.5 bg-black/30 backdrop-blur-sm">
-              {([
-                ['all', 'Alle'],
-                ['success', 'Erkannt'],
-                ['yellow', 'Unsicher'],
-                ['red', 'Fehler'],
-              ] as const).map(([f, label]) => (
-                <button
-                  key={f}
-                  onClick={() => setStatusFilter(f)}
-                  className="flex-1 h-10 text-sm font-semibold rounded-full transition-colors"
-                  style={{
-                    background:
-                      statusFilter === f
-                        ? (f === 'yellow' ? '#facc15' : f === 'red' ? '#ef4444' : f === 'success' ? '#22c55e' : 'var(--pokedex-red)')
-                        : 'transparent',
-                    color: statusFilter === f ? (f === 'yellow' ? '#1a1a1a' : '#fff') : 'var(--glass-muted, rgba(255,255,255,0.6))',
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            {/* Zeile 2: Statusfilter — volle Breite, eigene Zeile. Standard-
+                ButtonGroup (wie app-weit) mit Klartext-Labels + Zählern. */}
+            <ButtonGroup
+              className="w-full"
+              options={[
+                { value: 'all',     label: 'Alle',     count: statusCounts.all },
+                { value: 'success', label: 'Erkannt',  count: statusCounts.success },
+                { value: 'yellow',  label: 'Unsicher', count: statusCounts.yellow },
+                { value: 'red',     label: 'Fehler',   count: statusCounts.red },
+              ]}
+              value={statusFilter}
+              onChange={v => setStatusFilter(v as typeof statusFilter)}
+            />
             {/* Zeile 3: Ansicht-Switch (Klartext) links + „Bearbeiten"-Button
                 rechts — Bearbeiten exakt wie in den Sammlungen (Stift → Fertig). */}
             <div className="flex items-center gap-2">
