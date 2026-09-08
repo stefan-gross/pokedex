@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, ArrowLeftRight, Loader2, Flag } from 'lucide-react';
 import { searchCatalogCards } from '@/lib/search/catalog-search';
 import { getCardsByDexNumberRest } from '@/lib/firestore/catalog-rest';
@@ -207,18 +208,20 @@ export function ScanCorrectionPanel({
 
   if (!mounted) return null;
 
-  return (
+  const panel = (
     <div
       className={`dark flex flex-col overflow-hidden ${
         fullScreen
-          ? 'fixed inset-0 z-[70]'
+          ? 'fixed left-0 right-0 bottom-0 z-[80] rounded-t-[24px]'
           : 'absolute inset-0 z-30 rounded-[24px]'
       }`}
       style={{
         background: '#0d1017',
         border: fullScreen ? 'none' : '1px solid rgba(255,255,255,0.10)',
-        // Vollbild slidet von unten mit sichtbarem Safe-Area-Abstand oben.
-        paddingTop: fullScreen ? 'env(safe-area-inset-top, 0px)' : undefined,
+        // Vollbild: hohes Sheet, beginnt knapp unter der Safe-Area (weit oben,
+        // deutlich höher als das frühere Kartendetail-Panel) und reicht bis ganz
+        // unten; der Safe-Area-Abstand unten bleibt frei.
+        top: fullScreen ? 'calc(env(safe-area-inset-top, 0px) + 16px)' : undefined,
         paddingBottom: fullScreen ? 'env(safe-area-inset-bottom, 0px)' : undefined,
         transform: shown ? 'translateY(0)' : 'translateY(102%)',
         transition: 'transform .3s cubic-bezier(.22,.9,.3,1)',
@@ -366,4 +369,12 @@ export function ScanCorrectionPanel({
       )}
     </div>
   );
+
+  // Vollbild-Variante per Portal an <body> — sonst bildet die getönte Glas-Karte
+  // darüber (backdrop-filter) einen Containing-Block, an dem `position: fixed`
+  // hängen bleibt, wodurch das Panel nur die Glaskarte statt den Viewport füllt
+  // (es begann mittig statt oben).
+  return fullScreen && typeof document !== 'undefined'
+    ? createPortal(panel, document.body)
+    : panel;
 }
