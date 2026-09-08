@@ -149,7 +149,10 @@ function CollectionContent() {
   const [filterSet,     setFilterSet]     = useState('');
   const [sets,          setSets]          = useState<{ id: string; name: string; count: number }[]>([]);
   const [catalogCount,  setCatalogCount]  = useState(0);
-  const catalogCountRef = useRef(0);
+  // -1 = „noch nicht geladen" (unterscheidet vom echten Leer-Katalog 0). Wichtig
+  // für den 0-Guard in doSearch: eine Erst-/Deep-Link-Suche (?q=…) lief sonst
+  // gegen den noch nicht geladenen Count (0) und lieferte fälschlich 0 Treffer.
+  const catalogCountRef = useRef(-1);
   // Anzahl Karten je (inhärentem) Sortierfeld — Pokédex-Nr./KP blenden Karten
   // ohne das Feld aus (Trainer/Energie). Für den Header-Zähler. (Preis lädt
   // zweiphasig alle Karten → braucht hier keinen Sonder-Zähler.)
@@ -377,7 +380,9 @@ function CollectionContent() {
     if (!q.trim()) { setResults([]); setSets([]); return; }
     setSearchLoading(true);
     try {
-      // Kein lokaler Katalog (vor dem ersten Sync) → keine Treffer.
+      // Katalog nachweislich leer (vor dem ersten Sync) → keine Treffer. NUR bei
+      // exakt 0 (geladen+leer), nicht bei -1 (noch nicht geladen), sonst würde
+      // eine frühe Deep-Link-Suche fälschlich leer zurückkommen.
       if (catalogCountRef.current === 0) { setResults([]); setSets([]); return; }
 
       // Such-Backend wählen: Modus (Auto/Algolia/Firestore, pro Gerät) + globales
