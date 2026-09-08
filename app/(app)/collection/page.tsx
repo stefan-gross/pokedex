@@ -103,13 +103,17 @@ function CollectionContent() {
   const searchParams = useSearchParams();
   const router       = useRouter();
   const initialQ     = searchParams.get('q') ?? '';
+  // Deep-Link aus dem Kartendetail: ?region=Galar → Stöbern mit Regionsfilter.
+  // Synchron beim ersten Render übernommen (kein Effect-Race mit dem q-Sync,
+  // der die URL sonst vor dem Lesen auf /collection zurücksetzen könnte).
+  const initialRegion = searchParams.get('region') ?? '';
 
   // ── Geteilter Filter-State ─────────────────────────────────────
   const [activeTypes,      setActiveTypes]      = useState<Set<TcgType>>(new Set());
   const [activeSupertype,  setActiveSupertype]  = useState<Supertype | 'all'>('all');
   const [ownedFilter,      setOwnedFilter]      = useState<OwnedFilter>('all');
   const [activeRarity,     setActiveRarity]     = useState<string | null>(null);
-  const [activeRegion,     setActiveRegion]     = useState('');
+  const [activeRegion,     setActiveRegion]     = useState(REGIONS.includes(initialRegion) ? initialRegion : '');
   // Katalog-weite Statistik je Region (Karten + Arten) für den Stöber-Modus —
   // aus meta/region_stats (Firestore kann „distinct" nicht zählen).
   const [regionStats,      setRegionStats]      = useState<Record<string, { cards: number; species: number }>>({});
@@ -466,6 +470,14 @@ function CollectionContent() {
   useEffect(() => {
     const q = searchParams.get('q') ?? '';
     setInputValue(prev => (prev === q ? prev : q));
+  }, [searchParams]);
+
+  // Deep-Link ?region=… auch übernehmen, wenn wir schon auf /collection sind
+  // (Kartendetail als Overlay → Push auf dieselbe Route re-mountet nicht). Nur
+  // setzen, nie leeren: fehlt der Param, bleibt eine ggf. manuell gewählte Region.
+  useEffect(() => {
+    const r = searchParams.get('region');
+    if (r && REGIONS.includes(r)) setActiveRegion(r);
   }, [searchParams]);
 
   // ── Evo-Linie: Ergebnisse um gesamte Evolutionsfamilie erweitern ──
