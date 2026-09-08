@@ -358,7 +358,11 @@ function CardImpl({
             Besitz-Anzeige, ein „×1" wäre redundant. Im Auswahl-Modus
             ausgeblendet: es säße exakt unter dem Auswahl-Häkchen (oben rechts)
             und verdeckte die Auswahl-Rückmeldung. */}
-        {!bare && !selectMode && totalOwned > 1 && (
+        {/* Anzahl-Badge — normal erst ab 2 Exemplaren (×1 wäre Rauschen). Im
+            `neutral`-Modus (z.B. Scanner) aber schon ab 1: dort gibt es keinen
+            „besessen vs. fehlt"-Farbunterschied, daher ist der Zähler das einzige
+            „hast du schon"-Signal (Dubletten beim Scannen erkennen). */}
+        {!bare && !selectMode && totalOwned > (neutral ? 0 : 1) && (
           <CardBadge size={preset.badgeSize} color="rgba(53,209,90,.9)" corner="tr" cornerRadius={badgeCornerRadius} style={{ top: layout.ownedBadge.top, right: layout.ownedBadge.right }}>
             ×{totalOwned}
           </CardBadge>

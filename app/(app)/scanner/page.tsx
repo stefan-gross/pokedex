@@ -1813,8 +1813,8 @@ export default function ScannerPage() {
                           </span>
                         )}
                         {/* Wert-Badge oben rechts — nur wenn dort nicht schon Cards
-                            Anzahl-Badge (×N, ab 2 Exemplaren) sitzt. */}
-                        {!selectMode && totalOwned < 2 && (
+                            Anzahl-Badge (×N, im neutral-Modus ab 1 Exemplar) sitzt. */}
+                        {!selectMode && totalOwned === 0 && (
                           <div className="absolute top-1 right-1">
                             <ValueBadge tcgId={card.id} iconOnly />
                           </div>
@@ -3405,8 +3405,9 @@ function ScannedCardTile({ job, isLatest, onRemove, onOpen }: ScannedCardTilePro
         />
 
         {/* Standard-Badges wie auf den App-Kacheln (CardBadge): Anzahl (grün,
-            oben rechts, ab 2 Exemplaren) + „ungeprüft" (gelb „!", oben links). */}
-        {ownedTotal > 1 && (
+            oben rechts, ab 1 Exemplar — Dubletten beim Scannen erkennen) +
+            „ungeprüft" (gelb „!", oben links). */}
+        {ownedTotal > 0 && (
           <CardBadge size={24} color="rgba(53,209,90,.9)" corner="tr" cornerRadius={6} style={{ top: 0, right: 0 }}>
             ×{ownedTotal}
           </CardBadge>
