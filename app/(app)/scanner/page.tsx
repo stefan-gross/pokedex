@@ -1621,7 +1621,9 @@ export default function ScannerPage() {
             className="fixed left-0 right-0 top-0 z-20 px-3"
             style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}
           >
-          <div className="glass rounded-[20px] px-4 pt-2 pb-3 space-y-2">
+          {/* Rahmenlos: der harte 1px-Glasrand fällt auf dem schwarzen Scanner-
+              Grund unangenehm auf — hier nur Blur/Tönung, kein Rahmen. */}
+          <div className="glass rounded-[20px] px-4 pt-2 pb-3 space-y-2" style={{ border: 'none' }}>
             {/* Zeile 1: Zurück + Titel + Zähler */}
             <div className="flex items-center gap-1">
               <Button
@@ -2756,21 +2758,18 @@ export default function ScannerPage() {
         const selAddable = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added && selectedIds.has(j.id)).length;
         return (
           <div
-            className="absolute left-0 right-0 z-40 px-3"
+            className="fixed z-40 flex gap-2"
             style={{
-              // BottomNav ist im Review-Modus ausgeblendet → Bulk-Row übernimmt
-              // die Footer-Rolle und sitzt GANZ unten am Bildschirmrand (dort wo
-              // sonst die Footer-Navi ist), nur um die Safe-Area eingerückt.
-              bottom: 0,
-              paddingTop: 8,
-              paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)',
+              // Exakt an der Position der Footer-Navi (BottomNav ist im Review-
+              // Modus ausgeblendet, die Bulk-Buttons übernehmen ihre Rolle):
+              // bottom 12 / seitlich 14, wie die schwebende Navi-Leiste.
+              bottom: 12, left: 14, right: 14,
             }}
           >
-          <div className="glass rounded-[20px] p-2 flex gap-2">
             {selectMode ? (
               <>
                 <Button
-                  variant="primary" accentColor="#c53030" icon={<Trash2 />}
+                  variant="primary" size="lg" accentColor="#c53030" icon={<Trash2 />}
                   onClick={() => { selectedIds.forEach(id => removeJob(id)); setSelectedIds(new Set()); }}
                   disabled={selCount === 0}
                   className="flex-1"
@@ -2778,7 +2777,7 @@ export default function ScannerPage() {
                   {`Löschen${selCount ? ` (${selCount})` : ''}`}
                 </Button>
                 <Button
-                  variant="primary" accentColor="#2f855a" icon={<Plus />}
+                  variant="primary" size="lg" accentColor="#2f855a" icon={<Plus />}
                   onClick={openBulkAdd}
                   disabled={selAddable === 0}
                   className="flex-1"
@@ -2788,11 +2787,11 @@ export default function ScannerPage() {
               </>
             ) : (
               <>
-                <Button variant="primary" accentColor="#c53030" icon={<Trash2 />} onClick={() => setConfirmClearAll(true)} className="flex-1">
+                <Button variant="primary" size="lg" accentColor="#c53030" icon={<Trash2 />} onClick={() => setConfirmClearAll(true)} className="flex-1">
                   {`Alle löschen${totalCount ? ` (${totalCount})` : ''}`}
                 </Button>
                 <Button
-                  variant="primary" accentColor="#2f855a" icon={<Plus />}
+                  variant="primary" size="lg" accentColor="#2f855a" icon={<Plus />}
                   onClick={openBulkAdd}
                   disabled={unaddedCount === 0}
                   className="flex-1"
@@ -2801,7 +2800,6 @@ export default function ScannerPage() {
                 </Button>
               </>
             )}
-          </div>
           </div>
         );
       })()}
