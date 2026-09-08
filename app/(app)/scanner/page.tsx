@@ -552,14 +552,21 @@ export default function ScannerPage() {
   // gleichzeitig — verhindert Bandbreiten-Konkurrenz auf schwachem Mobilnetz.
   const uploadChainRef = useRef<Promise<unknown>>(Promise.resolve());
 
-  // Slider-Ref + Auto-Scroll-to-end-Effekt: neuester Job sitzt rechts am Rand,
-  // bei jedem neuen Job wird der Slider an die rechte Position gescrollt.
+  // Slider-Ref + Auto-Scroll-to-end: NUR wenn eine NEUE Karte dazukommt (Add-
+  // Anzahl steigt) nach ganz rechts scrollen. Nicht beim Löschen, Status-Update
+  // o.Ä. — sonst würde der Slider zurückspringen, während man im Pause-/Manuell-
+  // Modus nach links scrollt, um eine Karte zu löschen (Nutzerwunsch: erst beim
+  // nächsten Scan wieder nach rechts).
   const sliderRef = useRef<HTMLDivElement>(null);
+  const prevAddCountRef = useRef(0);
   useEffect(() => {
-    if (sliderRef.current) {
+    const addLen = jobs.filter(j => j.origin === 'add').length;
+    const grew = addLen > prevAddCountRef.current;
+    prevAddCountRef.current = addLen;
+    if (grew && sliderRef.current) {
       sliderRef.current.scrollTo({ left: sliderRef.current.scrollWidth, behavior: 'smooth' });
     }
-  }, [jobs.length]);
+  }, [jobs]);
 
   // ── BottomNav-Bridge ────────────────────────────────────────────────────
   // Stream-Pause-Toggle vom BottomNav-FAB
@@ -3541,10 +3548,9 @@ function RecognizedCardLarge({
     const slotRatio = slotSize.w / slotSize.h;
     // Karte bewusst auf 80 % des verfügbaren Slots (nicht full-contain) — die
     // Karte wird groß gezeigt, aber das Glas-Overlay unten verdeckt sonst zu
-    // viel; kleinere Karte lässt oben/unten Luft. Im reinen Korrektur-Modus
-    // (correctionOnly) ist der Slot eine eigene flex-1-Zeile ÜBER dem Info-Block
-    // (kein Overlay) — die Karte darf ihn fast füllen.
-    const CARD_SCALE = correctionOnly ? 0.98 : 0.8;
+    // viel; kleinere Karte lässt oben/unten Luft. Korrektur-Overlay nutzt dasselbe
+    // Layout wie der Einzelscan.
+    const CARD_SCALE = 0.8;
     const base = slotRatio > cardRatio
       ? { w: slotSize.h * cardRatio, h: slotSize.h }
       : { w: slotSize.w, h: slotSize.w / cardRatio };
@@ -3641,9 +3647,7 @@ function RecognizedCardLarge({
           *Bildes* auf Inhaltsgröße schrumpfen ließ — brach zusammen, wenn das
           Bild nicht lud). Varianten-/Zustand-Auswahl passiert nicht mehr hier,
           sondern beim Hinzufügen im AddToCollectionModal. */}
-      <div ref={slotRef} className={correctionOnly
-        ? 'relative z-0 flex-1 min-h-0 w-full flex items-center justify-center'
-        : 'absolute inset-0 z-0 flex items-start justify-center'}>
+      <div ref={slotRef} className="absolute inset-0 z-0 flex items-start justify-center">
       <div
         ref={containerRef}
         className="relative overflow-hidden"
@@ -3742,9 +3746,7 @@ function RecognizedCardLarge({
           dahinter die ganze Fläche (Slot absolute inset-0). Feste rgba()-Werte
           identisch zur Dark-Variante der globalen .glass-Klasse — der Scanner
           liegt immer über dem (dunklen) Kamerabild. */}
-      <div className={correctionOnly
-        ? 'relative w-full z-10 flex flex-col gap-3'
-        : 'absolute inset-x-0 bottom-0 z-10 px-4 flex flex-col gap-3'}>
+      <div className="absolute inset-x-0 bottom-0 z-10 px-4 flex flex-col gap-3">
       {displayCard && (
         <div
           className="relative w-full flex flex-col items-start gap-2 px-4 py-4 rounded-[24px] glass-overlay"
@@ -3755,11 +3757,8 @@ function RecognizedCardLarge({
           // unlesbar. Blur/Border/Schatten kommen weiter aus .glass-overlay.
           style={{ background: 'linear-gradient(to bottom, rgba(10,12,18,0.86) 0%, rgba(10,12,18,0.64) 48%, rgba(10,12,18,0.56) 100%)' }}
         >
-          {/* Griff nur außerhalb des Korrektur-Modus — dort liegt der Info-Block
-              als kompakte Zeile UNTER der Karte (kein Overlay), es gibt nichts
-              einzuklappen. Set-Logo/Name, Kartenname und Nummer bleiben aber
-              sichtbar (Nutzerwunsch: Karten-Infos auch beim Korrigieren zeigen). */}
-          {!correctionOnly && (
+          {/* Griff: Info-Panel einklappen (mehr Karte sichtbar) — im Korrektur-
+              Overlay identisch zum Einzelscan. */}
           <Grabber
             expanded={stage === 0}
             barClassName="bg-white/40"
@@ -3767,7 +3766,6 @@ function RecognizedCardLarge({
             className="w-full -mt-1"
             {...grabberProps}
           />
-          )}
 
           {/* Logo + Zyklus/Setname als ein Block — Logo links, rechts daneben
               Zyklus- und Setname linksbündig in zwei Zeilen übereinander,
@@ -3842,6 +3840,7 @@ function RecognizedCardLarge({
             {card && (
               <CardPrice
                 tcgId={card.id}
+                variant={shimmerVariant ?? undefined}
                 plain
                 fontSize={44}
                 className="[text-shadow:0_2px_12px_rgba(0,0,0,.25)] ml-auto"

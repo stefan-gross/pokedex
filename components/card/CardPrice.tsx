@@ -1,7 +1,8 @@
 'use client';
 
 import { usePrice } from '@/lib/hooks/use-price';
-import { pickTrendPrice, PRICE_COLOR } from '@/lib/prices/value-tier';
+import { pickTrendPrice, findVariantPrice, PRICE_COLOR } from '@/lib/prices/value-tier';
+import type { CardVariant } from '@/types';
 
 interface Props {
   tcgId: string | undefined;
@@ -13,13 +14,23 @@ interface Props {
   /** Schriftgröße in px (nur `plain`) — direkte font-size statt CSS `zoom`,
    *  da `zoom` auf älteren iOS-Versionen nicht unterstützt wird. */
   fontSize?: number;
+  /** Karten-Variante — zeigt den passenden Varianten-Preis (Holo/Reverse/… kann
+   *  anders sein als Normal). Ohne Angabe der Standard-/Trend-Preis (variants[0]). */
+  variant?: CardVariant;
 }
 
 /** Einzelner Preis-Pill mit Trend-Preis (Cardmarket) oder Market (TCGplayer).
  *  Immer in der app-weit einheitlichen Preis-Farbe (`PRICE_COLOR`). */
-export function CardPrice({ tcgId, compact = false, plain = false, className, fontSize }: Props) {
+export function CardPrice({ tcgId, compact = false, plain = false, className, fontSize, variant }: Props) {
   const { data, loading } = usePrice(tcgId);
-  const price = pickTrendPrice(data);
+  const price = (() => {
+    if (variant && data?.variants?.length) {
+      const v = findVariantPrice(data.variants, variant);
+      const p = v?.trend ?? v?.market;
+      if (p != null) return p;
+    }
+    return pickTrendPrice(data);
+  })();
 
   if (loading) {
     return (
