@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle, EyeOff, SearchX, LayoutGrid, Square, Flag, Trash2, CheckSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ButtonGroup } from '@/components/ui/button-group';
 import { CameraCapture } from '@/components/scanner/CameraCapture';
 import { CardDetailSheet } from '@/components/card/CardDetailSheet';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
@@ -1603,62 +1604,55 @@ export default function ScannerPage() {
         <div
           className="absolute inset-0 overflow-y-auto bg-black px-4"
           style={{
-            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 124px)',
+            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 138px)',
             paddingBottom: viewMode === 'single'
               ? 'calc(env(safe-area-inset-bottom, 0px) + 20px)'
               : 'calc(env(safe-area-inset-bottom, 0px) + 130px)',
           }}
         >
-          {/* ── Header-Panel: Zurück + Titel/Zähler + Aktionen (View-Switch,
-              Filter, Mehrfachauswahl) — alles in EINEM festen Panel oben,
-              statt der früher frei schwebenden Toolbar. Zurück verlässt das
-              Prüfen-Grid zurück in die Live-Kamera. */}
+          {/* ── Header-Panel im App-Stil: eine schwebende Glas-Karte (wie
+              Sammlung/Mappen) mit Zurück-Button, Titel/Zähler und den Aktionen
+              (View-Switch, Filter, Mehrfachauswahl). Baut auf denselben
+              Komponenten auf (Button, ButtonGroup). */}
           <div
-            className="fixed left-0 right-0 top-0 z-20 flex flex-col gap-2 px-4 pb-2 bg-black/85 backdrop-blur-md border-b border-white/10"
+            className="fixed left-0 right-0 top-0 z-20 px-3"
             style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}
           >
+          <div className="glass rounded-[20px] px-4 pt-2 pb-3 space-y-2">
             {/* Zeile 1: Zurück + Titel + Zähler */}
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setMode('scanning')}
-                className="px-0 -ml-1 text-white"
+                className="px-0 -ml-1"
                 icon={<ChevronLeft size={18} strokeWidth={2} />}
               >
                 Scannen
               </Button>
-              <span className="text-white font-semibold text-role-title ml-1">Prüfen</span>
-              <span className="text-base text-white/75 font-mono ml-auto px-1">
+              <span className="text-glass font-semibold text-role-title ml-1">Prüfen</span>
+              <span className="text-base text-glass-muted font-mono ml-auto px-1 tabular-nums">
                 {viewMode === 'single' && filteredReversed.length > 0
                   ? `${filteredReversed.length - Math.min(singleIdx, filteredReversed.length - 1)}/${filteredReversed.length}`
                   : `${filtered.length}/${addJobs.length}`}
               </span>
             </div>
-            {/* Zeile 2: View-Toggle + Filter + Mehrfachauswahl */}
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* View-Mode-Toggle (Grid / Single) */}
-              <div className="flex rounded-full p-1 bg-black/65 backdrop-blur-sm border border-white/10">
-                {([
-                  ['grid', LayoutGrid, 'Grid'],
-                  ['single', Square, 'Einzeln'],
-                ] as const).map(([mode, Icon, label]) => (
-                  <button
-                    key={mode}
-                    onClick={() => { setViewMode(mode); if (mode === 'single') setSingleIdx(0); }}
-                    className="w-11 h-11 flex items-center justify-center rounded-full"
-                    aria-label={label}
-                    style={{
-                      background: viewMode === mode ? 'var(--pokedex-red)' : 'transparent',
-                      color: viewMode === mode ? '#fff' : 'rgba(255,255,255,0.65)',
-                    }}
-                  >
-                    <Icon size={20} />
-                  </button>
-                ))}
-              </div>
-              {/* Filter-Chips */}
-              <div className="flex rounded-full p-1 bg-black/65 backdrop-blur-sm border border-white/10">
+            {/* Zeile 2: View-Switch (ButtonGroup) + Statusfilter + Mehrfachauswahl */}
+            <div className="flex items-center gap-2">
+              {/* View-Mode-Toggle (Grid / Einzeln) — geteilte ButtonGroup */}
+              <ButtonGroup
+                iconOnly
+                options={[
+                  { value: 'grid',   label: <LayoutGrid size={18} />, ariaLabel: 'Grid' },
+                  { value: 'single', label: <Square size={18} />,     ariaLabel: 'Einzeln' },
+                ]}
+                value={viewMode}
+                onChange={v => { setViewMode(v as 'grid' | 'single'); if (v === 'single') setSingleIdx(0); }}
+              />
+              {/* Statusfilter — bewusst eigene Chips (Farbe = Status: grün/gelb/
+                  rot), da eine ButtonGroup nur EINE Akzentfarbe kennt und die
+                  Ampel-Semantik verlöre. */}
+              <div className="flex rounded-full p-0.5 bg-black/30 backdrop-blur-sm">
                 {([
                   ['all', 'Alle'],
                   ['success', '✓'],
@@ -1668,13 +1662,13 @@ export default function ScannerPage() {
                   <button
                     key={f}
                     onClick={() => setStatusFilter(f)}
-                    className="min-w-[44px] px-3.5 h-11 text-sm font-semibold rounded-full"
+                    className="min-w-[40px] px-3 h-10 text-sm font-semibold rounded-full transition-colors"
                     style={{
                       background:
                         statusFilter === f
                           ? (f === 'yellow' ? '#facc15' : f === 'red' ? '#ef4444' : f === 'success' ? '#22c55e' : 'var(--pokedex-red)')
                           : 'transparent',
-                      color: statusFilter === f ? (f === 'yellow' ? '#1a1a1a' : '#fff') : 'rgba(255,255,255,0.65)',
+                      color: statusFilter === f ? (f === 'yellow' ? '#1a1a1a' : '#fff') : 'var(--glass-muted, rgba(255,255,255,0.6))',
                     }}
                   >
                     {label}
@@ -1683,17 +1677,17 @@ export default function ScannerPage() {
               </div>
               {/* Mehrfachauswahl umschalten (nur Grid-Ansicht sinnvoll). */}
               {viewMode === 'grid' && (
-                <button
-                  type="button"
-                  onClick={() => { setSelectMode(m => !m); setSelectedIds(new Set()); }}
+                <Button
+                  variant={selectMode ? 'primary' : 'secondary'}
+                  size="md"
+                  icon={<CheckSquare />}
                   aria-label="Mehrfachauswahl"
-                  className="w-11 h-11 flex items-center justify-center rounded-full ml-auto"
-                  style={{ background: selectMode ? 'var(--pokedex-red)' : 'transparent', color: selectMode ? '#fff' : 'rgba(255,255,255,0.65)' }}
-                >
-                  <CheckSquare size={20} />
-                </button>
+                  onClick={() => { setSelectMode(m => !m); setSelectedIds(new Set()); }}
+                  className="ml-auto"
+                />
               )}
             </div>
+          </div>
           </div>
 
           {viewMode === 'grid' && (
@@ -2434,7 +2428,7 @@ export default function ScannerPage() {
               Slider. */}
           <div
             ref={sliderRef}
-            className="flex gap-2 overflow-x-auto pb-3 pt-8"
+            className="flex items-end gap-2 overflow-x-auto pb-3 pt-8"
             style={{ scrollbarWidth: 'none', scrollSnapType: 'x mandatory' }}
           >
             {(() => {
@@ -2762,18 +2756,15 @@ export default function ScannerPage() {
         const selAddable = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added && selectedIds.has(j.id)).length;
         return (
           <div
-            className="absolute left-0 right-0 z-40 flex gap-2 px-4"
+            className="absolute left-0 right-0 z-40 px-3"
             style={{
               // BottomNav ist im Review-Modus ausgeblendet → Bulk-Row übernimmt
-              // die Footer-Rolle, sitzt direkt am unteren Rand + Safe-Area.
-              bottom: 0,
-              paddingTop: 10,
-              paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 10px)',
-              background: 'rgba(0,0,0,0.85)',
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
+              // die Footer-Rolle. Schwebende Glas-Karte wie das Kopf-Panel, statt
+              // einer flachen schwarzen Leiste — konsistente App-Chrome.
+              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 10px)',
             }}
           >
+          <div className="glass rounded-[20px] p-2 flex gap-2">
             {selectMode ? (
               <>
                 <Button
@@ -2808,6 +2799,7 @@ export default function ScannerPage() {
                 </Button>
               </>
             )}
+          </div>
           </div>
         );
       })()}
@@ -3122,6 +3114,9 @@ export default function ScannerPage() {
 // vierte angeschnitten „hervorlugt" (Slider-Hinweis). Container-Padding px-4
 // (32px) + gap-2. Divisor 3.15 statt glatt 3 → der linke Peek.
 const TILE_WIDTH_CSS = 'calc((100vw - 32px) / 3.15)';
+// Zuletzt gescannte Karte größer — als ECHTE Layout-Breite (nicht transform:scale),
+// damit sie die Nachbarn nicht überlappt und der Abstand konstant bleibt.
+const TILE_WIDTH_LATEST_CSS = 'calc((100vw - 32px) / 3.15 * 1.16)';
 
 interface ScannedCardTileProps {
   job: ScanJob;
@@ -3160,11 +3155,9 @@ function ScannedCardTile({ job, isLatest, onRemove, onOpen }: ScannedCardTilePro
     <div
       className="shrink-0"
       style={{
-        width: TILE_WIDTH_CSS,
+        width: isLatest ? TILE_WIDTH_LATEST_CSS : TILE_WIDTH_CSS,
         scrollSnapAlign: 'end',
-        transform: isLatest ? 'scale(1.16)' : undefined,
-        transformOrigin: 'right bottom',
-        transition: 'transform 0.2s ease-out',
+        transition: 'width 0.2s ease-out',
         zIndex: isLatest ? 2 : 1,
       }}
     >
@@ -3349,8 +3342,10 @@ function RecognizedCardLarge({
     const slotRatio = slotSize.w / slotSize.h;
     // Karte bewusst auf 80 % des verfügbaren Slots (nicht full-contain) — die
     // Karte wird groß gezeigt, aber das Glas-Overlay unten verdeckt sonst zu
-    // viel; kleinere Karte lässt oben/unten Luft.
-    const CARD_SCALE = 0.8;
+    // viel; kleinere Karte lässt oben/unten Luft. Im reinen Korrektur-Modus
+    // (correctionOnly) fällt der Info-Text weg → die Karte darf fast den ganzen
+    // Slot füllen und wird mittig zentriert (siehe slotRef unten).
+    const CARD_SCALE = correctionOnly ? 0.96 : 0.8;
     const base = slotRatio > cardRatio
       ? { w: slotSize.h * cardRatio, h: slotSize.h }
       : { w: slotSize.w, h: slotSize.w / cardRatio };
@@ -3447,7 +3442,7 @@ function RecognizedCardLarge({
           *Bildes* auf Inhaltsgröße schrumpfen ließ — brach zusammen, wenn das
           Bild nicht lud). Varianten-/Zustand-Auswahl passiert nicht mehr hier,
           sondern beim Hinzufügen im AddToCollectionModal. */}
-      <div ref={slotRef} className="absolute inset-0 z-0 flex items-start justify-center">
+      <div ref={slotRef} className={`absolute inset-0 z-0 flex justify-center ${correctionOnly ? 'items-center' : 'items-start'}`}>
       <div
         ref={containerRef}
         className="relative overflow-hidden"
@@ -3557,6 +3552,11 @@ function RecognizedCardLarge({
           // unlesbar. Blur/Border/Schatten kommen weiter aus .glass-overlay.
           style={{ background: 'linear-gradient(to bottom, rgba(10,12,18,0.86) 0%, rgba(10,12,18,0.64) 48%, rgba(10,12,18,0.56) 100%)' }}
         >
+          {/* Im reinen Korrektur-Modus (correctionOnly) entfällt der komplette
+              Info-Kopf (Griff, Set-Logo/Name, Kartenname, Nummer/Preis) — die
+              Karte selbst zeigt all das bereits, und ohne den Kopf bleibt sie in
+              voller Höhe sichtbar. Es bleibt nur der „Korrigieren"-Button. */}
+          {!correctionOnly && (<>
           {/* Griff: Panel einklappen (Dropdowns aus → mehr Karte sichtbar). */}
           <Grabber
             expanded={stage === 0}
@@ -3645,6 +3645,7 @@ function RecognizedCardLarge({
               />
             )}
           </div>
+          </>)}
 
           {/* Inline-Leiste unter der erkannten Karte — im Mehrfachscan-Slider/Grid
               (correctionOnly) wird der breite „Hinzufügen"-Button zum gelben
