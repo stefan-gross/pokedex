@@ -879,26 +879,30 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                         </div>
                       )}
                       {species.region && (
-                        <button
-                          type="button"
-                          onClick={() => openRegionSearch(species.region)}
-                          className="glass rounded-[14px] px-3 py-2.5 text-left active:opacity-80 transition-opacity"
-                          aria-label={`Karten aus ${species.region} suchen`}
-                        >
-                          <div className="text-[15px] font-bold">{species.region}</div>
+                        <div className="glass rounded-[14px] px-3 py-2.5">
+                          <button
+                            type="button"
+                            onClick={() => openRegionSearch(species.region)}
+                            className="text-[15px] font-bold text-glass underline decoration-glass-muted/40 underline-offset-2 hover:decoration-glass"
+                            aria-label={`Karten aus ${species.region} suchen`}
+                          >
+                            {species.region}
+                          </button>
                           <div className="text-role-label text-glass-muted mt-0.5">Region</div>
-                        </button>
+                        </div>
                       )}
                       {card.nationalDexNumber && (
-                        <button
-                          type="button"
-                          onClick={() => openDexSearch(card.nationalDexNumber!)}
-                          className="glass rounded-[14px] px-3 py-2.5 text-left active:opacity-80 transition-opacity"
-                          aria-label={`Alle Karten mit Pokédex-Nr. ${card.nationalDexNumber} suchen`}
-                        >
-                          <div className="text-[15px] font-bold">#{String(card.nationalDexNumber).padStart(3, '0')}</div>
+                        <div className="glass rounded-[14px] px-3 py-2.5">
+                          <button
+                            type="button"
+                            onClick={() => openDexSearch(card.nationalDexNumber!)}
+                            className="text-[15px] font-bold text-glass underline decoration-glass-muted/40 underline-offset-2 hover:decoration-glass"
+                            aria-label={`Alle Karten mit Pokédex-Nr. ${card.nationalDexNumber} suchen`}
+                          >
+                            #{String(card.nationalDexNumber).padStart(3, '0')}
+                          </button>
                           <div className="text-role-label text-glass-muted mt-0.5">Pokédex</div>
-                        </button>
+                        </div>
                       )}
                     </div>
                     {species.abilities && species.abilities.length > 0 && (
