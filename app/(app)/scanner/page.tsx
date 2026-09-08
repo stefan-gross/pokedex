@@ -2415,9 +2415,11 @@ export default function ScannerPage() {
           4 Tiles immer sichtbar, Rest per Swipe mit scroll-snap. */}
       {mode === 'scanning' && scanMode === 'add' && jobs.length > 0 && (
         <div
-          className="absolute left-0 right-0 z-10 px-4"
+          className="absolute left-0 right-0 z-10"
           // Über der „prüfen"-Pille (bottom 90, ~40px) und der BottomNav-Leiste,
           // damit weder Pille noch die vergrößerte letzte Karte überlappen.
+          // KEIN horizontales Padding: der Slider läuft randlos — die linke Karte
+          // blutet an den Bildschirmrand, rechts hält nur ein Gap-Abstand (pr-2).
           style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 140px)' }}
         >
           {/* „Prüfen"-Aktion sitzt jetzt als fest verankerte Pille in der
@@ -2425,7 +2427,7 @@ export default function ScannerPage() {
               Slider. */}
           <div
             ref={sliderRef}
-            className="flex items-end gap-2 overflow-x-auto pb-3 pt-8"
+            className="flex items-end gap-2 overflow-x-auto pb-3 pt-8 pr-2"
             style={{ scrollbarWidth: 'none', scrollSnapType: 'x mandatory' }}
           >
             {(() => {
@@ -3168,12 +3170,14 @@ function ScanCardImage({ job, className = 'w-full h-full object-cover' }: { job:
 
 // ───── Scanned-Card-Tile ─────────────────────────────────────────────────
 // Tile-Breite: so gewählt, dass ~3 Karten voll sichtbar sind und links eine
-// vierte angeschnitten „hervorlugt" (Slider-Hinweis). Container-Padding px-4
-// (32px) + gap-2. Divisor 3.15 statt glatt 3 → der linke Peek.
-const TILE_WIDTH_CSS = 'calc((100vw - 32px) / 3.15)';
+// vierte angeschnitten „hervorlugt" (Slider-Hinweis). Der Slider läuft jetzt
+// randlos (kein Container-Padding), nur rechts hält ein Gap (pr-2, 8px) — daher
+// „100vw - 8px" statt „- 32px": die Kacheln werden dadurch etwas größer.
+// Divisor 3.15 statt glatt 3 → der linke Peek.
+const TILE_WIDTH_CSS = 'calc((100vw - 8px) / 3.15)';
 // Zuletzt gescannte Karte größer — als ECHTE Layout-Breite (nicht transform:scale),
 // damit sie die Nachbarn nicht überlappt und der Abstand konstant bleibt.
-const TILE_WIDTH_LATEST_CSS = 'calc((100vw - 32px) / 3.15 * 1.16)';
+const TILE_WIDTH_LATEST_CSS = 'calc((100vw - 8px) / 3.15 * 1.16)';
 
 interface ScannedCardTileProps {
   job: ScanJob;
