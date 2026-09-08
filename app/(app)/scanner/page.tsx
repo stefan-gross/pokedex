@@ -1639,18 +1639,17 @@ export default function ScannerPage() {
           {/* Rahmenlos: der harte 1px-Glasrand fällt auf dem schwarzen Scanner-
               Grund unangenehm auf — hier nur Blur/Tönung, kein Rahmen. */}
           <div className="glass rounded-[20px] px-4 pt-2 pb-3 space-y-2" style={{ border: 'none' }}>
-            {/* Zeile 1: Zurück + Titel + Zähler */}
-            <div className="flex items-center gap-1">
+            {/* Zeile 1: Zurück + Titel + Zähler — Kopfzeile im App-Stil
+                (icon-only Zurück + h1-Titel, wie z.B. das Karten-Detail). */}
+            <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
-                size="sm"
                 onClick={() => setMode('scanning')}
-                className="px-0 -ml-1"
-                icon={<ChevronLeft size={18} strokeWidth={2} />}
-              >
-                Scannen
-              </Button>
-              <span className="text-glass font-semibold text-role-title ml-1">Prüfen</span>
+                className="-ml-1"
+                icon={<ChevronLeft size={22} />}
+                aria-label="Zurück zum Scannen"
+              />
+              <h1 className="font-semibold text-base truncate text-glass">Prüfen</h1>
               <span className="text-base text-glass-muted font-mono ml-auto px-1 tabular-nums">
                 {viewMode === 'single' && filteredReversed.length > 0
                   ? `${filteredReversed.length - Math.min(singleIdx, filteredReversed.length - 1)}/${filteredReversed.length}`
