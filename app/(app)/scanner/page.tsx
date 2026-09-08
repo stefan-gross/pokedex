@@ -32,6 +32,7 @@ import { CardPrice } from '@/components/card/CardPrice';
 import { CardBadge } from '@/components/card/CardBadge';
 import { CardPlaceholder } from '@/components/card/CardPlaceholder';
 import { CardImage } from '@/components/card/CardImage';
+import { Card } from '@/components/card/Card';
 import { CardTileButton } from '@/components/card/CardTileButton';
 import { catalogCardToInfo, cardInfoToAddInput, resolveCardImage } from '@/lib/card-info';
 import { cardImageCandidates } from '@/lib/card-image';
@@ -1713,6 +1714,119 @@ export default function ScannerPage() {
                   if (selectMode) { if (canOpen) toggleSelected(job.id); return; }
                   if (canOpen || isError) setCorrectJobId(job.id);
                 };
+
+                // ── Erkannte Karte → geteilte Card-Komponente (neutral: keine
+                // Sammlungs-Semantik) + Scan-Overlay (Löschen/Hinzufügen, Auswahl,
+                // Fake/Zustand/Wert/Tiefe). Nicht-erkannte/verarbeitende Karten
+                // laufen weiter über die eigene Box unten (Fehlerkarte/Loader).
+                if (canOpen && card) {
+                  const cardBorder: 'green' | 'yellow' | 'red' | undefined =
+                    job.result?.fakeRisk === 'high' ? 'red'
+                    : job.result?.fakeRisk === 'medium' ? 'yellow'
+                    : borderStatus === 'auto-red' ? 'red'
+                    : (borderStatus === 'manual-yellow' || borderStatus === 'auto-yellow') ? 'yellow'
+                    : undefined;
+                  const symbolOnly = !!card.series && SYMBOL_ONLY_SERIES.includes(card.series);
+                  const symbolUrl = card.setId ? setSymbolMap.get(card.setId) : undefined;
+                  const cond = job.result?.condition ? GEMINI_TO_PERSISTED[job.result.condition] : null;
+                  return (
+                    <div key={job.id} className="relative">
+                      <Card
+                        size="md"
+                        neutral
+                        card={card}
+                        border={cardBorder}
+                        onCardClick={onCardClick}
+                        sublabel={card.name}
+                        numberPrefixCode={symbolOnly ? undefined : card.setCode}
+                        numberPrefixSymbolUrl={symbolOnly ? symbolUrl : undefined}
+                        setCode={card.setCode}
+                      />
+                      {/* Scan-Overlay — deckt sich exakt mit dem 2.5:3.5-Bildbereich
+                          der Card (gleiche Breite, top ausgerichtet). */}
+                      <div className="absolute inset-x-0 top-0 aspect-[2.5/3.5] pointer-events-none">
+                        {/* Tiefe/Status-Badge oben links */}
+                        {(borderStatus === 'manual-yellow' || borderStatus === 'auto-yellow' || borderStatus === 'auto-red') && (
+                          <div
+                            className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold z-10"
+                            style={{
+                              background: borderStatus === 'auto-red' ? 'rgba(239,68,68,0.92)' : 'rgba(250,204,21,0.92)',
+                              color: borderStatus === 'auto-red' ? '#fff' : '#1a1a1a',
+                            }}
+                          >
+                            #{depthFromTop}
+                          </div>
+                        )}
+                        {/* Auswahl-Overlay (Ring + Häkchen) */}
+                        {selectMode && (
+                          <div
+                            className="absolute inset-0 z-20 rounded-[10px]"
+                            style={{ boxShadow: selected ? 'inset 0 0 0 3px #22c55e' : 'inset 0 0 0 2px rgba(255,255,255,0.25)' }}
+                          >
+                            <div
+                              className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center"
+                              style={{ background: selected ? '#22c55e' : 'rgba(0,0,0,0.55)' }}
+                            >
+                              {selected && <Check size={15} color="#fff" strokeWidth={3} />}
+                            </div>
+                          </div>
+                        )}
+                        {/* „Hinzugefügt"-Overlay */}
+                        {job.added && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-[10px]">
+                            <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: 'rgba(72,187,120,.9)' }}>
+                              <Check size={20} color="#fff" strokeWidth={3} />
+                            </div>
+                          </div>
+                        )}
+                        {/* Fake-Warnung */}
+                        {(job.result?.fakeRisk === 'medium' || job.result?.fakeRisk === 'high') && (
+                          <button
+                            onClick={e => { e.stopPropagation(); setFakeReasonsJobId(job.id); }}
+                            className="absolute top-2 left-2 w-9 h-9 rounded-full flex items-center justify-center pointer-events-auto"
+                            style={{ background: 'rgba(0,0,0,0.7)' }}
+                            aria-label="Fake-Verdacht"
+                          >
+                            <AlertTriangle size={16} color={job.result.fakeRisk === 'high' ? '#ef4444' : '#facc15'} fill={job.result.fakeRisk === 'high' ? '#ef4444' : '#facc15'} />
+                          </button>
+                        )}
+                        {/* Zustand-Pill */}
+                        {cond && (
+                          <span className="absolute bottom-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-md"
+                            style={{ background: PERSISTED_CONDITION_COLOR[cond].bg, color: PERSISTED_CONDITION_COLOR[cond].text }}>
+                            {cond}
+                          </span>
+                        )}
+                        {/* Wert-Badge (nur ohne Auswahl-Häkchen, sonst Kollision) */}
+                        {!selectMode && (
+                          <div className="absolute top-1 right-1">
+                            <ValueBadge tcgId={card.id} iconOnly />
+                          </div>
+                        )}
+                        {/* Löschen + Hinzufügen */}
+                        <div
+                          className="absolute flex items-end gap-1 pointer-events-auto"
+                          style={{ right: 2, bottom: 2 }}
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <Button
+                            variant="primary" size="sm" accentColor="#c53030" icon={<Trash2 />}
+                            onClick={e => { e.stopPropagation(); removeJob(job.id); }}
+                            aria-label="Entfernen" className="shadow-md"
+                          />
+                          {!job.added && (
+                            <Button
+                              variant="primary" size="md" accentColor="#2f855a" icon={<Plus />}
+                              onClick={e => { e.stopPropagation(); setQuickAddJobId(job.id); }}
+                              aria-label="Zur Sammlung hinzufügen" className="shadow-md"
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
               return (
                 <div key={job.id} className="relative flex flex-col">
                   <div

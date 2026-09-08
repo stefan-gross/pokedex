@@ -132,6 +132,11 @@ interface Props {
   selectable?: boolean;
   selected?: boolean;
   onToggleSelect?: (card: CardInfo) => void;
+  /** „Neutrale" Anzeige ohne Sammlungs-Semantik: Karte IMMER in Vollfarbe (kein
+   *  „fehlt"-Graufilter, auch wenn nicht besessen) und ohne die Sammlungs-Badges
+   *  (Wunschlisten-Herz etc.). Für Kontexte wie den Scanner, wo Besitz-Status
+   *  nicht gilt — Statusrahmen (`border`), Holo und Sublabel bleiben. */
+  neutral?: boolean;
 }
 
 const BORDER_COLORS: Record<'green' | 'yellow' | 'red', string> = {
@@ -192,7 +197,7 @@ function CardImpl({
   missingStyle = getCardVisualTheme().missingStyle,
   cornerRadius = getCardVisualTheme().cornerRadius[size],
   badgeLayout = getCardVisualTheme().badgeLayout[size],
-  selectMode = false, selectable = false, selected = false, onToggleSelect,
+  selectMode = false, selectable = false, selected = false, onToggleSelect, neutral = false,
 }: Props) {
   // Abonniert das geteilte Karten-Theme nur, damit diese Komponente neu
   // rendert (und die obigen Default-Parameter frische Werte lesen), wenn die
@@ -255,7 +260,7 @@ function CardImpl({
           className="relative overflow-hidden"
           style={{
             borderRadius: radius,
-            ...(!isOwned ? {
+            ...(!isOwned && !neutral ? {
               filter: missingCardFilter(missingStyle),
               opacity: missingStyle.opacity,
             } : undefined),
@@ -284,7 +289,7 @@ function CardImpl({
               Regenbogen-Band per `mix-blend-mode`, reine Deko-Ebene über dem
               (bereits gefilterten) Bild. Reagiert auf reduzierte Bewegung
               über `.missing-card-hologram` (globals.css). */}
-          {!isOwned && missingStyle.effect === 'hologram' && (
+          {!isOwned && !neutral && missingStyle.effect === 'hologram' && (
             <div className="absolute inset-0 missing-card-hologram" aria-hidden="true" />
           )}
           {/* Holo-Glanz (siehe `.card-holo-shimmer` in globals.css):
@@ -300,7 +305,7 @@ function CardImpl({
             `grayscale`+niedriger Opacity bereits sehr schwache) Bild, spiegelt
             die gestrichelten Platzhalter-Slots, die es an anderen Stellen der
             App schon gibt (z.B. leere Vorlagen-Binder-Seiten). */}
-        {!isOwned && missingStyle.effect === 'outline' && (
+        {!isOwned && !neutral && missingStyle.effect === 'outline' && (
           <div
             className="absolute inset-0 pointer-events-none"
             style={{ borderRadius: radius, border: '1.5px dashed rgba(255,255,255,0.5)' }}
@@ -377,7 +382,7 @@ function CardImpl({
             Auswahl-Drawer (`onHeartClick`). Im Auswahl-Modus ausgeblendet:
             ein Tap aufs Herz öffnete sonst den Wunschlisten-Drawer
             (stopPropagation) statt die Karte auszuwählen. */}
-        {!bare && !selectMode && (
+        {!bare && !selectMode && !neutral && (
           <CardBadge
             size={preset.badgeSize} background={false}
             style={{ bottom: layout.wishlistBadge.bottom, right: layout.wishlistBadge.right }}
