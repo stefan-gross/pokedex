@@ -1741,6 +1741,12 @@ export default function ScannerPage() {
                   const symbolOnly = !!card.series && SYMBOL_ONLY_SERIES.includes(card.series);
                   const symbolUrl = card.setId ? setSymbolMap.get(card.setId) : undefined;
                   const cond = job.result?.condition ? GEMINI_TO_PERSISTED[job.result.condition] : null;
+                  // Sublabel = Nummer (mit führenden Nullen wie aufgedruckt) — der
+                  // Name steht auf der Karte. Set-Kürzel/-Symbol kommt als Prefix
+                  // davor (numberPrefix…), genau wie in den Sammlungen/Suche.
+                  const cardNum = card.number && card.printedTotal && /^\d+$/.test(card.number)
+                    ? card.number.padStart(String(card.printedTotal).length, '0')
+                    : (card.number ?? '');
                   // Besitz-/„ungeprüft"-Badges rendert die Card-Komponente selbst
                   // (Standard-Look, aus ownedCards). Hier nur noch, was Card nicht
                   // kennt: Tiefen-Badge (Scan-Reihenfolge) + Wert-Badge — beide so
@@ -1758,7 +1764,7 @@ export default function ScannerPage() {
                         card={card}
                         ownedCards={job.result?.ownedCards}
                         border={cardBorder}
-                        sublabel={card.name}
+                        sublabel={cardNum}
                         numberPrefixCode={symbolOnly ? undefined : card.setCode}
                         numberPrefixSymbolUrl={symbolOnly ? symbolUrl : undefined}
                         setCode={card.setCode}
@@ -1819,25 +1825,28 @@ export default function ScannerPage() {
                             <ValueBadge tcgId={card.id} iconOnly />
                           </div>
                         )}
-                        {/* Löschen + Hinzufügen */}
-                        <div
-                          className="absolute flex items-end gap-1 pointer-events-auto"
-                          style={{ right: 2, bottom: 2 }}
-                          onClick={e => e.stopPropagation()}
-                        >
-                          <Button
-                            variant="primary" size="sm" accentColor="#c53030" icon={<Trash2 />}
-                            onClick={e => { e.stopPropagation(); removeJob(job.id); }}
-                            aria-label="Entfernen" className="shadow-md"
-                          />
-                          {!job.added && (
+                        {/* Löschen + Hinzufügen — nur im Bearbeiten-Modus (sonst
+                            bleibt die Kachel clean; Antippen öffnet Korrektur). */}
+                        {selectMode && (
+                          <div
+                            className="absolute flex items-end gap-1 pointer-events-auto"
+                            style={{ right: 2, bottom: 2 }}
+                            onClick={e => e.stopPropagation()}
+                          >
                             <Button
-                              variant="primary" size="md" accentColor="#2f855a" icon={<Plus />}
-                              onClick={e => { e.stopPropagation(); setQuickAddJobId(job.id); }}
-                              aria-label="Zur Sammlung hinzufügen" className="shadow-md"
+                              variant="primary" size="sm" accentColor="#c53030" icon={<Trash2 />}
+                              onClick={e => { e.stopPropagation(); removeJob(job.id); }}
+                              aria-label="Entfernen" className="shadow-md"
                             />
-                          )}
-                        </div>
+                            {!job.added && (
+                              <Button
+                                variant="primary" size="md" accentColor="#2f855a" icon={<Plus />}
+                                onClick={e => { e.stopPropagation(); setQuickAddJobId(job.id); }}
+                                aria-label="Zur Sammlung hinzufügen" className="shadow-md"
+                              />
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
