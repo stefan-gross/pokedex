@@ -2876,7 +2876,7 @@ export default function ScannerPage() {
         const selAddable = jobs.filter(j => j.status === 'done' && !!j.result?.card && !j.added && selectedIds.has(j.id)).length;
         return (
           <div
-            className="fixed z-40 flex gap-2"
+            className="fixed z-40"
             style={{
               // Exakt an der Position der Footer-Navi (BottomNav ist im Review-
               // Modus ausgeblendet, die Bulk-Buttons übernehmen ihre Rolle):
@@ -2884,6 +2884,9 @@ export default function ScannerPage() {
               bottom: 12, left: 14, right: 14,
             }}
           >
+          {/* Glas-Panel wie die Footer-Navi (gleiche .glass-Optik + Radius 26),
+              darin die beiden Aktions-Buttons in ihren Standardfarben. */}
+          <div className="glass flex gap-2 p-2" style={{ borderRadius: 26 }}>
             {selectMode ? (
               <>
                 <Button
@@ -2918,6 +2921,7 @@ export default function ScannerPage() {
                 </Button>
               </>
             )}
+          </div>
           </div>
         );
       })()}
