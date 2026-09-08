@@ -217,11 +217,13 @@ export function ScanCorrectionPanel({
       }`}
       style={{
         background: '#0d1017',
-        border: fullScreen ? 'none' : '1px solid rgba(255,255,255,0.10)',
-        // Vollbild: hohes Sheet, beginnt knapp unter der Safe-Area (weit oben,
-        // deutlich höher als das frühere Kartendetail-Panel) und reicht bis ganz
-        // unten; der Safe-Area-Abstand unten bleibt frei.
-        top: fullScreen ? 'calc(env(safe-area-inset-top, 0px) + 16px)' : undefined,
+        // Bottom-Sheet in INHALTSHÖHE (kein Vollbild): gerade so hoch, dass die
+        // Kandidaten-Karten in voller Höhe passen — deshalb KEIN `top`, die Höhe
+        // ergibt sich aus dem Inhalt und wird nur per maxHeight gedeckelt (dann
+        // scrollt der Kandidaten-Bereich). Oben eine dezente Kante als Abschluss.
+        borderTop: fullScreen ? '1px solid rgba(255,255,255,0.10)' : undefined,
+        border: fullScreen ? undefined : '1px solid rgba(255,255,255,0.10)',
+        maxHeight: fullScreen ? 'min(88dvh, 620px)' : undefined,
         paddingBottom: fullScreen ? 'env(safe-area-inset-bottom, 0px)' : undefined,
         transform: shown ? 'translateY(0)' : 'translateY(102%)',
         transition: 'transform .3s cubic-bezier(.22,.9,.3,1)',
@@ -250,7 +252,7 @@ export function ScanCorrectionPanel({
         />
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-3">
+      <div className={`overflow-y-auto px-4 pb-3 ${fullScreen ? 'shrink' : 'flex-1 min-h-0'}`}>
         {loading ? (
           <div className="flex items-center justify-center py-8 text-white/50"><Loader2 size={16} className="animate-spin" /></div>
         ) : (items.length === 0 && !pendingCard) ? (
