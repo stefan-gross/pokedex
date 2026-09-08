@@ -1825,28 +1825,9 @@ export default function ScannerPage() {
                             <ValueBadge tcgId={card.id} iconOnly />
                           </div>
                         )}
-                        {/* Löschen + Hinzufügen — nur im Bearbeiten-Modus (sonst
-                            bleibt die Kachel clean; Antippen öffnet Korrektur). */}
-                        {selectMode && (
-                          <div
-                            className="absolute flex items-end gap-1 pointer-events-auto"
-                            style={{ right: 2, bottom: 2 }}
-                            onClick={e => e.stopPropagation()}
-                          >
-                            <Button
-                              variant="primary" size="sm" accentColor="#c53030" icon={<Trash2 />}
-                              onClick={e => { e.stopPropagation(); removeJob(job.id); }}
-                              aria-label="Entfernen" className="shadow-md"
-                            />
-                            {!job.added && (
-                              <Button
-                                variant="primary" size="md" accentColor="#2f855a" icon={<Plus />}
-                                onClick={e => { e.stopPropagation(); setQuickAddJobId(job.id); }}
-                                aria-label="Zur Sammlung hinzufügen" className="shadow-md"
-                              />
-                            )}
-                          </div>
-                        )}
+                        {/* Keine per-Karte-Buttons (analog zu den Sammlungen):
+                            Antippen öffnet die Korrektur, Löschen/Hinzufügen läuft
+                            im Bearbeiten-Modus über Mehrfachauswahl + Fußleiste. */}
                       </div>
                     </div>
                   );
