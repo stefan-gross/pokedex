@@ -1733,6 +1733,7 @@ export default function ScannerPage() {
                   const symbolOnly = !!card.series && SYMBOL_ONLY_SERIES.includes(card.series);
                   const symbolUrl = card.setId ? setSymbolMap.get(card.setId) : undefined;
                   const cond = job.result?.condition ? GEMINI_TO_PERSISTED[job.result.condition] : null;
+                  const owned = job.result?.ownedCount ?? 0;
                   return (
                     <div key={job.id} className="relative">
                       <Card
@@ -1801,8 +1802,21 @@ export default function ScannerPage() {
                             {cond}
                           </span>
                         )}
-                        {/* Wert-Badge (nur ohne Auswahl-Häkchen, sonst Kollision) */}
-                        {!selectMode && (
+                        {/* Besitz-Zähler oben rechts (grün, ×N) — wie im Detail:
+                            „diese Karte hast du schon" (Dubletten-Signal). Hat
+                            Vorrang vor dem Wert-Badge; im Auswahl-Modus säße es
+                            unter dem Häkchen → dann ausgeblendet. */}
+                        {!selectMode && owned > 0 && (
+                          <span
+                            className="absolute top-1 right-1 text-[11px] font-bold px-1.5 py-0.5 rounded-md shadow-md z-10"
+                            style={{ background: 'rgba(53,209,90,0.95)', color: '#fff' }}
+                          >
+                            ×{owned}
+                          </span>
+                        )}
+                        {/* Wert-Badge — nur wenn nicht schon der Besitz-Zähler
+                            oben rechts sitzt (sonst Kollision). */}
+                        {!selectMode && owned === 0 && (
                           <div className="absolute top-1 right-1">
                             <ValueBadge tcgId={card.id} iconOnly />
                           </div>
@@ -3389,6 +3403,16 @@ function ScannedCardTile({ job, isLatest, onRemove, onOpen }: ScannedCardTilePro
           aria-label="Entfernen"
           className="absolute bottom-1 right-1 shadow-md"
         />
+
+        {/* Besitz-Zähler oben links (grün, ×N) — „diese Karte hast du schon". */}
+        {(job.result?.ownedCount ?? 0) > 0 && (
+          <span
+            className="absolute top-1 left-1 text-[11px] font-bold px-1.5 py-0.5 rounded-md shadow-md z-10"
+            style={{ background: 'rgba(53,209,90,0.95)', color: '#fff' }}
+          >
+            ×{job.result!.ownedCount}
+          </span>
+        )}
 
         {/* Added-Overlay */}
         {job.added && (
