@@ -40,9 +40,14 @@ export interface CardImageOpts {
 function catalogCandidates(card: ImageCardLike, opts: CardImageOpts): string[] {
   const size = opts.size ?? 'large';
   const en = opts.language === 'en';
-  const large = en ? [card.imgLarge, card.imgLargeDe] : [card.imgLargeDe, card.imgLarge];
-  const small = en ? [card.imgSmall, card.imgSmallDe] : [card.imgSmallDe, card.imgSmall];
-  const ordered = size === 'large' ? [...large, ...small] : [...small, ...large];
+  // SPRACHE vor Größe: die gewünschte Sprache kommt komplett zuerst (beide
+  // Größen), erst danach die andere Sprache. Sonst würde bei fehlendem Bild in
+  // der Wunschgröße (z.B. kein DE-small) die FALSCHE Sprache in der richtigen
+  // Größe (EN-small) vor der richtigen Sprache in anderer Größe (DE-large)
+  // gewählt — genau der Fall „Grid zeigt EN, Detail zeigt DE".
+  const deUrls = size === 'large' ? [card.imgLargeDe, card.imgSmallDe] : [card.imgSmallDe, card.imgLargeDe];
+  const enUrls = size === 'large' ? [card.imgLarge, card.imgSmall] : [card.imgSmall, card.imgLarge];
+  const ordered = en ? [...enUrls, ...deUrls] : [...deUrls, ...enUrls];
   return ordered.filter((u): u is string => !!u);
 }
 
