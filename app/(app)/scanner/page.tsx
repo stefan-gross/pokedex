@@ -2584,7 +2584,7 @@ export default function ScannerPage() {
           // damit weder Pille noch die vergrößerte letzte Karte überlappen.
           // KEIN horizontales Padding: der Slider läuft randlos — die linke Karte
           // blutet an den Bildschirmrand, rechts hält nur ein Gap-Abstand (pr-2).
-          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 140px)' }}
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 118px)' }}
         >
           {/* „Prüfen"-Aktion sitzt jetzt als fest verankerte Pille in der
               BottomNav-Leiste (gridVisible) — nicht mehr floatend über dem
@@ -2653,7 +2653,7 @@ export default function ScannerPage() {
                 key={job.id}
                 job={job}
                 correctionOnly
-                onCardTap={() => { /* Detail nicht nötig — Korrektur-Overlay */ }}
+                onCardTap={() => { setActiveJobId(job.id); setCorrectJobId(null); }}
                 onSubmitReport={result => { submitReport(job, result); close(); }}
                 onPickNotInCatalog={pending => {
                   setJobs(prev => prev.map(j => j.id === job.id && j.result
