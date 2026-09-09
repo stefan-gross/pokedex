@@ -16,8 +16,10 @@ import { getAlgoliaUsage } from '@/lib/firestore/search-usage';
 import { getSearchMode, setSearchMode, ALGOLIA_MONTHLY_BUDGET, type SearchMode } from '@/lib/search/search-mode';
 import { isAlgoliaConfigured } from '@/lib/search/algolia';
 import { setGlassTheme, DEFAULT_GLASS_THEME } from '@/lib/ui/glass-theme';
+import { isTestModeEnabled, setTestModeEnabled } from '@/lib/scanner/test-mode';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { useUpdateAvailable } from '@/lib/hooks/use-update-available';
 import { auth } from '@/lib/firebase/client';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -109,6 +111,7 @@ export default function SettingsPage() {
   // Algolia-Nutzung (global, monatlich) + Suchmodus (Auto/Algolia/Firestore).
   const [algoliaUsage, setAlgoliaUsage] = useState<number | null>(null);
   const [searchMode, setSearchModeState] = useState<SearchMode>('auto');
+  const [testMode, setTestModeState] = useState(false);
 
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncLoading, setSyncLoading] = useState(true);
@@ -129,6 +132,7 @@ export default function SettingsPage() {
     loadSyncStatus();
     getAlgoliaUsage().then(setAlgoliaUsage).catch(() => setAlgoliaUsage(0));
     setSearchModeState(getSearchMode());
+    setTestModeState(isTestModeEnabled());
     try {
       const raw = localStorage.getItem(LAST_RUN_KEY);
       if (raw) setLastDataRun(JSON.parse(raw));
@@ -597,6 +601,23 @@ export default function SettingsPage() {
               })()}
             </div>
           )}
+        </section>
+
+        {/* 3b. Scanner (Testmodus/Debug) */}
+        <section className="space-y-2">
+          <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-2">Scanner</p>
+          <div className="glass rounded-[20px] px-4 py-3 flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-role-body text-glass font-medium">Testmodus</p>
+              <p className="text-role-label text-glass-muted">Zeigt im Scanner oben den „Test"-Button (gespeicherte Scans erneut durch die Pipeline, ohne Kamera).</p>
+            </div>
+            <Switch
+              checked={testMode}
+              onChange={on => { setTestModeEnabled(on); setTestModeState(on); }}
+              label="Testmodus"
+              accentColor="#8b5cf6"
+            />
+          </div>
         </section>
 
         {/* 4. Gefahren-Zone */}

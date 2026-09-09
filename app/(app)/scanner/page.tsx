@@ -35,6 +35,7 @@ import { CardPlaceholder } from '@/components/card/CardPlaceholder';
 import { CardImage } from '@/components/card/CardImage';
 import { Card } from '@/components/card/Card';
 import { playScanSound, unlockScanSound } from '@/lib/scanner/scan-sound';
+import { isTestModeEnabled } from '@/lib/scanner/test-mode';
 import { CardTileButton } from '@/components/card/CardTileButton';
 import { catalogCardToInfo, cardInfoToAddInput, resolveCardImage } from '@/lib/card-info';
 import { cardImageCandidates } from '@/lib/card-image';
@@ -513,6 +514,9 @@ export default function ScannerPage() {
   useEffect(() => { scanModeRef.current = scanMode; }, [scanMode]);
   // Testmodus-Panel (gespeicherte Scans erneut durch die Pipeline, ohne Kamera).
   const [testPanelOpen, setTestPanelOpen] = useState(false);
+  // Testmodus-Einstieg (oben mittig) nur zeigen, wenn in den Einstellungen aktiv.
+  const [testModeEnabled, setTestModeEnabledState] = useState(false);
+  useEffect(() => { setTestModeEnabledState(isTestModeEnabled()); }, []);
 
   // Auslöse-Modus: 'auto' (grün-gegatetes Auto-Auslösen, wie bisher) vs.
   // 'manual' (kein Live-Erkennen/Ampel, nur Ziel-Rahmen; Foto per Footer-Scan-
@@ -1603,18 +1607,21 @@ export default function ScannerPage() {
             batchMode={scanMode === 'add'}
             hideFrame={scanMode === 'recognize' && streamPaused && (captureMode === 'auto' || recognizedJobId != null)}
           />
-          {/* Testmodus-Einstieg — dezenter Button oben links (nur Scan-Modus).
-              Die Admin-Route hinter dem Panel prüft die Berechtigung selbst. */}
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setTestPanelOpen(true)}
-            aria-label="Testmodus"
-            className="absolute left-3 z-30"
-            style={{ top: 'calc(env(safe-area-inset-top) + 12px)' }}
-          >
-            Test
-          </Button>
+          {/* Testmodus-Einstieg — oben MITTIG, nur wenn der Testmodus in den
+              Einstellungen aktiviert ist. Die Admin-Route hinter dem Panel prüft
+              die Berechtigung selbst. */}
+          {testModeEnabled && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setTestPanelOpen(true)}
+              aria-label="Testmodus"
+              className="absolute left-1/2 -translate-x-1/2 z-30"
+              style={{ top: 'calc(env(safe-area-inset-top) + 12px)' }}
+            >
+              Test
+            </Button>
+          )}
         </div>
       )}
 
@@ -1839,13 +1846,18 @@ export default function ScannerPage() {
                             <AlertTriangle size={16} color={job.result.fakeRisk === 'high' ? '#ef4444' : '#facc15'} fill={job.result.fakeRisk === 'high' ? '#ef4444' : '#facc15'} />
                           </button>
                         )}
-                        {/* Zustand-Pill */}
-                        {cond && (
-                          <span className="absolute bottom-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-md"
-                            style={{ background: PERSISTED_CONDITION_COLOR[cond].bg, color: PERSISTED_CONDITION_COLOR[cond].text }}>
-                            {cond}
-                          </span>
-                        )}
+                        {/* Abweichende Werte (Variante/Zustand/Sprache ≠ Standard)
+                            unten links AUF der Karte — identisch zum Slider. */}
+                        {(() => {
+                          const meta = nonDefaultScanMeta(job);
+                          return meta.length > 0 ? (
+                            <div className="absolute bottom-1 left-1 flex flex-col items-start gap-0.5 max-w-[68%]">
+                              {meta.map((m, i) => (
+                                <span key={i} className="text-[8px] font-bold leading-none px-1 py-0.5 rounded bg-black/70 text-white truncate max-w-full">{m}</span>
+                              ))}
+                            </div>
+                          ) : null;
+                        })()}
                         {/* Wert-Badge oben rechts — nur wenn dort nicht schon Cards
                             Anzahl-Badge (×N, im neutral-Modus ab 1 Exemplar) sitzt. */}
                         {!selectMode && totalOwned === 0 && (
@@ -1857,18 +1869,6 @@ export default function ScannerPage() {
                             Antippen öffnet die Korrektur, Löschen/Hinzufügen läuft
                             im Bearbeiten-Modus über Mehrfachauswahl + Fußleiste. */}
                       </div>
-                      {/* Abweichende Werte (Variante/Zustand/Sprache ≠ Standard)
-                          als kleine Chips unter der Karte. */}
-                      {(() => {
-                        const meta = nonDefaultScanMeta(job);
-                        return meta.length > 0 ? (
-                          <div className="mt-0.5 flex flex-wrap justify-center gap-1 px-1">
-                            {meta.map((m, i) => (
-                              <span key={i} className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/15 text-glass-muted">{m}</span>
-                            ))}
-                          </div>
-                        ) : null;
-                      })()}
                     </div>
                   );
                 }
@@ -2595,16 +2595,21 @@ export default function ScannerPage() {
             {(() => {
               // Nur Add-Origin-Jobs im Slider (recognize sind temporär + werden gepurged)
               const addJobs = jobs.filter(j => j.origin === 'add');
-              return addJobs.map((job, idx) => (
-                <ScannedCardTile
-                  key={job.id}
-                  job={job}
-                  isLatest={idx === addJobs.length - 1}
-                  isFirst={idx === 0}
-                  onRemove={() => removeJob(job.id)}
-                  onOpen={() => setCorrectJobId(job.id)}
-                />
-              ));
+              return addJobs.map((job, idx) => {
+                const c = job.result?.card;
+                const symbolUrl = c?.setId ? setSymbolMap.get(c.setId) : undefined;
+                return (
+                  <ScannedCardTile
+                    key={job.id}
+                    job={job}
+                    isLatest={idx === addJobs.length - 1}
+                    isFirst={idx === 0}
+                    symbolUrl={symbolUrl}
+                    onRemove={() => removeJob(job.id)}
+                    onOpen={() => setCorrectJobId(job.id)}
+                  />
+                );
+              });
             })()}
           </div>
         </div>
@@ -3361,6 +3366,8 @@ interface ScannedCardTileProps {
    *  wenigen Karten RECHTSbündig ist (neueste Karte ganz rechts). Bei Überlauf
    *  kollabiert die Auto-Margin auf 0 → normales Scrollen, Start erreichbar. */
   isFirst:           boolean;
+  /** Set-Symbol-URL (nur Symbol-only-Sets) für das Sublabel unter der Karte. */
+  symbolUrl?:        string;
   onRemove:          () => void;
   /** Antippen der Karte → Korrektur-/Detail-Ansicht (wie Einzelscan). */
   onOpen:            () => void;
@@ -3369,10 +3376,16 @@ interface ScannedCardTileProps {
 // Bewusst reduziert (Nutzerwunsch): nur Kartenbild + EIN Löschen-Button. Keine
 // Varianten-/Zustand-Pillen, kein Wert-/Tiefen-Badge — die Feinbearbeitung
 // passiert beim Antippen (Korrektur-Ansicht) bzw. im Review-Grid/Bulk-Add.
-function ScannedCardTile({ job, isLatest, isFirst, onRemove, onOpen }: ScannedCardTileProps) {
+function ScannedCardTile({ job, isLatest, isFirst, symbolUrl, onRemove, onOpen }: ScannedCardTileProps) {
   const card      = job.result?.card;
   const isError   = job.status === 'error';
   const borderStatus = computeBorderStatus(job);
+  // Sublabel-Werte (wie im Grid): Set-Kürzel/-Symbol + Nummer (mit führenden
+  // Nullen, wie aufgedruckt).
+  const symbolOnly = !!card?.series && SYMBOL_ONLY_SERIES.includes(card.series);
+  const cardNum = card?.number && card.printedTotal && /^\d+$/.test(card.number)
+    ? card.number.padStart(String(card.printedTotal).length, '0')
+    : (card?.number ?? '');
   // Besitz-Anzahl (Summe der Exemplar-Mengen, wie in der Card-Komponente).
   const ownedTotal = (job.result?.ownedCards ?? []).reduce((s, c) => s + c.quantity, 0);
   // Scan-Foto als LETZTER Fallback — bei nicht erkannter Karte ODER wenn alle
@@ -3391,7 +3404,10 @@ function ScannedCardTile({ job, isLatest, isFirst, onRemove, onOpen }: ScannedCa
   // Karte gewechselt (z.B. nach Korrigieren) → Kandidaten neu von vorn probieren.
   useEffect(() => { setCandIdx(0); }, [card?.id]);
   const cardImg = candIdx < cardCandidates.length ? cardCandidates[candIdx] : null;
-  const shown   = cardImg ?? scanPhoto;
+  // Ist das aktuelle Katalogbild schon geladen? Bis dahin zeigt der Scan-Foto-
+  // Basis-Layer die Karte (sonst blitzt während Laden/onError-Kette ein „?" auf).
+  const [imgLoaded, setImgLoaded] = useState(false);
+  useEffect(() => { setImgLoaded(false); }, [cardImg]);
 
   return (
     <div
@@ -3424,18 +3440,28 @@ function ScannedCardTile({ job, isLatest, isFirst, onRemove, onOpen }: ScannedCa
           <div className="w-full h-full flex items-center justify-center">
             <Loader2 size={24} color="rgba(255,255,255,0.4)" className="animate-spin" />
           </div>
-        ) : shown ? (
-          /* Katalogbild (mit Fallback aufs Scan-Foto) bzw. — bei nicht erkannter
-             Karte — direkt das Scan-Foto. */
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
-            src={shown}
-            alt={card?.name ?? 'Scan'}
-            className="w-full h-full object-cover"
-            // Katalogbild fehlgeschlagen → nächsten Kandidaten; sind alle durch,
-            // greift das Scan-Foto (shown = scanPhoto).
-            onError={() => { if (cardImg) setCandIdx(i => i + 1); }}
-          />
+        ) : (scanPhoto || cardImg) ? (
+          <>
+            {/* Basis-Layer: Scan-Foto SOFORT (schon als base64 vorhanden) — deckt
+                die Ladezeit/onError-Kette des Katalogbilds ab, kein „?" mehr. */}
+            {scanPhoto && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={scanPhoto} alt="" className="absolute inset-0 w-full h-full object-cover" />
+            )}
+            {/* Katalogbild darüber — blendet erst nach onLoad ein; bei onError den
+                nächsten Kandidaten, bis alle durch sind (dann bleibt das Foto). */}
+            {cardImg && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={cardImg}
+                alt={card?.name ?? 'Scan'}
+                className="absolute inset-0 w-full h-full object-cover"
+                style={{ opacity: imgLoaded ? 1 : 0, transition: 'opacity 0.15s ease-out' }}
+                onLoad={() => setImgLoaded(true)}
+                onError={() => setCandIdx(i => i + 1)}
+              />
+            )}
+          </>
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-red-500/10">
             <AlertCircle size={22} color="#f87171" />
@@ -3488,6 +3514,23 @@ function ScannedCardTile({ job, isLatest, isFirst, onRemove, onOpen }: ScannedCa
         )}
       </div>
 
+      {/* Sublabel unter der Karte: Set-Kürzel/-Symbol + Nummer (wie im Grid). */}
+      {card && (cardNum || card.setCode) && (
+        <div className="mt-1.5 flex items-center justify-center gap-1 px-0.5">
+          {symbolOnly && symbolUrl ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={symbolUrl} alt="" className="w-[13px] h-[13px] object-contain shrink-0" />
+          ) : card.setCode ? (
+            <span
+              className="text-[9px] font-bold rounded-[5px] shrink-0 leading-none"
+              style={{ color: '#9A9DA6', background: '#F2F2F2', padding: '1px 5px', letterSpacing: '.03em' }}
+            >
+              {card.setCode}
+            </span>
+          ) : null}
+          <span className="text-[11px] text-glass truncate">{cardNum}</span>
+        </div>
+      )}
     </div>
   );
 }
