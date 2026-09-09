@@ -3447,41 +3447,31 @@ function ScannedCardTile({ job, isLatest, isFirst, symbolUrl, onRemove, onOpen }
         }}
         onClick={job.status === 'processing' ? undefined : onOpen}
       >
-        {(scanPhoto || cardImg) ? (
+        {cardImg ? (
           <>
-            {/* Basis-Layer: Scan-Foto SOFORT (schon als base64 vorhanden) — auch
-                WÄHREND der Erkennung, damit die Karte nicht erst als Spinner
-                erscheint und dann Sekunden später das Bild lädt. Deckt zusätzlich
-                die Ladezeit/onError-Kette des Katalogbilds ab (kein „?" mehr). */}
-            {scanPhoto && (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img src={scanPhoto} alt="" className="absolute inset-0 w-full h-full object-cover" />
-            )}
-            {/* Katalogbild darüber — blendet erst nach onLoad ein; bei onError den
-                nächsten Kandidaten, bis alle durch sind (dann bleibt das Foto). */}
-            {cardImg && (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                ref={catImgRef}
-                src={cardImg}
-                alt={card?.name ?? 'Scan'}
-                className="absolute inset-0 w-full h-full object-cover"
-                style={{ opacity: imgLoaded ? 1 : 0, transition: 'opacity 0.15s ease-out' }}
-                onLoad={() => setImgLoaded(true)}
-                onError={() => setCandIdx(i => i + 1)}
-              />
-            )}
-            {/* Dezenter „wird erkannt"-Indikator während der Hintergrund-Erkennung. */}
-            {job.status === 'processing' && (
-              <div className="absolute top-1 left-1 w-6 h-6 rounded-full bg-black/55 flex items-center justify-center">
-                <Loader2 size={14} color="#fff" className="animate-spin" />
-              </div>
-            )}
+            {/* Katalogbild (egal welche Größe zuerst lädt) — blendet nach onLoad
+                (bzw. gecacht per complete-Check) ein; bei onError nächster
+                Kandidat. Bis dahin liegt das Skeleton darunter. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              ref={catImgRef}
+              src={cardImg}
+              alt={card?.name ?? 'Scan'}
+              className="absolute inset-0 w-full h-full object-cover"
+              style={{ opacity: imgLoaded ? 1 : 0, transition: 'opacity 0.15s ease-out' }}
+              onLoad={() => setImgLoaded(true)}
+              onError={() => setCandIdx(i => i + 1)}
+            />
+            {!imgLoaded && <div className="absolute inset-0 animate-pulse" style={{ background: 'rgba(255,255,255,0.06)' }} />}
           </>
         ) : job.status === 'processing' ? (
-          <div className="w-full h-full flex items-center justify-center">
-            <Loader2 size={24} color="rgba(255,255,255,0.4)" className="animate-spin" />
-          </div>
+          /* Erkennung läuft → Skeleton (Karte kommt gleich). */
+          <div className="absolute inset-0 animate-pulse" style={{ background: 'rgba(255,255,255,0.06)' }} />
+        ) : scanPhoto ? (
+          /* Nicht (sicher) erkannt: das aufgenommene Foto zeigen, damit man beim
+             Antippen korrigieren kann. */
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src={scanPhoto} alt="Scan" className="absolute inset-0 w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-red-500/10">
             <AlertCircle size={22} color="#f87171" />
