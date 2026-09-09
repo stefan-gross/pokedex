@@ -34,7 +34,7 @@ import { ExclamationMark } from '@/lib/binder-icons';
 import { CardPlaceholder } from '@/components/card/CardPlaceholder';
 import { CardImage } from '@/components/card/CardImage';
 import { Card } from '@/components/card/Card';
-import { playScanSound, unlockScanSound } from '@/lib/scanner/scan-sound';
+import { playScanSound, playScanCaptureSound, unlockScanSound } from '@/lib/scanner/scan-sound';
 import { isTestModeEnabled } from '@/lib/scanner/test-mode';
 import { CardTileButton } from '@/components/card/CardTileButton';
 import { catalogCardToInfo, cardInfoToAddInput, resolveCardImage } from '@/lib/card-info';
@@ -876,10 +876,9 @@ export default function ScannerPage() {
         : prev;
       return [...base, { id, origin, status: 'processing', result: null, debug, captureLevel: meta?.level, captureReason: meta?.reason, captureMeta: meta }];
     });
-    // Ton SOFORT beim Auslösen, gekoppelt an die Ampel: grün → Erfolgs-„Ding",
-    // gelb/rot/neutral → dumpfer Fehlton. (Nicht an die spätere Hintergrund-
-    // Erkennung gekoppelt — der Nutzer will das Feedback im Moment des Scans.)
-    if (!isTest) playScanSound(meta?.level === 'green');
+    // Sofort ein neutraler Auslöse-Ton („aufgenommen/bereit"). Der Erfolg-/
+    // Fehlerton kommt später nach der Erkennung (siehe unten).
+    if (!isTest) playScanCaptureSound();
     // Im Einzeln-Modus Stream SOFORT pausieren — verhindert Folge-Snaps während
     // Gemini noch arbeitet, die Seite zeigt die erkannte Karte groß. Im
     // Mehrfachscan NICHT pausieren: die Karte landet direkt im Slider und wird
@@ -965,6 +964,7 @@ export default function ScannerPage() {
           ? { ...j, status: 'error', result: { card: null, language: (gemini.language ?? 'de') as CardLanguage }, debugInfo: geminiSummary, debug: errDebug }
           : j));
         stopAutoOnFail();
+        if (!isTest) playScanSound(false);   // Fehlton: nichts Lesbares erkannt
         // Telemetrie: Fehl-/Nichterkennung als Event + vollen Fall (mit Bildern).
         {
           const outcome: ScanOutcome = gemini.error ? 'error' : 'not_recognized';
@@ -1325,6 +1325,7 @@ export default function ScannerPage() {
         },
       } : j));
       if (!finalCard) stopAutoOnFail();   // unauflösbar → Auto-Stopp (Mehrfachscan)
+      if (!isTest) playScanSound(!!finalCard);   // Erfolg-/Fehlton je nach Auflösung
 
       // ── Telemetrie ────────────────────────────────────────────────────────
       // Für JEDEN Scan ein kompaktes Event (Qualität/Gemini/Lookup, kein Bild) +
@@ -1462,6 +1463,7 @@ export default function ScannerPage() {
         ? { ...j, status: 'error', result: { card: null, language: 'de' }, debugInfo: `Netzwerkfehler: ${msg}`, debug: errDebug }
         : j));
       stopAutoOnFail();
+      if (!isTest) playScanSound(false);   // Fehlton: Netzwerk-/Serverfehler
       if (!isTest) {
         const quality = metaToQuality(meta);
         void recordScanEvent({ outcome: 'error', quality, gemini: { error: msg } }).then(eventId => {

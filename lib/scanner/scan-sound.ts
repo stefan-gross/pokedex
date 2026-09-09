@@ -62,6 +62,20 @@ function tone(
   osc.stop(start + dur + 0.02);
 }
 
+/** Neutraler, kurzer „aufgenommen / bereit"-Ton SOFORT beim Auslösen (kein
+ *  Erfolg/Fehler — das kommt später über playScanSound nach der Erkennung). */
+export function playScanCaptureSound(): void {
+  if (!scanSoundEnabled()) return;
+  const c = getCtx();
+  if (!c) return;
+  if (c.state === 'suspended') { c.resume().catch(() => {}); }
+  try {
+    const now = c.currentTime + 0.005;
+    // Kurzer, trockener Blip (Shutter-Feedback).
+    tone(c, { start: now, freqFrom: 620, freqTo: 560, dur: 0.05, type: 'sine', gain: 0.12 });
+  } catch { /* ignore */ }
+}
+
 /** Spielt den Erfolg-/Fehler-Ton. Idempotent gegen fehlende/entsperrte Contexts. */
 export function playScanSound(success: boolean): void {
   if (!scanSoundEnabled()) return;
