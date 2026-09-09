@@ -3390,35 +3390,14 @@ function ScannedCardTile({ job, isLatest, isFirst, symbolUrl, onRemove, onOpen }
     : (card?.number ?? '');
   // Besitz-Anzahl (Summe der Exemplar-Mengen, wie in der Card-Komponente).
   const ownedTotal = (job.result?.ownedCards ?? []).reduce((s, c) => s + c.quantity, 0);
-  // Scan-Foto als LETZTER Fallback — bei nicht erkannter Karte ODER wenn alle
-  // Katalogbild-Kandidaten scheitern, zeigen wir das Foto (wie im Einzelscan)
-  // statt eines „?".
+  // Scan-Foto — nur noch für NICHT (sicher) erkannte Karten (zum Korrigieren).
+  // Erkannte Karten rendern über die geteilte CardImage-Komponente (dieselbe wie
+  // im Grid): Skeleton → Katalogbild (Kandidaten-Kette, next/image, lazy),
+  // Platzhalter statt Schwarz. Das behebt die extrem langsame/parallele
+  // Roh-<img>-Ladekette + die schwarzen Kacheln.
   const scanPhoto = job.debug?.imageBase64
     ? `data:${job.debug?.mimeType ?? 'image/jpeg'};base64,${job.debug.imageBase64}`
     : null;
-  // ALLE Katalog-Bild-Kandidaten durchprobieren (wie RecognizedCardLarge) — nicht
-  // nur den ersten. So zeigt die Kachel dasselbe Bild wie das Korrektur-Overlay
-  // (und fällt nur bei echtem Fehlschlag aufs Scan-Foto zurück).
-  const cardCandidates = (!isError && card)
-    ? cardImageCandidates(card, { size: 'small', language: job.result?.language })
-    : [];
-  const [candIdx, setCandIdx] = useState(0);
-  // Karte gewechselt (z.B. nach Korrigieren) → Kandidaten neu von vorn probieren.
-  useEffect(() => { setCandIdx(0); }, [card?.id]);
-  const cardImg = candIdx < cardCandidates.length ? cardCandidates[candIdx] : null;
-  // Ist das aktuelle Katalogbild schon geladen? Bis dahin zeigt der Scan-Foto-
-  // Basis-Layer die Karte (sonst blitzt während Laden/onError-Kette ein „?" auf).
-  const [imgLoaded, setImgLoaded] = useState(false);
-  const catImgRef = useRef<HTMLImageElement>(null);
-  useEffect(() => {
-    setImgLoaded(false);
-    // GECACHTE Bilder (z.B. nach Grid-Besuch, dann zurück in den Slider) feuern
-    // `onLoad` oft NICHT (Load passiert vor dem Handler-Attach) → sonst bliebe die
-    // Kachel schwarz (Scan-Foto ggf. schon aus dem Speicher geräumt). Direkt nach
-    // dem Mount prüfen, ob das Bild bereits vollständig ist.
-    const el = catImgRef.current;
-    if (el && el.complete && el.naturalWidth > 0) setImgLoaded(true);
-  }, [cardImg]);
 
   return (
     <div
@@ -3447,23 +3426,24 @@ function ScannedCardTile({ job, isLatest, isFirst, symbolUrl, onRemove, onOpen }
         }}
         onClick={job.status === 'processing' ? undefined : onOpen}
       >
-        {cardImg ? (
-          <>
-            {/* Katalogbild (egal welche Größe zuerst lädt) — blendet nach onLoad
-                (bzw. gecacht per complete-Check) ein; bei onError nächster
-                Kandidat. Bis dahin liegt das Skeleton darunter. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              ref={catImgRef}
-              src={cardImg}
-              alt={card?.name ?? 'Scan'}
-              className="absolute inset-0 w-full h-full object-cover"
-              style={{ opacity: imgLoaded ? 1 : 0, transition: 'opacity 0.15s ease-out' }}
-              onLoad={() => setImgLoaded(true)}
-              onError={() => setCandIdx(i => i + 1)}
-            />
-            {!imgLoaded && <div className="absolute inset-0 animate-pulse" style={{ background: 'rgba(255,255,255,0.06)' }} />}
-          </>
+        {card && !isError ? (
+          /* Erkannte Karte: geteilte CardImage-Komponente (wie im Grid) — Skeleton
+             → Katalogbild (egal welche Größe zuerst lädt), Platzhalter statt
+             Schwarz, lazy geladen. */
+          <CardImage
+            card={card}
+            size="small"
+            language={job.result?.language}
+            alt={card.name}
+            width={245}
+            height={342}
+            className="w-full h-full object-cover"
+            placeholderInfo={{
+              name: card.name, hp: card.hp, number: card.number,
+              total: card.printedTotal ?? card.total, dexNumber: card.nationalDexNumber,
+              setCode: card.setCode, types: card.types, pending: card.pendingCatalog,
+            }}
+          />
         ) : job.status === 'processing' ? (
           /* Erkennung läuft → Skeleton (Karte kommt gleich). */
           <div className="absolute inset-0 animate-pulse" style={{ background: 'rgba(255,255,255,0.06)' }} />
