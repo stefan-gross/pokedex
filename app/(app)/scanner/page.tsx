@@ -34,6 +34,7 @@ import { ExclamationMark } from '@/lib/binder-icons';
 import { CardPlaceholder } from '@/components/card/CardPlaceholder';
 import { CardImage } from '@/components/card/CardImage';
 import { Card } from '@/components/card/Card';
+import { playScanSound, unlockScanSound } from '@/lib/scanner/scan-sound';
 import { CardTileButton } from '@/components/card/CardTileButton';
 import { catalogCardToInfo, cardInfoToAddInput, resolveCardImage } from '@/lib/card-info';
 import { cardImageCandidates } from '@/lib/card-image';
@@ -568,6 +569,18 @@ export default function ScannerPage() {
     }
   }, [jobs]);
 
+  // Scan-Ton-AudioContext einmalig bei der ersten User-Geste entsperren (iOS
+  // verlangt das) — danach dürfen auch die geste-losen Auto-Scan-Töne abspielen.
+  useEffect(() => {
+    const unlock = () => unlockScanSound();
+    window.addEventListener('pointerdown', unlock, { once: true });
+    window.addEventListener('touchstart', unlock, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('touchstart', unlock);
+    };
+  }, []);
+
   // ── BottomNav-Bridge ────────────────────────────────────────────────────
   // Stream-Pause-Toggle vom BottomNav-FAB
   const toggleStreamPaused = useCallback(() => {
@@ -940,6 +953,7 @@ export default function ScannerPage() {
           ? { ...j, status: 'error', result: { card: null, language: (gemini.language ?? 'de') as CardLanguage }, debugInfo: geminiSummary, debug: errDebug }
           : j));
         stopAutoOnFail();
+        if (!isTest) playScanSound(false);   // Fehlton: nichts Lesbares erkannt
         // Telemetrie: Fehl-/Nichterkennung als Event + vollen Fall (mit Bildern).
         {
           const outcome: ScanOutcome = gemini.error ? 'error' : 'not_recognized';
@@ -1300,6 +1314,7 @@ export default function ScannerPage() {
         },
       } : j));
       if (!finalCard) stopAutoOnFail();   // unauflösbar → Auto-Stopp (Mehrfachscan)
+      if (!isTest) playScanSound(!!finalCard);   // Erfolg-/Fehlton je nach Auflösung
 
       // ── Telemetrie ────────────────────────────────────────────────────────
       // Für JEDEN Scan ein kompaktes Event (Qualität/Gemini/Lookup, kein Bild) +
@@ -1437,6 +1452,7 @@ export default function ScannerPage() {
         ? { ...j, status: 'error', result: { card: null, language: 'de' }, debugInfo: `Netzwerkfehler: ${msg}`, debug: errDebug }
         : j));
       stopAutoOnFail();
+      if (!isTest) playScanSound(false);   // Fehlton: Netzwerk-/Serverfehler
       if (!isTest) {
         const quality = metaToQuality(meta);
         void recordScanEvent({ outcome: 'error', quality, gemini: { error: msg } }).then(eventId => {
