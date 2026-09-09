@@ -2627,7 +2627,7 @@ export default function ScannerPage() {
         const close = () => setCorrectJobId(null);
         const isBlind = job.status === 'error' && classifyJobError(job).kind === 'gemini-blind';
         return (
-          <div className="fixed inset-0 z-[60]" style={{ background: 'rgba(0,0,0,0.9)' }}>
+          <div className="fixed inset-0 z-[55]" style={{ background: 'rgba(0,0,0,0.9)' }}>
             <button
               type="button"
               onClick={close}
@@ -2653,21 +2653,25 @@ export default function ScannerPage() {
                 key={job.id}
                 job={job}
                 correctionOnly
-                onCardTap={() => { setActiveJobId(job.id); setCorrectJobId(null); }}
-                onSubmitReport={result => { submitReport(job, result); close(); }}
+                // Tap aufs große Bild öffnet das Kartendetail ÜBER dem Overlay
+                // (wie im Einzelscan). Das Korrektur-Overlay bleibt darunter offen
+                // — Schließen des Details führt zurück hierher, nicht in den Slider.
+                onCardTap={() => setActiveJobId(job.id)}
+                // Korrigieren/Melden lässt das Overlay OFFEN (wie im Einzelscan):
+                // man bleibt in der Karten-Ansicht und sieht die korrigierte Karte;
+                // erst der X-Button schließt zurück in den Slider/das Grid.
+                onSubmitReport={result => submitReport(job, result)}
                 onPickNotInCatalog={pending => {
                   setJobs(prev => prev.map(j => j.id === job.id && j.result
                     ? { ...j, status: 'done' as const, result: { ...j.result, card: pending }, editedVariant: 'standard' as CardVariant }
                     : j));
                   submitReport(job, { reportType: 'not_in_catalog' });
-                  close();
                 }}
                 onPickCandidate={picked => {
                   setJobs(prev => prev.map(j => j.id === job.id && j.result
                     ? { ...j, status: 'done' as const, result: { ...j.result, card: picked }, editedVariant: picked.variants?.[0] ?? 'standard' }
                     : j));
                   refreshOwnedCount(job.id, picked.id);
-                  close();
                 }}
                 onSaved={() => {
                   markAdded(job.id, { keepJob: true });
