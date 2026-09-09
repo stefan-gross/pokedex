@@ -293,14 +293,6 @@ function cardImgUrl(job: ScanJob): string | null {
   return cardImageCandidates(card, { size: 'small', language: job.result?.language })[0] ?? null;
 }
 
-function cardImgUrlLarge(job: ScanJob): string | null {
-  const photo = processingPhoto(job);
-  if (photo) return photo;
-  const card = job.result?.card;
-  if (!card) return null;
-  return cardImageCandidates(card, { size: 'large', language: job.result?.language })[0] ?? null;
-}
-
 /** ALLE Bild-Kandidaten in Prioritätsreihenfolge — RecognizedCardLarge probiert
  *  bei 404/Ladefehler automatisch den nächsten, bevor sie aufgibt. */
 function cardImgUrlsLarge(job: ScanJob): string[] {
@@ -2145,196 +2137,42 @@ export default function ScannerPage() {
             const incomingTransition = (singleAnim === 'commit-prev' || singleAnim === 'snap-in')
               ? 'transform 200ms ease-out' : undefined;
 
-            // Inneres Karten-Bild — geteilt von allen Panels
-            const renderFace = (j: typeof job) => {
-              const jCard = j.result?.card;
-              const jIsError = j.status === 'error';
-              const jImg = jIsError
-                ? (j.debug?.imageBase64 ? `data:${j.debug.mimeType ?? 'image/jpeg'};base64,${j.debug.imageBase64}` : null)
-                : cardImgUrlLarge(j);
-              if (jIsError) {
-                const ec = classifyJobError(j);
-                const ErrIcon = ec.Icon;
-                return jImg ? (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={jImg} alt="Scan" className="w-full h-full object-contain pointer-events-none" draggable={false} />
-                    <div className="absolute top-2 right-2 w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.75)' }}>
-                      <ErrIcon size={18} color={ec.iconColor} strokeWidth={2} />
-                    </div>
-                    <div className="absolute top-2 left-2 px-2 py-1 rounded text-xs font-extrabold text-white" style={{ background: '#6f6d4e' }}>
-                      {ec.cardName}
-                    </div>
-                  </>
-                ) : (
-                  <ErrorLandscapeArtwork className="w-full h-full" />
-                );
-              }
-              return jImg ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={jImg} alt={jCard?.name ?? ''} className="w-full h-full object-contain pointer-events-none" draggable={false} />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <Loader2 size={28} color="rgba(255,255,255,0.4)" className="animate-spin" />
-                </div>
-              );
-            };
-
-            // Ein vollständiges Panel — Karte + Meta in einem Rahmen.
-            // Karte sitzt bündig am oberen Panel-Rand, darunter Set/Name/Dropdowns.
-            // Der Border (Manual-Yellow / Auto-Yellow / Error) umschließt das ganze Panel.
-            const renderPanel = (j: typeof job, interactive: boolean) => {
-              const jCard = j.result?.card;
-              const jIsError = j.status === 'error';
-              const jCanOpen = j.status === 'done' && !!jCard;
-              const jVariants = jCard?.variants?.length ? jCard.variants : (['standard'] as CardVariant[]);
-              const jCurVariant   = j.editedVariant   ?? jVariants[0];
-              const jCurCondition = j.editedCondition ?? 'NM';
-              const jCondColor = PERSISTED_CONDITION_COLOR[jCurCondition];
-              return (
-                <div
-                  className="absolute inset-0 flex flex-col rounded-2xl overflow-hidden"
-                  style={{
-                    ...borderStyleFor(computeBorderStatus(j), j.result?.fakeRisk),
-                    background: '#1a1a1a',
-                    pointerEvents: interactive ? undefined : 'none',
+            // Ein Karten-Panel = die volle Einzelscan-Ansicht (RecognizedCardLarge),
+            // eingebettet (füllt den Swipe-Layer, Header bleibt darüber sichtbar).
+            // Optik + Bedienung identisch zum Einzelscan: Owned-Rahmen, großes Bild,
+            // Glas-Leiste mit Set/Name/Preis, Hinzufügen/Verwalten/Korrigieren,
+            // Holo-Glanz. Tap aufs Bild öffnet das Kartendetail; die untere
+            // Add-Leiste ist per data-scan-interactive vom Swipe ausgenommen.
+            const renderPanel = (j: typeof job, interactive: boolean) => (
+              <div className="absolute inset-0" style={{ pointerEvents: interactive ? undefined : 'none' }}>
+                <RecognizedCardLarge
+                  embedded
+                  job={j}
+                  onCardTap={() => setActiveJobId(j.id)}
+                  onSubmitReport={result => submitReport(j, result)}
+                  onPickNotInCatalog={pending => {
+                    setJobs(prev => prev.map(x => x.id === j.id && x.result
+                      ? { ...x, status: 'done' as const, result: { ...x.result, card: pending }, editedVariant: 'standard' as CardVariant }
+                      : x));
+                    submitReport(j, { reportType: 'not_in_catalog' });
                   }}
-                >
-                  {/* Karten-Bild — bündig oben im Panel */}
-                  <div className="flex-1 min-h-0 relative flex items-center justify-center">
-                    {renderFace(j)}
-
-                    {/* Wert-Badge oben links auf der Karte (nur ab 'wertvoll') */}
-                    {jCard && (
-                      <div className="absolute top-2 left-2">
-                        <ValueBadge tcgId={jCard.id} />
-                      </div>
-                    )}
-
-                    {/* Trash + Plus unten rechts auf der Karte */}
-                    <div
-                      className="absolute flex items-end gap-2"
-                      style={{ right: 10, bottom: 10 }}
-                      onPointerDown={e => e.stopPropagation()}
-                      onClick={e => e.stopPropagation()}
-                    >
-                      <Button
-                        variant="primary"
-                        size="md"
-                        accentColor="#c53030"
-                        icon={<Trash2 />}
-                        onClick={e => {
-                          e.stopPropagation();
-                          removeJob(j.id);
-                          if (safeIdx >= filteredReversed.length - 1 && safeIdx > 0) {
-                            setSingleIdx(safeIdx - 1);
-                          }
-                        }}
-                        aria-label="Entfernen"
-                        className="shadow-md"
-                      />
-                      {jCanOpen && !j.added && (
-                        <Button
-                          variant="primary"
-                          size="lg"
-                          accentColor="#2f855a"
-                          icon={<Plus />}
-                          onClick={e => { e.stopPropagation(); setQuickAddJobId(j.id); }}
-                          aria-label="Zur Sammlung hinzufügen"
-                          className="shadow-lg"
-                        />
-                      )}
-                    </div>
-
-                    {/* Added-Overlay */}
-                    {j.added && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none">
-                        <Check size={48} color="#48bb78" strokeWidth={3} />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Meta-Zeile im selben Panel: Set-Frame · Name (zentriert) · Dropdowns */}
-                  <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 shrink-0 px-2 py-2 border-t border-white/10">
-                    {jCard?.setCode ? (() => {
-                      const symbolOnly = !!jCard.series && SYMBOL_ONLY_SERIES.includes(jCard.series);
-                      const symbolUrl = jCard.setId ? setSymbolMap.get(jCard.setId) : undefined;
-                      return (
-                        <div
-                          className="flex flex-col items-center leading-tight rounded-md border px-2 py-1 font-mono"
-                          style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}
-                        >
-                          {symbolOnly && symbolUrl ? (
-                            /* eslint-disable-next-line @next/next/no-img-element */
-                            <img src={symbolUrl} alt="" className="w-4 h-4 object-contain" />
-                          ) : (
-                            <span className="text-[11px] font-bold">{jCard.setCode}</span>
-                          )}
-                          {jCard.number && (
-                            <span className="text-[10px] text-white/75">{jCard.number}</span>
-                          )}
-                        </div>
-                      );
-                    })() : <div />}
-
-                    <p className="text-sm font-semibold text-white text-center truncate">
-                      {jCard ? <CardNameLabel card={jCard} secondaryClassName="opacity-70" /> : (jIsError ? classifyJobError(j).cardName : '…')}
-                    </p>
-
-                    {jCard ? (
-                      <div className="flex items-center gap-1.5">
-                        <div className="relative">
-                          <span
-                            className="text-xs font-bold px-2 py-1.5 rounded inline-block border"
-                            style={{
-                              background: 'rgba(255,255,255,0.10)',
-                              color: '#fff',
-                              borderColor: 'rgba(255,255,255,0.20)',
-                            }}
-                          >
-                            {VARIANT_LABELS[jCurVariant]}
-                          </span>
-                          {jVariants.length > 1 && (
-                            <select
-                              value={jCurVariant}
-                              onPointerDown={e => e.stopPropagation()}
-                              onClick={e => e.stopPropagation()}
-                              onChange={e => setJobVariant(j.id, e.target.value as CardVariant)}
-                              className="absolute inset-0 opacity-0 cursor-pointer"
-                              aria-label="Variante ändern"
-                            >
-                              {jVariants.map(v => (
-                                <option key={v} value={v}>{VARIANT_LABELS[v]}</option>
-                              ))}
-                            </select>
-                          )}
-                        </div>
-                        <div className="relative">
-                          <span
-                            className="text-xs font-bold px-2 py-1.5 rounded inline-block"
-                            style={{ background: jCondColor.bg, color: jCondColor.text }}
-                          >
-                            {CONDITIONS.find(c => c.value === jCurCondition)?.label ?? jCurCondition}
-                          </span>
-                          <select
-                            value={jCurCondition}
-                            onPointerDown={e => e.stopPropagation()}
-                            onClick={e => e.stopPropagation()}
-                            onChange={e => setJobCondition(j.id, e.target.value as PersistedCondition)}
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                            aria-label="Zustand ändern"
-                          >
-                            {CONDITIONS.map(c => (
-                              <option key={c.value} value={c.value}>{c.label}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                    ) : <div />}
-                  </div>
-                </div>
-              );
-            };
+                  onPickCandidate={picked => {
+                    setJobs(prev => prev.map(x => x.id === j.id && x.result
+                      ? { ...x, status: 'done' as const, result: { ...x.result, card: picked }, editedVariant: picked.variants?.[0] ?? 'standard' }
+                      : x));
+                    refreshOwnedCount(j.id, picked.id);
+                  }}
+                  onSaved={() => {
+                    markAdded(j.id, { keepJob: true });
+                    if (j.result?.card) refreshOwnedCount(j.id, j.result.card.id);
+                  }}
+                  onManage={() => setQuickDeleteJobId(j.id)}
+                  onEditVariant={v => setJobVariant(j.id, v)}
+                  onEditCondition={c => setJobCondition(j.id, c)}
+                  onEditLanguage={l => setJobLanguage(j.id, l)}
+                />
+              </div>
+            );
 
             const clearLongPress = () => {
               if (longPressTimerRef.current) {
@@ -2357,8 +2195,9 @@ export default function ScannerPage() {
               const dx = e.clientX - start;
               if (Math.abs(dx) < 40) {
                 setSingleDragX(0);
-                // Kurzer Tap → Korrektur-Ansicht (wie im Slider/Grid).
-                if (canOpen || isError) setCorrectJobId(job.id);
+                // Kurzer Tap aufs Bild → Kartendetail (wie im Einzelscan). Die
+                // Korrektur läuft über den „Korrigieren"-Button in der Add-Leiste.
+                if (canOpen) setActiveJobId(job.id);
                 return;
               }
               if (dx > 0) {
@@ -2381,7 +2220,6 @@ export default function ScannerPage() {
             // Outer container — feste Höhe, alles passt rein, keine Scroll
             const containerHeight = 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 170px)';
             const canOpen = job.status === 'done' && !!job.result?.card;
-            const isError = job.status === 'error';
 
             // Dim-Faktor für Below/Incoming Panels — bei 0 (kein Drag) maximal
             // abgedunkelt, bei voller Drag-Strecke wieder original-hell.
@@ -2398,6 +2236,11 @@ export default function ScannerPage() {
                 style={{ height: containerHeight, minHeight: '320px' }}
                 onPointerDown={e => {
                   if (singleAnim) return;
+                  // Interaktive Steuerung (Add-Leiste mit Dropdowns/Buttons/Grabber,
+                  // per data-scan-interactive markiert) handhabt ihre Gesten selbst —
+                  // dort KEINEN Swipe/Tap starten (sonst schluckt der Pointer-Capture
+                  // die Klicks der Leiste).
+                  if ((e.target as Element).closest?.('button, select, input, a, [data-scan-interactive]')) return;
                   swipeStartXRef.current = e.clientX;
                   longPressFiredRef.current = false;
                   try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
@@ -3554,6 +3397,10 @@ interface RecognizedCardLargeProps {
    *  Verwalten-Leiste aus, zeigt nur „Korrigieren" + Kandidaten-Auswahl.
    *  Hinzufügen/Löschen passiert dort gebündelt im Review-Grid. */
   correctionOnly?: boolean;
+  /** Eingebettet in den Einzelkarten-View (Mehrfachscan-Grid „Einzeln"): füllt
+   *  den Eltern-Layer (absolute inset-0) statt sich selbst als Vollbild über
+   *  den fixen Header zu legen. Optik/Bedienung sonst identisch zum Einzelscan. */
+  embedded?: boolean;
   /** Persistiert die im Inline-Panel gewählten Werte am Job (Korrektur-Overlay)
    *  — damit „Alle hinzufügen" im Grid je Karte die richtigen Werte nimmt. */
   onEditVariant?: (variant: CardVariant) => void;
@@ -3563,7 +3410,7 @@ interface RecognizedCardLargeProps {
 
 function RecognizedCardLarge({
   job, onCardTap, onSubmitReport, onPickCandidate, onPickNotInCatalog, onSaved, onManage,
-  correctionOnly = false, onEditVariant, onEditCondition, onEditLanguage,
+  correctionOnly = false, embedded = false, onEditVariant, onEditCondition, onEditLanguage,
 }: RecognizedCardLargeProps) {
   const [correcting, setCorrecting] = useState(false);
 
@@ -3732,11 +3579,18 @@ function RecognizedCardLarge({
   const [shimmerVariant, setShimmerVariant] = useState<CardVariant | null>(
     job.editedVariant ?? job.result?.variant ?? null,
   );
+  // Im eingebetteten Swipe-View bleibt dieselbe Instanz erhalten (kein Remount
+  // pro Karte, um Größen-Neumessung/Flackern zu vermeiden) — daher den Glanz
+  // beim Kartenwechsel explizit auf die neue Karte synchronisieren.
+  useEffect(() => {
+    setShimmerVariant(job.editedVariant ?? job.result?.variant ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id]);
 
   return (
     <div
-      className="absolute inset-x-0 z-10 flex flex-col items-center px-4 gap-3"
-      style={{
+      className={`absolute z-10 flex flex-col items-center px-4 gap-3 ${embedded ? 'inset-0' : 'inset-x-0'}`}
+      style={embedded ? undefined : {
         top: 'calc(env(safe-area-inset-top, 0px) + 64px)',
         // Overlay-Panel dockt unten an; näher an die Footer-Leiste gerückt
         // (nutzt den freien Platz über dem Scan-FAB). Nur so viel Abstand, dass
@@ -3853,7 +3707,7 @@ function RecognizedCardLarge({
           dahinter die ganze Fläche (Slot absolute inset-0). Feste rgba()-Werte
           identisch zur Dark-Variante der globalen .glass-Klasse — der Scanner
           liegt immer über dem (dunklen) Kamerabild. */}
-      <div className="absolute inset-x-0 bottom-0 z-10 px-4 flex flex-col gap-3">
+      <div className="absolute inset-x-0 bottom-0 z-10 px-4 flex flex-col gap-3" data-scan-interactive>
       {displayCard && (
         <div
           className="relative w-full flex flex-col items-start gap-2 px-4 py-4 rounded-[24px] glass-overlay"
