@@ -3438,14 +3438,12 @@ function ScannedCardTile({ job, isLatest, isFirst, symbolUrl, onRemove, onOpen }
         }}
         onClick={job.status === 'processing' ? undefined : onOpen}
       >
-        {job.status === 'processing' ? (
-          <div className="w-full h-full flex items-center justify-center">
-            <Loader2 size={24} color="rgba(255,255,255,0.4)" className="animate-spin" />
-          </div>
-        ) : (scanPhoto || cardImg) ? (
+        {(scanPhoto || cardImg) ? (
           <>
-            {/* Basis-Layer: Scan-Foto SOFORT (schon als base64 vorhanden) — deckt
-                die Ladezeit/onError-Kette des Katalogbilds ab, kein „?" mehr. */}
+            {/* Basis-Layer: Scan-Foto SOFORT (schon als base64 vorhanden) — auch
+                WÄHREND der Erkennung, damit die Karte nicht erst als Spinner
+                erscheint und dann Sekunden später das Bild lädt. Deckt zusätzlich
+                die Ladezeit/onError-Kette des Katalogbilds ab (kein „?" mehr). */}
             {scanPhoto && (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img src={scanPhoto} alt="" className="absolute inset-0 w-full h-full object-cover" />
@@ -3463,7 +3461,17 @@ function ScannedCardTile({ job, isLatest, isFirst, symbolUrl, onRemove, onOpen }
                 onError={() => setCandIdx(i => i + 1)}
               />
             )}
+            {/* Dezenter „wird erkannt"-Indikator während der Hintergrund-Erkennung. */}
+            {job.status === 'processing' && (
+              <div className="absolute top-1 left-1 w-6 h-6 rounded-full bg-black/55 flex items-center justify-center">
+                <Loader2 size={14} color="#fff" className="animate-spin" />
+              </div>
+            )}
           </>
+        ) : job.status === 'processing' ? (
+          <div className="w-full h-full flex items-center justify-center">
+            <Loader2 size={24} color="rgba(255,255,255,0.4)" className="animate-spin" />
+          </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-red-500/10">
             <AlertCircle size={22} color="#f87171" />
