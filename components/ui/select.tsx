@@ -199,6 +199,7 @@ export function CustomSelect<T extends string>({
   fullWidth = false,
   panelWide = false,
   onClear,
+  forceDark = false,
   'aria-label': ariaLabel,
 }: {
   value: T | null;
@@ -224,6 +225,10 @@ export function CustomSelect<T extends string>({
    *  zurücksetzt (z.B. auf „Alle"). Der Aufrufer übergibt es nur, wenn es etwas
    *  zu löschen gibt (Auswahl ≠ Default). */
   onClear?: () => void;
+  /** Options-Panel (Portal an <body>) im Dark-Look rendern — z.B. im Scanner,
+   *  der immer über dunklem Grund liegt. Ohne das folgt das an body gehängte
+   *  Panel dem App-Theme und wird im Light-Theme über Schwarz kaum lesbar. */
+  forceDark?: boolean;
   'aria-label'?: string;
 }) {
   useGlassTheme();
@@ -276,7 +281,7 @@ export function CustomSelect<T extends string>({
       </button>
 
       {open && pos && createPortal(
-        <>
+        <div className={forceDark ? 'dark' : undefined}>
           {/* Backdrop — schließt das Panel bei Tap außerhalb */}
           <div className="fixed inset-0 z-[200]" onClick={() => setOpen(false)} />
           <div
@@ -307,7 +312,7 @@ export function CustomSelect<T extends string>({
               </button>
             ))}
           </div>
-        </>,
+        </div>,
         document.body,
       )}
     </>

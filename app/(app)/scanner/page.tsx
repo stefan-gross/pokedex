@@ -177,6 +177,7 @@ interface ScanJob {
   // User-bearbeitbare Felder (initialisiert aus Gemini-Result, danach Pill-Editierbar)
   editedVariant?:   CardVariant;
   editedCondition?: PersistedCondition;
+  editedLanguage?:  CardLanguage;
   // Slider-Markierung (User-Tap im Stapel-Scan = "bitte später nochmal prüfen")
   flaggedManual?: boolean;
   // Bild-Verifikation per pHash (kommt mit Phase 5) — niedrig=match, hoch=mismatch
@@ -201,6 +202,19 @@ function metaToQuality(meta?: CaptureMeta): ScanQuality | undefined {
     glare: meta.glare, softGlare: meta.softGlare, nameGlare: meta.nameGlare, codeGlare: meta.codeGlare,
     meanLum: meta.meanLum, fill: meta.fill, cornersN: meta.cornersN, angleDeg: meta.angleDeg,
   };
+}
+
+/** Nicht-Standard-Werte einer erkannten Scan-Karte (Variante ≠ standard, Zustand
+ *  ≠ NM, Sprache ≠ de) als kurze Labels — für die Anzeige unter der Kachel. */
+function nonDefaultScanMeta(job: ScanJob): string[] {
+  const out: string[] = [];
+  const variant = job.editedVariant ?? job.result?.variant ?? job.result?.card?.variants?.[0];
+  const cond = job.editedCondition ?? (job.result?.condition ? GEMINI_TO_PERSISTED[job.result.condition] : undefined);
+  const lang = job.editedLanguage ?? job.result?.language;
+  if (variant && variant !== 'standard') out.push(VARIANT_LABELS[variant] ?? variant);
+  if (cond && cond !== 'NM') out.push(cond);
+  if (lang && lang !== 'de') out.push(String(lang).toUpperCase());
+  return out;
 }
 
 type BorderStatus = 'none' | 'manual-yellow' | 'auto-yellow' | 'auto-red' | 'error';
@@ -767,12 +781,22 @@ export default function ScannerPage() {
     setJobs(prev => prev.map(j => j.id === id ? { ...j, flaggedManual: !j.flaggedManual } : j));
   }, []);
 
+  // Idempotent: bei unverändertem Wert dieselbe `prev`-Referenz zurückgeben, damit
+  // React kein Re-Render auslöst (der onVariantChange-Effekt in RecognizedAddBar
+  // feuert sonst über den inline-Callback bei jedem Render eine Schleife).
   const setJobVariant = useCallback((id: string, variant: CardVariant) => {
-    setJobs(prev => prev.map(j => j.id === id ? { ...j, editedVariant: variant } : j));
+    setJobs(prev => prev.some(j => j.id === id && j.editedVariant !== variant)
+      ? prev.map(j => j.id === id ? { ...j, editedVariant: variant } : j) : prev);
   }, []);
 
   const setJobCondition = useCallback((id: string, condition: PersistedCondition) => {
-    setJobs(prev => prev.map(j => j.id === id ? { ...j, editedCondition: condition } : j));
+    setJobs(prev => prev.some(j => j.id === id && j.editedCondition !== condition)
+      ? prev.map(j => j.id === id ? { ...j, editedCondition: condition } : j) : prev);
+  }, []);
+
+  const setJobLanguage = useCallback((id: string, language: CardLanguage) => {
+    setJobs(prev => prev.some(j => j.id === id && j.editedLanguage !== language)
+      ? prev.map(j => j.id === id ? { ...j, editedLanguage: language } : j) : prev);
   }, []);
 
   // „Alle hinzufügen" öffnet jetzt ein Bulk-Modal zur Bestätigung der Werte.
@@ -785,35 +809,15 @@ export default function ScannerPage() {
     setBulkModalOpen(true);
   }, [jobs, selectMode, selectedIds]);
 
-  // Auto-Save beim Verlassen des Scanners → Inbox-Binder „Eingang"
-  const [closingSaving, setClosingSaving] = useState(false);
-  const handleClose = useCallback(async () => {
-    if (closingSaving) return;
-    const targets = jobs.filter(j =>
-      j.origin === 'add' && j.status === 'done' && !!j.result?.card && !j.added
-    );
-    if (targets.length === 0) { router.push('/'); return; }
-    setClosingSaving(true);
-    try {
-      const unsortedId = await ensureDefaultBinder();
-      for (const job of targets) {
-        const card = job.result!.card!;
-        const v = (job.editedVariant ?? card.variants?.[0] ?? 'standard') as CardVariant;
-        const c = job.editedCondition ?? 'NM';
-        const lang = job.result!.language ?? 'de';
-        try {
-          const cardId = await addCard(
-            cardInfoToAddInput(card, { variant: v, condition: c, language: lang, needsReview: true }),
-          );
-          await addCardToBinder(unsortedId, cardId);
-        } catch (err) {
-          console.error('[scanner-close] save error for job', job.id, err);
-        }
-      }
-    } finally {
-      router.push('/');
-    }
-  }, [closingSaving, jobs, router]);
+  // Verlassen des Scanners: Sind noch gescannte Karten offen (weder hinzugefügt
+  // NOCH gelöscht), erst nachfragen — beim Verlassen gehen sie verloren
+  // (Nutzerwunsch: KEIN stilles Auto-Speichern mehr).
+  const [confirmExit, setConfirmExit] = useState(false);
+  const pendingExitCount = jobs.filter(j => j.origin === 'add' && !j.added).length;
+  const handleClose = useCallback(() => {
+    if (jobs.some(j => j.origin === 'add' && !j.added)) { setConfirmExit(true); return; }
+    router.push('/');
+  }, [jobs, router]);
 
   const clearAllJobs = useCallback(() => {
     setJobs([]);
@@ -1853,6 +1857,18 @@ export default function ScannerPage() {
                             Antippen öffnet die Korrektur, Löschen/Hinzufügen läuft
                             im Bearbeiten-Modus über Mehrfachauswahl + Fußleiste. */}
                       </div>
+                      {/* Abweichende Werte (Variante/Zustand/Sprache ≠ Standard)
+                          als kleine Chips unter der Karte. */}
+                      {(() => {
+                        const meta = nonDefaultScanMeta(job);
+                        return meta.length > 0 ? (
+                          <div className="mt-0.5 flex flex-wrap justify-center gap-1 px-1">
+                            {meta.map((m, i) => (
+                              <span key={i} className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/15 text-glass-muted">{m}</span>
+                            ))}
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
                   );
                 }
@@ -2651,6 +2667,9 @@ export default function ScannerPage() {
                   if (job.result?.card) refreshOwnedCount(job.id, job.result.card.id);
                 }}
                 onManage={() => setQuickDeleteJobId(job.id)}
+                onEditVariant={v => setJobVariant(job.id, v)}
+                onEditCondition={c => setJobCondition(job.id, c)}
+                onEditLanguage={l => setJobLanguage(job.id, l)}
               />
             )}
           </div>
@@ -2974,6 +2993,24 @@ export default function ScannerPage() {
         </div>
       </Dialog>
 
+      {/* ── Scanner verlassen — Bestätigung bei offenen Karten ──────────── */}
+      <Dialog open={confirmExit} onClose={() => setConfirmExit(false)} title="Scannen verlassen?">
+        <p className="text-glass-muted text-role-body mb-5">
+          {`${pendingExitCount} gescannte ${pendingExitCount === 1 ? 'Karte ist' : 'Karten sind'} noch nicht hinzugefügt. Beim Verlassen ${pendingExitCount === 1 ? 'geht sie' : 'gehen sie'} verloren.`}
+        </p>
+        <div className="flex gap-2">
+          <Button variant="secondary" className="flex-1" onClick={() => setConfirmExit(false)}>
+            Abbrechen
+          </Button>
+          <Button
+            variant="primary" accentColor="#c53030" icon={<X strokeWidth={2.5} />} className="flex-1"
+            onClick={() => { setConfirmExit(false); router.push('/'); }}
+          >
+            Verlassen
+          </Button>
+        </div>
+      </Dialog>
+
 
       {/* Footer wird jetzt von der globalen BottomNav übernommen.
           Stream-Pause, Mode-Switch und Grid-Button laufen über Custom-Events
@@ -2986,7 +3023,7 @@ export default function ScannerPage() {
         const bulkJobs = targets.map(j => ({
           id: j.id,
           card: j.result!.card!,
-          language: j.result!.language,
+          language: j.editedLanguage ?? j.result!.language,
           editedVariant: j.editedVariant,
           editedCondition: j.editedCondition,
         }));
@@ -3137,15 +3174,6 @@ export default function ScannerPage() {
           </div>
         );
       })()}
-
-
-      {/* ── Closing-Overlay: Karten werden in Inbox gespeichert ──────── */}
-      {closingSaving && (
-        <div className="fixed inset-0 z-[70] bg-black/85 flex flex-col items-center justify-center gap-3">
-          <Loader2 size={32} color="#fff" className="animate-spin" />
-          <p className="text-white text-sm">Karten werden gespeichert …</p>
-        </div>
-      )}
 
 
       {/* ── Melden-Sheet (Grundwahrheit für die Fehleranalyse erfassen) ─── */}
@@ -3426,6 +3454,18 @@ function ScannedCardTile({ job, isLatest, isFirst, onRemove, onOpen }: ScannedCa
           className="absolute bottom-1 right-1 shadow-md"
         />
 
+        {/* Abweichende Werte (Variante/Zustand/Sprache ≠ Standard) unten links. */}
+        {(() => {
+          const meta = nonDefaultScanMeta(job);
+          return meta.length > 0 ? (
+            <div className="absolute bottom-1 left-1 flex flex-col items-start gap-0.5 max-w-[68%]">
+              {meta.map((m, i) => (
+                <span key={i} className="text-[8px] font-bold leading-none px-1 py-0.5 rounded bg-black/70 text-white truncate max-w-full">{m}</span>
+              ))}
+            </div>
+          ) : null;
+        })()}
+
         {/* Standard-Badges wie auf den App-Kacheln (CardBadge): Anzahl (grün,
             oben rechts, ab 1 Exemplar — Dubletten beim Scannen erkennen) +
             „ungeprüft" (gelb „!", oben links). */}
@@ -3477,11 +3517,16 @@ interface RecognizedCardLargeProps {
    *  Verwalten-Leiste aus, zeigt nur „Korrigieren" + Kandidaten-Auswahl.
    *  Hinzufügen/Löschen passiert dort gebündelt im Review-Grid. */
   correctionOnly?: boolean;
+  /** Persistiert die im Inline-Panel gewählten Werte am Job (Korrektur-Overlay)
+   *  — damit „Alle hinzufügen" im Grid je Karte die richtigen Werte nimmt. */
+  onEditVariant?: (variant: CardVariant) => void;
+  onEditCondition?: (condition: PersistedCondition) => void;
+  onEditLanguage?: (language: CardLanguage) => void;
 }
 
 function RecognizedCardLarge({
   job, onCardTap, onSubmitReport, onPickCandidate, onPickNotInCatalog, onSaved, onManage,
-  correctionOnly = false,
+  correctionOnly = false, onEditVariant, onEditCondition, onEditLanguage,
 }: RecognizedCardLargeProps) {
   const [correcting, setCorrecting] = useState(false);
 
@@ -3883,13 +3928,15 @@ function RecognizedCardLarge({
             correctionOnly={correctionOnly}
             preVariant={job.editedVariant ?? job.result?.variant}
             preCondition={job.editedCondition}
-            preLanguage={job.result?.language}
+            preLanguage={job.editedLanguage ?? job.result?.language}
             ownedCount={ownedCount ?? 0}
             onSaved={onSaved}
             onManage={onManage}
             regionStyle={regionStyle(0)}
             regionRef={registerRegion(0)}
-            onVariantChange={setShimmerVariant}
+            onVariantChange={(v) => { setShimmerVariant(v); onEditVariant?.(v); }}
+            onConditionChange={onEditCondition}
+            onLanguageChange={onEditLanguage}
             onCorrectTap={() => setCorrecting(true)}
           />
 

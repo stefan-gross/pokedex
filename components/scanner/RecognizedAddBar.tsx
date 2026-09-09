@@ -42,6 +42,10 @@ interface Props {
   /** Meldet die aktuell gewählte Variante nach oben (initial + bei Änderung),
    *  damit die große Karte den Holo-/Reverse-Glanz passend anzeigen kann. */
   onVariantChange?: (variant: CardVariant) => void;
+  /** Meldet Zustand-/Sprach-Änderungen nach oben (Korrektur-Overlay persistiert
+   *  sie am Job → werden beim Bulk-Hinzufügen je Karte übernommen). */
+  onConditionChange?: (condition: CardCondition) => void;
+  onLanguageChange?: (language: CardLanguage) => void;
   /** Öffnet das Korrektur-Panel (falsch erkannt → richtige Karte wählen). */
   onCorrectTap?: () => void;
   /** „Noch nicht aufgelöst": die Karte wurde nicht (sicher) erkannt — es liegt
@@ -66,7 +70,8 @@ interface Props {
  *  Sprache eindeutig. */
 export function RecognizedAddBar({
   card, preVariant, preCondition, preLanguage, ownedCount, onSaved, onManage,
-  regionStyle, regionRef, onVariantChange, onCorrectTap, unresolved = false,
+  regionStyle, regionRef, onVariantChange, onConditionChange, onLanguageChange,
+  onCorrectTap, unresolved = false,
   correctionOnly = false,
 }: Props) {
   const variantOptions: CardVariant[] =
@@ -223,9 +228,9 @@ export function RecognizedAddBar({
         <div className="grid grid-cols-3 gap-2">
           <Field label="Zustand">
             <CustomSelect
-              fullWidth panelWide height="sm" aria-label="Zustand"
+              fullWidth panelWide height="sm" forceDark aria-label="Zustand"
               value={condition}
-              onChange={(v) => setCondition(v)}
+              onChange={(v) => { setCondition(v); onConditionChange?.(v); }}
               options={CONDITIONS.map(c => ({
                 value: c.value,
                 label: c.value,          // Trigger: nur Kürzel (NM/LP/…)
@@ -236,7 +241,7 @@ export function RecognizedAddBar({
           </Field>
           <Field label="Variante">
             <CustomSelect
-              fullWidth panelWide height="sm" aria-label="Variante"
+              fullWidth panelWide height="sm" forceDark aria-label="Variante"
               value={variant}
               onChange={(v) => setVariant(v)}
               options={variantOptions.map(v => ({ value: v, label: VARIANT_LABELS[v] }))}
@@ -244,9 +249,9 @@ export function RecognizedAddBar({
           </Field>
           <Field label="Sprache">
             <CustomSelect
-              fullWidth panelWide height="sm" aria-label="Sprache"
+              fullWidth panelWide height="sm" forceDark aria-label="Sprache"
               value={language}
-              onChange={(v) => setLanguage(v)}
+              onChange={(v) => { setLanguage(v); onLanguageChange?.(v); }}
               options={LANGUAGES.map(l => ({
                 value: l.value,
                 label: l.value.toUpperCase(), // Trigger: Kürzel (DE/EN/…)
