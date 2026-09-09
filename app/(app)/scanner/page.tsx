@@ -3409,7 +3409,16 @@ function ScannedCardTile({ job, isLatest, isFirst, symbolUrl, onRemove, onOpen }
   // Ist das aktuelle Katalogbild schon geladen? Bis dahin zeigt der Scan-Foto-
   // Basis-Layer die Karte (sonst blitzt während Laden/onError-Kette ein „?" auf).
   const [imgLoaded, setImgLoaded] = useState(false);
-  useEffect(() => { setImgLoaded(false); }, [cardImg]);
+  const catImgRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    setImgLoaded(false);
+    // GECACHTE Bilder (z.B. nach Grid-Besuch, dann zurück in den Slider) feuern
+    // `onLoad` oft NICHT (Load passiert vor dem Handler-Attach) → sonst bliebe die
+    // Kachel schwarz (Scan-Foto ggf. schon aus dem Speicher geräumt). Direkt nach
+    // dem Mount prüfen, ob das Bild bereits vollständig ist.
+    const el = catImgRef.current;
+    if (el && el.complete && el.naturalWidth > 0) setImgLoaded(true);
+  }, [cardImg]);
 
   return (
     <div
@@ -3453,6 +3462,7 @@ function ScannedCardTile({ job, isLatest, isFirst, symbolUrl, onRemove, onOpen }
             {cardImg && (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
+                ref={catImgRef}
                 src={cardImg}
                 alt={card?.name ?? 'Scan'}
                 className="absolute inset-0 w-full h-full object-cover"
