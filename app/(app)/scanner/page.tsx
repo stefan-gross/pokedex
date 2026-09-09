@@ -2567,6 +2567,7 @@ export default function ScannerPage() {
                   key={job.id}
                   job={job}
                   isLatest={idx === addJobs.length - 1}
+                  isFirst={idx === 0}
                   onRemove={() => removeJob(job.id)}
                   onOpen={() => setCorrectJobId(job.id)}
                 />
@@ -3311,6 +3312,10 @@ const TILE_WIDTH_LATEST_CSS = 'calc((100vw - 8px) / 3.15 * 1.16)';
 interface ScannedCardTileProps {
   job: ScanJob;
   isLatest:          boolean;
+  /** Erste (älteste) Kachel — bekommt `margin-left:auto`, damit der Slider bei
+   *  wenigen Karten RECHTSbündig ist (neueste Karte ganz rechts). Bei Überlauf
+   *  kollabiert die Auto-Margin auf 0 → normales Scrollen, Start erreichbar. */
+  isFirst:           boolean;
   onRemove:          () => void;
   /** Antippen der Karte → Korrektur-/Detail-Ansicht (wie Einzelscan). */
   onOpen:            () => void;
@@ -3319,7 +3324,7 @@ interface ScannedCardTileProps {
 // Bewusst reduziert (Nutzerwunsch): nur Kartenbild + EIN Löschen-Button. Keine
 // Varianten-/Zustand-Pillen, kein Wert-/Tiefen-Badge — die Feinbearbeitung
 // passiert beim Antippen (Korrektur-Ansicht) bzw. im Review-Grid/Bulk-Add.
-function ScannedCardTile({ job, isLatest, onRemove, onOpen }: ScannedCardTileProps) {
+function ScannedCardTile({ job, isLatest, isFirst, onRemove, onOpen }: ScannedCardTileProps) {
   const card      = job.result?.card;
   const isError   = job.status === 'error';
   const borderStatus = computeBorderStatus(job);
@@ -3348,6 +3353,9 @@ function ScannedCardTile({ job, isLatest, onRemove, onOpen }: ScannedCardTilePro
       className="shrink-0"
       style={{
         width: isLatest ? TILE_WIDTH_LATEST_CSS : TILE_WIDTH_CSS,
+        // Rechtsbündig bei wenigen Karten: die erste Kachel schiebt die Gruppe
+        // per Auto-Margin nach rechts; bei Überlauf wird die Margin 0 (scrollbar).
+        marginLeft: isFirst ? 'auto' : undefined,
         scrollSnapAlign: 'end',
         transition: 'width 0.2s ease-out',
         zIndex: isLatest ? 2 : 1,
