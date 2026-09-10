@@ -522,16 +522,22 @@ export default function ScannerPage() {
   const swipeDragXRef = useRef<number>(0);
   // Live-Drag-Offset während der Geste (Karte folgt dem Finger)
   const [singleDragX, setSingleDragX] = useState<number>(0);
-  // Animationsphase nach Pointer-Up:
-  //  'commit-next'  → Top-Panel fliegt nach rechts raus, danach idx+1
-  //  'commit-prev'  → Eingehendes Prev-Panel gleitet auf 0, danach idx-1
-  //  'snap-out'     → Top-Panel snappt zurück auf 0 (Right-Drag abgebrochen)
-  //  'snap-in'      → Eingehendes Prev-Panel snappt zurück auf width  (Left-Drag abgebrochen)
+  // Stapel-Interaktion. Animationsphase nach Pointer-Up:
+  //  'commit-advance'  → oberste Karte fliegt zur Seite raus (Finger-Richtung), danach idx+1
+  //  'commit-restore'  → vorherige Karte gleitet vom Rand in die Mitte, danach idx-1
+  //  'snap'            → Karte snappt in Ausgangslage zurück (abgebrochen)
   const [singleAnim, setSingleAnim] = useState<
-    'commit-next' | 'commit-prev' | 'snap-out' | 'snap-in' | null
+    'commit-advance' | 'commit-restore' | 'snap' | null
   >(null);
-  // Index-Delta für Commit (1 = nächste, -1 = vorherige)
-  const singleCommitDeltaRef = useRef<number>(0);
+  // Gesten-Modus (aus der Start-Zone bestimmt): 'advance' = Wisch von der Mitte
+  // nach außen (oberste Karte raus), 'restore' = Wisch vom Rand nach innen
+  // (vorherige Karte zurück auf den Stapel).
+  const [singleMode, setSingleMode] = useState<'advance' | 'restore' | null>(null);
+  const swipeModeRef = useRef<'advance' | 'restore' | null>(null);
+  // Rand-Vorzeichen bei 'restore' (−1 = von links, +1 = von rechts) und
+  // Flug-Richtung bei 'advance' (Vorzeichen des Drag beim Loslassen).
+  const restoreEdgeRef = useRef<number>(1);
+  const advanceSignRef = useRef<number>(1);
   // Gemessene Panel-Breite für px-genaue Translate-Berechnung der eingehenden Karte
   const [singlePanelWidth, setSinglePanelWidth] = useState<number>(0);
   const singlePanelRef = useCallback((node: HTMLDivElement | null) => {
@@ -545,11 +551,12 @@ export default function ScannerPage() {
     if (!singleAnim) return;
     const anim = singleAnim;
     const t = setTimeout(() => {
-      if (anim === 'commit-next') setSingleIdx(i => i + 1);
-      else if (anim === 'commit-prev') setSingleIdx(i => Math.max(0, i - 1));
+      if (anim === 'commit-advance') setSingleIdx(i => i + 1);
+      else if (anim === 'commit-restore') setSingleIdx(i => Math.max(0, i - 1));
       setSingleDragX(0);
       setSingleAnim(null);
-    }, 240);
+      setSingleMode(null);
+    }, 260);
     return () => clearTimeout(t);
   }, [singleAnim]);
   // Long-Press für Markieren (>= 500ms ohne signifikante Bewegung)
@@ -2193,31 +2200,68 @@ export default function ScannerPage() {
             const prevJob = safeIdx > 0 ? filteredReversed[safeIdx - 1] : null;
             const nextJob = safeIdx < filteredReversed.length - 1 ? filteredReversed[safeIdx + 1] : null;
 
-            // Drag-Richtung bestimmt, welche Schicht sichtbar/animiert ist:
-            //  - Rechts (dx > 0): Top-Panel folgt Finger, fliegt raus → idx+1
-            //  - Links  (dx < 0): Prev-Panel gleitet von rechts ein → idx-1
-            const isRightDrag = singleDragX > 0 || singleAnim === 'commit-next' || singleAnim === 'snap-out';
-            const isLeftDrag  = singleDragX < 0 || singleAnim === 'commit-prev' || singleAnim === 'snap-in';
-            const showBelow   = isRightDrag && !!nextJob;
-            const showIncoming = isLeftDrag && !!prevJob && singlePanelWidth > 0;
+            // Stapel-Modell. Die drei Ebenen sind (bei vorhandenem Nachbarn) IMMER
+            // gemountet, damit Übergänge zuverlässig feuern:
+            //  - below (nächste Karte): liegt statisch hinter der obersten Karte;
+            //    wird sichtbar, wenn die oberste beim 'advance' zur Seite fliegt.
+            //  - top (aktuelle/oberste Karte): folgt beim 'advance' dem Finger und
+            //    fliegt in Finger-Richtung raus.
+            //  - incoming (vorherige Karte): sitzt off-screen am Rand; gleitet beim
+            //    'restore' vom Start-Rand in die Mitte auf den Stapel.
+            const w = singlePanelWidth;
+            // Stapel-Optik: die nächste Karte liegt als kleinere, leicht nach unten
+            // versetzte „Stapel-Karte" hinter der obersten. Fortschritt der Geste
+            // (0..1) treibt Wachsen/Zurückweichen, damit man sieht, wie die oberste
+            // Karte oben vom Stapel weggeht bzw. eine Karte oben drauf zurückkommt.
+            const STACK_SCALE = 0.93;   // Größe der Karte(n) hinter der obersten
+            const STACK_Y = 16;         // px-Versatz nach unten
+            const dragP = w > 0 ? Math.min(1, Math.abs(singleDragX) / w) : 0;
+            // „Bounce": am Stapel-Rand gibt es keine Karte in Wischrichtung
+            // (advance ohne Nachfolger / restore ohne Vorgänger) — dann folgt die
+            // oberste Karte gedämpft dem Finger und schnappt zurück, statt zu
+            // schrumpfen oder starr zu bleiben.
+            const bounce = (singleMode === 'advance' && !nextJob) || (singleMode === 'restore' && !prevJob);
+            const advP = (singleMode === 'advance' && !!nextJob)
+              ? (singleAnim === 'commit-advance' ? 1 : singleAnim === 'snap' ? 0 : dragP)
+              : 0;
+            const resP = (singleMode === 'restore' && !!prevJob)
+              ? (singleAnim === 'commit-restore' ? 1 : singleAnim === 'snap' ? 0 : dragP)
+              : 0;
+            const stackTransition = singleAnim ? 'transform 220ms ease-out' : undefined;
 
-            // Top-Panel-Transform: bewegt sich nur bei Right-Drag/Commit/Snap-Out
+            // Oberste Karte: 'advance' → folgt dem Finger 1:1 und fliegt in Finger-
+            // Richtung raus; 'restore' → weicht in den Stapel zurück (die zurückkehrende
+            // Karte legt sich oben drauf); am Rand ('bounce') → gedämpft dem Finger
+            // folgen und zurückschnappen; sonst full-size mittig.
             const topTransform =
-              singleAnim === 'commit-next' ? `translateX(${singlePanelWidth + 50}px)` :
-              singleAnim === 'snap-out'    ? 'translateX(0px)' :
-              isRightDrag && singleDragX > 0 ? `translateX(${singleDragX}px)` :
-              undefined;
-            const topTransition = (singleAnim === 'commit-next' || singleAnim === 'snap-out')
-              ? 'transform 200ms ease-out' : undefined;
+              bounce
+                ? (singleAnim ? 'translateX(0px)' : `translateX(${singleDragX * 0.5}px)`)
+                : singleMode === 'advance'
+                ? (singleAnim === 'commit-advance' ? `translateX(${advanceSignRef.current * (w + 80)}px)`
+                   : singleAnim === 'snap' ? 'translateX(0px)'
+                   : `translateX(${singleDragX}px)`)
+                : singleMode === 'restore'
+                ? `translateY(${STACK_Y * resP}px) scale(${1 - (1 - STACK_SCALE) * resP})`
+                : 'translateX(0px)';
+            const topTransition = stackTransition;
 
-            // Incoming-Panel-Transform: nur bei Left-Drag/Commit-Prev/Snap-In
+            // Nächste Karte (Stapel-Karte hinter der obersten): wächst beim 'advance'
+            // aus der Stapel-Position in die oberste Position.
+            const belowTransform = `translateY(${STACK_Y * (1 - advP)}px) scale(${STACK_SCALE + (1 - STACK_SCALE) * advP})`;
+            const belowTransition = stackTransition;
+
+            // Vorherige Karte — Ausgangslage off-screen am Rand (restoreEdge · Breite);
+            // gleitet beim 'restore' in voller Größe oben auf den Stapel.
+            const incomingBase = restoreEdgeRef.current * w;
             const incomingTransform =
-              singleAnim === 'commit-prev' ? 'translateX(0px)' :
-              singleAnim === 'snap-in'     ? `translateX(${singlePanelWidth}px)` :
-              showIncoming                 ? `translateX(${singlePanelWidth + singleDragX}px)` :
-              `translateX(${singlePanelWidth}px)`;
-            const incomingTransition = (singleAnim === 'commit-prev' || singleAnim === 'snap-in')
-              ? 'transform 200ms ease-out' : undefined;
+              singleAnim === 'commit-restore' ? 'translateX(0px)' :
+              singleAnim === 'snap' && singleMode === 'restore' ? `translateX(${incomingBase}px)` :
+              singleMode === 'restore' ? `translateX(${incomingBase + singleDragX}px)` :
+              `translateX(${incomingBase}px)`;
+            const incomingTransition = stackTransition;
+
+            const showBelow    = !!nextJob && w > 0;
+            const showIncoming = !!prevJob && w > 0;
 
             // Ein Karten-Panel = die volle Einzelscan-Ansicht (RecognizedCardLarge),
             // eingebettet (füllt den Swipe-Layer, Header bleibt darüber sichtbar).
@@ -2268,29 +2312,33 @@ export default function ScannerPage() {
               // verlorene Pointer-Capture UND veraltete State-Closures).
               const dx = swipeDragXRef.current;
               swipeDragXRef.current = 0;
+              const mode = swipeModeRef.current;
               // Flick: kurzer, schneller Wisch snappt auch bei geringer Strecke.
               const elapsed = Date.now() - swipeStartTimeRef.current;
               const isFlick = elapsed < 250 && Math.abs(dx) > 12;
-              if (Math.abs(dx) < 40 && !isFlick) {
+              // Kurzer Tap (kaum Bewegung) → Kartendetail (wie im Einzelscan).
+              if (Math.abs(dx) < 10 && !isFlick) {
                 setSingleDragX(0);
-                // Kurzer Tap aufs Bild → Kartendetail (wie im Einzelscan). Die
-                // Korrektur läuft über den „Korrigieren"-Button in der Add-Leiste.
-                if (canOpen && Math.abs(dx) < 8) setActiveJobId(job.id);
+                setSingleMode(null);
+                if (canOpen) setActiveJobId(job.id);
                 return;
               }
-              if (dx > 0) {
-                if (nextJob) {
-                  singleCommitDeltaRef.current = +1;
-                  setSingleAnim('commit-next');
+              if (mode === 'restore') {
+                // Rand → Mitte: vorherige Karte zurückholen. „Kleiner Drag" genügt,
+                // muss aber nach INNEN gehen (dem Rand entgegengesetzt).
+                const inward = restoreEdgeRef.current * dx < 0;
+                if (prevJob && inward && (Math.abs(dx) > 24 || isFlick)) {
+                  setSingleAnim('commit-restore');
                 } else {
-                  setSingleAnim('snap-out');
+                  setSingleAnim('snap');
                 }
               } else {
-                if (prevJob) {
-                  singleCommitDeltaRef.current = -1;
-                  setSingleAnim('commit-prev');
+                // Mitte → außen: oberste Karte in Finger-Richtung rausfliegen lassen.
+                if (nextJob && (Math.abs(dx) > 44 || isFlick)) {
+                  advanceSignRef.current = dx < 0 ? -1 : 1;
+                  setSingleAnim('commit-advance');
                 } else {
-                  setSingleAnim('snap-out');
+                  setSingleAnim('snap');
                 }
               }
             };
@@ -2299,12 +2347,7 @@ export default function ScannerPage() {
             const containerHeight = 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 170px)';
             const canOpen = job.status === 'done' && !!job.result?.card;
 
-            // Dim-Faktor für Below/Incoming Panels — bei 0 (kein Drag) maximal
-            // abgedunkelt, bei voller Drag-Strecke wieder original-hell.
-            const dimProgress = singlePanelWidth > 0
-              ? Math.min(1, Math.abs(singleDragX) / singlePanelWidth)
-              : (singleAnim === 'commit-next' || singleAnim === 'commit-prev' ? 1 : 0);
-            const dimOverlayOpacity = 0.55 * (1 - dimProgress);
+            // Weiche Ab-/Aufblendung der Stapel-Karten synchron zur Geste.
             const dimTransition = singleAnim ? 'opacity 200ms ease-out' : undefined;
 
             return (
@@ -2319,6 +2362,15 @@ export default function ScannerPage() {
                   // dort KEINEN Swipe/Tap starten (sonst schluckt der Pointer-Capture
                   // die Klicks der Leiste).
                   if ((e.target as Element).closest?.('button, select, input, a, [data-scan-interactive]')) return;
+                  // Modus aus der Start-Zone: Mitte (30–70 %) → 'advance' (oberste
+                  // Karte nach außen wegwischen); äußeres Drittel → 'restore'
+                  // (vorherige Karte vom Rand zurückholen; Vorzeichen = welcher Rand).
+                  const rect = (e.currentTarget as Element).getBoundingClientRect();
+                  const fx = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5;
+                  const mode: 'advance' | 'restore' = (fx < 0.30 || fx > 0.70) ? 'restore' : 'advance';
+                  swipeModeRef.current = mode;
+                  restoreEdgeRef.current = fx < 0.5 ? -1 : 1;
+                  setSingleMode(mode);
                   swipeActiveRef.current = true;
                   swipeDragXRef.current = 0;
                   swipeStartXRef.current = e.clientX;
@@ -2338,15 +2390,21 @@ export default function ScannerPage() {
                 onPointerCancel={handlePointerUp}
                 onLostPointerCapture={handlePointerUp}
               >
-                {/* Below-Layer (nächste Karte) — startet dunkel, hellt bei Right-Drag auf */}
+                {/* Below-Layer (nächste Karte) — Stapel-Karte hinter der obersten;
+                    wächst beim 'advance' nach vorn. */}
                 {showBelow && nextJob && (
-                  <div className="absolute inset-0">
+                  <div
+                    className="absolute inset-0"
+                    style={{ transform: belowTransform, transition: belowTransition, willChange: 'transform' }}
+                  >
                     {renderImage(nextJob, false)}
                     <div
                       className="absolute inset-0 pointer-events-none rounded-2xl"
                       style={{
+                        // Stapel-Karte leicht abgedunkelt (zurückversetzt); beim
+                        // 'advance' hellt sie synchron mit dem Wachsen auf.
                         background: '#000',
-                        opacity: dimOverlayOpacity,
+                        opacity: 0.32 * (1 - advP),
                         transition: dimTransition,
                       }}
                     />
@@ -2364,13 +2422,11 @@ export default function ScannerPage() {
                   }}
                   onTransitionEnd={ev => {
                     if (ev.propertyName !== 'transform') return;
-                    if (singleAnim === 'commit-next') {
+                    if (singleAnim === 'commit-advance') {
                       setSingleIdx(idx => idx + 1);
-                      setSingleDragX(0);
-                      setSingleAnim(null);
-                    } else if (singleAnim === 'snap-out') {
-                      setSingleDragX(0);
-                      setSingleAnim(null);
+                      setSingleDragX(0); setSingleAnim(null); setSingleMode(null);
+                    } else if (singleAnim === 'snap' && singleMode === 'advance') {
+                      setSingleDragX(0); setSingleAnim(null); setSingleMode(null);
                     }
                   }}
                 >
@@ -2381,7 +2437,7 @@ export default function ScannerPage() {
                     IMMER gemountet, wenn ein Vorgänger existiert — sonst würde sie beim
                     Commit direkt an der Endposition (translateX 0) erscheinen, ohne
                     Übergang, und onTransitionEnd feuerte nie (Swipe bliebe hängen). */}
-                {prevJob && singlePanelWidth > 0 && (
+                {showIncoming && prevJob && (
                   <div
                     className="absolute inset-0"
                     style={{
@@ -2389,18 +2445,15 @@ export default function ScannerPage() {
                       transition: incomingTransition,
                       willChange: 'transform',
                       zIndex: 3,
-                      // Off-screen (idle) nicht anklickbar/greifbar lassen.
-                      pointerEvents: showIncoming || singleAnim === 'commit-prev' || singleAnim === 'snap-in' ? undefined : 'none',
+                      pointerEvents: 'none',
                     }}
                     onTransitionEnd={ev => {
                       if (ev.propertyName !== 'transform') return;
-                      if (singleAnim === 'commit-prev') {
+                      if (singleAnim === 'commit-restore') {
                         setSingleIdx(idx => Math.max(0, idx - 1));
-                        setSingleDragX(0);
-                        setSingleAnim(null);
-                      } else if (singleAnim === 'snap-in') {
-                        setSingleDragX(0);
-                        setSingleAnim(null);
+                        setSingleDragX(0); setSingleAnim(null); setSingleMode(null);
+                      } else if (singleAnim === 'snap' && singleMode === 'restore') {
+                        setSingleDragX(0); setSingleAnim(null); setSingleMode(null);
                       }
                     }}
                   >
@@ -2408,8 +2461,9 @@ export default function ScannerPage() {
                     <div
                       className="absolute inset-0 pointer-events-none rounded-2xl"
                       style={{
+                        // Zurückkehrende Karte: dunkler am Rand, voll hell oben angekommen.
                         background: '#000',
-                        opacity: dimOverlayOpacity,
+                        opacity: 0.32 * (1 - resP),
                         transition: dimTransition,
                       }}
                     />
@@ -2424,7 +2478,7 @@ export default function ScannerPage() {
                 <div
                   className="absolute inset-x-0 bottom-0 z-20"
                   style={{
-                    transform: (singleAnim === 'commit-next' || singleAnim === 'commit-prev')
+                    transform: (singleAnim === 'commit-advance' || singleAnim === 'commit-restore')
                       ? 'translateY(118%)' : 'translateY(0)',
                     transition: 'transform 200ms ease',
                   }}
