@@ -46,6 +46,10 @@ export interface GrabberCollapseOptions {
    *  hoch ziehen klappt ein. `true` (oben sitzender Griff eines Bottom-Panels,
    *  z.B. Scanner) = runter ziehen klappt ein — der Griff folgt dann dem Finger. */
   invertDrag?: boolean;
+  /** Anfangsstufe (0 = alles ausgeklappt, `regionCount` = alles eingeklappt).
+   *  Default 0. Für Panels, die initial zusammengeklappt starten sollen (z.B.
+   *  der eingebettete Einzelkarten-View im Mehrfachscan). */
+  initialStage?: number;
 }
 
 export interface GrabberCollapseResult {
@@ -69,16 +73,16 @@ export interface GrabberCollapseResult {
 const HYST = 56;
 
 export function useGrabberCollapse(opts: GrabberCollapseOptions): GrabberCollapseResult {
-  const { regionCount: n, panelRef, gridWrapRef, ready = true, measureDeps = [], scrollTrigger = true, invertDrag = false } = opts;
+  const { regionCount: n, panelRef, gridWrapRef, ready = true, measureDeps = [], scrollTrigger = true, invertDrag = false, initialStage = 0 } = opts;
 
-  const [stage, setStage] = useState(0);
+  const [stage, setStage] = useState(initialStage);
   const [dragCollapse, setDragCollapse] = useState<number | null>(null);
   const [heights, setHeights] = useState<number[]>(() => Array(n).fill(0));
 
   const regionEls = useRef<(HTMLDivElement | null)[]>([]);
   const grabRef = useRef<{ y: number; start: number; moved: boolean } | null>(null);
   const movedRef = useRef(false);
-  const stageRef = useRef(0);
+  const stageRef = useRef(initialStage);
   const panelTopRef = useRef(0);
   const panelExpandedHRef = useRef(0);
   // rAF-Koaleszenz der Drag-Updates: pointermove feuert pro Frame mehrfach —

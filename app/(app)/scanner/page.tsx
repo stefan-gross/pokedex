@@ -218,6 +218,54 @@ function nonDefaultScanMeta(job: ScanJob): string[] {
   return out;
 }
 
+/** Positions-Marker für den Einzelkarten-Swipe — im Stil einer Apple
+ *  „Liquid Glass"-Page-Control: eine getönte Glas-Kapsel mit Punkten, der
+ *  aktive hell/größer, die übrigen gedimmt. Bei vielen Karten zeigt ein
+ *  gleitendes Fenster von max. 7 Punkten die Position; liegen außerhalb noch
+ *  Karten, schrumpft der jeweils äußerste Punkt (iOS-Konvention „es geht weiter").
+ *  So sieht man auf einen Blick Anfang / Mitte / Ende des Stapels. */
+function SliderPageDots({ total, index }: { total: number; index: number }) {
+  const MAX = 7;
+  const count = Math.min(total, MAX);
+  // Fenster so verschieben, dass der aktive Punkt möglichst mittig sitzt.
+  const start = total > MAX
+    ? Math.min(Math.max(index - Math.floor(MAX / 2), 0), total - MAX)
+    : 0;
+  const moreBefore = start > 0;
+  const moreAfter  = start + count < total;
+  return (
+    <div
+      className="inline-flex items-center gap-[6px] rounded-full px-2.5 py-1.5"
+      style={{
+        background: 'rgba(255,255,255,0.14)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        border: '1px solid rgba(255,255,255,0.18)',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.25)',
+      }}
+      aria-label={`Karte ${index + 1} von ${total}`}
+    >
+      {Array.from({ length: count }, (_, i) => {
+        const d = start + i;
+        const active = d === index;
+        // Äußersten Punkt schrumpfen, wenn dort noch weitere Karten liegen.
+        const edgeShrink = (moreBefore && i === 0) || (moreAfter && i === count - 1);
+        const size = active ? 8 : edgeShrink ? 4 : 6;
+        return (
+          <span
+            key={d}
+            style={{
+              width: size, height: size, borderRadius: '50%',
+              background: active ? '#fff' : 'rgba(255,255,255,0.42)',
+              transition: 'width 160ms ease, height 160ms ease, background 160ms ease',
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 type BorderStatus = 'none' | 'manual-yellow' | 'auto-yellow' | 'auto-red' | 'error';
 
 /** Berechnet den visuellen Status (Rahmenfarbe) eines Jobs.
@@ -461,6 +509,17 @@ export default function ScannerPage() {
   const [singleIdx, setSingleIdx] = useState<number>(0);
   // Ref für Horizontal-Swipe-Geste im Single-View (Pointer-Start-X)
   const swipeStartXRef = useRef<number | null>(null);
+  // Startzeit der Geste — für Flick-Erkennung (kurzer, schneller Wisch snappt
+  // auch bei geringer Strecke auf die nächste/vorherige Karte).
+  const swipeStartTimeRef = useRef<number>(0);
+  // Zuverlässiges „Swipe läuft"-Signal (unabhängig von Pointer-Capture, die durch
+  // Re-Renders des separaten Panels verloren gehen kann). Entscheidung beim
+  // Loslassen anhand des getrackten Drag-Offsets, nicht der Pointer-Position.
+  const swipeActiveRef = useRef<boolean>(false);
+  // Aktueller Drag-Offset als REF (nicht State) — der Up-Handler-Closure würde
+  // sonst einen veralteten singleDragX lesen (State-Update aus dem letzten Move
+  // ist beim Pointer-Up noch nicht neu gerendert) und den Swipe als Tap werten.
+  const swipeDragXRef = useRef<number>(0);
   // Live-Drag-Offset während der Geste (Karte folgt dem Finger)
   const [singleDragX, setSingleDragX] = useState<number>(0);
   // Animationsphase nach Pointer-Up:
@@ -478,6 +537,21 @@ export default function ScannerPage() {
   const singlePanelRef = useCallback((node: HTMLDivElement | null) => {
     if (node) setSinglePanelWidth(node.offsetWidth);
   }, []);
+  // Sicherheitsnetz: schließt die Swipe-Animation garantiert ab, falls
+  // `transitionend` mal nicht feuert (Mount-/Transition-Edge, v.a. bei der
+  // eingleitenden Karte) — sonst bliebe der Swipe hängen. onTransitionEnd
+  // setzt singleAnim → null; das cleart den Timer via Cleanup (kein Doppel-Commit).
+  useEffect(() => {
+    if (!singleAnim) return;
+    const anim = singleAnim;
+    const t = setTimeout(() => {
+      if (anim === 'commit-next') setSingleIdx(i => i + 1);
+      else if (anim === 'commit-prev') setSingleIdx(i => Math.max(0, i - 1));
+      setSingleDragX(0);
+      setSingleAnim(null);
+    }, 240);
+    return () => clearTimeout(t);
+  }, [singleAnim]);
   // Long-Press für Markieren (>= 500ms ohne signifikante Bewegung)
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFiredRef = useRef<boolean>(false);
@@ -1689,7 +1763,7 @@ export default function ScannerPage() {
               </Button>
               <span className="text-base text-glass-muted font-mono ml-auto px-1 tabular-nums">
                 {viewMode === 'single' && filteredReversed.length > 0
-                  ? `${filteredReversed.length - Math.min(singleIdx, filteredReversed.length - 1)}/${filteredReversed.length}`
+                  ? `${Math.min(singleIdx, filteredReversed.length - 1) + 1}/${filteredReversed.length}`
                   : `${filtered.length}/${addJobs.length}`}
               </span>
             </div>
@@ -1718,6 +1792,14 @@ export default function ScannerPage() {
                 value={viewMode}
                 onChange={v => { setViewMode(v as 'grid' | 'single'); if (v === 'single') setSingleIdx(0); }}
               />
+              {viewMode === 'single' && filteredReversed.length > 1 && (
+                <div className="flex-1 flex justify-center">
+                  <SliderPageDots
+                    total={filteredReversed.length}
+                    index={Math.min(singleIdx, filteredReversed.length - 1)}
+                  />
+                </div>
+              )}
               {viewMode === 'grid' && (
                 selectMode ? (
                   <Button
@@ -2143,33 +2225,22 @@ export default function ScannerPage() {
             // Glas-Leiste mit Set/Name/Preis, Hinzufügen/Verwalten/Korrigieren,
             // Holo-Glanz. Tap aufs Bild öffnet das Kartendetail; die untere
             // Add-Leiste ist per data-scan-interactive vom Swipe ausgenommen.
-            const renderPanel = (j: typeof job, interactive: boolean) => (
+            // Nur das KARTENBILD (horizontale Swipe-Ebenen). Bedienung/Add-Leiste
+            // liegt separat im vertikal ein-/ausgleitenden Panel (siehe unten) —
+            // so swipt nur das Bild. Callbacks hier no-op (nur Anzeige).
+            const noop = () => {};
+            const renderImage = (j: typeof job, interactive: boolean) => (
               <div className="absolute inset-0" style={{ pointerEvents: interactive ? undefined : 'none' }}>
                 <RecognizedCardLarge
                   embedded
+                  part="image"
                   job={j}
-                  onCardTap={() => setActiveJobId(j.id)}
-                  onSubmitReport={result => submitReport(j, result)}
-                  onPickNotInCatalog={pending => {
-                    setJobs(prev => prev.map(x => x.id === j.id && x.result
-                      ? { ...x, status: 'done' as const, result: { ...x.result, card: pending }, editedVariant: 'standard' as CardVariant }
-                      : x));
-                    submitReport(j, { reportType: 'not_in_catalog' });
-                  }}
-                  onPickCandidate={picked => {
-                    setJobs(prev => prev.map(x => x.id === j.id && x.result
-                      ? { ...x, status: 'done' as const, result: { ...x.result, card: picked }, editedVariant: picked.variants?.[0] ?? 'standard' }
-                      : x));
-                    refreshOwnedCount(j.id, picked.id);
-                  }}
-                  onSaved={() => {
-                    markAdded(j.id, { keepJob: true });
-                    if (j.result?.card) refreshOwnedCount(j.id, j.result.card.id);
-                  }}
-                  onManage={() => setQuickDeleteJobId(j.id)}
-                  onEditVariant={v => setJobVariant(j.id, v)}
-                  onEditCondition={c => setJobCondition(j.id, c)}
-                  onEditLanguage={l => setJobLanguage(j.id, l)}
+                  onCardTap={noop}
+                  onSubmitReport={noop}
+                  onPickNotInCatalog={noop}
+                  onPickCandidate={noop}
+                  onSaved={noop}
+                  onManage={noop}
                 />
               </div>
             );
@@ -2182,7 +2253,8 @@ export default function ScannerPage() {
             };
 
             const handlePointerUp = (e: React.PointerEvent) => {
-              const start = swipeStartXRef.current;
+              const started = swipeActiveRef.current;
+              swipeActiveRef.current = false;
               swipeStartXRef.current = null;
               clearLongPress();
               if (longPressFiredRef.current) {
@@ -2191,13 +2263,19 @@ export default function ScannerPage() {
                 setSingleDragX(0);
                 return;
               }
-              if (start == null) return;
-              const dx = e.clientX - start;
-              if (Math.abs(dx) < 40) {
+              if (!started) return;
+              // Entscheidung anhand des per Ref getrackten Drag-Offsets (robust gegen
+              // verlorene Pointer-Capture UND veraltete State-Closures).
+              const dx = swipeDragXRef.current;
+              swipeDragXRef.current = 0;
+              // Flick: kurzer, schneller Wisch snappt auch bei geringer Strecke.
+              const elapsed = Date.now() - swipeStartTimeRef.current;
+              const isFlick = elapsed < 250 && Math.abs(dx) > 12;
+              if (Math.abs(dx) < 40 && !isFlick) {
                 setSingleDragX(0);
                 // Kurzer Tap aufs Bild → Kartendetail (wie im Einzelscan). Die
                 // Korrektur läuft über den „Korrigieren"-Button in der Add-Leiste.
-                if (canOpen) setActiveJobId(job.id);
+                if (canOpen && Math.abs(dx) < 8) setActiveJobId(job.id);
                 return;
               }
               if (dx > 0) {
@@ -2241,41 +2319,29 @@ export default function ScannerPage() {
                   // dort KEINEN Swipe/Tap starten (sonst schluckt der Pointer-Capture
                   // die Klicks der Leiste).
                   if ((e.target as Element).closest?.('button, select, input, a, [data-scan-interactive]')) return;
+                  swipeActiveRef.current = true;
+                  swipeDragXRef.current = 0;
                   swipeStartXRef.current = e.clientX;
-                  longPressFiredRef.current = false;
+                  swipeStartTimeRef.current = Date.now();
                   try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
-                  // Long-Press-Timer: nach 500ms ohne signifikante Bewegung → Markierung togglen
-                  clearLongPress();
-                  if (canOpen) {
-                    longPressTimerRef.current = setTimeout(() => {
-                      longPressFiredRef.current = true;
-                      toggleManualFlag(job.id);
-                      longPressTimerRef.current = null;
-                    }, 500);
-                  }
                 }}
                 onPointerMove={e => {
                   const start = swipeStartXRef.current;
                   if (start == null || singleAnim) return;
                   const dx = e.clientX - start;
+                  swipeDragXRef.current = dx;
                   // Bei signifikanter Bewegung Long-Press abbrechen — der Nutzer swiped
                   if (Math.abs(dx) > 8) clearLongPress();
                   setSingleDragX(dx);
                 }}
                 onPointerUp={handlePointerUp}
-                onPointerCancel={() => {
-                  swipeStartXRef.current = null;
-                  clearLongPress();
-                  longPressFiredRef.current = false;
-                  if (singleDragX > 0)      setSingleAnim('snap-out');
-                  else if (singleDragX < 0 && prevJob) setSingleAnim('snap-in');
-                  else if (singleDragX < 0) setSingleAnim('snap-out');
-                }}
+                onPointerCancel={handlePointerUp}
+                onLostPointerCapture={handlePointerUp}
               >
                 {/* Below-Layer (nächste Karte) — startet dunkel, hellt bei Right-Drag auf */}
                 {showBelow && nextJob && (
                   <div className="absolute inset-0">
-                    {renderPanel(nextJob, false)}
+                    {renderImage(nextJob, false)}
                     <div
                       className="absolute inset-0 pointer-events-none rounded-2xl"
                       style={{
@@ -2308,11 +2374,14 @@ export default function ScannerPage() {
                     }
                   }}
                 >
-                  {renderPanel(job, !singleAnim && singleDragX === 0)}
+                  {renderImage(job, !singleAnim && singleDragX === 0)}
                 </div>
 
-                {/* Incoming-Layer (vorherige Karte gleitet bei Left-Drag von rechts rein) */}
-                {showIncoming && prevJob && (
+                {/* Incoming-Layer (vorherige Karte gleitet bei Left-Drag von rechts rein).
+                    IMMER gemountet, wenn ein Vorgänger existiert — sonst würde sie beim
+                    Commit direkt an der Endposition (translateX 0) erscheinen, ohne
+                    Übergang, und onTransitionEnd feuerte nie (Swipe bliebe hängen). */}
+                {prevJob && singlePanelWidth > 0 && (
                   <div
                     className="absolute inset-0"
                     style={{
@@ -2320,6 +2389,8 @@ export default function ScannerPage() {
                       transition: incomingTransition,
                       willChange: 'transform',
                       zIndex: 3,
+                      // Off-screen (idle) nicht anklickbar/greifbar lassen.
+                      pointerEvents: showIncoming || singleAnim === 'commit-prev' || singleAnim === 'snap-in' ? undefined : 'none',
                     }}
                     onTransitionEnd={ev => {
                       if (ev.propertyName !== 'transform') return;
@@ -2333,7 +2404,7 @@ export default function ScannerPage() {
                       }
                     }}
                   >
-                    {renderPanel(prevJob, false)}
+                    {renderImage(prevJob, false)}
                     <div
                       className="absolute inset-0 pointer-events-none rounded-2xl"
                       style={{
@@ -2344,6 +2415,49 @@ export default function ScannerPage() {
                     />
                   </div>
                 )}
+
+                {/* Info-/Add-Panel — SEPARAT vom horizontalen Bild-Swipe. Nur das
+                    Bild swipt seitlich; das Panel gleitet beim Kartenwechsel nach
+                    unten raus und mit den neuen Infos wieder rein (vertikal). Bei
+                    reinem Zurückschnappen (kein Kartenwechsel) bleibt es stehen.
+                    overflow-hidden des Containers kappt es beim Rausgleiten. */}
+                <div
+                  className="absolute inset-x-0 bottom-0 z-20"
+                  style={{
+                    transform: (singleAnim === 'commit-next' || singleAnim === 'commit-prev')
+                      ? 'translateY(118%)' : 'translateY(0)',
+                    transition: 'transform 200ms ease',
+                  }}
+                >
+                  <RecognizedCardLarge
+                    key="single-panel"
+                    embedded
+                    part="panel"
+                    job={job}
+                    onCardTap={() => setActiveJobId(job.id)}
+                    onSubmitReport={result => submitReport(job, result)}
+                    onPickNotInCatalog={pending => {
+                      setJobs(prev => prev.map(x => x.id === job.id && x.result
+                        ? { ...x, status: 'done' as const, result: { ...x.result, card: pending }, editedVariant: 'standard' as CardVariant }
+                        : x));
+                      submitReport(job, { reportType: 'not_in_catalog' });
+                    }}
+                    onPickCandidate={picked => {
+                      setJobs(prev => prev.map(x => x.id === job.id && x.result
+                        ? { ...x, status: 'done' as const, result: { ...x.result, card: picked }, editedVariant: picked.variants?.[0] ?? 'standard' }
+                        : x));
+                      refreshOwnedCount(job.id, picked.id);
+                    }}
+                    onSaved={() => {
+                      markAdded(job.id, { keepJob: true });
+                      if (job.result?.card) refreshOwnedCount(job.id, job.result.card.id);
+                    }}
+                    onManage={() => setQuickDeleteJobId(job.id)}
+                    onEditVariant={v => setJobVariant(job.id, v)}
+                    onEditCondition={c => setJobCondition(job.id, c)}
+                    onEditLanguage={l => setJobLanguage(job.id, l)}
+                  />
+                </div>
               </div>
             );
           })()}
@@ -3401,6 +3515,12 @@ interface RecognizedCardLargeProps {
    *  den Eltern-Layer (absolute inset-0) statt sich selbst als Vollbild über
    *  den fixen Header zu legen. Optik/Bedienung sonst identisch zum Einzelscan. */
   embedded?: boolean;
+  /** Teil-Rendering für den Einzelkarten-Swipe: 'image' rendert nur das
+   *  Kartenbild (horizontale Swipe-Ebenen), 'panel' nur das Info-/Add-Panel
+   *  (das separat vertikal ein-/ausgleitet). 'full' (Default) = beides zusammen
+   *  (Einzelscan/Korrektur). So swipt nur das Bild, während das Panel unten
+   *  raus- und mit den neuen Infos wieder reingleitet. */
+  part?: 'full' | 'image' | 'panel';
   /** Persistiert die im Inline-Panel gewählten Werte am Job (Korrektur-Overlay)
    *  — damit „Alle hinzufügen" im Grid je Karte die richtigen Werte nimmt. */
   onEditVariant?: (variant: CardVariant) => void;
@@ -3410,7 +3530,7 @@ interface RecognizedCardLargeProps {
 
 function RecognizedCardLarge({
   job, onCardTap, onSubmitReport, onPickCandidate, onPickNotInCatalog, onSaved, onManage,
-  correctionOnly = false, embedded = false, onEditVariant, onEditCondition, onEditLanguage,
+  correctionOnly = false, embedded = false, part = 'full', onEditVariant, onEditCondition, onEditLanguage,
 }: RecognizedCardLargeProps) {
   const [correcting, setCorrecting] = useState(false);
 
@@ -3572,6 +3692,9 @@ function RecognizedCardLarge({
   // invertierter Zieh-Richtung (Griff oben an einem Bottom-Panel → runter = zu).
   const { stage, registerRegion, regionStyle, grabberProps } = useGrabberCollapse({
     regionCount: 1, ready: true, scrollTrigger: false, invertDrag: true,
+    // Eingebetteter Einzelkarten-View (Mehrfachscan) startet zusammengeklappt —
+    // die Karte steht groß im Fokus, das Info-/Add-Panel klappt der Nutzer bei Bedarf auf.
+    initialStage: embedded ? 1 : 0,
   });
 
   // Vom RecognizedAddBar gemeldete Varianten-Auswahl — steuert den Holo-/
@@ -3589,8 +3712,10 @@ function RecognizedCardLarge({
 
   return (
     <div
-      className={`absolute z-10 flex flex-col items-center px-4 gap-3 ${embedded ? 'inset-0' : 'inset-x-0'}`}
-      style={embedded ? undefined : {
+      className={part === 'panel'
+        ? 'relative w-full'
+        : `absolute z-10 flex flex-col items-center px-4 gap-3 ${embedded ? 'inset-0' : 'inset-x-0'}`}
+      style={part === 'panel' || embedded ? undefined : {
         top: 'calc(env(safe-area-inset-top, 0px) + 64px)',
         // Overlay-Panel dockt unten an; näher an die Footer-Leiste gerückt
         // (nutzt den freien Platz über dem Scan-FAB). Nur so viel Abstand, dass
@@ -3608,6 +3733,7 @@ function RecognizedCardLarge({
           *Bildes* auf Inhaltsgröße schrumpfen ließ — brach zusammen, wenn das
           Bild nicht lud). Varianten-/Zustand-Auswahl passiert nicht mehr hier,
           sondern beim Hinzufügen im AddToCollectionModal. */}
+      {part !== 'panel' && (
       <div ref={slotRef} className="absolute inset-0 z-0 flex items-start justify-center">
       <div
         ref={containerRef}
@@ -3701,13 +3827,20 @@ function RecognizedCardLarge({
         )}
       </div>
       </div>
+      )}
 
       {/* Info-/Add-Overlay: liegt als getöntes Glas ÜBER der groß angezeigten
           Karte (unten angedockt), statt darunter im Fluss. Die Karte füllt
           dahinter die ganze Fläche (Slot absolute inset-0). Feste rgba()-Werte
           identisch zur Dark-Variante der globalen .glass-Klasse — der Scanner
           liegt immer über dem (dunklen) Kamerabild. */}
-      <div className="absolute inset-x-0 bottom-0 z-10 px-4 flex flex-col gap-3" data-scan-interactive>
+      {part !== 'image' && (
+      <div
+        className={part === 'panel'
+          ? 'w-full z-10 px-4 flex flex-col gap-3'
+          : 'absolute inset-x-0 bottom-0 z-10 px-4 flex flex-col gap-3'}
+        data-scan-interactive
+      >
       {displayCard && (
         <div
           className="relative w-full flex flex-col items-start gap-2 px-4 py-4 rounded-[24px] glass-overlay"
@@ -3896,6 +4029,7 @@ function RecognizedCardLarge({
         </div>
       )}
       </div>
+      )}
 
     </div>
   );
