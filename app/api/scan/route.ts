@@ -346,18 +346,20 @@ async function generateWithFallback(
     const modelName = MODEL_FALLBACKS[i];
     const t0 = Date.now();
     try {
+      // thinkingConfig.thinkingBudget 0: „Thinking" abschalten — die Aufgabe
+      // braucht kein Reasoning; spart v.a. bei gemini-2.5-flash (Thinking dort
+      // standardmäßig AN) mehrere hundert ms. ABER: gemini-3.5+ LEHNT
+      // thinkingBudget:0 mit 400 ab (2.5 + 3.1 akzeptieren es) — dort weglassen
+      // (die 3.5-Lite-Stufe ist auch ohne schon schnell). Das Feld ist in der
+      // (veralteten) SDK nicht typisiert, wird aber 1:1 an die REST-API gereicht.
+      const rejectsThinkingBudget = /^gemini-(3\.[5-9]|[4-9])/.test(modelName);
       const model = genAI.getGenerativeModel({
         model: modelName,
         // temperature 0: reine Extraktion (deterministisch, minimal schneller).
-        // thinkingConfig.thinkingBudget 0: „Thinking" abschalten — die Aufgabe
-        // braucht kein Reasoning; spart v.a. beim Fallback auf gemini-2.5-flash
-        // (Thinking dort standardmäßig AN) mehrere hundert ms. Das Feld ist in der
-        // (veralteten) SDK nicht typisiert, wird aber unverändert an die REST-API
-        // durchgereicht (siehe SDK: generationConfig wird 1:1 in den Body gelegt).
         generationConfig: {
           responseMimeType: 'application/json',
           temperature: 0,
-          thinkingConfig: { thinkingBudget: 0 },
+          ...(rejectsThinkingBudget ? {} : { thinkingConfig: { thinkingBudget: 0 } }),
           responseSchema: schema,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any,
@@ -382,10 +384,12 @@ async function generateWithFallback(
       const ms = Date.now() - t0;
       console.warn(`[scan] ${modelName} failed after ${ms}ms:`, err);
       lastError = err instanceof Error ? err.message : String(err);
-      const is503 = lastError.includes('503') || lastError.includes('high demand') || lastError.includes('overloaded');
       attempts.push({ model: modelName, ms, ok: false, error: lastError });
-      if (!is503) throw new Error(lastError);
-      console.warn(`${modelName} unavailable (503), trying fallback...`);
+      // IMMER auf das nächste Modell ausweichen — nicht nur bei 503. Ein
+      // modell-spezifischer Fehler (z.B. 400 wegen einer nicht unterstützten
+      // generationConfig-Option) darf NICHT die ganze Kette abbrechen und damit
+      // jeden Scan scheitern lassen. Erst wenn ALLE Modelle scheitern, werfen.
+      console.warn(`${modelName} fehlgeschlagen — nächstes Fallback-Modell …`);
     }
   }
   throw new Error(lastError);
