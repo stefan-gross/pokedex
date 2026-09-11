@@ -2325,10 +2325,12 @@ export default function ScannerPage() {
                 if (prevJob && inward && insideCard) setSingleAnim('commit-restore');
                 else setSingleAnim('snap');
               } else {
-                // Oberste Karte fliegt nur weg, wenn der Finger den (Bildschirm-)Rand
-                // in Wischrichtung erreicht; sonst schnappt sie zurück.
-                const atEdge = (dx > 0 && fxEnd >= 0.85) || (dx < 0 && fxEnd <= 0.15);
-                if (nextJob && atEdge) {
+                // Oberste Karte fliegt nur weg, wenn sie NETTO weit genug aus der
+                // Mitte verschoben wurde (Distanz zur Mitte) — unabhängig von der
+                // Griffposition und immun gegen Zickzack (nur die Netto-Strecke
+                // zählt, nicht die zurückgelegte Gesamtstrecke). Vorzeichen = Richtung.
+                const movedFar = Math.abs(dx) > wNow * 0.33;
+                if (nextJob && movedFar) {
                   advanceSignRef.current = dx < 0 ? -1 : 1;
                   setSingleAnim('commit-advance');
                 } else {
