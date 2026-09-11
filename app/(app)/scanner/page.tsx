@@ -2381,66 +2381,52 @@ export default function ScannerPage() {
                 onPointerCancel={handlePointerUp}
                 onLostPointerCapture={handlePointerUp}
               >
-                {/* Below-Layer (nächste Karte) — Stapel-Karte hinter der obersten;
-                    wächst beim 'advance' nach vorn. */}
-                {showBelow && nextJob && (
-                  <div
-                    className="absolute inset-0"
-                    style={{ transform: belowTransform, transition: belowTransition, willChange: 'transform' }}
-                  >
-                    {renderImage(nextJob, false)}
-                  </div>
-                )}
-
-                {/* Top-Layer (aktuelle Karte) */}
-                <div
-                  className="absolute inset-0"
-                  style={{
-                    transform: topTransform,
-                    transition: topTransition,
-                    willChange: 'transform',
-                    zIndex: 2,
-                  }}
-                  onTransitionEnd={ev => {
-                    if (ev.propertyName !== 'transform') return;
-                    if (singleAnim === 'commit-advance') {
-                      setSingleIdx(idx => idx + 1);
-                      setSingleDragX(0); setSingleAnim(null); setSingleMode(null);
-                    } else if (singleAnim === 'snap' && singleMode === 'advance') {
-                      setSingleDragX(0); setSingleAnim(null); setSingleMode(null);
-                    }
-                  }}
-                >
-                  {renderImage(job, !singleAnim && singleDragX === 0)}
-                </div>
-
-                {/* Incoming-Layer (vorherige Karte gleitet bei Left-Drag von rechts rein).
-                    IMMER gemountet, wenn ein Vorgänger existiert — sonst würde sie beim
-                    Commit direkt an der Endposition (translateX 0) erscheinen, ohne
-                    Übergang, und onTransitionEnd feuerte nie (Swipe bliebe hängen). */}
-                {showIncoming && prevJob && (
-                  <div
-                    className="absolute inset-0"
-                    style={{
-                      transform: incomingTransform,
-                      transition: incomingTransition,
-                      willChange: 'transform',
-                      zIndex: 3,
-                      pointerEvents: 'none',
-                    }}
-                    onTransitionEnd={ev => {
-                      if (ev.propertyName !== 'transform') return;
-                      if (singleAnim === 'commit-restore') {
-                        setSingleIdx(idx => Math.max(0, idx - 1));
-                        setSingleDragX(0); setSingleAnim(null); setSingleMode(null);
-                      } else if (singleAnim === 'snap' && singleMode === 'restore') {
-                        setSingleDragX(0); setSingleAnim(null); setSingleMode(null);
-                      }
-                    }}
-                  >
-                    {renderImage(prevJob, false)}
-                  </div>
-                )}
+                {/* Karten-Ebenen als KEYED Liste (Schlüssel = job.id): so bleibt jede
+                    Karten-Instanz über den Rollenwechsel hinweg dieselbe. Beim Advance
+                    wird die bereits geladene „nächste"-Karte zur obersten OHNE Neuladen
+                    — sonst blitzte beim Bild-Reload kurz die ÜBERNÄCHSTE Karte durch.
+                    Rolle bestimmt z-index/Transform/Handler:
+                      below (z1)     — nächste Karte, Stapel-Karte dahinter
+                      top   (z2)     — aktuelle/oberste Karte
+                      incoming (z3)  — vorherige Karte, gleitet beim 'restore' rein */}
+                {(() => {
+                  const layers: { j: typeof job; role: 'below' | 'top' | 'incoming' }[] = [];
+                  if (showBelow && nextJob) layers.push({ j: nextJob, role: 'below' });
+                  layers.push({ j: job, role: 'top' });
+                  if (showIncoming && prevJob) layers.push({ j: prevJob, role: 'incoming' });
+                  return layers.map(({ j: lj, role }) => {
+                    const isTop = role === 'top';
+                    const style: React.CSSProperties =
+                      role === 'below'
+                        ? { transform: belowTransform, transition: belowTransition, willChange: 'transform', zIndex: 1 }
+                        : isTop
+                        ? { transform: topTransform, transition: topTransition, willChange: 'transform', zIndex: 2 }
+                        : { transform: incomingTransform, transition: incomingTransition, willChange: 'transform', zIndex: 3, pointerEvents: 'none' };
+                    return (
+                      <div
+                        key={lj.id}
+                        className="absolute inset-0"
+                        style={style}
+                        onTransitionEnd={ev => {
+                          if (ev.propertyName !== 'transform') return;
+                          if (isTop && singleAnim === 'commit-advance') {
+                            setSingleIdx(idx => idx + 1);
+                            setSingleDragX(0); setSingleAnim(null); setSingleMode(null);
+                          } else if (isTop && singleAnim === 'snap' && singleMode === 'advance') {
+                            setSingleDragX(0); setSingleAnim(null); setSingleMode(null);
+                          } else if (role === 'incoming' && singleAnim === 'commit-restore') {
+                            setSingleIdx(idx => Math.max(0, idx - 1));
+                            setSingleDragX(0); setSingleAnim(null); setSingleMode(null);
+                          } else if (role === 'incoming' && singleAnim === 'snap' && singleMode === 'restore') {
+                            setSingleDragX(0); setSingleAnim(null); setSingleMode(null);
+                          }
+                        }}
+                      >
+                        {renderImage(lj, isTop && !singleAnim && singleDragX === 0)}
+                      </div>
+                    );
+                  });
+                })()}
 
                 {/* Info-/Add-Panel — SEPARAT vom horizontalen Bild-Swipe. Nur das
                     Bild swipt seitlich; das Panel gleitet beim Kartenwechsel nach
