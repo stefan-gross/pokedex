@@ -36,5 +36,5 @@ export const config = {
   // Weiterleitung schicken — sonst bekommen z.B. die Login-Wand-Sprites
   // (`/wall/*.webp`) und die Pokémon-Font (`/fonts/*.ttf`) für nicht
   // eingeloggte Besucher einen 307 auf /login und laden nicht.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|webp|svg|jpg|jpeg|gif|ico|woff2?|ttf)$|.*\\.html$).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|webp|svg|jpg|jpeg|gif|ico|woff2?|ttf|mp3|m4a|wav|ogg)$|.*\\.html$).*)'],
 }
