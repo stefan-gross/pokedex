@@ -268,21 +268,22 @@ const SYMBOL_MATCH_SCHEMA = {
   required: ['matchConfidence'],
 };
 
-// Fallback-Kette: schnellstes Modell zuerst, bei 503 weiterprobieren.
-// Stand 2026-07-03: Benchmark mit 3 Testkarten x 5 Modellen zeigte, dass
-// "-latest"-Aliase inzwischen deutlich langsamer/inkonstanter sind (8-16s,
-// da sie mittlerweile auf Gemini 3.1 zeigen — "-latest" wird von Google bei
-// jedem neuen Release automatisch umgehängt, ohne dass wir es merken). Das
-// explizit gepinnte gemini-2.5-flash-lite war im selben Test durchgehend am
-// schnellsten UND konstantesten (~2.3s Ø, alle 3 Karten 1.8-2.7s). Bewusst
-// gepinnt statt Alias, damit sich das Verhalten nicht wieder unbemerkt
-// ändert. gemini-2.5-flash und die Aliase bleiben als Fallback, falls
-// gemini-2.5-flash-lite mal ausfällt oder abgekündigt wird.
+// Fallback-Kette: bestes Modell zuerst, bei 503 weiterprobieren. Alle bewusst
+// gepinnt (KEINE "-latest"-Aliase — die hängt Google bei jedem Release still auf
+// neuere, oft viel langsamere Modelle um, z.B. war "3.8-flash" im Test mit 9.5s
+// der langsamste).
+// Stand 2026-09-11: Benchmark über 11 echte (schwere) Karten aus dem Fehler-
+// Korpus mit Produktions-Prompt/Schema zeigte gemini-3.5-flash-lite als klaren
+// Sieger — SCHNELLER UND genauer als das bis dahin gepinnte 2.5-flash-lite:
+//   3.5-flash-lite  Ø1134ms (sehr konstant 1.0-1.3s) · Nummer 82% · Dex 91%
+//   2.5-flash-lite  Ø1463ms                           · Nummer 64% · Dex 27%
+// Die "flash"-Stufe (2.5/3.5/3.8) war 4-10x langsamer OHNE bessere Erkennung.
+// 3.1-flash-lite / 2.5-flash-lite bleiben als bewährte Fallbacks.
 const MODEL_FALLBACKS = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
   'gemini-2.5-flash-lite',
   'gemini-2.5-flash',
-  'gemini-flash-lite-latest',
-  'gemini-flash-latest',
 ];
 
 /** Zusatz-Hinweis, wenn dem Modell der vergrößerte Identifier-Ausschnitt
