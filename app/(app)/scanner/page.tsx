@@ -2469,12 +2469,12 @@ export default function ScannerPage() {
                   />
                 </div>
 
-                {/* Positions-Marker (Page Control) — unten mittig, direkt über dem
-                    Info-Panel. pointer-events-none, damit er den Swipe nicht stört. */}
+                {/* Positions-Marker (Page Control) — ganz unten am Seitenrand, mittig,
+                    über allem. pointer-events-none, damit er den Swipe nicht stört. */}
                 {filteredReversed.length > 1 && (
                   <div
-                    className="pointer-events-none absolute left-1/2 -translate-x-1/2 z-[15]"
-                    style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 240px)' }}
+                    className="pointer-events-none fixed left-1/2 -translate-x-1/2 z-[30]"
+                    style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}
                   >
                     <SliderPageDots total={filteredReversed.length} index={safeIdx} />
                   </div>
