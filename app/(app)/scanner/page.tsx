@@ -2432,10 +2432,13 @@ export default function ScannerPage() {
                     reinem Zurückschnappen (kein Kartenwechsel) bleibt es stehen.
                     overflow-hidden des Containers kappt es beim Rausgleiten. */}
                 <div
-                  className="absolute inset-x-0 bottom-0 z-20"
+                  className="absolute inset-x-0 z-20"
                   style={{
+                    // Etwas über der Unterkante angedockt, damit der Positions-Marker
+                    // UNTER der Panel-Kante Platz hat (siehe unten).
+                    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 40px)',
                     transform: (singleAnim === 'commit-advance' || singleAnim === 'commit-restore')
-                      ? 'translateY(118%)' : 'translateY(0)',
+                      ? 'translateY(140%)' : 'translateY(0)',
                     transition: 'transform 200ms ease',
                   }}
                 >
