@@ -2436,7 +2436,7 @@ export default function ScannerPage() {
                   style={{
                     // Etwas über der Unterkante angedockt, damit der Positions-Marker
                     // UNTER der Panel-Kante Platz hat (siehe unten).
-                    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 40px)',
+                    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 28px)',
                     transform: (singleAnim === 'commit-advance' || singleAnim === 'commit-restore')
                       ? 'translateY(140%)' : 'translateY(0)',
                     transition: 'transform 200ms ease',
@@ -2477,7 +2477,7 @@ export default function ScannerPage() {
                 {filteredReversed.length > 1 && (
                   <div
                     className="pointer-events-none fixed left-1/2 -translate-x-1/2 z-[30]"
-                    style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}
+                    style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 3px)' }}
                   >
                     <SliderPageDots total={filteredReversed.length} index={safeIdx} />
                   </div>
