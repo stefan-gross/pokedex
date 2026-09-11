@@ -2344,8 +2344,12 @@ export default function ScannerPage() {
             return (
               <div
                 ref={singlePanelRef}
-                className="relative w-full touch-none select-none overflow-hidden overscroll-x-none"
-                style={{ height: containerHeight, minHeight: '320px' }}
+                className="relative touch-none select-none overflow-hidden overscroll-x-none"
+                // Full-bleed über die VOLLE Viewport-Breite (bricht aus dem px-4 des
+                // Eltern-Containers aus) — sonst blieben die äußersten ~16px ein
+                // „toter" Rand, an dem die Restore-Geste vom Bildschirmrand nicht
+                // starten konnte.
+                style={{ height: containerHeight, minHeight: '320px', width: '100vw', marginLeft: 'calc(50% - 50vw)' }}
                 onPointerDown={e => {
                   if (singleAnim) return;
                   // Interaktive Steuerung (Add-Leiste mit Dropdowns/Buttons/Grabber,
