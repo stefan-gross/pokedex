@@ -34,7 +34,7 @@ import { ExclamationMark } from '@/lib/binder-icons';
 import { CardPlaceholder } from '@/components/card/CardPlaceholder';
 import { CardImage } from '@/components/card/CardImage';
 import { Card } from '@/components/card/Card';
-import { playScanSound, playScanCaptureSound, unlockScanSound } from '@/lib/scanner/scan-sound';
+import { playScanSound, playScanCaptureSound, unlockScanSound, scanHaptic } from '@/lib/scanner/scan-sound';
 import { isTestModeEnabled } from '@/lib/scanner/test-mode';
 import { CardTileButton } from '@/components/card/CardTileButton';
 import { catalogCardToInfo, cardInfoToAddInput, resolveCardImage } from '@/lib/card-info';
@@ -1042,6 +1042,7 @@ export default function ScannerPage() {
           : j));
         stopAutoOnFail();
         if (!isTest) playScanSound(false);   // Fehlton: nichts Lesbares erkannt
+        if (!isTest) scanHaptic('error');
         // Telemetrie: Fehl-/Nichterkennung als Event + vollen Fall (mit Bildern).
         {
           const outcome: ScanOutcome = gemini.error ? 'error' : 'not_recognized';
@@ -1403,6 +1404,7 @@ export default function ScannerPage() {
       } : j));
       if (!finalCard) stopAutoOnFail();   // unauflösbar → Auto-Stopp (Mehrfachscan)
       if (!isTest) playScanSound(!!finalCard);   // Erfolg-/Fehlton je nach Auflösung
+      if (!isTest) scanHaptic(finalCard ? 'success' : 'error');
 
       // ── Telemetrie ────────────────────────────────────────────────────────
       // Für JEDEN Scan ein kompaktes Event (Qualität/Gemini/Lookup, kein Bild) +
@@ -1541,6 +1543,7 @@ export default function ScannerPage() {
         : j));
       stopAutoOnFail();
       if (!isTest) playScanSound(false);   // Fehlton: Netzwerk-/Serverfehler
+      if (!isTest) scanHaptic('error');
       if (!isTest) {
         const quality = metaToQuality(meta);
         void recordScanEvent({ outcome: 'error', quality, gemini: { error: msg } }).then(eventId => {

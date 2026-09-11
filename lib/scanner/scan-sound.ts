@@ -1,14 +1,19 @@
 /**
- * Kurze Ton-Rückmeldung nach einem Scan (Mehrfach- wie Einzelscan):
- *  - Erfolg  → freundliches, aufsteigendes „Ding" (zwei Noten).
- *  - Fehler  → tiefer, absteigender „Buzz".
+ * Ton- und Haptik-Rückmeldung beim Scannen (Mehrfach- wie Einzelscan):
+ *  - Auslösen (Foto)      → knackiger Kamera-Auslöser-Klick ("ka-tschk").
+ *  - Erfolg (erkannt)     → klares, aufsteigendes „Bing" (zwei Noten).
+ *  - Fehler (nicht erkannt)→ tiefer, dumpfer „Buzz".
  *
  * Bewusst per Web Audio SYNTHETISIERT statt MP3-Dateien: keine Assets/Netz,
- * offline-tauglich, minimal, und auf iOS zuverlässig — der AudioContext muss
- * dort nur EINMAL innerhalb einer User-Geste „entsperrt" werden (siehe
- * `unlockScanSound`, das der Scanner beim ersten Tap aufruft).
+ * offline-tauglich, minimal. iOS verlangt, dass der AudioContext EINMAL in einer
+ * User-Geste „entsperrt" wird (siehe `unlockScanSound`, beim ersten Tap).
  *
- * Stummschalten per localStorage-Flag `pokedex.scan.sound` = 'off'.
+ * WICHTIG (iOS): Web-Audio wird bei aktiviertem KLINGEL-/STUMM-Schalter am iPhone
+ * NICHT ausgegeben — dann hört man trotz allem nichts. Und iOS-Safari besitzt
+ * KEINE Vibrations-API (`navigator.vibrate` ist dort undefined) → Haptik gibt es
+ * nur auf Android. Beides ist eine Plattform-Grenze, nicht abstellbar im Web.
+ *
+ * Stummschalten (App-intern) per localStorage-Flag `pokedex.scan.sound` = 'off'.
  */
 
 let ctx: AudioContext | null = null;
@@ -42,10 +47,10 @@ export function setScanSoundEnabled(on: boolean): void {
   try { localStorage.setItem('pokedex.scan.sound', on ? 'on' : 'off'); } catch { /* ignore */ }
 }
 
-/** Ein Ton mit Frequenz-Glide + weicher Hüllkurve (kein Klick). */
+/** Ein Ton mit Frequenz-Glide + weicher Hüllkurve (kein Knacken). */
 function tone(
   c: AudioContext,
-  { start, freqFrom, freqTo, dur, type = 'sine', gain = 0.14 }:
+  { start, freqFrom, freqTo, dur, type = 'sine', gain = 0.25 }:
   { start: number; freqFrom: number; freqTo: number; dur: number; type?: OscillatorType; gain?: number },
 ): void {
   const osc = c.createOscillator();
@@ -53,7 +58,6 @@ function tone(
   osc.type = type;
   osc.frequency.setValueAtTime(freqFrom, start);
   osc.frequency.exponentialRampToValueAtTime(Math.max(1, freqTo), start + dur);
-  // Weiche Attack/Release, damit es nicht knackt.
   g.gain.setValueAtTime(0.0001, start);
   g.gain.exponentialRampToValueAtTime(gain, start + 0.012);
   g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
@@ -62,36 +66,68 @@ function tone(
   osc.stop(start + dur + 0.02);
 }
 
-/** Neutraler, kurzer „aufgenommen / bereit"-Ton SOFORT beim Auslösen (kein
- *  Erfolg/Fehler — das kommt später über playScanSound nach der Erkennung). */
+/** Kurzer, perkussiver Rausch-„Klick" (für den mechanischen Kamera-Auslöser). */
+function click(
+  c: AudioContext,
+  { start, dur, gain, highpass }: { start: number; dur: number; gain: number; highpass: number },
+): void {
+  const n = Math.max(1, Math.floor(c.sampleRate * dur));
+  const buf = c.createBuffer(1, n, c.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / n); // abklingendes Rauschen
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  const hp = c.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = highpass;
+  const g = c.createGain();
+  g.gain.setValueAtTime(gain, start);
+  g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+  src.connect(hp).connect(g).connect(c.destination);
+  src.start(start);
+  src.stop(start + dur + 0.02);
+}
+
+/** Kamera-Auslöser-Klick SOFORT beim Auslösen (zwei kurze Klicks „ka-tschk"). */
 export function playScanCaptureSound(): void {
   if (!scanSoundEnabled()) return;
   const c = getCtx();
   if (!c) return;
   if (c.state === 'suspended') { c.resume().catch(() => {}); }
   try {
-    const now = c.currentTime + 0.005;
-    // Kurzer, trockener Blip (Shutter-Feedback).
-    tone(c, { start: now, freqFrom: 620, freqTo: 560, dur: 0.05, type: 'sine', gain: 0.12 });
+    const now = c.currentTime + 0.004;
+    // Zwei-Phasen-Klick wie ein mechanischer Verschluss: heller Anschlag + dumpferes Zurück.
+    click(c, { start: now,        dur: 0.018, gain: 0.55, highpass: 1800 });
+    click(c, { start: now + 0.055, dur: 0.038, gain: 0.42, highpass: 700 });
   } catch { /* ignore */ }
 }
 
-/** Spielt den Erfolg-/Fehler-Ton. Idempotent gegen fehlende/entsperrte Contexts. */
+/** Erfolg-/Fehler-Ton nach der Erkennung. */
 export function playScanSound(success: boolean): void {
   if (!scanSoundEnabled()) return;
   const c = getCtx();
   if (!c) return;
-  // Falls (noch) suspended: bestmöglich resumen — nach dem ersten Unlock läuft er.
   if (c.state === 'suspended') { c.resume().catch(() => {}); }
   try {
     const now = c.currentTime + 0.01;
     if (success) {
-      // Aufsteigendes Ding: zwei kurze, klare Noten (A5 → E6).
-      tone(c, { start: now,        freqFrom: 880,  freqTo: 900,  dur: 0.09, type: 'sine',     gain: 0.16 });
-      tone(c, { start: now + 0.10, freqFrom: 1318, freqTo: 1330, dur: 0.13, type: 'sine',     gain: 0.16 });
+      // „Bing": zwei klare, aufsteigende Noten (A5 → E6).
+      tone(c, { start: now,        freqFrom: 880,  freqTo: 900,  dur: 0.10, type: 'sine', gain: 0.28 });
+      tone(c, { start: now + 0.10, freqFrom: 1318, freqTo: 1340, dur: 0.16, type: 'sine', gain: 0.30 });
     } else {
-      // Absteigender Buzz: tief + leicht rau (triangle), etwas länger.
-      tone(c, { start: now,        freqFrom: 300,  freqTo: 150,  dur: 0.26, type: 'triangle', gain: 0.18 });
+      // Dumpfer, absteigender Buzz (rau + tief).
+      tone(c, { start: now,        freqFrom: 300,  freqTo: 130,  dur: 0.30, type: 'sawtooth', gain: 0.26 });
     }
   } catch { /* ignore */ }
+}
+
+/** Haptisches Feedback (nur wo unterstützt). Android hat `navigator.vibrate`,
+ *  iOS-Safari NICHT → dort still no-op. `kind` steuert das Muster. */
+export function scanHaptic(kind: 'trigger' | 'success' | 'error'): void {
+  try {
+    if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return;
+    if (kind === 'trigger') navigator.vibrate(20);
+    else if (kind === 'success') navigator.vibrate(35);
+    else navigator.vibrate([0, 45, 60, 45]); // Fehler: doppelter Puls
+  } catch { /* nicht unterstützt */ }
 }
