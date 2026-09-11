@@ -88,7 +88,9 @@ function click(
   src.stop(start + dur + 0.02);
 }
 
-/** Kamera-Auslöser-Klick SOFORT beim Auslösen (zwei kurze Klicks „ka-tschk"). */
+/** Kamera-Auslöser-Klick SOFORT beim Auslösen — nachempfunden einem mechanischen
+ *  Spiegelreflex-Verschluss: heller Anschlag (Spiegel hoch) + tiefer „Thunk"
+ *  (mechanisches Gewicht) und kurz darauf der dumpfere „Klack" (Verschluss zu). */
 export function playScanCaptureSound(): void {
   if (!scanSoundEnabled()) return;
   const c = getCtx();
@@ -96,9 +98,13 @@ export function playScanCaptureSound(): void {
   if (c.state === 'suspended') { c.resume().catch(() => {}); }
   try {
     const now = c.currentTime + 0.004;
-    // Zwei-Phasen-Klick wie ein mechanischer Verschluss: heller Anschlag + dumpferes Zurück.
-    click(c, { start: now,        dur: 0.018, gain: 0.55, highpass: 1800 });
-    click(c, { start: now + 0.055, dur: 0.038, gain: 0.42, highpass: 700 });
+    // Phase 1 — „Klick" (Spiegel hoch): sehr kurzer, heller Anschlag …
+    click(c, { start: now,         dur: 0.012, gain: 0.6,  highpass: 2600 });
+    // … mit tiefem, kurzem „Thunk" darunter (mechanisches Gewicht).
+    tone(c,  { start: now,         freqFrom: 190, freqTo: 85, dur: 0.05,  type: 'sine', gain: 0.34 });
+    // Phase 2 — „Klack" (Verschluss zu): etwas später, tiefer, minimal länger.
+    click(c, { start: now + 0.062, dur: 0.03,  gain: 0.5,  highpass: 1100 });
+    tone(c,  { start: now + 0.062, freqFrom: 150, freqTo: 70, dur: 0.045, type: 'sine', gain: 0.26 });
   } catch { /* ignore */ }
 }
 

@@ -735,7 +735,14 @@ export default function ScannerPage() {
       const m = (e as CustomEvent<'auto' | 'manual'>).detail;
       if (m === 'auto' || m === 'manual') switchCaptureMode(m);
     };
-    const onShutter = () => setShutterSignal(s => s + 1);
+    const onShutter = () => {
+      // Auslöser-Klick + Haptik SOFORT beim Tastendruck (garantierte User-Geste →
+      // AudioContext ist entsperrt, spielt auf iOS zuverlässig). Der Erfolg-/
+      // Fehlerton kommt später nach der Erkennung.
+      playScanCaptureSound();
+      scanHaptic('trigger');
+      setShutterSignal(s => s + 1);
+    };
     window.addEventListener('scanner-toggle-pause', onTogglePause);
     window.addEventListener('scanner-toggle-mode',  onToggleMode as EventListener);
     window.addEventListener('scanner-toggle-grid',  onToggleGrid);
@@ -953,9 +960,9 @@ export default function ScannerPage() {
         : prev;
       return [...base, { id, origin, status: 'processing', result: null, debug, captureLevel: meta?.level, captureReason: meta?.reason, captureMeta: meta }];
     });
-    // Sofort ein neutraler Auslöse-Ton („aufgenommen/bereit"). Der Erfolg-/
-    // Fehlerton kommt später nach der Erkennung (siehe unten).
-    if (!isTest) playScanCaptureSound();
+    // Auslöse-Ton nur bei AUTO-Auslösung hier — beim MANUELLEN Tastendruck läuft
+    // er bereits in onShutter (sonst doppelt). Der Erfolg-/Fehlerton kommt später.
+    if (!isTest && meta?.trigger === 'auto') playScanCaptureSound();
     // Im Einzeln-Modus Stream SOFORT pausieren — verhindert Folge-Snaps während
     // Gemini noch arbeitet, die Seite zeigt die erkannte Karte groß. Im
     // Mehrfachscan NICHT pausieren: die Karte landet direkt im Slider und wird
