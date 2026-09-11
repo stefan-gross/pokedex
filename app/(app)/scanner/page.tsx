@@ -2220,11 +2220,6 @@ export default function ScannerPage() {
             const STACK_SCALE = 0.93;   // Größe der Karte(n) hinter der obersten
             const STACK_Y = 16;         // px-Versatz nach unten
             const dragP = w > 0 ? Math.min(1, Math.abs(singleDragX) / w) : 0;
-            // „Bounce": am Stapel-Rand gibt es keine Karte in Wischrichtung
-            // (advance ohne Nachfolger / restore ohne Vorgänger) — dann folgt die
-            // oberste Karte gedämpft dem Finger und schnappt zurück, statt zu
-            // schrumpfen oder starr zu bleiben.
-            const bounce = (singleMode === 'advance' && !nextJob) || (singleMode === 'restore' && !prevJob);
             const advP = (singleMode === 'advance' && !!nextJob)
               ? (singleAnim === 'commit-advance' ? 1 : singleAnim === 'snap' ? 0 : dragP)
               : 0;
@@ -2238,9 +2233,7 @@ export default function ScannerPage() {
             // Karte legt sich oben drauf); am Rand ('bounce') → gedämpft dem Finger
             // folgen und zurückschnappen; sonst full-size mittig.
             const topTransform =
-              bounce
-                ? (singleAnim ? 'translateX(0px)' : `translateX(${singleDragX * 0.5}px)`)
-                : (singleMode === 'advance' || singleMode === null)
+              (singleMode === 'advance' || singleMode === null)
                 ? (singleAnim === 'commit-advance' ? `translateX(${advanceSignRef.current * (w + 80)}px)`
                    : singleAnim === 'snap' ? 'translateX(0px)'
                    : `translateX(${singleDragX}px)`)
@@ -2315,28 +2308,27 @@ export default function ScannerPage() {
               const dx = swipeDragXRef.current;
               swipeDragXRef.current = 0;
               const mode = swipeModeRef.current;
-              // Flick: kurzer, schneller Wisch snappt auch bei geringer Strecke.
-              const elapsed = Date.now() - swipeStartTimeRef.current;
-              const isFlick = elapsed < 250 && Math.abs(dx) > 12;
-              // Kurzer Tap (kaum Bewegung) → Kartendetail (wie im Einzelscan).
-              if (Math.abs(dx) < 10 && !isFlick) {
+              const wNow = singlePanelWidth || 1;
+              const fxEnd = swipeStartFxRef.current + dx / wNow; // Finger-Position beim Loslassen (0..1)
+              // Kurzer Tap (kaum Bewegung) auf der Karte → Kartendetail.
+              if (Math.abs(dx) < 10) {
                 setSingleDragX(0);
                 setSingleMode(null);
-                if (canOpen) setActiveJobId(job.id);
+                if (mode === 'advance' && canOpen) setActiveJobId(job.id);
                 return;
               }
               if (mode === 'restore') {
-                // Rand → Mitte: vorherige Karte zurückholen. „Kleiner Drag" genügt,
-                // muss aber nach INNEN gehen (dem Rand entgegengesetzt).
+                // Vorherige Karte fliegt nur rein, wenn nach INNEN gezogen UND der
+                // Finger INNERHALB der aktuellen Karte losgelassen wird; sonst zurück.
                 const inward = restoreEdgeRef.current * dx < 0;
-                if (prevJob && inward && (Math.abs(dx) > 24 || isFlick)) {
-                  setSingleAnim('commit-restore');
-                } else {
-                  setSingleAnim('snap');
-                }
+                const insideCard = fxEnd > 0.15 && fxEnd < 0.85;
+                if (prevJob && inward && insideCard) setSingleAnim('commit-restore');
+                else setSingleAnim('snap');
               } else {
-                // Mitte → außen: oberste Karte in Finger-Richtung rausfliegen lassen.
-                if (nextJob && (Math.abs(dx) > 44 || isFlick)) {
+                // Oberste Karte fliegt nur weg, wenn der Finger den (Bildschirm-)Rand
+                // in Wischrichtung erreicht; sonst schnappt sie zurück.
+                const atEdge = (dx > 0 && fxEnd >= 0.85) || (dx < 0 && fxEnd <= 0.15);
+                if (nextJob && atEdge) {
                   advanceSignRef.current = dx < 0 ? -1 : 1;
                   setSingleAnim('commit-advance');
                 } else {
@@ -2348,9 +2340,6 @@ export default function ScannerPage() {
             // Outer container — feste Höhe, alles passt rein, keine Scroll
             const containerHeight = 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 170px)';
             const canOpen = job.status === 'done' && !!job.result?.card;
-
-            // Weiche Ab-/Aufblendung der Stapel-Karten synchron zur Geste.
-            const dimTransition = singleAnim ? 'opacity 200ms ease-out' : undefined;
 
             return (
               <div
@@ -2364,13 +2353,17 @@ export default function ScannerPage() {
                   // dort KEINEN Swipe/Tap starten (sonst schluckt der Pointer-Capture
                   // die Klicks der Leiste).
                   if ((e.target as Element).closest?.('button, select, input, a, [data-scan-interactive]')) return;
-                  // Startposition merken; der Modus wird RICHTUNGSbasiert erst beim
-                  // ersten Move bestimmt (siehe onPointerMove) — so folgt die Karte
-                  // egal wo man sie anpackt sofort dem Finger.
                   const rect = (e.currentTarget as Element).getBoundingClientRect();
                   swipeStartFxRef.current = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5;
-                  swipeModeRef.current = null;
-                  setSingleMode(null);
+                  // Modus aus der STARTPOSITION: Griff AUF der obersten Karte
+                  // (data-scan-card) → 'advance' (Karte folgt dem Finger, fliegt erst
+                  // am Rand weg). Griff NEBEN der Karte (Rand) → 'restore' (vorherige
+                  // Karte von dort reinziehen).
+                  const onCard = !!(e.target as Element).closest?.('[data-scan-card]');
+                  const mode: 'advance' | 'restore' = onCard ? 'advance' : 'restore';
+                  swipeModeRef.current = mode;
+                  if (mode === 'restore') restoreEdgeRef.current = swipeStartFxRef.current < 0.5 ? -1 : 1;
+                  setSingleMode(mode);
                   swipeActiveRef.current = true;
                   swipeDragXRef.current = 0;
                   swipeStartXRef.current = e.clientX;
@@ -2382,17 +2375,6 @@ export default function ScannerPage() {
                   if (start == null || singleAnim) return;
                   const dx = e.clientX - start;
                   swipeDragXRef.current = dx;
-                  // Modus beim ersten spürbaren Move bestimmen: von der Mitte WEG =
-                  // 'advance', zur Mitte HIN = 'restore'. Nahe der Mitte (Bias ~0) ist
-                  // jede Richtung „nach außen" → advance.
-                  if (swipeModeRef.current == null && Math.abs(dx) > 8) {
-                    const bias = swipeStartFxRef.current - 0.5;
-                    const mode: 'advance' | 'restore' =
-                      Math.abs(bias) < 0.15 ? 'advance' : (bias * dx > 0 ? 'advance' : 'restore');
-                    swipeModeRef.current = mode;
-                    if (mode === 'restore') restoreEdgeRef.current = bias > 0 ? 1 : -1;
-                    setSingleMode(mode);
-                  }
                   setSingleDragX(dx);
                 }}
                 onPointerUp={handlePointerUp}
@@ -2407,16 +2389,6 @@ export default function ScannerPage() {
                     style={{ transform: belowTransform, transition: belowTransition, willChange: 'transform' }}
                   >
                     {renderImage(nextJob, false)}
-                    <div
-                      className="absolute inset-0 pointer-events-none rounded-2xl"
-                      style={{
-                        // Stapel-Karte leicht abgedunkelt (zurückversetzt); beim
-                        // 'advance' hellt sie synchron mit dem Wachsen auf.
-                        background: '#000',
-                        opacity: 0.32 * (1 - advP),
-                        transition: dimTransition,
-                      }}
-                    />
                   </div>
                 )}
 
@@ -2467,15 +2439,6 @@ export default function ScannerPage() {
                     }}
                   >
                     {renderImage(prevJob, false)}
-                    <div
-                      className="absolute inset-0 pointer-events-none rounded-2xl"
-                      style={{
-                        // Zurückkehrende Karte: dunkler am Rand, voll hell oben angekommen.
-                        background: '#000',
-                        opacity: 0.32 * (1 - resP),
-                        transition: dimTransition,
-                      }}
-                    />
                   </div>
                 )}
 
@@ -3800,6 +3763,7 @@ function RecognizedCardLarge({
       <div ref={slotRef} className="absolute inset-0 z-0 flex items-start justify-center">
       <div
         ref={containerRef}
+        data-scan-card
         className="relative overflow-hidden"
         style={{
           width: fittedSize?.w,
@@ -3811,7 +3775,10 @@ function RecognizedCardLarge({
           borderRadius: sizeBasePx != null ? `${sizeBasePx * 0.07}px` : '7%',
           border: cardBorder,
           boxShadow: cardGlow,
-          background: '#1a1a1a',
+          // Im eingebetteten Stapel KEIN dunkler Box-Hintergrund — sonst blitzt
+          // beim (Neu-)Laden des Katalogbildes kurz eine „schwarze Karte" auf.
+          // Transparent lässt so lange die Karte dahinter/den Grund durch.
+          background: embedded ? 'transparent' : '#1a1a1a',
           cursor: card ? 'pointer' : 'default',
         }}
         onClick={card ? onCardTap : undefined}
