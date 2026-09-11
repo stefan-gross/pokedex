@@ -1803,14 +1803,6 @@ export default function ScannerPage() {
                 value={viewMode}
                 onChange={v => { setViewMode(v as 'grid' | 'single'); if (v === 'single') setSingleIdx(0); }}
               />
-              {viewMode === 'single' && filteredReversed.length > 1 && (
-                <div className="flex-1 flex justify-center">
-                  <SliderPageDots
-                    total={filteredReversed.length}
-                    index={Math.min(singleIdx, filteredReversed.length - 1)}
-                  />
-                </div>
-              )}
               {viewMode === 'grid' && (
                 selectMode ? (
                   <Button
@@ -2476,6 +2468,17 @@ export default function ScannerPage() {
                     onEditLanguage={l => setJobLanguage(job.id, l)}
                   />
                 </div>
+
+                {/* Positions-Marker (Page Control) — unten mittig, direkt über dem
+                    Info-Panel. pointer-events-none, damit er den Swipe nicht stört. */}
+                {filteredReversed.length > 1 && (
+                  <div
+                    className="pointer-events-none absolute left-1/2 -translate-x-1/2 z-[15]"
+                    style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 240px)' }}
+                  >
+                    <SliderPageDots total={filteredReversed.length} index={safeIdx} />
+                  </div>
+                )}
               </div>
             );
           })()}
