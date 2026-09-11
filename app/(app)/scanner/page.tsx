@@ -529,11 +529,15 @@ export default function ScannerPage() {
   const [singleAnim, setSingleAnim] = useState<
     'commit-advance' | 'commit-restore' | 'snap' | null
   >(null);
-  // Gesten-Modus (aus der Start-Zone bestimmt): 'advance' = Wisch von der Mitte
-  // nach außen (oberste Karte raus), 'restore' = Wisch vom Rand nach innen
-  // (vorherige Karte zurück auf den Stapel).
+  // Gesten-Modus — RICHTUNGSbasiert (nicht Start-Zone): beim ersten spürbaren
+  // Move entschieden. Von der Mitte weg = 'advance' (oberste Karte raus), zur
+  // Mitte hin = 'restore' (vorherige Karte zurück). So kann man die Karte überall
+  // anpacken und der Restore-Wisch startet auf der Karte (nicht am Bildschirmrand
+  // → keine Browser-Zurück-Geste).
   const [singleMode, setSingleMode] = useState<'advance' | 'restore' | null>(null);
   const swipeModeRef = useRef<'advance' | 'restore' | null>(null);
+  // Startposition als Anteil (0..1) der Breite — Basis für die Richtungslogik.
+  const swipeStartFxRef = useRef<number>(0.5);
   // Rand-Vorzeichen bei 'restore' (−1 = von links, +1 = von rechts) und
   // Flug-Richtung bei 'advance' (Vorzeichen des Drag beim Loslassen).
   const restoreEdgeRef = useRef<number>(1);
@@ -2236,13 +2240,11 @@ export default function ScannerPage() {
             const topTransform =
               bounce
                 ? (singleAnim ? 'translateX(0px)' : `translateX(${singleDragX * 0.5}px)`)
-                : singleMode === 'advance'
+                : (singleMode === 'advance' || singleMode === null)
                 ? (singleAnim === 'commit-advance' ? `translateX(${advanceSignRef.current * (w + 80)}px)`
                    : singleAnim === 'snap' ? 'translateX(0px)'
                    : `translateX(${singleDragX}px)`)
-                : singleMode === 'restore'
-                ? `translateY(${STACK_Y * resP}px) scale(${1 - (1 - STACK_SCALE) * resP})`
-                : 'translateX(0px)';
+                : /* restore */ `translateY(${STACK_Y * resP}px) scale(${1 - (1 - STACK_SCALE) * resP})`;
             const topTransition = stackTransition;
 
             // Nächste Karte (Stapel-Karte hinter der obersten): wächst beim 'advance'
@@ -2353,7 +2355,7 @@ export default function ScannerPage() {
             return (
               <div
                 ref={singlePanelRef}
-                className="relative w-full touch-pan-y select-none overflow-hidden"
+                className="relative w-full touch-none select-none overflow-hidden overscroll-x-none"
                 style={{ height: containerHeight, minHeight: '320px' }}
                 onPointerDown={e => {
                   if (singleAnim) return;
@@ -2362,15 +2364,13 @@ export default function ScannerPage() {
                   // dort KEINEN Swipe/Tap starten (sonst schluckt der Pointer-Capture
                   // die Klicks der Leiste).
                   if ((e.target as Element).closest?.('button, select, input, a, [data-scan-interactive]')) return;
-                  // Modus aus der Start-Zone: Mitte (30–70 %) → 'advance' (oberste
-                  // Karte nach außen wegwischen); äußeres Drittel → 'restore'
-                  // (vorherige Karte vom Rand zurückholen; Vorzeichen = welcher Rand).
+                  // Startposition merken; der Modus wird RICHTUNGSbasiert erst beim
+                  // ersten Move bestimmt (siehe onPointerMove) — so folgt die Karte
+                  // egal wo man sie anpackt sofort dem Finger.
                   const rect = (e.currentTarget as Element).getBoundingClientRect();
-                  const fx = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5;
-                  const mode: 'advance' | 'restore' = (fx < 0.30 || fx > 0.70) ? 'restore' : 'advance';
-                  swipeModeRef.current = mode;
-                  restoreEdgeRef.current = fx < 0.5 ? -1 : 1;
-                  setSingleMode(mode);
+                  swipeStartFxRef.current = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5;
+                  swipeModeRef.current = null;
+                  setSingleMode(null);
                   swipeActiveRef.current = true;
                   swipeDragXRef.current = 0;
                   swipeStartXRef.current = e.clientX;
@@ -2382,8 +2382,17 @@ export default function ScannerPage() {
                   if (start == null || singleAnim) return;
                   const dx = e.clientX - start;
                   swipeDragXRef.current = dx;
-                  // Bei signifikanter Bewegung Long-Press abbrechen — der Nutzer swiped
-                  if (Math.abs(dx) > 8) clearLongPress();
+                  // Modus beim ersten spürbaren Move bestimmen: von der Mitte WEG =
+                  // 'advance', zur Mitte HIN = 'restore'. Nahe der Mitte (Bias ~0) ist
+                  // jede Richtung „nach außen" → advance.
+                  if (swipeModeRef.current == null && Math.abs(dx) > 8) {
+                    const bias = swipeStartFxRef.current - 0.5;
+                    const mode: 'advance' | 'restore' =
+                      Math.abs(bias) < 0.15 ? 'advance' : (bias * dx > 0 ? 'advance' : 'restore');
+                    swipeModeRef.current = mode;
+                    if (mode === 'restore') restoreEdgeRef.current = bias > 0 ? 1 : -1;
+                    setSingleMode(mode);
+                  }
                   setSingleDragX(dx);
                 }}
                 onPointerUp={handlePointerUp}
