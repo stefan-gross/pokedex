@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { BottomNav } from '@/components/BottomNav';
+import { SideNav } from '@/components/SideNav';
 import AuthRefresh from '@/components/AuthRefresh';
 import { GlassBackground } from '@/components/GlassBackground';
 import { ColdStartSplash } from '@/components/ColdStartSplash';
@@ -24,7 +25,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {!isScanner && <GlassBackground />}
       {/* Covers iPhone status bar / Dynamic Island area */}
       <div className={`fixed inset-x-0 top-0 h-safe-top z-50 ${isScanner ? 'bg-background' : ''}`} />
-      <main className="pb-nav min-h-screen pt-safe">{children}</main>
+      {/* Tablet-Seitenleiste (ab md); auf /scanner rendert sie nichts. */}
+      {!isScanner && <SideNav />}
+      {/* Auf Tablet ersetzt die Sidebar die Bottom-Bar: linkes Padding statt
+          unterem, außer im Scanner (Vollbild-Kamera, kein Sidebar-Versatz). */}
+      <main
+        className={
+          isScanner
+            ? 'pb-nav min-h-screen pt-safe'
+            : 'pb-nav min-h-screen pt-safe md:pb-6 md:pl-[var(--sidenav-w)]'
+        }
+      >
+        {children}
+      </main>
       <BottomNav />
     </>
   );

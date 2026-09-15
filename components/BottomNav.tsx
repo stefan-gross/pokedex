@@ -119,7 +119,7 @@ export function BottomNav() {
   // Items unten ausgerichtet; FAB (Slot 2) ragt durch marginTop:-20 oben raus
   const navClassName = isScanner
     ? 'fixed bottom-0 left-0 right-0 z-50 grid items-end justify-items-center'
-    : 'fixed bottom-0 left-0 right-0 z-50 grid items-end justify-items-center bg-card/95 backdrop-blur-xl';
+    : 'md:hidden fixed bottom-0 left-0 right-0 z-50 grid items-end justify-items-center bg-card/95 backdrop-blur-xl';
 
   const isManual = isScanner && scanState.captureMode === 'manual';
 
@@ -255,7 +255,7 @@ export function BottomNav() {
     };
     return (
       <nav
-        className="fixed z-50 grid items-center justify-items-center glass"
+        className="md:hidden fixed z-50 grid items-center justify-items-center glass"
         style={{
           bottom: 12, left: 14, right: 14, height: 64,
           borderRadius: 26,

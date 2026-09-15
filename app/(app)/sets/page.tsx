@@ -127,7 +127,7 @@ export default function SetsPage() {
       ) : groups.length === 0 ? (
         <p className="text-role-body text-glass-muted text-center pt-16">Keine Sets gefunden.</p>
       ) : (
-        <div className="px-4 py-4 space-y-4 pb-8">
+        <div className="px-4 py-4 space-y-4 pb-8 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4 md:items-start">
           {groups.map(group => {
             const seriesName = SERIES_NAMES_DE[group.name] ?? group.name;
             const hasOwned = group.sets.some(set => (ownedBySet.get(set.id) ?? 0) > 0);

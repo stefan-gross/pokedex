@@ -94,7 +94,7 @@ function formatNumber(card: CardInfo) {
  *  Form wie CardTile (Bild + Sublabel-Zeile), damit der Grid-Wechsel nicht springt. */
 export function CardGridSkeleton({ count = 10 }: { count?: number }) {
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="flex flex-col gap-1.5">
           <div className="w-full aspect-[2.5/3.5] rounded-[8px] animate-pulse bg-[rgba(30,40,80,0.1)] dark:bg-white/10" />
@@ -158,7 +158,7 @@ export function CardGrid({
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
         {cards.map(card => {
           const set = setsMeta?.get(card.setId);
           const numberPrefixCode = set?.ptcgoCode ?? card.setCode;

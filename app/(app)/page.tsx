@@ -203,7 +203,7 @@ export default function DashboardPage() {
 
   return (
     <div className="relative min-h-screen">
-      <div className="px-4 pt-6 pb-4 space-y-5">
+      <div className="px-4 pt-6 pb-4 space-y-5 md:max-w-3xl md:mx-auto">
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -328,7 +328,7 @@ export default function DashboardPage() {
       {!loading && recentCards.length > 0 && (
         <section>
           <h2 className="text-role-h2 mb-3 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.25)]">Zuletzt hinzugefügt</h2>
-          <div className="grid grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-2.5">
             {recentCards.map(card => (
               <Card
                 key={card.id}
@@ -520,7 +520,7 @@ function RecentCardsSkeleton() {
   return (
     <section>
       <Skel className="h-5 w-40 rounded-md mb-3" />
-      <div className="grid grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-2.5">
         {[0, 1, 2, 3, 4, 5].map(i => (
           <div key={i} className="flex flex-col items-center gap-1">
             <div className="w-full aspect-[63/88] rounded-[6px] overflow-hidden">

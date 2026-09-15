@@ -127,7 +127,7 @@ export default function DecksPage() {
 
       <div className="px-4 py-4">
       {loading ? (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="aspect-[3/4] rounded-2xl animate-pulse bg-[rgba(30,40,80,0.08)] dark:bg-white/10" />
           ))}
@@ -143,7 +143,7 @@ export default function DecksPage() {
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={decks.map(d => d.id)} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {decks.map(deck => (
                 <DeckTile
                   key={deck.id}

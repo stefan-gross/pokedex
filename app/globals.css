@@ -103,6 +103,10 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 
+  /* Breite der Tablet-Seitenleiste (SideNav) — hält Sidebar-Breite und das
+     Main-Padding in app/(app)/layout.tsx synchron. Nur ab `md` wirksam. */
+  --sidenav-w: 240px;
+
   --pokedex-red: #e53e3e;
   --pokedex-red-hover: #c53030;
   /* Semantische Action-Farben: Add = dunkles Grün, Delete/Destroy = dunkles Rot.

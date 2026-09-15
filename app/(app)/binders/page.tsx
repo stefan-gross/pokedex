@@ -167,7 +167,7 @@ export default function BindersPage() {
 
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={binders.map(b => b.id)} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {binders.map((binder) => {
                 const binderCards = binder.cardIds
                   .map(id => cardsById.get(id))

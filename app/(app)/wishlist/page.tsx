@@ -152,7 +152,7 @@ export default function WishlistOverviewPage() {
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={lists.map(l => l.id)} strategy={rectSortingStrategy}>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 {lists.map(list => (
                   <SortableWishlistTile
                     key={list.id}
