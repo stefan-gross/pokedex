@@ -26,7 +26,7 @@ import { getCard, getCards } from '@/lib/firestore/cards';
 import { getCatalogCardsByIds, type CatalogCard } from '@/lib/firestore/catalog';
 import { resolveTemplateSlots } from '@/lib/template-binders/resolve';
 import { resolveSlotWinners } from '@/lib/template-binders/slot-winner';
-import { catalogCardToInfo, pendingCardInfo, ownedCardToInfo, resolveCardImage, type CardInfo } from '@/lib/card-info';
+import { catalogCardToInfo, pendingCardInfo, ownedCardToInfo, cardImageCandidates, type CardInfo } from '@/lib/card-info';
 import { CreateBinderModal } from '@/components/binder/CreateBinderModal';
 import { CollectionTypeBadge } from '@/components/binder/CollectionTypeBadge';
 import { BinderIcon } from '@/lib/binder-icons';
@@ -371,7 +371,7 @@ export default function BinderDetailPage({ params }: Props) {
         // die Proxy-Karte direkt dem passenden Slot zuordnen kann.
         const slotNo = pIdx * binderSize + sIdx + 1;
         return {
-          imgUrl: resolveCardImage(info),
+          imgUrl: cardImageCandidates(info, { size: 'large' })[0],  // inkl. Storage-Fallback (Promo-Karten ohne Katalogbild)
           name: info.name, number: info.number, setCode: cc.setCode,
           label: `Blatt ${sheet} · ${side} · Slot ${slotNo}`,
         };

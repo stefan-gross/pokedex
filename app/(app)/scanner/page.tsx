@@ -37,7 +37,7 @@ import { Card } from '@/components/card/Card';
 import { playScanSound, playScanCaptureSound, unlockScanSound, scanHaptic } from '@/lib/scanner/scan-sound';
 import { isTestModeEnabled } from '@/lib/scanner/test-mode';
 import { CardTileButton } from '@/components/card/CardTileButton';
-import { catalogCardToInfo, cardInfoToAddInput, resolveCardImage } from '@/lib/card-info';
+import { catalogCardToInfo, cardInfoToAddInput } from '@/lib/card-info';
 import { cardImageCandidates } from '@/lib/card-image';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardCondition as PersistedCondition, CardDoc, CardLanguage, CardVariant } from '@/types';
@@ -1485,7 +1485,9 @@ export default function ScannerPage() {
         const lang = (gemini.language ?? 'de') as CardLanguage;
         // pHash-Referenzbild über die zentrale Kandidaten-Logik (bestes Katalog-
         // bild in der erkannten Sprache).
-        const pickImageUrl = (info: CardInfo) => resolveCardImage(info, 'large', lang) ?? null;
+        // Beste Bild-URL inkl. Storage-Fallback → pHash funktioniert auch für
+        // Promo-Karten ohne TCGdex-Katalogbild (sonst würden sie übersprungen).
+        const pickImageUrl = (info: CardInfo) => cardImageCandidates(info, { size: 'large', language: lang })[0] ?? null;
         const phashOne = async (url: string): Promise<number | null> => {
           try {
             const { distance } = await fetch('/api/scan/verify-image', {

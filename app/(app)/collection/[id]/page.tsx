@@ -3,7 +3,8 @@ import { ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getCard } from '@/lib/firestore/cards';
 import { getCatalogCardsByIds } from '@/lib/firestore/catalog';
-import { catalogCardToInfo, resolveCardImage } from '@/lib/card-info';
+import { catalogCardToInfo } from '@/lib/card-info';
+import { CardImage } from '@/components/card/CardImage';
 import { AddToCollectionModal } from '@/components/scanner/AddToCollectionModal';
 import { CardPriceDetail } from '@/components/card/CardPriceDetail';
 
@@ -22,7 +23,6 @@ export default async function CardDetailPage({ params }: Props) {
     ? (await getCatalogCardsByIds([card.tcgId]))[0]
     : undefined;
   const info = catalogCard ? catalogCardToInfo(catalogCard) : undefined;
-  const imgSrc = info ? (resolveCardImage(info) ?? '') : '';
 
   return (
     <div className="min-h-screen">
@@ -35,12 +35,13 @@ export default async function CardDetailPage({ params }: Props) {
         {/* Card image */}
         <div className="flex justify-center">
           <div className="w-48 rounded-2xl overflow-hidden border border-[rgba(255,255,255,0.4)] shadow-lg">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={imgSrc}
-              alt={card.name}
-              className="w-full"
-            />
+            {/* CardImage statt rohem <img>: volle Kandidaten-Kette inkl. Storage-
+                Fallback (sonst blieben Promo-Karten ohne TCGdex-Bild leer). */}
+            {info ? (
+              <CardImage card={info} size="large" alt={card.name} width={192} height={268} className="w-full h-auto" />
+            ) : (
+              <div className="w-full aspect-[63/88] bg-[rgba(120,130,150,0.14)]" />
+            )}
           </div>
         </div>
 
