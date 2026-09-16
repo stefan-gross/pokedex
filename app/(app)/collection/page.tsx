@@ -748,6 +748,7 @@ function CollectionContent() {
     const supertypes: Record<string, number> = { 'Pokémon': 0, Trainer: 0, Energy: 0 };
     const types: Record<string, number> = Object.fromEntries(TCG_TYPES.map(t => [t, 0]));
     const rarities: Record<string, number> = {};
+    const sets: Record<string, number> = {};
     const regionAgg: Record<string, { cards: number; species: Set<number> }> =
       Object.fromEntries(REGIONS.map(r => [r, { cards: 0, species: new Set<number>() }]));
     let specialForms = 0;
@@ -755,6 +756,7 @@ function CollectionContent() {
       if (c.supertype && c.supertype in supertypes && passes(c, 'supertype')) supertypes[c.supertype]++;
       if (passes(c, 'types')) for (const t of c.types ?? []) if (t in types) types[t]++;
       if (passes(c, 'rarity')) { const lbl = rarityLabelOf(c.rarity); rarities[lbl] = (rarities[lbl] ?? 0) + 1; }
+      if (passes(c, 'setId') && c.setId) sets[c.setId] = (sets[c.setId] ?? 0) + 1;
       if (passes(c, 'region') && c.region && regionAgg[c.region]) {
         regionAgg[c.region].cards++;
         if (typeof c.nationalDexNumber === 'number') regionAgg[c.region].species.add(c.nationalDexNumber);
@@ -763,8 +765,44 @@ function CollectionContent() {
     }
     const regions: Record<string, { cards: number; species: number }> =
       Object.fromEntries(Object.entries(regionAgg).map(([r, v]) => [r, { cards: v.cards, species: v.species.size }]));
-    return { supertypes, types, rarities, regions, specialForms };
+    return { supertypes, types, rarities, regions, specialForms, sets };
   }, [isBrowseMode, facetBase, filterSet, activeRegion, activeTypesKey, activeSupertype, activeRarity, activeSpecialMechanicsKey, activeEvolutionsKey, ownedFilter, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Set-Dropdown mit kreuzreaktiven Zählern: nur Sets einblenden, die in der
+  // aktiven Auswahl Treffer haben (0-Sets weg → keine Sackgasse) + Anzahl rechts.
+  // Das aktive Set bleibt IMMER sichtbar (zum Abwählen). Quelle: Algolia, sonst
+  // client-seitig aus `facetBase`; ohne beide (kein Filter/paginiert) alle Sets.
+  const browseSetOptionsShown = useMemo(() => {
+    const counts = algoliaFacets?.sets ?? browseFacetCounts?.sets ?? null;
+    if (!counts) return browseSetOptions;
+    return browseSetOptions
+      .filter(o => o.value === '' || o.value === filterSet || (counts[o.value] ?? 0) > 0)
+      .map(o => {
+        if (o.value === '') return o;
+        // Rechts: Set-Kürzel als Pill, danach die Anzahl ganz am Ende
+        // (gleiche Optik wie im Such-Modus, s. setFilterOptions).
+        const code = (o as { hint?: string }).hint;
+        return {
+          ...o,
+          hint: undefined,
+          trailing: (
+            <>
+              {code && (
+                <span
+                  className="px-1.5 py-0.5 rounded-full text-[11px] font-semibold leading-none text-glass-muted shrink-0"
+                  style={{ background: 'var(--muted)' }}
+                >
+                  {code}
+                </span>
+              )}
+              <span className="ml-2 inline-block min-w-[2.75ch] text-right tabular-nums text-glass font-medium">
+                {(counts[o.value] ?? 0).toLocaleString('de')}
+              </span>
+            </>
+          ),
+        };
+      });
+  }, [browseSetOptions, algoliaFacets, browseFacetCounts, filterSet]);
 
   // Disabled-Logik für Type-Pills
   const typeCountInContext = useMemo(() => {
@@ -1021,7 +1059,7 @@ function CollectionContent() {
               value={filterSet}
               onChange={setFilterSet}
               onClear={filterSet ? () => setFilterSet('') : undefined}
-              options={isBrowseMode ? browseSetOptions : setFilterOptions}
+              options={isBrowseMode ? browseSetOptionsShown : setFilterOptions}
               height="sm"
               fullWidth
               searchPlaceholder="Set suchen …"
