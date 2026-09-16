@@ -36,7 +36,7 @@ import { useSuggestIndex } from '@/lib/search/use-suggest-index';
 import { getEvolutionFamilyDexNumbers } from '@/lib/pokeapi';
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { applyFacetFilters, type FacetState, type FacetDim } from '@/lib/search/facet-filter';
-import { SPECIAL_MECHANIC_KEYS, rarityMatchValues } from '@/lib/card-constants';
+import { SPECIAL_MECHANIC_KEYS, rarityMatchValues, rarityLabelOf } from '@/lib/card-constants';
 import { useCardBrowser, TCG_TYPES, type TcgType, type CardBrowserFilter } from '@/lib/hooks/useCardBrowser';
 import { useWishlist } from '@/lib/hooks/use-wishlist';
 import { EnergyIcon, ENERGY_META } from '@/components/ui/EnergyIcon';
@@ -295,9 +295,21 @@ function CollectionContent() {
     // "Vorhanden" wird per ID komplett geladen (kein Server-Count nötig) → null,
     // das Label nutzt dann die exakte geladene Anzahl (browseCards.length).
     if (ownedFilter === 'owned') { setBrowseTotal(null); return; }
-    // Gleiche Server-Filter-Priorität wie makeBrowseFilter: setId > type > rarity
-    // > evolutionStage > supertype (sonst zählte z.B. eine aktive Rarity/ein Set
-    // fälschlich den ganzen Katalog statt der Treffer).
+    // Der Server-Count kann immer nur EINE Filterdimension zählen (kein Composite-
+    // Index). Sind mehrere Filter gleichzeitig aktiv, würde die Prioritäts-Auswahl
+    // (wie makeBrowseFilter) nur nach EINEM zählen und die übrigen ignorieren
+    // (z.B. Rarity + Kartenart „Trainer" → zählte alle Rarity-Treffer). Dann keine
+    // falsche Gesamtzahl anzeigen, sondern auf die exakt geladene, client-gefilterte
+    // Menge (browseCards.length) zurückfallen — bei kombinierten (selektiven)
+    // Filtern ist die Treffermenge ohnehin vollständig geladen (LOAD_ALL_CAP).
+    const activeDims = [
+      !!filterSet, !!activeRegion, activeTypes.size > 0, !!activeRarity,
+      activeSpecialMechanics.size > 0, activeEvolutions.size > 0,
+      activeSupertype !== 'all', ownedFilter !== 'all',
+    ].filter(Boolean).length;
+    if (activeDims >= 2) { setBrowseTotal(null); return; }
+    // Einzelner aktiver Filter → server-seitig exakt zählbar (setId > region > type
+    // > rarity > specialMechanics > evolutionStage > supertype).
     const browseFilter = filterSet
       ? { setId: filterSet }
       : activeRegion
@@ -348,7 +360,7 @@ function CollectionContent() {
 
   const {
     cards: browseCards, loading: browseLoading,
-    loadingMore, hasMore, loadMore,
+    loadingMore, hasMore, loadMore, facetBase,
   } = useCardBrowser(browseSort, browserFilter, browseSortDir === 'desc');
 
   const { manualIds, autoIds, manualLists, memberManualListIds, autoListsFor, toggleOnList } = useWishlist();
@@ -660,38 +672,105 @@ function CollectionContent() {
   // Owned-Filter würde serverseitig eine "in"-Query über tausende IDs
   // brauchen, was Firestore nicht unterstützt).
 
+  // Server-primäre Filterdimension (gleiche Priorität wie makeBrowseFilter im
+  // Browse-Hook). Nur für Dimensionen, die NICHT server-primär sind, lässt sich
+  // aus `facetBase` ein sauberer kreuzreaktiver Zähler ableiten (die server-
+  // primäre Dimension hat die Basis bereits eingeengt → Zähler wären degeneriert).
+  const serverPrimaryDim = filterSet ? 'setId'
+    : activeRegion ? 'region'
+    : activeTypes.size ? 'types'
+    : activeRarity ? 'rarity'
+    : activeSpecialMechanics.size ? 'special'
+    : activeEvolutions.size === 1 ? 'evolution'
+    : activeSupertype !== 'all' ? 'supertype'
+    : 'none';
+
+  // Kreuzreaktive Kartenart-/Typ-Zähler im Stöber-Modus: „wie viele Trainer/
+  // Pokémon/… gäbe es INNERHALB der aktuell aktiven Auswahl (z.B. dieser Rarity)".
+  // Basis = server-gefilterte, vollständig geladene Treffermenge VOR den Client-
+  // Filtern (`facetBase`). Leer (paginiert/kein selektiver Filter) → null, dann
+  // greift der server-seitige `filterCounts`-Fallback. Client-seitig, weil es
+  // server-seitig keine Composite-Indizes (z.B. supertype+rarity) dafür gibt.
+  const browseFacetCounts = useMemo(() => {
+    if (!isBrowseMode || facetBase.length === 0) return null;
+    const rarityVariants = activeRarity ? new Set(rarityMatchValues(activeRarity)) : null;
+    const special = new Set<string>(SPECIAL_MECHANIC_KEYS as readonly string[]);
+    // Erfüllt die Karte ALLE aktiven Client-Filter außer `exclude` (die Dimension,
+    // deren Zähler gerade berechnet wird — sie darf sich nicht selbst einschränken)?
+    const passes = (c: CatalogCard, exclude: string) => {
+      if (exclude !== 'setId'  && filterSet && c.setId !== filterSet) return false;
+      if (exclude !== 'region' && activeRegion && c.region !== activeRegion) return false;
+      if (exclude !== 'types'  && activeTypes.size && !c.types?.some(t => (activeTypes as Set<string>).has(t))) return false;
+      if (exclude !== 'supertype' && activeSupertype !== 'all' && c.supertype?.toLowerCase() !== activeSupertype.toLowerCase()) return false;
+      if (exclude !== 'rarity' && rarityVariants && !(c.rarity && rarityVariants.has(c.rarity))) return false;
+      if (exclude !== 'special' && activeSpecialMechanics.size && !c.subtypes?.some(s => activeSpecialMechanics.has(s))) return false;
+      if (activeEvolutions.size && !c.subtypes?.some(s => activeEvolutions.has(s))) return false;
+      if (ownedFilter === 'owned'   && !ownedIds.has(c.id)) return false;
+      if (ownedFilter === 'missing' &&  ownedIds.has(c.id)) return false;
+      return true;
+    };
+    const supertypes: Record<string, number> = { 'Pokémon': 0, Trainer: 0, Energy: 0 };
+    const types: Record<string, number> = Object.fromEntries(TCG_TYPES.map(t => [t, 0]));
+    const rarities: Record<string, number> = {};
+    const regionAgg: Record<string, { cards: number; species: Set<number> }> =
+      Object.fromEntries(REGIONS.map(r => [r, { cards: 0, species: new Set<number>() }]));
+    let specialForms = 0;
+    for (const c of facetBase) {
+      if (c.supertype && c.supertype in supertypes && passes(c, 'supertype')) supertypes[c.supertype]++;
+      if (passes(c, 'types')) for (const t of c.types ?? []) if (t in types) types[t]++;
+      if (passes(c, 'rarity')) { const lbl = rarityLabelOf(c.rarity); rarities[lbl] = (rarities[lbl] ?? 0) + 1; }
+      if (passes(c, 'region') && c.region && regionAgg[c.region]) {
+        regionAgg[c.region].cards++;
+        if (typeof c.nationalDexNumber === 'number') regionAgg[c.region].species.add(c.nationalDexNumber);
+      }
+      if (passes(c, 'special') && c.subtypes?.some(s => special.has(s))) specialForms++;
+    }
+    const regions: Record<string, { cards: number; species: number }> =
+      Object.fromEntries(Object.entries(regionAgg).map(([r, v]) => [r, { cards: v.cards, species: v.species.size }]));
+    return { supertypes, types, rarities, regions, specialForms };
+  }, [isBrowseMode, facetBase, filterSet, activeRegion, activeTypesKey, activeSupertype, activeRarity, activeSpecialMechanicsKey, activeEvolutionsKey, ownedFilter, ownedIds]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Disabled-Logik für Type-Pills
   const typeCountInContext = useMemo(() => {
-    if (isBrowseMode) return filterCounts?.types ?? null;
+    if (isBrowseMode) {
+      if (browseFacetCounts && serverPrimaryDim !== 'types') return browseFacetCounts.types;
+      return filterCounts?.types ?? null;
+    }
     const base = applyFacetFilters(results, facetState, 'types');
     return Object.fromEntries(TCG_TYPES.map(t => [t, base.filter(c => c.types?.includes(t)).length]));
-  }, [isBrowseMode, filterCounts, results, facetState]);
+  }, [isBrowseMode, browseFacetCounts, serverPrimaryDim, filterCounts, results, facetState]);
 
   // Region-Statistik im Kontext (Karten + Arten): Browse = katalogweit
   // (meta/region_stats), Suche = kreuzreaktiv aus den Treffern (alle anderen
   // aktiven Filter angewandt, ohne Region selbst; Arten = distinct Pokédex-Nr.).
   const regionStatInContext = useMemo<Record<string, { cards: number; species: number }> | null>(() => {
-    if (isBrowseMode) return Object.keys(regionStats).length ? regionStats : null;
+    if (isBrowseMode) {
+      if (browseFacetCounts && serverPrimaryDim !== 'region') return browseFacetCounts.regions;
+      return Object.keys(regionStats).length ? regionStats : null;
+    }
     const base = applyFacetFilters(results, facetState, 'region');
     return Object.fromEntries(REGIONS.map(r => {
       const inR = base.filter(c => c.region === r);
       const species = new Set(inR.map(c => c.nationalDexNumber).filter((n): n is number => typeof n === 'number')).size;
       return [r, { cards: inR.length, species }];
     }));
-  }, [isBrowseMode, regionStats, results, facetState]);
+  }, [isBrowseMode, browseFacetCounts, serverPrimaryDim, regionStats, results, facetState]);
 
   // „Sonderformen" fasst alle Spezial-Mechaniken (GX/ex/V/VMAX/VSTAR/V-Union …)
   // zu EINEM Filter zusammen — aktiv = irgendeine Mechanik gewählt.
   const specialFormsActive = activeSpecialMechanics.size > 0;
   const specialFormsCount = useMemo(() => {
-    // Browse: globaler Katalog-Count (sonst zählte nur die aktuell geladene
-    // Seite — z.B. A-Z-Anfang = lauter Basis-Pokémon → fälschlich 0).
-    if (isBrowseMode) return filterCounts?.specialForms;
+    if (isBrowseMode) {
+      // Kreuzreaktiv aus der aktiven Auswahl, sofern verfügbar; sonst globaler
+      // Katalog-Count (sonst zählte nur die aktuell geladene Seite → fälschlich 0).
+      if (browseFacetCounts && serverPrimaryDim !== 'special') return browseFacetCounts.specialForms;
+      return filterCounts?.specialForms;
+    }
     const base = applyFacetFilters(results, facetState, 'specialMechanics');
     if (base.length === 0) return undefined;
     const keys = new Set<string>(SPECIAL_MECHANIC_KEYS as readonly string[]);
     return base.filter(c => c.subtypes?.some(s => keys.has(s))).length;
-  }, [isBrowseMode, filterCounts, browseCards, results, facetState]);
+  }, [isBrowseMode, browseFacetCounts, serverPrimaryDim, filterCounts, browseCards, results, facetState]);
 
   // Typ-Optionen für den Mehrfach-Auswahl-Dropdown (Icon + DE-Label + Count +
   // Typfarbe für die Pills, 0-Treffer ausgegraut).
@@ -733,11 +812,17 @@ function CollectionContent() {
   // Supertype-Optionen mit Counts
   const supertypeOptions = useMemo(() => {
     if (isBrowseMode) {
+      // Kreuzreaktive Zähler (innerhalb der aktiven Auswahl, z.B. dieser Rarity),
+      // sofern die Kartenart nicht selbst der server-primäre Filter ist; sonst
+      // server-seitige Gesamt-Zähler (Fallback).
+      const sc = (browseFacetCounts && serverPrimaryDim !== 'supertype')
+        ? browseFacetCounts.supertypes
+        : filterCounts?.supertypes;
       return [
-        { value: 'all',     label: 'Alle',    count: filterCounts ? Object.values(filterCounts.supertypes).reduce((a, b) => a + b, 0) : undefined },
-        { value: 'Pokémon', label: 'Pokémon', count: filterCounts?.supertypes['Pokémon'] },
-        { value: 'Trainer', label: 'Trainer', count: filterCounts?.supertypes['Trainer'] ?? (filterCounts ? 0 : undefined) },
-        { value: 'Energy',  label: 'Energie', count: filterCounts?.supertypes['Energy']  ?? (filterCounts ? 0 : undefined) },
+        { value: 'all',     label: 'Alle',    count: sc ? Object.values(sc).reduce((a, b) => a + b, 0) : undefined },
+        { value: 'Pokémon', label: 'Pokémon', count: sc?.['Pokémon'] },
+        { value: 'Trainer', label: 'Trainer', count: sc?.['Trainer'] ?? (sc ? 0 : undefined) },
+        { value: 'Energy',  label: 'Energie', count: sc?.['Energy']  ?? (sc ? 0 : undefined) },
       ];
     }
     const base = applyFacetFilters(results, facetState, 'supertype');
@@ -748,7 +833,7 @@ function CollectionContent() {
       { value: 'Trainer', label: 'Trainer', count: countFor('Trainer') },
       { value: 'Energy',  label: 'Energie', count: countFor('Energy') },
     ];
-  }, [isBrowseMode, filterCounts, results, facetState]);
+  }, [isBrowseMode, browseFacetCounts, serverPrimaryDim, filterCounts, results, facetState]);
 
   const showTypePills = activeSupertype === 'all' || activeSupertype === 'Pokémon';
   const showEvolution = showTypePills;
@@ -857,7 +942,9 @@ function CollectionContent() {
               ownedIds={ownedIds}
               activeRarities={activeRarity ? new Set([activeRarity]) : new Set()}
               onToggle={label => setActiveRarity(prev => prev === label ? null : label)}
-              rarityCounts={isBrowseMode ? filterCounts?.rarities : undefined}
+              rarityCounts={isBrowseMode
+                ? ((browseFacetCounts && serverPrimaryDim !== 'rarity') ? browseFacetCounts.rarities : filterCounts?.rarities)
+                : undefined}
               extraChips={showTypePills ? [{
                 key: 'special-forms',
                 label: 'Sonderformen',

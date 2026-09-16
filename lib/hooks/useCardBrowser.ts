@@ -72,12 +72,14 @@ function applyClientFilters(cards: CatalogCard[], f: CardBrowserFilter): Catalog
   if (f.types && f.types.length > 0) {
     r = r.filter(c => c.types?.some(t => f.types!.includes(t)));
   }
-  // Supertype client-seitig wenn types server-seitig (kein Composite-Index)
-  if (f.types?.length && f.supertype) {
-    r = r.filter(c => c.supertype?.toLowerCase() === f.supertype!.toLowerCase());
-  }
-  // EvolutionStage server-seitig aber supertype trotzdem client-seitig
-  if (!f.types?.length && f.evolutionStages?.length && f.supertype) {
+  // Kartenart (Supertype) IMMER client-seitig sicherstellen: server-seitig ist sie
+  // in `makeBrowseFilter` nur der niedrigst-priorisierte Filter und fällt komplett
+  // weg, sobald ein höher priorisierter Filter (Set, Region, Typ, Rarity, Sonder-
+  // form, Evolutionsstufe) server-primär ist. Ohne diesen unbedingten Nachfilter
+  // wurde z.B. „Rarity + Kartenart Trainer" nur nach Rarity gefiltert (der Trainer-
+  // Filter verpuffte). Ist Supertype selbst der Server-Filter, ist dieser Re-Filter
+  // ein harmloser No-Op (alle geladenen Karten passen bereits).
+  if (f.supertype) {
     r = r.filter(c => c.supertype?.toLowerCase() === f.supertype!.toLowerCase());
   }
   if (f.evolutionStages && f.evolutionStages.length > 0) {
@@ -152,6 +154,12 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
   const [loading,     setLoading]     = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore,     setHasMore]     = useState(false);
+  // Server-gefilterte Treffermenge VOR den Client-Filtern — nur gesetzt, wenn die
+  // GANZE Menge in einem Read geladen wurde (kein Paging). Dient der Seite dazu,
+  // kreuzreaktive Facetten-Zähler (Kartenart/Typ innerhalb der aktiven Auswahl)
+  // client-seitig zu berechnen — server-seitig ginge das nur mit Composite-Indizes
+  // (z.B. supertype+rarity), die es nicht gibt. Leer = paginiert/unvollständig.
+  const [facetBase,   setFacetBase]   = useState<CatalogCard[]>([]);
 
   // Cursor = zuletzt geladene Karte (REST-startAfter). Früher ein SDK-
   // QueryDocumentSnapshot; die Browse-Reads laufen jetzt über REST (kein
@@ -189,6 +197,7 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
     cursorRef.current = null;
     phaseRef.current = 'main';
     setCards([]);
+    setFacetBase([]);
     setLoading(true);
 
     const run = async () => {
@@ -206,6 +215,7 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
           if (cancelled) return;
           const sorted = sortCatalogCards(applyClientFilters(owned, filter), sort, desc);
           setCards(sorted.map(catalogCardToInfo));
+          setFacetBase(owned);
           setHasMore(false);
           return;
         }
@@ -226,6 +236,7 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
             if (cancelled) return;
             const sortedAll = sortCatalogCards(applyClientFilters(all, filter), sort, desc);
             setCards(sortedAll.map(catalogCardToInfo));
+            setFacetBase(all);
             setHasMore(false);
             return;
           }
@@ -281,7 +292,7 @@ export function useCardBrowser(sort: BrowseSortKey, filter: CardBrowserFilter, d
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingMore, hasMore, filter, sort, desc, unfilteredPriceSort]);
 
-  return { cards, loading, loadMore, loadingMore, hasMore, hasAnyFilter };
+  return { cards, loading, loadMore, loadingMore, hasMore, hasAnyFilter, facetBase };
 }
 
 export { ENERGY_META } from '@/components/ui/EnergyIcon';
