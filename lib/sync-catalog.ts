@@ -1,5 +1,5 @@
 import { getAdminDb } from './firebase/admin';
-import { FieldPath } from 'firebase-admin/firestore';
+import { FieldPath, FieldValue } from 'firebase-admin/firestore';
 import { buildSearchIndex } from './build-search-index';
 import type { CatalogCard, SyncMeta } from './firestore/catalog';
 
@@ -49,7 +49,10 @@ async function upsertBatch(cards: CatalogCard[]): Promise<void> {
   for (let i = 0; i < cards.length; i += 500) {
     const batch = db.batch();
     cards.slice(i, i + 500).forEach(card => {
-      batch.set(db.collection(COL).doc(card.id), card, { merge: true });
+      // `updatedAt`-Stempel als Delta-Wasserzeichen für den Algolia-Reindex-Cron
+      // (nur der Katalog-Sync schreibt hier → Preis-Refresh/Enrich lösen kein
+      // unnötiges Re-Indexieren aus, siehe lib/search/algolia-admin.ts).
+      batch.set(db.collection(COL).doc(card.id), { ...card, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     });
     await batch.commit();
   }

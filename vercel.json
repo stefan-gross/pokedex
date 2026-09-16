@@ -11,6 +11,10 @@
       "schedule": "30 3 * * 1"
     },
     {
+      "path": "/api/cron/algolia-reindex",
+      "schedule": "50 3 * * 1"
+    },
+    {
       "path": "/api/cron/refresh-prices",
       "schedule": "0 4 * * *"
     },
