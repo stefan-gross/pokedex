@@ -30,6 +30,7 @@ import { searchViaAlgolia } from '@/lib/search/algolia-search';
 import { isAlgoliaConfigured } from '@/lib/search/algolia';
 import { recordAlgoliaSearch, getAlgoliaUsage } from '@/lib/firestore/search-usage';
 import { getSearchMode, shouldUseAlgolia } from '@/lib/search/search-mode';
+import { getAlgoliaFacetCounts, type AlgoliaFacetCounts } from '@/lib/search/algolia-facets';
 import { getRegionStats } from '@/lib/firestore/region-stats';
 import { correctQuery } from '@/lib/search/suggest-index';
 import { useSuggestIndex } from '@/lib/search/use-suggest-index';
@@ -121,6 +122,10 @@ function CollectionContent() {
   // ohne Neuaufbau lesbar; State nur, damit ein Reload den Serverstand übernimmt.
   const [, setAlgoliaUsage] = useState(0);
   const algoliaUsageRef = useRef(0);
+  // Kreuzreaktive Facetten-Zähler via Algolia (Stöber-Modus) — höchste Priorität
+  // vor den client-/server-seitigen Zählern; null = nicht verfügbar → Fallback.
+  const [algoliaFacets, setAlgoliaFacets] = useState<AlgoliaFacetCounts | null>(null);
+  const algoliaFacetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeEvolutions, setActiveEvolutions] = useState<Set<string>>(new Set());
   const [activeSpecialMechanics, setActiveSpecialMechanics] = useState<Set<string>>(new Set());
   const [evoLineActive,    setEvoLineActive]    = useState(false);
@@ -362,6 +367,37 @@ function CollectionContent() {
     cards: browseCards, loading: browseLoading,
     loadingMore, hasMore, loadMore, facetBase,
   } = useCardBrowser(browseSort, browserFilter, browseSortDir === 'desc');
+
+  // ── Kreuzreaktive Facetten-Zähler via Algolia (nur Stöbern) ───────────────
+  // Löst den Firestore-Nachteil (kein Composite-Index für kombinierte Filter):
+  // Algolia rechnet die Zähler nativ über den ganzen Index — auch für sehr breite
+  // Filter (> LOAD_ALL_CAP), die der client-seitige `facetBase`-Pfad nicht abdeckt.
+  // Nur wenn: Stöber-Modus, Algolia konfiguriert + im Budget, KEIN Owned-Filter
+  // (Nutzerdaten, nicht im Index). Sonst null → bestehender Zähler-Pfad greift.
+  useEffect(() => {
+    const browseNow = inputValue.trim().length < MIN_SEARCH_CHARS; // isBrowseMode ist erst weiter unten definiert
+    const usable = browseNow && ownedFilter === 'all' && isAlgoliaConfigured()
+      && shouldUseAlgolia(getSearchMode(), algoliaUsageRef.current);
+    if (!usable) { setAlgoliaFacets(null); return; }
+    if (algoliaFacetTimerRef.current) clearTimeout(algoliaFacetTimerRef.current);
+    let cancelled = false;
+    algoliaFacetTimerRef.current = setTimeout(() => {
+      getAlgoliaFacetCounts({
+        setId:            filterSet || undefined,
+        supertype:        activeSupertype !== 'all' ? activeSupertype : undefined,
+        types:            activeTypes.size ? [...activeTypes] : undefined,
+        rarityGroup:      activeRarity ?? undefined,
+        region:           activeRegion || undefined,
+        specialMechanics: activeSpecialMechanics.size ? [...activeSpecialMechanics] : undefined,
+      }, (n) => {
+        for (let i = 0; i < n; i++) void recordAlgoliaSearch();
+        algoliaUsageRef.current += n; setAlgoliaUsage(algoliaUsageRef.current);
+      }).then(res => { if (!cancelled) setAlgoliaFacets(res); })
+        .catch(() => { if (!cancelled) setAlgoliaFacets(null); });
+    }, 250);
+    return () => { cancelled = true; if (algoliaFacetTimerRef.current) clearTimeout(algoliaFacetTimerRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inputValue, ownedFilter, filterSet, activeSupertype, activeTypesKey, activeRarity, activeRegion, activeSpecialMechanicsKey]);
 
   const { manualIds, autoIds, manualLists, memberManualListIds, autoListsFor, toggleOnList } = useWishlist();
   const wishlistGridProps = {
@@ -733,18 +769,25 @@ function CollectionContent() {
   // Disabled-Logik für Type-Pills
   const typeCountInContext = useMemo(() => {
     if (isBrowseMode) {
+      // Algolia (kreuzreaktiv, deckt auch Breitfilter ab) hat Vorrang; 0-Werte
+      // fehlen in der Algolia-Antwort → auf 0 normalisieren (→ deaktiviert).
+      if (algoliaFacets) return Object.fromEntries(TCG_TYPES.map(t => [t, algoliaFacets.types[t] ?? 0]));
       if (browseFacetCounts && serverPrimaryDim !== 'types') return browseFacetCounts.types;
       return filterCounts?.types ?? null;
     }
     const base = applyFacetFilters(results, facetState, 'types');
     return Object.fromEntries(TCG_TYPES.map(t => [t, base.filter(c => c.types?.includes(t)).length]));
-  }, [isBrowseMode, browseFacetCounts, serverPrimaryDim, filterCounts, results, facetState]);
+  }, [isBrowseMode, algoliaFacets, browseFacetCounts, serverPrimaryDim, filterCounts, results, facetState]);
 
   // Region-Statistik im Kontext (Karten + Arten): Browse = katalogweit
   // (meta/region_stats), Suche = kreuzreaktiv aus den Treffern (alle anderen
   // aktiven Filter angewandt, ohne Region selbst; Arten = distinct Pokédex-Nr.).
   const regionStatInContext = useMemo<Record<string, { cards: number; species: number }> | null>(() => {
     if (isBrowseMode) {
+      // Algolia liefert Karten-Zähler je Region; Arten (distinct Dex-Nr.) sind kein
+      // Facet → aus den globalen regionStats als Näherung übernommen.
+      if (algoliaFacets) return Object.fromEntries(REGIONS.map(r =>
+        [r, { cards: algoliaFacets.regions[r] ?? 0, species: regionStats[r]?.species ?? 0 }]));
       if (browseFacetCounts && serverPrimaryDim !== 'region') return browseFacetCounts.regions;
       return Object.keys(regionStats).length ? regionStats : null;
     }
@@ -754,7 +797,7 @@ function CollectionContent() {
       const species = new Set(inR.map(c => c.nationalDexNumber).filter((n): n is number => typeof n === 'number')).size;
       return [r, { cards: inR.length, species }];
     }));
-  }, [isBrowseMode, browseFacetCounts, serverPrimaryDim, regionStats, results, facetState]);
+  }, [isBrowseMode, algoliaFacets, browseFacetCounts, serverPrimaryDim, regionStats, results, facetState]);
 
   // „Sonderformen" fasst alle Spezial-Mechaniken (GX/ex/V/VMAX/VSTAR/V-Union …)
   // zu EINEM Filter zusammen — aktiv = irgendeine Mechanik gewählt.
@@ -763,6 +806,7 @@ function CollectionContent() {
     if (isBrowseMode) {
       // Kreuzreaktiv aus der aktiven Auswahl, sofern verfügbar; sonst globaler
       // Katalog-Count (sonst zählte nur die aktuell geladene Seite → fälschlich 0).
+      if (algoliaFacets) return algoliaFacets.specialForms;
       if (browseFacetCounts && serverPrimaryDim !== 'special') return browseFacetCounts.specialForms;
       return filterCounts?.specialForms;
     }
@@ -770,7 +814,7 @@ function CollectionContent() {
     if (base.length === 0) return undefined;
     const keys = new Set<string>(SPECIAL_MECHANIC_KEYS as readonly string[]);
     return base.filter(c => c.subtypes?.some(s => keys.has(s))).length;
-  }, [isBrowseMode, browseFacetCounts, serverPrimaryDim, filterCounts, browseCards, results, facetState]);
+  }, [isBrowseMode, algoliaFacets, browseFacetCounts, serverPrimaryDim, filterCounts, browseCards, results, facetState]);
 
   // Typ-Optionen für den Mehrfach-Auswahl-Dropdown (Icon + DE-Label + Count +
   // Typfarbe für die Pills, 0-Treffer ausgegraut).
@@ -815,9 +859,10 @@ function CollectionContent() {
       // Kreuzreaktive Zähler (innerhalb der aktiven Auswahl, z.B. dieser Rarity),
       // sofern die Kartenart nicht selbst der server-primäre Filter ist; sonst
       // server-seitige Gesamt-Zähler (Fallback).
-      const sc = (browseFacetCounts && serverPrimaryDim !== 'supertype')
-        ? browseFacetCounts.supertypes
-        : filterCounts?.supertypes;
+      const sc = algoliaFacets ? algoliaFacets.supertype
+        : (browseFacetCounts && serverPrimaryDim !== 'supertype')
+          ? browseFacetCounts.supertypes
+          : filterCounts?.supertypes;
       return [
         { value: 'all',     label: 'Alle',    count: sc ? Object.values(sc).reduce((a, b) => a + b, 0) : undefined },
         { value: 'Pokémon', label: 'Pokémon', count: sc?.['Pokémon'] },
@@ -833,7 +878,7 @@ function CollectionContent() {
       { value: 'Trainer', label: 'Trainer', count: countFor('Trainer') },
       { value: 'Energy',  label: 'Energie', count: countFor('Energy') },
     ];
-  }, [isBrowseMode, browseFacetCounts, serverPrimaryDim, filterCounts, results, facetState]);
+  }, [isBrowseMode, algoliaFacets, browseFacetCounts, serverPrimaryDim, filterCounts, results, facetState]);
 
   const showTypePills = activeSupertype === 'all' || activeSupertype === 'Pokémon';
   const showEvolution = showTypePills;
@@ -943,7 +988,9 @@ function CollectionContent() {
               activeRarities={activeRarity ? new Set([activeRarity]) : new Set()}
               onToggle={label => setActiveRarity(prev => prev === label ? null : label)}
               rarityCounts={isBrowseMode
-                ? ((browseFacetCounts && serverPrimaryDim !== 'rarity') ? browseFacetCounts.rarities : filterCounts?.rarities)
+                ? (algoliaFacets ? algoliaFacets.rarities
+                   : (browseFacetCounts && serverPrimaryDim !== 'rarity') ? browseFacetCounts.rarities
+                   : filterCounts?.rarities)
                 : undefined}
               extraChips={showTypePills ? [{
                 key: 'special-forms',
