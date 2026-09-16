@@ -13,7 +13,7 @@ import { formatEUR } from '@/lib/format';
 import { useCatalogInfoMap } from '@/lib/hooks/use-catalog-info-map';
 import { getSetById } from '@/lib/firestore/sets';
 import { getRarityGroup } from '@/lib/card-constants';
-import { catalogCardToInfo, pendingCardInfo, ownedCardToInfo, resolveCardImage, type CardInfo } from '@/lib/card-info';
+import { catalogCardToInfo, pendingCardInfo, ownedCardToInfo, cardImageCandidates, type CardInfo } from '@/lib/card-info';
 import { getSetCardCountRest } from '@/lib/firestore/catalog-rest';
 import { SetListItem } from '@/components/set/SetListItem';
 import { ButtonGroup } from '@/components/ui/button-group';
@@ -197,9 +197,13 @@ export default function DashboardPage() {
     return best;
   }, [cards]);
   const heroCard = totalValue.loading ? null : (totalValue.topCard ?? rarestCard);
-  // Bild des Hero live aus dem Katalog auflösen (DE bevorzugt) statt eingefroren.
+  // Bild des Hero live auflösen (DE bevorzugt). VOLLE Kandidatenliste inkl. selbst
+  // gehostetem Storage-Fallback (`cardImageCandidates`) statt nur der Katalog-
+  // Bildfelder (`resolveCardImage`) — sonst bleibt der Hero bei Promo-Karten ohne
+  // TCGdex-Katalogbild leer (z.B. Meganie `mep-001`), obwohl das Storage-DE-Bild
+  // existiert und in der Suche/im Grid längst angezeigt wird.
   const heroInfo = heroCard ? ownedCardToInfo(heroCard, catalogById) : null;
-  const heroImgSrc = heroInfo ? (resolveCardImage(heroInfo) ?? '') : '';
+  const heroCandidates = heroInfo ? cardImageCandidates(heroInfo, { size: 'large' }) : [];
 
   return (
     <div className="relative min-h-screen">
@@ -237,7 +241,7 @@ export default function DashboardPage() {
             totalOwned={totalOwned ?? 0}
             thisWeek={thisWeek}
             totalValue={totalValue}
-            heroImgSrc={heroImgSrc}
+            heroCandidates={heroCandidates}
           />
         )}
 
@@ -376,17 +380,25 @@ export default function DashboardPage() {
 
 /** Wert-Hero: ersetzt die 3 TopStat-Kacheln durch eine große Karte mit
  *  Kartenanzahl (Hauptwert), Wochen-Delta-Chip und Gesamtwert-Fußzeile. */
-function ValueHero({ totalOwned, thisWeek, totalValue, heroImgSrc }: {
+function ValueHero({ totalOwned, thisWeek, totalValue, heroCandidates }: {
   totalOwned: number | null;
   thisWeek: number | null;
   totalValue: { loading: boolean; withPrice: number; total: number };
-  heroImgSrc: string;
+  heroCandidates: string[];
 }) {
   const valueLabel = totalValue.loading
     ? '—'
     : totalValue.withPrice > 0
       ? formatEUR(totalValue.total)
       : '—';
+
+  // Kandidaten der Reihe nach probieren (Katalog-DE/EN → Storage-Fallback); lädt
+  // eine URL nicht, springt onError zur nächsten. Reset bei Kartenwechsel.
+  const [imgIdx, setImgIdx] = useState(0);
+  const heroKey = heroCandidates.join('|');
+  const [prevKey, setPrevKey] = useState(heroKey);
+  if (heroKey !== prevKey) { setPrevKey(heroKey); setImgIdx(0); }
+  const heroImgSrc = heroCandidates[imgIdx];
 
   return (
     <div className="glass rounded-[24px] p-5 relative overflow-hidden">
@@ -396,6 +408,7 @@ function ValueHero({ totalOwned, thisWeek, totalValue, heroImgSrc }: {
           src={heroImgSrc}
           alt=""
           aria-hidden="true"
+          onError={() => setImgIdx(i => i + 1)}
           className="absolute pointer-events-none select-none"
           style={{
             top: -20,
