@@ -63,8 +63,9 @@ const MIN_COMBO_LEN = 3;
 const SEARCH_REVEAL_CHUNK = 20;
 
 // Suche/Filterung startet erst ab dieser Eingabelänge — darunter bleibt die
-// Ansicht im Browse-Modus (kein Fetch, keine „0 Treffer"-Anzeige bei 1 Zeichen).
-const MIN_SEARCH_CHARS = 2;
+// Ansicht im Browse-Modus (kein Fetch, keine „0 Treffer"-Anzeige bei 1–2 Zeichen).
+// Gleich der Autosuggest-Schwelle (suggest-index.ts: < 3 → keine Vorschläge).
+const MIN_SEARCH_CHARS = 3;
 
 // Limits sind reine Kosten-/Sicherheitsbremsen gegen einen extrem generischen
 // Suchbegriff (z.B. 1 Buchstabe), der sonst den ganzen Katalog laden würde —
@@ -179,15 +180,23 @@ function CollectionContent() {
   // ── Such-Scope (mobile-first Umbau): Karten | Pokémon | Illustrator ───────
   const [scope, setScope] = useState<'cards' | 'pokemon' | 'illustrator'>('cards');
   const [filterOpen, setFilterOpen] = useState(false);
+  // Pro Tab eigener Suchbegriff (+ nur Karten: eigene Filter). Beim Zurückwechseln
+  // wird der jeweilige Stand wiederhergestellt statt zurückgesetzt.
+  const queryStash    = useRef<Record<'cards' | 'pokemon' | 'illustrator', string>>({ cards: initialQ, pokemon: '', illustrator: '' });
+  const cardFilterStash = useRef<null | {
+    activeSupertype: Supertype | 'all'; activeTypes: Set<TcgType>; activeEvolutions: Set<string>;
+    activeSpecialMechanics: Set<string>; activeRarity: string | null; activeRegion: string;
+    filterSet: string; ownedFilter: OwnedFilter;
+  }>(null);
   const [pokemonSort, setPokemonSort] = useState<'name' | 'dex'>('dex');
   const [pokemonSortDir, setPokemonSortDir] = useState<'asc' | 'desc'>('asc');
+  // Trefferzahl des Illustrator-Scopes (von IllustratorResults gemeldet) für die
+  // Anzeige rechts neben dem Suchfeld.
+  const [illustratorCount, setIllustratorCount] = useState<number | null>(null);
 
   // ── UI-State ──────────────────────────────────────────────────
   const [filterCounts,     setFilterCounts]     = useState<FilterCounts | null>(null);
   const [browseTotal,      setBrowseTotal]      = useState<number | null>(null);
-  // Grabber-/Scroll-Kollaps über den geteilten Hook (1 Region, s.u.).
-  const panelRef    = useRef<HTMLDivElement>(null);
-  const gridWrapRef = useRef<HTMLDivElement>(null);
   const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sentinelRef    = useRef<HTMLDivElement>(null);
@@ -740,6 +749,13 @@ function CollectionContent() {
     : activeSupertype !== 'all' ? 'supertype'
     : 'none';
 
+  // Bei „Vorhanden" lädt useCardBrowser die Sammlung per ID (facetBase = ganze
+  // Owned-Menge, NICHT nach einer Dimension eingeengt) → die kreuzreaktiven
+  // `browseFacetCounts` sind dann für ALLE Dimensionen gültig, auch für die
+  // aktuell gewählte. Sonst fiele z.B. die Rarity fälschlich auf die GLOBALEN
+  // `filterCounts` zurück (zeigte 8 statt der 1 owned-Karte).
+  const facetPrimaryDim = ownedFilter === 'owned' ? 'none' : serverPrimaryDim;
+
   // Kreuzreaktive Kartenart-/Typ-Zähler im Stöber-Modus: „wie viele Trainer/
   // Pokémon/… gäbe es INNERHALB der aktuell aktiven Auswahl (z.B. dieser Rarity)".
   // Basis = server-gefilterte, vollständig geladene Treffermenge VOR den Client-
@@ -829,7 +845,7 @@ function CollectionContent() {
       // Algolia (kreuzreaktiv, deckt auch Breitfilter ab) hat Vorrang; 0-Werte
       // fehlen in der Algolia-Antwort → auf 0 normalisieren (→ deaktiviert).
       if (algoliaFacets) return Object.fromEntries(TCG_TYPES.map(t => [t, algoliaFacets.types[t] ?? 0]));
-      if (browseFacetCounts && serverPrimaryDim !== 'types') return browseFacetCounts.types;
+      if (browseFacetCounts && facetPrimaryDim !== 'types') return browseFacetCounts.types;
       return filterCounts?.types ?? null;
     }
     const base = applyFacetFilters(results, facetState, 'types');
@@ -845,7 +861,7 @@ function CollectionContent() {
       // Facet → aus den globalen regionStats als Näherung übernommen.
       if (algoliaFacets) return Object.fromEntries(REGIONS.map(r =>
         [r, { cards: algoliaFacets.regions[r] ?? 0, species: regionStats[r]?.species ?? 0 }]));
-      if (browseFacetCounts && serverPrimaryDim !== 'region') return browseFacetCounts.regions;
+      if (browseFacetCounts && facetPrimaryDim !== 'region') return browseFacetCounts.regions;
       return Object.keys(regionStats).length ? regionStats : null;
     }
     const base = applyFacetFilters(results, facetState, 'region');
@@ -864,7 +880,7 @@ function CollectionContent() {
       // Kreuzreaktiv aus der aktiven Auswahl, sofern verfügbar; sonst globaler
       // Katalog-Count (sonst zählte nur die aktuell geladene Seite → fälschlich 0).
       if (algoliaFacets) return algoliaFacets.specialForms;
-      if (browseFacetCounts && serverPrimaryDim !== 'special') return browseFacetCounts.specialForms;
+      if (browseFacetCounts && facetPrimaryDim !== 'special') return browseFacetCounts.specialForms;
       return filterCounts?.specialForms;
     }
     const base = applyFacetFilters(results, facetState, 'specialMechanics');
@@ -917,7 +933,7 @@ function CollectionContent() {
       // sofern die Kartenart nicht selbst der server-primäre Filter ist; sonst
       // server-seitige Gesamt-Zähler (Fallback).
       const sc = algoliaFacets ? algoliaFacets.supertype
-        : (browseFacetCounts && serverPrimaryDim !== 'supertype')
+        : (browseFacetCounts && facetPrimaryDim !== 'supertype')
           ? browseFacetCounts.supertypes
           : filterCounts?.supertypes;
       return [
@@ -950,9 +966,30 @@ function CollectionContent() {
     (activeTypes.size ? 1 : 0) + (activeRarity ? 1 : 0) + (activeRegion ? 1 : 0) +
     (activeSpecialMechanics.size ? 1 : 0) + (filterSet ? 1 : 0);
 
-  // Scope wechseln: beim Verlassen von „Karten" die Filter zurücksetzen + Sheet zu.
+  // Scope wechseln: Suchbegriff + Karten-Filter des aktuellen Tabs sichern, den
+  // des Ziel-Tabs wiederherstellen — jeder Tab führt seinen eigenen Stand.
   const changeScope = (s: 'cards' | 'pokemon' | 'illustrator') => {
-    if (s !== 'cards') {
+    if (s === scope) return;
+    // aktuellen Tab sichern
+    queryStash.current[scope] = inputValue;
+    if (scope === 'cards') {
+      cardFilterStash.current = {
+        activeSupertype, activeTypes, activeEvolutions, activeSpecialMechanics,
+        activeRarity, activeRegion, filterSet, ownedFilter,
+      };
+    }
+    // Ziel-Tab wiederherstellen
+    setInputValue(queryStash.current[s]);
+    if (s === 'cards') {
+      const f = cardFilterStash.current;
+      if (f) {
+        setActiveSupertype(f.activeSupertype); setActiveTypes(f.activeTypes); setActiveEvolutions(f.activeEvolutions);
+        setActiveSpecialMechanics(f.activeSpecialMechanics); setActiveRarity(f.activeRarity); setActiveRegion(f.activeRegion);
+        setFilterSet(f.filterSet); setOwnedFilter(f.ownedFilter);
+      }
+    } else {
+      // Karten-Filter aus dem aktiven State räumen (Grid/Badge sauber); der
+      // Snapshot bleibt im Stash und kehrt beim Zurückwechseln zurück.
       setActiveSupertype('all'); setActiveTypes(new Set()); setActiveEvolutions(new Set());
       setActiveSpecialMechanics(new Set()); setActiveRarity(null); setActiveRegion(''); setFilterSet('');
       setOwnedFilter('all'); setFilterOpen(false);
@@ -976,8 +1013,7 @@ function CollectionContent() {
     <div className="flex flex-col min-h-screen">
 
       {/* ── Sticky Header ──────────────────────────────────────── */}
-      {/* ── Sticky Header ──────────────────────────────────────── */}
-      <div ref={panelRef} className="sticky top-safe z-20 mx-3 mt-2 glass rounded-[20px] px-4 pt-3 pb-3 space-y-2">
+      <div className="sticky top-[calc(env(safe-area-inset-top,0px)_+_0.5rem)] z-20 mx-3 mt-2 glass rounded-[20px] px-4 pt-3 pb-3 space-y-2">
 
         {/* Scope-Switch: Karten | Pokémon | Illustrator */}
         <ButtonGroup
@@ -1017,6 +1053,11 @@ function CollectionContent() {
               )}
             </div>
           )}
+          {scope === 'illustrator' && illustratorCount != null && (
+            <span className="text-sm font-semibold text-glass tabular-nums shrink-0">
+              {illustratorCount.toLocaleString('de')} Illustratoren
+            </span>
+          )}
         </div>
 
         {/* Sortierung + Ergebniszahl je Scope (Illustrator: keine, immer Name asc) */}
@@ -1055,7 +1096,7 @@ function CollectionContent() {
       <Sheet
         open={filterOpen}
         onClose={() => setFilterOpen(false)}
-        title="Filter"
+        title={`Filter${resultCount != null ? ` (${resultCount})` : ''}`}
         dragToClose
         footer={
           <div className="flex gap-2">
@@ -1137,7 +1178,7 @@ function CollectionContent() {
             onToggle={label => setActiveRarity(prev => prev === label ? null : label)}
             rarityCounts={isBrowseMode
               ? (algoliaFacets ? algoliaFacets.rarities
-                 : (browseFacetCounts && serverPrimaryDim !== 'rarity') ? browseFacetCounts.rarities
+                 : (browseFacetCounts && facetPrimaryDim !== 'rarity') ? browseFacetCounts.rarities
                  : filterCounts?.rarities)
               : undefined}
             extraChips={showTypePills ? [{
@@ -1177,7 +1218,7 @@ function CollectionContent() {
       </Sheet>
 
       {/* ── Content ─────────────────────────────────────────────── */}
-      <div ref={gridWrapRef} className="flex-1 px-3 py-3">
+      <div className="flex-1 px-3 py-3">
 
         {/* Pokémon-Scope: Pokédex-Grid (alle 1025 Spezies) */}
         {scope === 'pokemon' && (
@@ -1190,7 +1231,7 @@ function CollectionContent() {
         )}
 
         {/* Illustrator-Scope: Profil-Liste */}
-        {scope === 'illustrator' && <IllustratorResults query={inputValue} />}
+        {scope === 'illustrator' && <IllustratorResults query={inputValue} onCount={setIllustratorCount} />}
 
         {/* ── Karten-Scope: Suche/Browse wie bisher ── */}
         {scope === 'cards' && (<>

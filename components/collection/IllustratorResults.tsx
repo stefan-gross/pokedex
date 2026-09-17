@@ -13,7 +13,7 @@ interface ArtistRow { slug: string; name: string; photoUrl: string | null }
 // Prozess-weiter Cache, damit ein Scope-Wechsel nicht neu lädt.
 let cache: ArtistRow[] | null = null;
 
-export function IllustratorResults({ query }: { query: string }) {
+export function IllustratorResults({ query, onCount }: { query: string; onCount?: (n: number | null) => void }) {
   const [all, setAll] = useState<ArtistRow[]>(cache ?? []);
   const [loading, setLoading] = useState(!cache);
 
@@ -29,6 +29,10 @@ export function IllustratorResults({ query }: { query: string }) {
 
   const q = query.trim().toLowerCase();
   const rows = useMemo(() => (q ? all.filter(a => a.name.toLowerCase().includes(q)) : all), [all, q]);
+
+  // Trefferzahl an den Aufrufer melden (Header-Anzeige rechts neben dem Suchfeld);
+  // während des Ladens `null`, damit dort nichts Falsches steht.
+  useEffect(() => { onCount?.(loading ? null : rows.length); }, [loading, rows.length, onCount]);
 
   if (loading) return <p className="text-role-body text-glass-muted px-1 py-6 text-center">Illustratoren werden geladen …</p>;
   if (rows.length === 0) return <p className="text-role-body text-glass-muted px-1 py-6 text-center">Keine Illustratoren gefunden.</p>;
