@@ -12,7 +12,12 @@ const UA = 'pokedex-app/1.0 (private family use; wiki enrichment)';
 const PW_API = 'https://www.pokewiki.de/api.php';
 const BP_API = 'https://bulbapedia.bulbagarden.net/w/api.php';
 const PW_PAGE = (n: string) => `https://www.pokewiki.de/wiki/${encodeURIComponent(n.replace(/\s+/g, '_'))}`;
-const BP_PAGE = (n: string) => `https://bulbapedia.bulbagarden.net/wiki/${encodeURIComponent(n.replace(/\s+/g, '_'))}`;
+const BP_PAGE = (title: string) => `https://bulbapedia.bulbagarden.net/wiki/${encodeURIComponent(title.replace(/\s+/g, '_'))}`;
+
+/** PokéWiki-Text nur übernehmen, wenn er plausibel einen Illustrator/Karten
+ *  beschreibt (der reine Name kann sonst auf eine Charakter-/Begriffsklärungs-
+ *  Seite führen — analog zum Bulbapedia-„Rika"-Problem). */
+const looksLikeIllustrator = (t: string) => /illustrat|sammelkart|zeichner|künstler|grafiker|designer|mangaka/i.test(t);
 
 export interface ArtistSources {
   pokewikiDe: string;
@@ -60,13 +65,23 @@ async function bulbapedia(name: string): Promise<{ text: string; photo: string |
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-export async function fetchArtistSources(name: string): Promise<ArtistSources> {
-  const [pw, bp] = await Promise.all([pokewikiIntro(name), bulbapedia(name)]);
+/**
+ * `bulbaTitle` = exakter Bulbapedia-Seitentitel aus der Illustrator-Kategorie
+ * (siehe bulbapedia-index.ts). `null` = kein Illustrator-Eintrag → Bulbapedia
+ * wird NICHT über den Namen geraten (das führte bei mehrdeutigen Namen wie
+ * „Rika" auf die falsche Seite).
+ */
+export async function fetchArtistSources(name: string, bulbaTitle: string | null): Promise<ArtistSources> {
+  const [pwRaw, bp] = await Promise.all([
+    pokewikiIntro(name),
+    bulbaTitle ? bulbapedia(bulbaTitle) : Promise.resolve({ text: '', photo: null }),
+  ]);
+  const pw = looksLikeIllustrator(pwRaw) ? pwRaw : '';
   return {
     pokewikiDe: pw,
     pokewikiUrl: pw ? PW_PAGE(name) : null,
     bulbapediaEn: bp.text,
-    bulbapediaUrl: bp.text ? BP_PAGE(name) : null,
+    bulbapediaUrl: bp.text && bulbaTitle ? BP_PAGE(bulbaTitle) : null,
     photoUrl: bp.photo,
   };
 }

@@ -8,6 +8,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getStorage } from 'firebase-admin/storage';
 import { getAdminDb } from '@/lib/firebase/admin';
 import { fetchArtistSources } from './sources';
+import { fetchIllustratorTitleIndex, resolveBulbaTitle } from './bulbapedia-index';
 import { artistSlug } from './slug';
 import { ARTISTS_COL, type ArtistProfile, type ArtistSourceRef } from '@/lib/firestore/artists';
 
@@ -62,7 +63,9 @@ Extrahiere zusätzlich strukturierte Fakten NUR wenn sie in den Texten GENANNT s
 /** Reichert einen Illustrator an und schreibt das Profil. `null`, wenn zu beiden
  *  Quellen nichts gefunden wurde (dann kein Profil-Doc). */
 export async function enrichArtist(name: string): Promise<ArtistProfile | null> {
-  const src = await fetchArtistSources(name);
+  const index = await fetchIllustratorTitleIndex();
+  const bulbaTitle = resolveBulbaTitle(index, name);
+  const src = await fetchArtistSources(name, bulbaTitle);
   if (!src.pokewikiDe && !src.bulbapediaEn) return null;
 
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
