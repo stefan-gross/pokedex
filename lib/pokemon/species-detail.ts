@@ -24,6 +24,15 @@ const GENERATION_REGIONS: Record<string, string> = {
   '6': 'Kalos', '7': 'Alola', '8': 'Galar', '9': 'Paldea',
 };
 
+export interface BaseStats {
+  hp: number; attack: number; defense: number; spAttack: number; spDefense: number; speed: number;
+}
+
+export interface EvoStep {
+  dex: number;
+  stage: number;          // 0 = Basis, 1 = Phase 1, 2 = Phase 2, …
+}
+
 export interface SpeciesDetail {
   dex: number;
   genus: string;          // z.B. "Maus-Pokémon"
@@ -35,8 +44,16 @@ export interface SpeciesDetail {
   abilities: { name: string; hidden: boolean }[];
   isLegendary: boolean;
   isMythical: boolean;
-  evolution: number[];    // Dex-Nummern der Evolutionslinie (Reihenfolge)
+  stats: BaseStats | null;   // Basiswerte
+  catchRate: number | null;  // Fangrate (0–255)
+  genderRate: number | null; // -1 = geschlechtslos, sonst Weibchen-Anteil in Achteln (0–8)
+  evolution: EvoStep[];      // Evolutionslinie mit Entwicklungsstufe
 }
+
+const STAT_KEY: Record<string, keyof BaseStats> = {
+  hp: 'hp', attack: 'attack', defense: 'defense',
+  'special-attack': 'spAttack', 'special-defense': 'spDefense', speed: 'speed',
+};
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 async function abilityNameDE(url: string): Promise<string | null> {
@@ -66,8 +83,11 @@ export async function fetchSpeciesDetail(dex: number): Promise<SpeciesDetail | n
     const region = GENERATION_REGIONS[genId] ?? '';
     const isLegendary = !!sd.is_legendary;
     const isMythical = !!sd.is_mythical;
+    const catchRate = typeof sd.capture_rate === 'number' ? sd.capture_rate : null;
+    const genderRate = typeof sd.gender_rate === 'number' ? sd.gender_rate : null;
 
     let height = 0, weight = 0, typesDe: string[] = [], abilities: { name: string; hidden: boolean }[] = [];
+    let stats: BaseStats | null = null;
     if (pr.ok) {
       const pd: any = await pr.json();
       height = pd.height ?? 0;
@@ -79,29 +99,32 @@ export async function fetchSpeciesDetail(dex: number): Promise<SpeciesDetail | n
       const raw = (pd.abilities ?? []) as any[];
       const names = await Promise.all(raw.map(a => abilityNameDE(a.ability?.url)));
       abilities = raw.map((a, i) => ({ name: names[i] ?? a.ability?.name ?? '', hidden: !!a.is_hidden })).filter(a => a.name);
+      const rawStats = (pd.stats ?? []) as { base_stat: number; stat: { name: string } }[];
+      const entries = rawStats.map(s => [STAT_KEY[s.stat?.name], s.base_stat] as const).filter(([k]) => k);
+      if (entries.length === 6) stats = Object.fromEntries(entries) as unknown as BaseStats;
     }
 
-    // Evolutionslinie (flach, Reihenfolge der Kette)
-    let evolution: number[] = [dex];
+    // Evolutionslinie mit Entwicklungsstufe (Tiefe im Evolutionsbaum)
+    let evolution: EvoStep[] = [{ dex, stage: 0 }];
     try {
       const ecUrl = sd.evolution_chain?.url;
       if (ecUrl) {
         const cr = await fetch(ecUrl, { signal: AbortSignal.timeout(6000) });
         if (cr.ok) {
           const cd: any = await cr.json();
-          const out: number[] = [];
-          const walk = (n: any) => {
+          const out: EvoStep[] = [];
+          const walk = (n: any, stage: number) => {
             const id = parseInt(n.species?.url?.split('/').filter(Boolean).pop() ?? '0', 10);
-            if (id > 0) out.push(id);
-            (n.evolves_to ?? []).forEach(walk);
+            if (id > 0) out.push({ dex: id, stage });
+            (n.evolves_to ?? []).forEach((c: any) => walk(c, stage + 1));
           };
-          walk(cd.chain);
+          walk(cd.chain, 0);
           if (out.length) evolution = out;
         }
       }
     } catch { /* Evolution optional */ }
 
-    return { dex, genus, flavorText, height, weight, region, typesDe, abilities, isLegendary, isMythical, evolution };
+    return { dex, genus, flavorText, height, weight, region, typesDe, abilities, isLegendary, isMythical, stats, catchRate, genderRate, evolution };
   } catch { return null; }
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

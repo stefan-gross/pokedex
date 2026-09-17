@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ChevronLeft, LayoutGrid } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutGrid } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { pokemonArtworkUrl } from '@/lib/binder-icons';
 import { getCardsByDexNumberRest } from '@/lib/firestore/catalog-rest';
-import { fetchSpeciesDetail, type SpeciesDetail } from '@/lib/pokemon/species-detail';
+import { fetchSpeciesDetail, type SpeciesDetail, type EvoStep } from '@/lib/pokemon/species-detail';
 import SPECIES_JSON from '@/lib/pokemon-species-de.json';
 
 const SPECIES = SPECIES_JSON as { dex: number; name: string }[];
@@ -16,6 +16,20 @@ const speciesName = (dex: number) => NAME_BY_DEX.get(dex) ?? `#${dex}`;
 const padDex = (dex: number) => `#${String(dex).padStart(4, '0')}`;
 const fmtM = (dm: number) => `${(dm / 10).toLocaleString('de', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m`;
 const fmtKg = (hg: number) => `${(hg / 10).toLocaleString('de', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kg`;
+
+/** Entwicklungsstufe → TCG-Label (Basis / Phase 1 / Phase 2 …); -1 = unbekannt. */
+const stageLabel = (stage: number) => stage < 0 ? null : stage === 0 ? 'Basis' : `Phase ${stage}`;
+
+/** gender_rate (-1..8, Weibchen-Achtel) → deutsches Label. */
+function genderLabel(rate: number | null): string | null {
+  if (rate == null) return null;
+  if (rate < 0) return 'Geschlechtslos';
+  const female = Math.round((rate / 8) * 100);
+  if (female === 0) return '100 % ♂';
+  if (female === 100) return '100 % ♀';
+  return `${100 - female} % ♂ · ${female} % ♀`;
+}
+
 
 /** Aus dem Katalog übernommene (deutsche) Textfakten — bevorzugt vor PokéAPI. */
 interface CatalogFacts {
@@ -33,6 +47,7 @@ export default function PokemonDetailPage() {
   const name = speciesName(dex);
   const [detail, setDetail] = useState<SpeciesDetail | null>(null);
   const [cat, setCat] = useState<CatalogFacts | null>(null);
+  const [wiki, setWiki] = useState<{ text: string; url: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [artOk, setArtOk] = useState(true);
 
@@ -42,6 +57,7 @@ export default function PokemonDetailPage() {
     setArtOk(true);
     setDetail(null);
     setCat(null);
+    setWiki(null);
     let alive = true;
 
     // Firestore-First: deutsche Textfakten + Evolutionslinie aus dem Katalog.
@@ -66,6 +82,12 @@ export default function PokemonDetailPage() {
       .then(d => { if (alive) { setDetail(d); setLoading(false); } })
       .catch(() => { if (alive) setLoading(false); });
 
+    // PokéWiki: deutscher Fließtext (Intro) als Hauptbeschreibung (serverseitig).
+    fetch(`/api/pokemon/${dex}/wiki`)
+      .then(r => r.ok ? r.json() : { intro: null })
+      .then(d => { if (alive) setWiki(d.intro ?? null); })
+      .catch(() => {});
+
     return () => { alive = false; };
   }, [dex]);
 
@@ -77,7 +99,13 @@ export default function PokemonDetailPage() {
   const region = cat?.region || detail?.region || '';
   const types = detail?.typesDe ?? [];
   const abilities = detail?.abilities ?? [];
-  const evolution = (cat?.evolutionFamily?.length ? cat.evolutionFamily : detail?.evolution) ?? [];
+  // Beschreibung: PokéWiki-Fließtext bevorzugt, sonst kurzer PokéAPI-/Katalog-Text.
+  const description = wiki?.text || flavor;
+  // Evolutionslinie: PokéAPI (mit Stufe) bevorzugt; Katalog-Familie nur als
+  // Fallback (ohne bekannte Stufe → stage -1, kein Badge).
+  const evolution: EvoStep[] = detail?.evolution?.length
+    ? detail.evolution
+    : (cat?.evolutionFamily ?? []).map(d => ({ dex: d, stage: -1 }));
 
   const badge = detail?.isMythical ? 'Mysteriöses Pokémon' : detail?.isLegendary ? 'Legendäres Pokémon' : null;
   const facts: [string, string | null][] = [
@@ -87,6 +115,8 @@ export default function PokemonDetailPage() {
     ['Gewicht', weight ? fmtKg(weight) : null],
     ['Region', region || null],
     ['Fähigkeiten', abilities.length ? abilities.map(a => a.name + (a.hidden ? ' (versteckt)' : '')).join(', ') : null],
+    ['Geschlecht', genderLabel(detail?.genderRate ?? null)],
+    ['Fangrate', detail?.catchRate != null ? String(detail.catchRate) : null],
     ['Status', badge],
   ];
 
@@ -100,7 +130,7 @@ export default function PokemonDetailPage() {
 
         {/* Header wie Set-Header: großes Artwork links, Name + Dex-Nr. rechts */}
         <div className="flex items-center gap-4">
-          <div className="w-36 shrink-0 rounded-xl overflow-hidden bg-[rgba(120,130,150,0.14)] flex items-center justify-center aspect-square">
+          <div className="w-36 shrink-0 flex items-center justify-center aspect-square">
             {artOk ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -117,9 +147,9 @@ export default function PokemonDetailPage() {
           </div>
         </div>
 
-        {/* Beschreibung über die volle Breite */}
-        {flavor ? (
-          <p className="text-role-body text-glass">{flavor}</p>
+        {/* Beschreibung (PokéWiki-Fließtext) über die volle Breite */}
+        {description ? (
+          <p className="text-role-body text-glass whitespace-pre-line">{description}</p>
         ) : loading ? (
           <p className="text-role-body text-glass-muted">Wird geladen …</p>
         ) : (
@@ -138,33 +168,41 @@ export default function PokemonDetailPage() {
           </dl>
         )}
 
-        {/* Entwicklung */}
+        {/* Entwicklung — Kacheln mit Stufen-Badge, dazwischen ein Pfeil */}
         {evolution.length > 1 && (
           <div>
             <h2 className="text-role-h2 text-glass mb-2">Entwicklung</h2>
-            <div className="flex flex-wrap gap-2">
-              {evolution.map(d => {
-                const active = d === dex;
+            <div className="flex items-start gap-1 overflow-x-auto -mx-1 px-1 pb-1">
+              {evolution.map((step, i) => {
+                const active = step.dex === dex;
+                const label = stageLabel(step.stage);
                 return (
-                  <Link
-                    key={d}
-                    href={`/pokemon/${d}`}
-                    className={`flex flex-col items-center gap-1 rounded-2xl p-2 w-24 ${active ? 'glass' : 'glass-inner'} active:scale-[.97] transition-transform`}
-                    aria-current={active ? 'page' : undefined}
-                  >
-                    <span className="w-full aspect-square flex items-center justify-center">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={pokemonArtworkUrl(d)}
-                        alt={speciesName(d)}
-                        loading="lazy"
-                        className="w-full h-full object-contain"
-                        onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                      />
-                    </span>
-                    <span className="text-role-label text-glass truncate max-w-full text-center leading-tight">{speciesName(d)}</span>
-                    <span className="text-role-badge text-glass-muted tabular-nums">{padDex(d)}</span>
-                  </Link>
+                  <div key={`${step.dex}-${i}`} className="flex items-center gap-1 shrink-0">
+                    {i > 0 && <ChevronRight size={18} className="text-glass-muted shrink-0" />}
+                    <Link
+                      href={`/pokemon/${step.dex}`}
+                      className={`relative flex flex-col items-center gap-1 rounded-[8px] p-2 w-24 shrink-0 ${active ? 'glass' : 'glass-inner'} active:scale-[.97] transition-transform`}
+                      aria-current={active ? 'page' : undefined}
+                    >
+                      {label && (
+                        <span className="absolute top-0 left-0 px-1.5 py-0.5 rounded-br-lg rounded-tl-[8px] text-[10px] italic font-bold leading-none text-glass-muted bg-[rgba(120,130,150,0.18)]">
+                          {label}
+                        </span>
+                      )}
+                      <span className="w-full aspect-square flex items-center justify-center">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={pokemonArtworkUrl(step.dex)}
+                          alt={speciesName(step.dex)}
+                          loading="lazy"
+                          className="w-full h-full object-contain"
+                          onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                        />
+                      </span>
+                      <span className="text-role-label text-glass truncate max-w-full text-center leading-tight">{speciesName(step.dex)}</span>
+                      <span className="text-role-badge text-glass-muted tabular-nums">{padDex(step.dex)}</span>
+                    </Link>
+                  </div>
                 );
               })}
             </div>
@@ -183,6 +221,13 @@ export default function PokemonDetailPage() {
 
         {/* Quellen / Lizenz */}
         <p className="pt-3 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.12] text-[11px] leading-relaxed text-glass-muted">
+          {wiki && (
+            <>
+              Beschreibung:{' '}
+              {/* eslint-disable-next-line react/jsx-no-target-blank */}
+              <a href={wiki.url} target="_blank" rel="noopener" className="underline">PokéWiki</a> (CC BY-SA 3.0).{' '}
+            </>
+          )}
           Daten:{' '}
           {/* eslint-disable-next-line react/jsx-no-target-blank */}
           <a href="https://pokeapi.co" target="_blank" rel="noopener" className="underline">PokéAPI</a>.
