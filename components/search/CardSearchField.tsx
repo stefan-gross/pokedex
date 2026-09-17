@@ -32,6 +32,7 @@ export function CardSearchField({
   autoFocus,
   suggestLimit = 5,
   inlineComplete = false,
+  enableSuggest = true,
   className,
 }: {
   value: string;
@@ -46,6 +47,9 @@ export function CardSearchField({
   /** Inline-Autocomplete (Ghost-Text): der oberste Vorschlag wird als
    *  ausgegrauter Rest hinter der Eingabe gezeigt; Enter oder →/Tab übernimmt. */
   inlineComplete?: boolean;
+  /** Karten-Autosuggest-Panel (Karte/Illustrator/Set) an/aus — in Nicht-Karten-
+   *  Kontexten (z.B. Pokémon-/Illustrator-Scope) abschaltbar. */
+  enableSuggest?: boolean;
   className?: string;
 }) {
   const suggestIndex = useSuggestIndex();
@@ -53,7 +57,7 @@ export function CardSearchField({
   const boxRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
 
-  const suggestions = focused ? suggest(suggestIndex, value, suggestLimit) : [];
+  const suggestions = enableSuggest && focused ? suggest(suggestIndex, value, suggestLimit) : [];
 
   // Inline-Autocomplete: der oberste Vorschlag, sofern er ein echtes Präfix zur
   // aktuellen Eingabe ist (unser Ranking stellt exakte/kürzeste Präfixe nach

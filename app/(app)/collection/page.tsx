@@ -10,10 +10,15 @@ import { ButtonGroup } from '@/components/ui/button-group';
 import { CardSearchField } from '@/components/search/CardSearchField';
 import { SearchableSelect, MultiSelect, CustomSelect } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Grabber } from '@/components/ui/Grabber';
+import { Sheet } from '@/components/ui/modal';
+import { Button } from '@/components/ui/button';
 import { ScrollToTopButton } from '@/components/ui/ScrollToTopButton';
 import { LegendButton } from '@/components/ui/LegendButton';
-import { useGrabberCollapse } from '@/lib/hooks/use-grabber-collapse';
+import { SpeciesGrid } from '@/components/collection/SpeciesGrid';
+import { IllustratorResults } from '@/components/collection/IllustratorResults';
+import SPECIES_JSON from '@/lib/pokemon-species-de.json';
+
+const SPECIES_LIST = SPECIES_JSON as { dex: number; name: string }[];
 import { getCards } from '@/lib/firestore/cards';
 import type { FilterCounts, CatalogCard } from '@/lib/firestore/catalog';
 // REST-Varianten (kein WebChannel-Cold-Start) — Aliase, Aufrufstellen unverändert.
@@ -94,6 +99,12 @@ const SEARCH_SORT_OPTIONS: { value: SearchSortKey; label: string }[] = [
   { value: 'price',   label: 'Preis'       },
 ];
 
+// Pokémon-Scope: nur Name / Pokédex-Nummer.
+const POKEMON_SORT_OPTIONS: { value: 'name' | 'dex'; label: string }[] = [
+  { value: 'dex',  label: 'Pokédex-Nr.' },
+  { value: 'name', label: 'Name'        },
+];
+
 // Pokémon-Regionen (deutsch, aus der Generation abgeleitet — siehe
 // GENERATION_REGIONS in lib/pokeapi.ts). Reihenfolge = Generationen.
 const REGIONS = ['Kanto', 'Johto', 'Hoenn', 'Sinnoh', 'Einall', 'Kalos', 'Alola', 'Galar', 'Paldea'];
@@ -164,6 +175,12 @@ function CollectionContent() {
   const [sortCounts,    setSortCounts]    = useState<{ pokedex: number; hp: number }>({ pokedex: 0, hp: 0 });
   const [searchVisibleCount, setSearchVisibleCount] = useState(20);
   const searchSentinelRef = useRef<HTMLDivElement>(null);
+
+  // ── Such-Scope (mobile-first Umbau): Karten | Pokémon | Illustrator ───────
+  const [scope, setScope] = useState<'cards' | 'pokemon' | 'illustrator'>('cards');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [pokemonSort, setPokemonSort] = useState<'name' | 'dex'>('dex');
+  const [pokemonSortDir, setPokemonSortDir] = useState<'asc' | 'desc'>('asc');
 
   // ── UI-State ──────────────────────────────────────────────────
   const [filterCounts,     setFilterCounts]     = useState<FilterCounts | null>(null);
@@ -502,7 +519,9 @@ function CollectionContent() {
     // Ladezustand SOFORT beim Tippen setzen (nicht erst im Fetch) — sonst blieben
     // während der 350ms-Debounce die alten Treffer stehen. So erscheint das
     // Karten-Skeleton unmittelbar und bleibt bis die neuen Ergebnisse da sind.
-    const enoughChars = inputValue.trim().length >= MIN_SEARCH_CHARS;
+    // Nur im Karten-Scope die Karten-Such-Pipeline nutzen; Pokémon/Illustrator
+    // filtern client-seitig ihre eigene Liste (kein Backend-Query).
+    const enoughChars = scope === 'cards' && inputValue.trim().length >= MIN_SEARCH_CHARS;
     if (enoughChars) setSearchLoading(true);
     debounceRef.current = setTimeout(() => {
       // Unter der Schwelle NICHT suchen — leere Suche räumt Treffer weg, die
@@ -514,7 +533,7 @@ function CollectionContent() {
       );
     }, 350);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [inputValue, doSearch, router]);
+  }, [inputValue, scope, doSearch, router]);
 
   // `q` aus der URL in die Eingabe übernehmen, wenn er sich EXTERN ändert (z.B.
   // Klick auf den Illustrator im Kartendetail navigiert auf /collection?q=…,
@@ -925,151 +944,83 @@ function CollectionContent() {
   // alle Filter außer Rarity selbst)
   const rarityCards  = isBrowseMode ? browseCards : applyFacetFilters(results, facetState, 'rarity');
 
-  // Grabber-/Scroll-Kollaps (1 Region: Set/Supertyp/Typ/Rarity/Stufen/Sonderformen).
-  const { stage, registerRegion, regionStyle, grabberProps } = useGrabberCollapse({
-    regionCount: 1,
-    panelRef,
-    gridWrapRef,
-    measureDeps: [isBrowseMode, showTypePills, showEvolution, sets.length, activeSupertype],
-  });
+  // Aktive Filter-Anzahl (für das Badge am Filter-Icon).
+  const activeFilterCount =
+    (ownedFilter !== 'all' ? 1 : 0) + (activeSupertype !== 'all' ? 1 : 0) +
+    (activeTypes.size ? 1 : 0) + (activeRarity ? 1 : 0) + (activeRegion ? 1 : 0) +
+    (activeSpecialMechanics.size ? 1 : 0) + (filterSet ? 1 : 0);
+
+  // Scope wechseln: beim Verlassen von „Karten" die Filter zurücksetzen + Sheet zu.
+  const changeScope = (s: 'cards' | 'pokemon' | 'illustrator') => {
+    if (s !== 'cards') {
+      setActiveSupertype('all'); setActiveTypes(new Set()); setActiveEvolutions(new Set());
+      setActiveSpecialMechanics(new Set()); setActiveRarity(null); setActiveRegion(''); setFilterSet('');
+      setOwnedFilter('all'); setFilterOpen(false);
+    }
+    setScope(s);
+  };
+
+  // Pokémon-Scope: gefilterte Anzahl (für die Sortier-/Zähl-Zeile).
+  const pokemonCount = useMemo(() => {
+    if (scope !== 'pokemon') return 0;
+    const q = inputValue.trim().toLowerCase();
+    if (!q) return SPECIES_LIST.length;
+    const num = q.replace(/^#/, '');
+    const numeric = /^\d+$/.test(num);
+    return SPECIES_LIST.filter(p => p.name.toLowerCase().includes(q) || (numeric && String(p.dex).includes(num))).length;
+  }, [scope, inputValue]);
+
+  const placeholder = scope === 'pokemon' ? 'Pokémon suchen' : scope === 'illustrator' ? 'Illustrator suchen' : 'Name, Illustrator … oder stöbern';
 
   return (
     <div className="flex flex-col min-h-screen">
 
       {/* ── Sticky Header ──────────────────────────────────────── */}
       {/* ── Sticky Header ──────────────────────────────────────── */}
-      <div ref={panelRef} className="sticky top-safe z-20 mx-3 mt-2 glass rounded-[20px] px-4 pt-4 pb-3 space-y-2">
+      <div ref={panelRef} className="sticky top-safe z-20 mx-3 mt-2 glass rounded-[20px] px-4 pt-3 pb-3 space-y-2">
 
-        {/* Suchfeld inkl. Autosuggest — geteilte Komponente (gleiche Suche
-            app-weit). Enter führt die Suche sofort aus (Debounce überspringen). */}
-        <CardSearchField
-          size="lg"
-          value={inputValue}
-          onChange={setInputValue}
-          onClear={clearSearch}
-          onSubmit={q => { if (debounceRef.current) clearTimeout(debounceRef.current); doSearch(q.trim().length >= MIN_SEARCH_CHARS ? q : ''); }}
-          placeholder="Name, Illustrator … oder stöbern"
-          inlineComplete
-        />
-
-        {/* Owned (Alle|Vorhanden|Fehlen) — immer sichtbar */}
+        {/* Scope-Switch: Karten | Pokémon | Illustrator */}
         <ButtonGroup
-          options={ownedOptions.map(o => ({ ...o, disabled: o.count === 0 }))}
-          value={ownedFilter}
-          onChange={v => setOwnedFilter(v as OwnedFilter)}
+          options={[
+            { value: 'cards',       label: 'Karten'      },
+            { value: 'pokemon',     label: 'Pokémon'     },
+            { value: 'illustrator', label: 'Illustrator' },
+          ]}
+          value={scope}
+          onChange={v => changeScope(v as 'cards' | 'pokemon' | 'illustrator')}
         />
 
-        {/* Kollaps-Region (1): Supertyp + Typ + Rarity + Evolutionslinie +
-            Sonderformen + Set — per Griff/Scroll ein-/ausklappbar. Suchfeld,
-            Owned und Sortierung/Anzahl bleiben immer sichtbar. */}
-        <div style={regionStyle(0)} className="overflow-hidden">
-          <div ref={registerRegion(0)} className="flex flex-col gap-2 pt-0.5 pb-2">
-            {/* Supertyp (Alle|Pokémon|Trainer|Energie) als Einfach-Auswahl-Dropdown */}
-            <CustomSelect
-              value={activeSupertype}
-              onChange={v => { setActiveSupertype(v as Supertype | 'all'); setActiveTypes(new Set()); setActiveEvolutions(new Set()); }}
-              onClear={activeSupertype !== 'all' ? () => { setActiveSupertype('all'); setActiveTypes(new Set()); setActiveEvolutions(new Set()); } : undefined}
-              options={supertypeOptions.map(o => ({
-                value: o.value,
-                label: o.label,
-                count: o.count,
-                disabled: o.count === 0 && o.value !== 'all',
-              }))}
-              height="sm"
-              fullWidth
-              aria-label="Kartenart"
-            />
-
-            {/* Pokémon-Typ als Mehrfach-Auswahl-Dropdown (Auswahl als Pills) */}
-            {showTypePills && (
-              <MultiSelect
-                values={[...activeTypes]}
-                onChange={vals => setActiveTypes(new Set(vals))}
-                options={typeOptions}
-                placeholder="Alle Typen"
-                aria-label="Pokémon-Typ"
-              />
-            )}
-
-            {/* Pokémon-Region (nur Pokémon haben eine Region → im Pokémon/Alle-Kontext). */}
-            {showTypePills && (
-              <CustomSelect
-                value={activeRegion}
-                onChange={v => setActiveRegion(v)}
-                onClear={activeRegion ? () => setActiveRegion('') : undefined}
-                options={[
-                  { value: '', label: 'Alle Regionen' },
-                  ...REGIONS.map(r => {
-                    const s = regionStatInContext?.[r];
-                    return {
-                      value: r,
-                      label: r,
-                      // Rechts: „Karten (Arten)" — z.B. „4.720 (151)".
-                      hint: s ? `${s.cards.toLocaleString('de')} (${s.species})` : undefined,
-                      disabled: s?.cards === 0,
-                    };
-                  }),
-                ]}
-                height="sm"
-                fullWidth
-                aria-label="Region"
-              />
-            )}
-
-            {/* Rarity — Browse: globale Firestore-Counts; Suche: aus Ergebnissen.
-                „Sonderformen" läuft als zusätzlicher Chip am Ende der Rarity-Leiste
-                mit (gleiche Optik wie z.B. Promo), fasst alle Spezial-Mechaniken
-                (GX/ex/V/VMAX/VSTAR/V-Union …) zu EINEM Filter zusammen. */}
-            <RarityFilterBar
-              cards={rarityCards}
-              ownedIds={ownedIds}
-              activeRarities={activeRarity ? new Set([activeRarity]) : new Set()}
-              onToggle={label => setActiveRarity(prev => prev === label ? null : label)}
-              rarityCounts={isBrowseMode
-                ? (algoliaFacets ? algoliaFacets.rarities
-                   : (browseFacetCounts && serverPrimaryDim !== 'rarity') ? browseFacetCounts.rarities
-                   : filterCounts?.rarities)
-                : undefined}
-              extraChips={showTypePills ? [{
-                key: 'special-forms',
-                label: 'Sonderformen',
-                count: specialFormsCount,
-                color: 'var(--pokedex-red)',
-                active: specialFormsActive,
-                disabled: specialFormsCount === 0,
-                onToggle: () => setActiveSpecialMechanics(prev =>
-                  prev.size ? new Set() : new Set(SPECIAL_MECHANIC_KEYS)),
-              }] : undefined}
-            />
-
-            {/* Evolutionslinie als Checkbox (Stufen-Pills entfernt) */}
-            {showEvolution && !isBrowseMode && (
-              <Switch
-                checked={evoLineActive}
-                onChange={setEvoLineActive}
-                label="Evolutionslinie"
-                className="self-start"
-              />
-            )}
-
-            {/* Set-Filter — ganz unten, volle Breite, mit Symbol + Kürzel.
-                Suchmodus: nur Sets mit mindestens einem Treffer.
-                Browse: alle Sets (server-seitiger setId-Filter). */}
-            <SearchableSelect
-              value={filterSet}
-              onChange={setFilterSet}
-              onClear={filterSet ? () => setFilterSet('') : undefined}
-              options={isBrowseMode ? browseSetOptionsShown : setFilterOptions}
-              height="sm"
-              fullWidth
-              searchPlaceholder="Set suchen …"
-              aria-label="Set-Filter"
+        {/* Suchfeld (+ Filter-Icon nur im Karten-Scope) */}
+        <div className="flex items-center gap-2">
+          <div className="flex-1 min-w-0">
+            <CardSearchField
+              size="lg"
+              value={inputValue}
+              onChange={setInputValue}
+              onClear={clearSearch}
+              onSubmit={q => { if (debounceRef.current) clearTimeout(debounceRef.current); doSearch(scope === 'cards' && q.trim().length >= MIN_SEARCH_CHARS ? q : ''); }}
+              placeholder={placeholder}
+              inlineComplete={scope === 'cards'}
+              enableSuggest={scope === 'cards'}
             />
           </div>
+          {scope === 'cards' && (
+            <div className="relative shrink-0">
+              <Button variant="ghost" icon={<SlidersHorizontal size={20} />} onClick={() => setFilterOpen(true)} aria-label="Filter" />
+              {activeFilterCount > 0 && (
+                <span
+                  className="absolute top-0 right-0 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold flex items-center justify-center text-white pointer-events-none"
+                  style={{ background: 'var(--pokedex-blue)' }}
+                >
+                  {activeFilterCount}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* ── Sortierung + Ergebniszahl (immer direkt unter dem Filter-Panel) ── */}
-        {isBrowseMode ? (
+        {/* Sortierung + Ergebniszahl je Scope (Illustrator: keine, immer Name asc) */}
+        {scope === 'cards' && (isBrowseMode ? (
           <CardSortBar
             options={BROWSE_SORT_OPTIONS}
             sortField={browseSort}
@@ -1087,14 +1038,162 @@ function CollectionContent() {
             onSortDirChange={() => setSearchSortDir(d => d === 'asc' ? 'desc' : 'asc')}
             resultLabel={showResultCount && resultCount != null ? `${resultCount} Karten` : undefined}
           />
+        ))}
+        {scope === 'pokemon' && (
+          <CardSortBar
+            options={POKEMON_SORT_OPTIONS}
+            sortField={pokemonSort}
+            onSortFieldChange={v => setPokemonSort(v as 'name' | 'dex')}
+            sortDir={pokemonSortDir}
+            onSortDirChange={() => setPokemonSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+            resultLabel={`${pokemonCount.toLocaleString('de')} Pokémon`}
+          />
         )}
-
-        {/* Griff (Grabber): Filter-Region ein-/ausklappen (ziehen oder tippen) */}
-        <Grabber expanded={stage === 0} {...grabberProps} />
       </div>
+
+      {/* ── Filter-Bottom-Sheet (nur Karten-Scope) ──────────────── */}
+      <Sheet
+        open={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        title="Filter"
+        dragToClose
+        footer={
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              className="flex-1"
+              onClick={() => { setActiveSupertype('all'); setActiveTypes(new Set()); setActiveEvolutions(new Set()); setActiveSpecialMechanics(new Set()); setActiveRarity(null); setActiveRegion(''); setFilterSet(''); setOwnedFilter('all'); }}
+            >
+              Zurücksetzen
+            </Button>
+            <Button variant="primary" className="flex-1" onClick={() => setFilterOpen(false)}>Fertig</Button>
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          {/* Owned (Alle|Vorhanden|Fehlen) */}
+          <ButtonGroup
+            options={ownedOptions.map(o => ({ ...o, disabled: o.count === 0 }))}
+            value={ownedFilter}
+            onChange={v => setOwnedFilter(v as OwnedFilter)}
+          />
+
+          {/* Kartenart (Alle|Pokémon|Trainer|Energie) */}
+          <CustomSelect
+            value={activeSupertype}
+            onChange={v => { setActiveSupertype(v as Supertype | 'all'); setActiveTypes(new Set()); setActiveEvolutions(new Set()); }}
+            onClear={activeSupertype !== 'all' ? () => { setActiveSupertype('all'); setActiveTypes(new Set()); setActiveEvolutions(new Set()); } : undefined}
+            options={supertypeOptions.map(o => ({
+              value: o.value,
+              label: o.label,
+              count: o.count,
+              disabled: o.count === 0 && o.value !== 'all',
+            }))}
+            height="sm"
+            fullWidth
+            aria-label="Kartenart"
+          />
+
+          {/* Pokémon-Typ (Mehrfach-Auswahl) */}
+          {showTypePills && (
+            <MultiSelect
+              values={[...activeTypes]}
+              onChange={vals => setActiveTypes(new Set(vals))}
+              options={typeOptions}
+              placeholder="Alle Typen"
+              aria-label="Pokémon-Typ"
+            />
+          )}
+
+          {/* Region */}
+          {showTypePills && (
+            <CustomSelect
+              value={activeRegion}
+              onChange={v => setActiveRegion(v)}
+              onClear={activeRegion ? () => setActiveRegion('') : undefined}
+              options={[
+                { value: '', label: 'Alle Regionen' },
+                ...REGIONS.map(r => {
+                  const s = regionStatInContext?.[r];
+                  return {
+                    value: r,
+                    label: r,
+                    hint: s ? `${s.cards.toLocaleString('de')} (${s.species})` : undefined,
+                    disabled: s?.cards === 0,
+                  };
+                }),
+              ]}
+              height="sm"
+              fullWidth
+              aria-label="Region"
+            />
+          )}
+
+          {/* Rarity + Sonderformen */}
+          <RarityFilterBar
+            cards={rarityCards}
+            ownedIds={ownedIds}
+            activeRarities={activeRarity ? new Set([activeRarity]) : new Set()}
+            onToggle={label => setActiveRarity(prev => prev === label ? null : label)}
+            rarityCounts={isBrowseMode
+              ? (algoliaFacets ? algoliaFacets.rarities
+                 : (browseFacetCounts && serverPrimaryDim !== 'rarity') ? browseFacetCounts.rarities
+                 : filterCounts?.rarities)
+              : undefined}
+            extraChips={showTypePills ? [{
+              key: 'special-forms',
+              label: 'Sonderformen',
+              count: specialFormsCount,
+              color: 'var(--pokedex-red)',
+              active: specialFormsActive,
+              disabled: specialFormsCount === 0,
+              onToggle: () => setActiveSpecialMechanics(prev =>
+                prev.size ? new Set() : new Set(SPECIAL_MECHANIC_KEYS)),
+            }] : undefined}
+          />
+
+          {/* Evolutionslinie */}
+          {showEvolution && !isBrowseMode && (
+            <Switch
+              checked={evoLineActive}
+              onChange={setEvoLineActive}
+              label="Evolutionslinie"
+              className="self-start"
+            />
+          )}
+
+          {/* Set-Filter */}
+          <SearchableSelect
+            value={filterSet}
+            onChange={setFilterSet}
+            onClear={filterSet ? () => setFilterSet('') : undefined}
+            options={isBrowseMode ? browseSetOptionsShown : setFilterOptions}
+            height="sm"
+            fullWidth
+            searchPlaceholder="Set suchen …"
+            aria-label="Set-Filter"
+          />
+        </div>
+      </Sheet>
 
       {/* ── Content ─────────────────────────────────────────────── */}
       <div ref={gridWrapRef} className="flex-1 px-3 py-3">
+
+        {/* Pokémon-Scope: Pokédex-Grid (alle 1025 Spezies) */}
+        {scope === 'pokemon' && (
+          <SpeciesGrid
+            query={inputValue}
+            sort={pokemonSort}
+            dir={pokemonSortDir}
+            onSelect={(dex) => { changeScope('cards'); setInputValue(`#${dex}`); }}
+          />
+        )}
+
+        {/* Illustrator-Scope: Profil-Liste */}
+        {scope === 'illustrator' && <IllustratorResults query={inputValue} />}
+
+        {/* ── Karten-Scope: Suche/Browse wie bisher ── */}
+        {scope === 'cards' && (<>
 
         {/* Auto-Lockerung: dezenter Hinweis, welche Filter für dieses Ergebnis
             entfernt wurden (weil sie 0 Treffer ergeben hätten). */}
@@ -1176,6 +1275,7 @@ function CollectionContent() {
             )}
           </>
         )}
+        </>)}
       </div>
 
       <ScrollToTopButton />
