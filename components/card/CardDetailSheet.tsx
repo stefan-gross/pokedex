@@ -594,6 +594,11 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     setSheetOpen(false);
     setTimeout(() => { onClose(); router.push(`/collection?q=${encodeURIComponent(artist)}`); }, 250);
   }
+  // Illustrator-Info (ⓘ) → Profilseite mit Bio/Foto/Fakten + allen Karten.
+  function openArtistProfile(artist: string) {
+    setSheetOpen(false);
+    setTimeout(() => { onClose(); router.push(`/artists/${encodeURIComponent(artist)}`); }, 250);
+  }
   // Region antippen → Stöbern mit gesetztem Regionsfilter.
   function openRegionSearch(region: string) {
     setSheetOpen(false);
@@ -845,6 +850,15 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                       className="font-medium text-glass underline decoration-glass-muted/40 underline-offset-2 hover:decoration-glass"
                     >
                       {card.artist}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openArtistProfile(card.artist!)}
+                      aria-label={`Mehr über ${card.artist}`}
+                      className="ml-1.5 inline-flex items-center justify-center align-middle w-6 h-6 rounded-full text-glass-muted active:scale-90 transition-transform"
+                      style={{ background: 'rgba(49,130,206,0.14)' }}
+                    >
+                      <Info size={15} strokeWidth={2} />
                     </button>
                   </p>
                 )}
