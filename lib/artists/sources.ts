@@ -14,10 +14,12 @@ const BP_API = 'https://bulbapedia.bulbagarden.net/w/api.php';
 const PW_PAGE = (n: string) => `https://www.pokewiki.de/wiki/${encodeURIComponent(n.replace(/\s+/g, '_'))}`;
 const BP_PAGE = (title: string) => `https://bulbapedia.bulbagarden.net/wiki/${encodeURIComponent(title.replace(/\s+/g, '_'))}`;
 
-/** PokéWiki-Text nur übernehmen, wenn er plausibel einen Illustrator/Karten
- *  beschreibt (der reine Name kann sonst auf eine Charakter-/Begriffsklärungs-
- *  Seite führen — analog zum Bulbapedia-„Rika"-Problem). */
-const looksLikeIllustrator = (t: string) => /illustrat|sammelkart|zeichner|künstler|grafiker|designer|mangaka/i.test(t);
+/** Text nur übernehmen, wenn er plausibel einen Illustrator/Karten beschreibt —
+ *  der reine Name kann sonst auf eine Charakter-/Film-/Firmen-/Begriffsklärungs-
+ *  Seite führen (Bulbapedia-„Rika"-Problem bzw. „2017 Pikachu Project" = Film).
+ *  Greift für DE (PokéWiki) UND EN (Bulbapedia-Fallback ohne Kategorie-Treffer). */
+const looksLikeIllustrator = (t: string) =>
+  /illustrat|sammelkart|zeichner|künstler|grafiker|designer|mangaka|artist|modeler|clay model/i.test(t);
 
 export interface ArtistSources {
   pokewikiDe: string;
@@ -57,11 +59,15 @@ async function pokewikiIntro(name: string): Promise<string> {
   return htmlToText(html).slice(0, 2500);
 }
 
-async function bulbapedia(name: string): Promise<{ text: string; photo: string | null }> {
-  const j: any = await getJson(`${BP_API}?action=query&format=json&redirects=1&prop=extracts|pageimages&exintro=1&explaintext=1&piprop=original&titles=${encodeURIComponent(name)}`);
+async function bulbapedia(title: string): Promise<{ text: string; photo: string | null }> {
+  const j: any = await getJson(`${BP_API}?action=query&format=json&redirects=1&prop=extracts|pageimages&exintro=1&explaintext=1&piprop=original&titles=${encodeURIComponent(title)}`);
   const page: any = j?.query?.pages ? Object.values(j.query.pages)[0] : null;
   if (!page || page.missing !== undefined) return { text: '', photo: null };
-  return { text: (page.extract ?? '').trim().slice(0, 2500), photo: page.original?.source ?? null };
+  const text = (page.extract ?? '').trim().slice(0, 2500);
+  // Guard: Nicht-Illustrator-Seiten (Film/Firma/Charakter) verwerfen — nötig, weil
+  // der Titel bei fehlendem Kategorie-Treffer aus dem reinen Namen stammen kann.
+  if (!looksLikeIllustrator(text)) return { text: '', photo: null };
+  return { text, photo: page.original?.source ?? null };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 

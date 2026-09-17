@@ -44,7 +44,11 @@ export async function fetchIllustratorTitleIndex(): Promise<Map<string, string>>
   return map;
 }
 
-/** Exakter Bulbapedia-Titel für einen Katalog-Künstlernamen, oder null. */
-export function resolveBulbaTitle(index: Map<string, string>, name: string): string | null {
-  return index.get(norm(name)) ?? null;
+/** Bulbapedia-Titel für einen Katalog-Künstlernamen: Kategorie-Treffer bevorzugt
+ *  (löst Mehrdeutigkeiten wie „Rika (illustrator)"), sonst der Name selbst als
+ *  Fallback — der ist in `sources.ts` durch einen Illustrator-Guard abgesichert,
+ *  damit z.B. Film-/Firmenseiten nicht fälschlich einfließen. So werden auch
+ *  echte (Contest-)Illustratoren erfasst, die NICHT in der Kategorie stehen. */
+export function resolveBulbaTitle(index: Map<string, string>, name: string): string {
+  return index.get(norm(name)) ?? name;
 }
