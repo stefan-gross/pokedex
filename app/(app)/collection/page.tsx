@@ -67,6 +67,14 @@ const SEARCH_REVEAL_CHUNK = 20;
 // Gleich der Autosuggest-Schwelle (suggest-index.ts: < 3 → keine Vorschläge).
 const MIN_SEARCH_CHARS = 3;
 
+// Eine echte Kartensuche liegt vor, wenn die Eingabe lang genug ist ODER eine
+// explizite Dex-Suche `#<Nr>` ist (z.B. „#6" von der Pokémon-Detailseite) —
+// die muss unabhängig von der Länge immer suchen.
+const hasSearchQuery = (q: string) => {
+  const t = q.trim();
+  return t.length >= MIN_SEARCH_CHARS || /^#\d+$/.test(t);
+};
+
 // Limits sind reine Kosten-/Sicherheitsbremsen gegen einen extrem generischen
 // Suchbegriff (z.B. 1 Buchstabe), der sonst den ganzen Katalog laden würde —
 // keine Notwendigkeit für die Korrektheit der Suche selbst.
@@ -401,7 +409,7 @@ function CollectionContent() {
   // Nur wenn: Stöber-Modus, Algolia konfiguriert + im Budget, KEIN Owned-Filter
   // (Nutzerdaten, nicht im Index). Sonst null → bestehender Zähler-Pfad greift.
   useEffect(() => {
-    const browseNow = inputValue.trim().length < MIN_SEARCH_CHARS; // isBrowseMode ist erst weiter unten definiert
+    const browseNow = !hasSearchQuery(inputValue); // isBrowseMode ist erst weiter unten definiert
     const usable = browseNow && ownedFilter === 'all' && isAlgoliaConfigured()
       && shouldUseAlgolia(getSearchMode(), algoliaUsageRef.current);
     if (!usable) { setAlgoliaFacets(null); return; }
@@ -530,7 +538,7 @@ function CollectionContent() {
     // Karten-Skeleton unmittelbar und bleibt bis die neuen Ergebnisse da sind.
     // Nur im Karten-Scope die Karten-Such-Pipeline nutzen; Pokémon/Illustrator
     // filtern client-seitig ihre eigene Liste (kein Backend-Query).
-    const enoughChars = scope === 'cards' && inputValue.trim().length >= MIN_SEARCH_CHARS;
+    const enoughChars = scope === 'cards' && hasSearchQuery(inputValue);
     if (enoughChars) setSearchLoading(true);
     debounceRef.current = setTimeout(() => {
       // Unter der Schwelle NICHT suchen — leere Suche räumt Treffer weg, die
@@ -678,7 +686,7 @@ function CollectionContent() {
     return m;
   }, [displayed]);
 
-  const isBrowseMode = inputValue.trim().length < MIN_SEARCH_CHARS;
+  const isBrowseMode = !hasSearchQuery(inputValue);
   // Zeigt an, ob die Suchergebnisse mehrere unterschiedliche Sets enthalten —
   // nur dann macht das Set-Badge auf den Karten-Kacheln Sinn (sonst redundant).
   const resultsSpanMultipleSets = useMemo(
@@ -1034,7 +1042,7 @@ function CollectionContent() {
               value={inputValue}
               onChange={setInputValue}
               onClear={clearSearch}
-              onSubmit={q => { if (debounceRef.current) clearTimeout(debounceRef.current); doSearch(scope === 'cards' && q.trim().length >= MIN_SEARCH_CHARS ? q : ''); }}
+              onSubmit={q => { if (debounceRef.current) clearTimeout(debounceRef.current); doSearch(scope === 'cards' && hasSearchQuery(q) ? q : ''); }}
               placeholder={placeholder}
               inlineComplete={scope === 'cards'}
               enableSuggest={scope === 'cards'}
@@ -1226,7 +1234,7 @@ function CollectionContent() {
             query={inputValue}
             sort={pokemonSort}
             dir={pokemonSortDir}
-            onSelect={(dex) => { changeScope('cards'); setInputValue(`#${dex}`); }}
+            onSelect={(dex) => router.push(`/pokemon/${dex}`)}
           />
         )}
 
