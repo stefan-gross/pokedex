@@ -33,6 +33,7 @@ export function CardSearchField({
   suggestLimit = 5,
   inlineComplete = false,
   enableSuggest = true,
+  customSuggest,
   className,
 }: {
   value: string;
@@ -47,9 +48,12 @@ export function CardSearchField({
   /** Inline-Autocomplete (Ghost-Text): der oberste Vorschlag wird als
    *  ausgegrauter Rest hinter der Eingabe gezeigt; Enter oder →/Tab übernimmt. */
   inlineComplete?: boolean;
-  /** Karten-Autosuggest-Panel (Karte/Illustrator/Set) an/aus — in Nicht-Karten-
-   *  Kontexten (z.B. Pokémon-/Illustrator-Scope) abschaltbar. */
+  /** Autosuggest-Panel an/aus — in Nicht-Karten-Kontexten abschaltbar. */
   enableSuggest?: boolean;
+  /** Eigene Vorschlagsquelle statt des Karten-Index (z.B. Pokémon-Spezies).
+   *  Liefert bereits gefilterte/sortierte `{ value, label }` (Label = rechte
+   *  Spalte, z.B. „#0025"); eigene Mindestlänge/Anzahl-Logik. */
+  customSuggest?: (value: string) => { value: string; label: string }[];
   className?: string;
 }) {
   const suggestIndex = useSuggestIndex();
@@ -57,7 +61,17 @@ export function CardSearchField({
   const boxRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
 
-  const suggestions = enableSuggest && focused ? suggest(suggestIndex, value, suggestLimit) : [];
+  // Vorschläge normalisiert auf `{ value, label }` — entweder aus der eigenen
+  // Quelle (customSuggest) oder aus dem geteilten Karten-Index.
+  const suggestions: { value: string; label: string }[] =
+    !enableSuggest || !focused
+      ? []
+      : customSuggest
+        ? customSuggest(value)
+        : suggest(suggestIndex, value, suggestLimit).map(s => ({
+            value: s.value,
+            label: s.kind === 'name' ? 'Karte' : s.kind === 'artist' ? 'Illustrator' : 'Set',
+          }));
 
   // Inline-Autocomplete: der oberste Vorschlag, sofern er ein echtes Präfix zur
   // aktuellen Eingabe ist (unser Ranking stellt exakte/kürzeste Präfixe nach
@@ -119,15 +133,13 @@ export function CardSearchField({
         >
           {suggestions.map(sug => (
             <button
-              key={sug.kind + sug.value}
+              key={sug.label + sug.value}
               type="button"
               onMouseDown={e => { e.preventDefault(); onChange(sug.value); setFocused(false); }}
               className="flex items-center justify-between gap-2 w-full px-4 py-2.5 text-left hover:bg-white/10 active:bg-white/10"
             >
               <span className="truncate text-sm text-glass">{sug.value}</span>
-              <span className="text-role-label text-glass-muted shrink-0">
-                {sug.kind === 'name' ? 'Karte' : sug.kind === 'artist' ? 'Illustrator' : 'Set'}
-              </span>
+              <span className="text-role-label text-glass-muted shrink-0">{sug.label}</span>
             </button>
           ))}
         </div>,

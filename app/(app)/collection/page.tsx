@@ -129,6 +129,17 @@ function CollectionContent() {
   // der die URL sonst vor dem Lesen auf /collection zurücksetzen könnte).
   const initialRegion = searchParams.get('region') ?? '';
 
+  // Rückkehr von einer Pokémon-Detailseite (in sessionStorage gesichert): Tab,
+  // Suchbegriff, Sortierung und Scroll. SYNCHRON beim ersten Render gelesen, damit
+  // die Seite nicht erst kurz im Karten-Tab (Default) aufblitzt und dann umspringt.
+  const returnState = useMemo<{
+    scope?: 'cards' | 'pokemon' | 'illustrator'; query?: string;
+    sort?: 'name' | 'dex'; dir?: 'asc' | 'desc'; scrollY?: number;
+  } | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try { const s = sessionStorage.getItem('collectionReturn'); return s ? JSON.parse(s) : null; } catch { return null; }
+  }, []);
+
   // ── Geteilter Filter-State ─────────────────────────────────────
   const [activeTypes,      setActiveTypes]      = useState<Set<TcgType>>(new Set());
   const [activeSupertype,  setActiveSupertype]  = useState<Supertype | 'all'>('all');
@@ -157,7 +168,7 @@ function CollectionContent() {
   const [browseSortDir, setBrowseSortDir] = useState<'asc' | 'desc'>('asc');
 
   // ── Suche ─────────────────────────────────────────────────────
-  const [inputValue,    setInputValue]    = useState(initialQ);
+  const [inputValue,    setInputValue]    = useState(returnState?.query ?? initialQ);
   // Geteilter Autosuggest-/Fuzzy-Index — nur noch für die „Meintest du …?"-
   // Korrektur unten; das Autosuggest-Panel selbst steckt in `CardSearchField`.
   const suggestIndex = useSuggestIndex();
@@ -186,7 +197,7 @@ function CollectionContent() {
   const searchSentinelRef = useRef<HTMLDivElement>(null);
 
   // ── Such-Scope (mobile-first Umbau): Karten | Pokémon | Illustrator ───────
-  const [scope, setScope] = useState<'cards' | 'pokemon' | 'illustrator'>('cards');
+  const [scope, setScope] = useState<'cards' | 'pokemon' | 'illustrator'>(returnState?.scope ?? 'cards');
   const [filterOpen, setFilterOpen] = useState(false);
   // Pro Tab eigener Suchbegriff (+ nur Karten: eigene Filter). Beim Zurückwechseln
   // wird der jeweilige Stand wiederhergestellt statt zurückgesetzt.
@@ -196,8 +207,8 @@ function CollectionContent() {
     activeSpecialMechanics: Set<string>; activeRarity: string | null; activeRegion: string;
     filterSet: string; ownedFilter: OwnedFilter;
   }>(null);
-  const [pokemonSort, setPokemonSort] = useState<'name' | 'dex'>('dex');
-  const [pokemonSortDir, setPokemonSortDir] = useState<'asc' | 'desc'>('asc');
+  const [pokemonSort, setPokemonSort] = useState<'name' | 'dex'>(returnState?.sort ?? 'dex');
+  const [pokemonSortDir, setPokemonSortDir] = useState<'asc' | 'desc'>(returnState?.dir ?? 'asc');
   // Trefferzahl des Illustrator-Scopes (von IllustratorResults gemeldet) für die
   // Anzeige rechts neben dem Suchfeld.
   const [illustratorCount, setIllustratorCount] = useState<number | null>(null);
@@ -556,10 +567,29 @@ function CollectionContent() {
   // Klick auf den Illustrator im Kartendetail navigiert auf /collection?q=…,
   // während wir schon hier sind). Der Debounce oben hält sonst nur EINE Richtung
   // synchron (Eingabe → URL). setInputValue(prev=>…) verhindert eine Rück-Schleife.
+  // Ein LEERES `q` wird NICHT übernommen: sonst löscht das leere `q` der blanken
+  // /collection-URL beim Zurückkehren den wiederhergestellten Suchbegriff (und der
+  // Effekt bleibt idempotent, auch unter StrictMode-Doppelausführung).
   useEffect(() => {
     const q = searchParams.get('q') ?? '';
+    if (!q) return;
     setInputValue(prev => (prev === q ? prev : q));
   }, [searchParams]);
+
+  // Rückkehr von einer Pokémon-Detailseite: Tab/Suchbegriff/Sortierung kommen
+  // bereits aus den useState-Initialisierern (kein Flash). Hier nur noch die
+  // Scrollposition wiederherstellen, den Stash nachziehen und den Marker löschen.
+  useEffect(() => {
+    if (!returnState) return;
+    if (returnState.scope && typeof returnState.query === 'string') {
+      queryStash.current[returnState.scope] = returnState.query;
+    }
+    if (typeof returnState.scrollY === 'number') {
+      const y = returnState.scrollY;
+      requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, y)));
+    }
+    try { sessionStorage.removeItem('collectionReturn'); } catch {}
+  }, [returnState]);
 
   // Deep-Link ?region=… auch übernehmen, wenn wir schon auf /collection sind
   // (Kartendetail als Overlay → Push auf dieselbe Route re-mountet nicht). Nur
@@ -1017,6 +1047,23 @@ function CollectionContent() {
 
   const placeholder = scope === 'pokemon' ? 'Pokémon suchen' : scope === 'illustrator' ? 'Illustrator suchen' : 'Name, Illustrator … oder stöbern';
 
+  // Autosuggest im Pokémon-Scope: Speziesnamen ab 3 Zeichen (Präfix vor Teiltreffer),
+  // Label = Pokédex-Nr. Klick auf einen Vorschlag filtert das Grid auf den Namen.
+  const pokemonSuggest = useCallback((v: string) => {
+    const q = v.trim().toLowerCase();
+    if (q.length < MIN_SEARCH_CHARS) return [];
+    const label = (dex: number) => `#${String(dex).padStart(4, '0')}`;
+    const starts: { value: string; label: string }[] = [];
+    const contains: { value: string; label: string }[] = [];
+    for (const s of SPECIES_LIST) {
+      const n = s.name.toLowerCase();
+      if (n.startsWith(q)) starts.push({ value: s.name, label: label(s.dex) });
+      else if (n.includes(q)) contains.push({ value: s.name, label: label(s.dex) });
+      if (starts.length >= 5) break;
+    }
+    return [...starts, ...contains].slice(0, 5);
+  }, []);
+
   return (
     <div className="flex flex-col min-h-screen">
 
@@ -1045,7 +1092,8 @@ function CollectionContent() {
               onSubmit={q => { if (debounceRef.current) clearTimeout(debounceRef.current); doSearch(scope === 'cards' && hasSearchQuery(q) ? q : ''); }}
               placeholder={placeholder}
               inlineComplete={scope === 'cards'}
-              enableSuggest={scope === 'cards'}
+              enableSuggest={scope === 'cards' || scope === 'pokemon'}
+              customSuggest={scope === 'pokemon' ? pokemonSuggest : undefined}
             />
           </div>
           {scope === 'cards' && (
@@ -1234,7 +1282,13 @@ function CollectionContent() {
             query={inputValue}
             sort={pokemonSort}
             dir={pokemonSortDir}
-            onSelect={(dex) => router.push(`/pokemon/${dex}`)}
+            onSelect={(dex) => {
+              // Rückkehr-Zustand sichern (Tab + Suchbegriff + Sortierung + Scroll),
+              // damit „Zurück" von der Detailseite wieder im Pokémon-Tab an gleicher
+              // Stelle mit gleicher Sortierung landet.
+              try { sessionStorage.setItem('collectionReturn', JSON.stringify({ scope: 'pokemon', query: inputValue, sort: pokemonSort, dir: pokemonSortDir, scrollY: window.scrollY })); } catch {}
+              router.push(`/pokemon/${dex}`);
+            }}
           />
         )}
 

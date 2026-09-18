@@ -12,6 +12,7 @@ import { pokemonArtworkUrl } from '@/lib/binder-icons';
 interface Species { dex: number; name: string }
 const ALL = SPECIES as Species[];
 const REVEAL = 60;
+const VISIBLE_KEY = 'speciesGridVisible';
 
 export function SpeciesGrid({ query, sort, dir = 'asc', onSelect }: {
   query: string;
@@ -31,8 +32,17 @@ export function SpeciesGrid({ query, sort, dir = 'asc', onSelect }: {
     return [...r].sort((a, b) => sgn * (sort === 'name' ? a.name.localeCompare(b.name, 'de') : a.dex - b.dex));
   }, [query, sort, dir]);
 
-  const [visible, setVisible] = useState(REVEAL);
-  useEffect(() => { setVisible(REVEAL); }, [query, sort, dir]);
+  // Reveal-Anzahl über einen Detail-Besuch hinweg merken (sessionStorage), damit
+  // die Rasterhöhe beim Zurückkehren passt und die Scrollposition greift.
+  const [visible, setVisible] = useState(() => {
+    try { const v = Number(sessionStorage.getItem(VISIBLE_KEY)); return v >= REVEAL ? v : REVEAL; } catch { return REVEAL; }
+  });
+  const firstRun = useRef(true);
+  useEffect(() => {
+    if (firstRun.current) { firstRun.current = false; return; } // Restore-Mount nicht zurücksetzen
+    setVisible(REVEAL);
+  }, [query, sort, dir]);
+  useEffect(() => { try { sessionStorage.setItem(VISIBLE_KEY, String(visible)); } catch {} }, [visible]);
 
   const sentinelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
