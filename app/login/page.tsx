@@ -126,24 +126,20 @@ function LoginForm() {
                 <><span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Anmelden…</>
               ) : 'Anmelden'}
             </Button>
-          </form>
 
-          {passkeyAvailable && (
-            <>
-              <div className="flex items-center gap-3 my-5">
-                <span className="h-px flex-1 bg-black/10 dark:bg-white/15" />
-                <span className="text-role-label text-glass-muted">oder</span>
-                <span className="h-px flex-1 bg-black/10 dark:bg-white/15" />
+            {passkeyAvailable && (
+              <div className="flex justify-center pt-1">
+                <Button
+                  type="button" variant="secondary" size="lg"
+                  onClick={handlePasskeyLogin} disabled={passkeyLoading}
+                  aria-label="Mit Face ID / Fingerabdruck anmelden"
+                  icon={passkeyLoading
+                    ? <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    : <Fingerprint />}
+                />
               </div>
-              <Button
-                type="button" variant="secondary" size="lg" className="w-full"
-                onClick={handlePasskeyLogin} disabled={passkeyLoading}
-                icon={<Fingerprint size={18} />}
-              >
-                {passkeyLoading ? 'Wird geprüft…' : 'Mit Face ID / Fingerabdruck'}
-              </Button>
-            </>
-          )}
+            )}
+          </form>
         </div>
       </div>
     </div>
