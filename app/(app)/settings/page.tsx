@@ -6,7 +6,11 @@ import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, Sun, Moon, Smartphone, RefreshCw,
   Database, CheckCircle, Clock, AlertCircle, Trash2, LogOut, Sparkles,
+  Fingerprint, X,
 } from 'lucide-react';
+import {
+  isPasskeySupported, listPasskeys, registerPasskey, removePasskey, type PasskeyInfo,
+} from '@/lib/webauthn-client';
 import type { SyncMeta } from '@/lib/firestore/catalog';
 import { getCards, deleteCard } from '@/lib/firestore/cards';
 import { reconcilePendingCards } from '@/lib/scan/reconcile-pending';
@@ -113,6 +117,12 @@ export default function SettingsPage() {
   const [searchMode, setSearchModeState] = useState<SearchMode>('auto');
   const [testMode, setTestModeState] = useState(false);
 
+  // Passkeys (biometrischer Login) — Verfügbarkeit, Liste, Registrierung.
+  const [passkeySupported, setPasskeySupported] = useState(false);
+  const [passkeys, setPasskeys] = useState<PasskeyInfo[]>([]);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [passkeyMsg, setPasskeyMsg] = useState<string | null>(null);
+
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncLoading, setSyncLoading] = useState(true);
   const [syncing, setSyncing]         = useState(false);
@@ -133,6 +143,10 @@ export default function SettingsPage() {
     getAlgoliaUsage().then(setAlgoliaUsage).catch(() => setAlgoliaUsage(0));
     setSearchModeState(getSearchMode());
     setTestModeState(isTestModeEnabled());
+    isPasskeySupported().then(ok => {
+      setPasskeySupported(ok);
+      if (ok) listPasskeys().then(setPasskeys).catch(() => {});
+    });
     try {
       const raw = localStorage.getItem(LAST_RUN_KEY);
       if (raw) setLastDataRun(JSON.parse(raw));
@@ -356,6 +370,34 @@ export default function SettingsPage() {
     setGlassTheme(DEFAULT_GLASS_THEME);
     setGlassReset(true);
     setTimeout(() => setGlassReset(false), 2500);
+  }
+
+  async function handleAddPasskey() {
+    setPasskeyBusy(true);
+    setPasskeyMsg(null);
+    try {
+      await registerPasskey();
+      setPasskeys(await listPasskeys());
+      setPasskeyMsg('Passkey aktiviert ✓');
+    } catch (e) {
+      const name = e instanceof Error ? e.name : '';
+      // Nutzer-Abbruch nicht als Fehler melden.
+      if (name !== 'NotAllowedError' && name !== 'AbortError') {
+        setPasskeyMsg('Konnte nicht aktiviert werden.');
+      }
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
+
+  async function handleRemovePasskey(id: string) {
+    setPasskeyBusy(true);
+    try {
+      await removePasskey(id);
+      setPasskeys(await listPasskeys());
+    } catch { /* ignore */ } finally {
+      setPasskeyBusy(false);
+    }
   }
 
   async function handleLogout() {
@@ -642,6 +684,51 @@ export default function SettingsPage() {
             <Button variant="ghost" size="sm" className="px-0" onClick={() => setConfirmStage(0)}>Abbrechen</Button>
           )}
         </section>
+
+        {/* 4b. Sicherheit — Passkeys / biometrischer Login */}
+        {passkeySupported && (
+          <section className="space-y-1.5">
+            <p className="text-xs font-semibold text-glass-muted uppercase tracking-wide mb-2">Sicherheit</p>
+            <div className="glass rounded-[20px] overflow-hidden">
+              {/* Registrierte Geräte */}
+              {passkeys.length > 0 && (
+                <div className="divide-y divide-[rgba(46,46,50,0.1)] dark:divide-white/[.14]">
+                  {passkeys.map(pk => (
+                    <div key={pk.id} className="px-4 py-3 flex items-center gap-3">
+                      <Fingerprint size={16} className="text-glass-muted shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-role-body text-glass font-medium truncate">{pk.deviceLabel}</p>
+                        <p className="text-role-label text-glass-muted">
+                          Seit {new Date(pk.createdAt).toLocaleDateString('de-DE', { dateStyle: 'medium' })}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost" size="sm" className="px-2 shrink-0"
+                        icon={<X size={16} className="text-red-600 dark:text-red-300" />}
+                        onClick={() => handleRemovePasskey(pk.id)} disabled={passkeyBusy}
+                        aria-label="Passkey entfernen"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Aktivieren */}
+              <div className="p-3 space-y-2 border-t border-[rgba(46,46,50,0.1)] dark:border-white/[.14]">
+                <Button
+                  variant="secondary" size="lg" className="w-full justify-start"
+                  icon={<Fingerprint size={18} />}
+                  onClick={handleAddPasskey} disabled={passkeyBusy}
+                >
+                  {passkeyBusy ? 'Läuft…' : passkeys.length > 0 ? 'Weiteres Gerät hinzufügen' : 'Face ID / Fingerabdruck aktivieren'}
+                </Button>
+                <p className="text-role-label text-glass-muted px-1">
+                  Danach kannst du dich auf diesem Gerät biometrisch anmelden — ohne Passwort. Jedes Gerät wird einzeln aktiviert.
+                </p>
+                {passkeyMsg && <p className="text-role-label text-glass px-1">{passkeyMsg}</p>}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* 5. Account */}
         <section className="space-y-1.5">

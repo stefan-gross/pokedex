@@ -58,6 +58,8 @@ Pokémon-Kartensammlung PWA für Stefan Gross.
 - `FIREBASE_ADMIN_PRIVATE_KEY`
 - `CRON_SECRET` — nur in Vercel/`.env.local`, **niemals im Repo**. (Der alte Wert war hier im Klartext eingecheckt → muss rotiert + aus der Git-Historie entfernt werden.)
 - `ADMIN_UIDS` — kommagetrennte Firebase-uids, die Admin-/Sync-Routen auslösen dürfen (siehe `lib/admin-auth.ts`). Ohne diese Var ist der Session-Weg zu den Admin-Routen gesperrt.
+- `WEBAUTHN_RP_ID` — Passkey-Domain (Prod: `pokedex.smartfamilyzone.de`). Ohne diese Var Dev-Fallback `localhost` → in Prod schlägt die Passkey-Verifikation sonst fehl.
+- `WEBAUTHN_ORIGIN` — vollständige Herkunft für Passkeys (Prod: `https://pokedex.smartfamilyzone.de`). Dev-Fallback `http://localhost:3000`.
 
 ## UI-Regeln
 - Icons werden ausschließlich als SVG-Dateien eingebunden — kein Icon-Font, keine Emoji

@@ -1,9 +1,11 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Fingerprint } from 'lucide-react'
 import { signInWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '@/lib/firebase/client'
+import { isPasskeySupported, signInWithPasskey } from '@/lib/webauthn-client'
 import { PokemonWall } from '@/components/PokemonWall'
 import { PokedexWordmark } from '@/components/PokedexWordmark'
 import { Button } from '@/components/ui/button'
@@ -18,6 +20,30 @@ function LoginForm() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // Passkey-Login nur zeigen, wenn das Gerät einen Plattform-Authenticator
+  // (Face ID / Touch ID / Fingerabdruck) hat.
+  const [passkeyAvailable, setPasskeyAvailable] = useState(false)
+  const [passkeyLoading, setPasskeyLoading] = useState(false)
+  useEffect(() => { isPasskeySupported().then(setPasskeyAvailable) }, [])
+
+  async function handlePasskeyLogin() {
+    setError('')
+    setPasskeyLoading(true)
+    try {
+      await signInWithPasskey()
+      router.push(returnTo)
+      router.refresh()
+    } catch (err: unknown) {
+      // Nutzer-Abbruch (Dialog weggetippt) nicht als Fehler anzeigen.
+      const name = err instanceof Error ? err.name : ''
+      if (name !== 'NotAllowedError' && name !== 'AbortError') {
+        setError('Biometrische Anmeldung fehlgeschlagen. Nutze E-Mail und Passwort.')
+      }
+    } finally {
+      setPasskeyLoading(false)
+    }
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -101,6 +127,23 @@ function LoginForm() {
               ) : 'Anmelden'}
             </Button>
           </form>
+
+          {passkeyAvailable && (
+            <>
+              <div className="flex items-center gap-3 my-5">
+                <span className="h-px flex-1 bg-black/10 dark:bg-white/15" />
+                <span className="text-role-label text-glass-muted">oder</span>
+                <span className="h-px flex-1 bg-black/10 dark:bg-white/15" />
+              </div>
+              <Button
+                type="button" variant="secondary" size="lg" className="w-full"
+                onClick={handlePasskeyLogin} disabled={passkeyLoading}
+                icon={<Fingerprint size={18} />}
+              >
+                {passkeyLoading ? 'Wird geprüft…' : 'Mit Face ID / Fingerabdruck'}
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </div>
