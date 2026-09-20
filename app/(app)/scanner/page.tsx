@@ -2,12 +2,6 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  DndContext, PointerSensor, TouchSensor, useSensor, useSensors, closestCenter,
-  type DragEndEvent,
-} from '@dnd-kit/core';
-import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import { X, Loader2, AlertCircle, Check, Plus, ChevronLeft, AlertTriangle, EyeOff, SearchX, Flag, Trash2, Pencil, LayoutGrid, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
@@ -466,27 +460,6 @@ function ErrorLandscapeArtwork({ className }: { className?: string }) {
   );
 }
 
-/** Sortierbare Grid-Kachel im Mehrfachscan-Review. Die ganze Kachel ist der
- *  Drag-Griff (Long-Press auf Touch / Ziehen mit Maus); kurzes Tippen läuft wie
- *  bisher an die Kinder durch (Korrektur öffnen / Auswahl). Kein `touch-action:
- *  none`, damit vertikales Scrollen im Grid erhalten bleibt — der Touch-Sensor
- *  nutzt eine Press-Verzögerung, um Scrollen von Ziehen zu unterscheiden. */
-function SortableScanTile({ id, disabled, children }: { id: string; disabled: boolean; children: React.ReactNode }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled });
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 30 : undefined,
-    position: 'relative',
-  };
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      {children}
-    </div>
-  );
-}
-
 export default function ScannerPage() {
   const router = useRouter();
   const [jobs, setJobs] = useState<ScanJob[]>([]);
@@ -528,6 +501,9 @@ export default function ScannerPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'single'>('grid');
   // Status-Filter im Review: alle / erfolgreich (kein Rahmen) / gelb / rot+error
   const [statusFilter, setStatusFilter] = useState<'all' | 'success' | 'yellow' | 'red'>('all');
+  // Sortierung im Review-Grid: 'oldest' = zuerst gescannt vorne (Default),
+  // 'newest' = zuletzt gescannt vorne.
+  const [gridSort, setGridSort] = useState<'oldest' | 'newest'>('oldest');
   // Single-View-Index — welche Karte gerade angezeigt wird (0 = neueste, N-1 = älteste)
   const [singleIdx, setSingleIdx] = useState<number>(0);
   // Ref für Horizontal-Swipe-Geste im Single-View (Pointer-Start-X)
@@ -607,39 +583,6 @@ export default function ScannerPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const toggleSelected = useCallback((id: string) => {
     setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  }, []);
-
-  // Frei sortierbare Reihenfolge der Karten im Review-Grid (Job-IDs). Initial =
-  // Scan-Reihenfolge (zuerst gescannte Karte vorne). Wird bei neuen/gelöschten
-  // Karten abgeglichen: neue IDs hinten anhängen (Scan-Reihenfolge), entfernte
-  // rauswerfen — eine vom Nutzer per Drag gesetzte Reihenfolge bleibt erhalten.
-  const [gridOrder, setGridOrder] = useState<string[]>([]);
-  const addJobIdsKey = jobs.filter(j => j.origin === 'add').map(j => j.id).join(',');
-  useEffect(() => {
-    const ids = addJobIdsKey ? addJobIdsKey.split(',') : [];
-    setGridOrder(prev => {
-      const idSet = new Set(ids);
-      const known = new Set(prev);
-      const next = prev.filter(id => idSet.has(id));            // entfernte raus
-      for (const id of ids) if (!known.has(id)) next.push(id);  // neue hinten dran
-      if (next.length === prev.length && next.every((id, i) => id === prev[i])) return prev;
-      return next;
-    });
-  }, [addJobIdsKey]);
-
-  const dragSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 300, tolerance: 12 } }),
-  );
-  const handleGridDragEnd = useCallback((e: DragEndEvent) => {
-    const { active, over } = e;
-    if (!over || active.id === over.id) return;
-    setGridOrder(prev => {
-      const from = prev.indexOf(active.id as string);
-      const to = prev.indexOf(over.id as string);
-      if (from < 0 || to < 0) return prev;
-      return arrayMove(prev, from, to);
-    });
   }, []);
   // Ref für scanMode — handleCapture hat empty-deps useCallback,
   // ohne Ref wäre der Wert stale.
@@ -1797,15 +1740,9 @@ export default function ScannerPage() {
         // Single-View zeigt "neueste oben" — dafür reversen.
         const filteredReversed = [...filtered].reverse();
 
-        // Grid: frei sortierbare Reihenfolge (gridOrder), initial Scan-Reihenfolge
-        // (zuerst gescannt vorne). Job je ID auflösen + Statusfilter anwenden.
-        const jobById = new Map(addJobs.map(j => [j.id, j]));
-        const orderedGridJobs = gridOrder
-          .map(id => jobById.get(id))
-          .filter((j): j is ScanJob => !!j && matchesFilter(j));
-        // Ziehen nur ohne aktiven Statusfilter (sonst mehrdeutig gegenüber
-        // ausgeblendeten Karten) und ab 2 Karten.
-        const dragDisabled = statusFilter !== 'all' || orderedGridJobs.length < 2;
+        // Grid-Reihenfolge per Umschalter: 'oldest' = zuerst gescannt vorne
+        // (Scan-Reihenfolge, Default), 'newest' = zuletzt gescannt vorne.
+        const orderedGrid = gridSort === 'newest' ? filteredReversed : filtered;
 
         // Zähler je Statusfilter (für die Segment-Beschriftung).
         const statusCounts = addJobs.reduce((acc, j) => {
@@ -1896,15 +1833,25 @@ export default function ScannerPage() {
                 )
               )}
             </div>
+            {/* Zeile 4: Grid-Sortierung — zuerst/zuletzt gescannt (nur Raster). */}
+            {viewMode === 'grid' && (
+              <ButtonGroup
+                className="w-full"
+                options={[
+                  { value: 'oldest', label: 'Zuerst gescannt' },
+                  { value: 'newest', label: 'Zuletzt gescannt' },
+                ]}
+                value={gridSort}
+                onChange={v => setGridSort(v as 'oldest' | 'newest')}
+              />
+            )}
           </div>
           </div>
 
           {viewMode === 'grid' && (
-          <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handleGridDragEnd}>
-            <SortableContext items={orderedGridJobs.map(j => j.id)} strategy={rectSortingStrategy}>
           <div className="grid grid-cols-2 gap-3">
             {(() => {
-              return orderedGridJobs.map((job) => {
+              return orderedGrid.map((job) => {
                 const origIdx = addJobs.indexOf(job);
                 const idx = origIdx; // for depth calc — but our depth uses addJobs index
                 const card = job.result?.card;
@@ -1948,8 +1895,7 @@ export default function ScannerPage() {
                   const totalOwned = ownedCardDocs.reduce((s, c) => s + c.quantity, 0);
                   const hasDepthBadge = borderStatus === 'manual-yellow' || borderStatus === 'auto-yellow' || borderStatus === 'auto-red';
                   return (
-                    <SortableScanTile key={job.id} id={job.id} disabled={dragDisabled}>
-                    <div className="relative">
+                    <div key={job.id} className="relative">
                       <Card
                         size="md"
                         neutral
@@ -2026,13 +1972,11 @@ export default function ScannerPage() {
                             im Bearbeiten-Modus über Mehrfachauswahl + Fußleiste. */}
                       </div>
                     </div>
-                    </SortableScanTile>
                   );
                 }
 
               return (
-                <SortableScanTile key={job.id} id={job.id} disabled={dragDisabled}>
-                <div className="relative flex flex-col">
+                <div key={job.id} className="relative flex flex-col">
                   <div
                     className="relative rounded-md overflow-hidden"
                     style={{
@@ -2256,13 +2200,10 @@ export default function ScannerPage() {
                     </p>
                   </div>
                 </div>
-                </SortableScanTile>
               );
               });
             })()}
           </div>
-            </SortableContext>
-          </DndContext>
           )}
 
           {viewMode === 'single' && (() => {
