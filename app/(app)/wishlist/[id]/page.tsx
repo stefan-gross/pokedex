@@ -557,7 +557,7 @@ export default function WishlistDetailPage({ params }: Props) {
       />
 
       <ScrollToTopButton />
-      <LegendButton symbols={['wishlist-heart', 'automatic', 'unreviewed', 'count', 'foreign-lang']} />
+      <LegendButton symbols={['wishlist-heart', 'automatic', 'count', 'foreign-lang']} />
     </div>
   );
 }

@@ -30,7 +30,6 @@ import { BulkAddToCollectionModal } from '@/components/scanner/BulkAddToCollecti
 import { ValueBadge } from '@/components/card/ValueBadge';
 import { CardPrice } from '@/components/card/CardPrice';
 import { CardBadge } from '@/components/card/CardBadge';
-import { ExclamationMark } from '@/lib/binder-icons';
 import { CardPlaceholder } from '@/components/card/CardPlaceholder';
 import { CardImage } from '@/components/card/CardImage';
 import { Card } from '@/components/card/Card';
@@ -134,11 +133,8 @@ interface ScanState {
   language: CardLanguage;
   variant?: CardVariant;
   ownedCount?: number;
-  /** Mind. ein besessenes Exemplar ist noch ungeprüft (needsReview) → gelbes
-   *  „!"-Badge auf der Kachel, solange nicht alle Exemplare geprüft sind. */
-  ownedNeedsReview?: boolean;
   /** Die besessenen Exemplare — an die Card-Komponente durchgereicht, damit sie
-   *  die Standard-Badges (Anzahl/„ungeprüft") app-einheitlich rendert. */
+   *  die Standard-Badges (Anzahl) app-einheitlich rendert. */
   ownedCards?: CardDoc[];
   condition?: CardCondition;
   fakeRisk?: 'low' | 'medium' | 'high';
@@ -843,9 +839,8 @@ export default function ScannerPage() {
   // Scan (ownedCount wurde bisher nur einmal direkt nach dem Erkennen gesetzt).
   const refreshOwnedCount = useCallback((jobId: string, tcgId: string) => {
     getCardsByTcgId(tcgId).then(copies => {
-      const ownedNeedsReview = copies.some(c => c.needsReview);
       setJobs(prev => prev.map(j =>
-        j.id === jobId && j.result ? { ...j, result: { ...j.result, ownedCount: copies.length, ownedNeedsReview, ownedCards: copies } } : j
+        j.id === jobId && j.result ? { ...j, result: { ...j.result, ownedCount: copies.length, ownedCards: copies } } : j
       ));
     });
   }, []);
@@ -1460,7 +1455,7 @@ export default function ScannerPage() {
             setJobs(prev => prev.map(j => j.id === id && j.result
               ? {
                   ...j,
-                  result: { ...j.result, ownedCount: copies.length, ownedNeedsReview: copies.some(c => c.needsReview), ownedCards: copies },
+                  result: { ...j.result, ownedCount: copies.length, ownedCards: copies },
                   debug: { ...j.debug, ownedMs: Date.now() - tOwned } as ScanDebug,
                 }
               : j));
@@ -1873,14 +1868,12 @@ export default function ScannerPage() {
                   const cardNum = card.number && card.printedTotal && /^\d+$/.test(card.number)
                     ? card.number.padStart(String(card.printedTotal).length, '0')
                     : (card.number ?? '');
-                  // Besitz-/„ungeprüft"-Badges rendert die Card-Komponente selbst
+                  // Besitz-Badge (Anzahl) rendert die Card-Komponente selbst
                   // (Standard-Look, aus ownedCards). Hier nur noch, was Card nicht
-                  // kennt: Tiefen-Badge (Scan-Reihenfolge) + Wert-Badge — beide so
-                  // gesetzt, dass sie NICHT mit Cards Badges (tr=Anzahl, tl=„!")
-                  // kollidieren.
+                  // kennt: Tiefen-Badge (Scan-Reihenfolge) + Wert-Badge — so
+                  // gesetzt, dass sie NICHT mit Cards Anzahl-Badge (tr) kollidieren.
                   const ownedCardDocs = job.result?.ownedCards ?? [];
                   const totalOwned = ownedCardDocs.reduce((s, c) => s + c.quantity, 0);
-                  const ownedNeedsReview = job.result?.ownedNeedsReview ?? false;
                   const hasDepthBadge = borderStatus === 'manual-yellow' || borderStatus === 'auto-yellow' || borderStatus === 'auto-red';
                   return (
                     <div key={job.id} className="relative">
@@ -1905,9 +1898,8 @@ export default function ScannerPage() {
                       {/* Scan-Overlay — deckt sich exakt mit dem 2.5:3.5-Bildbereich
                           der Card (gleiche Breite, top ausgerichtet). */}
                       <div className="absolute inset-x-0 top-0 aspect-[2.5/3.5] pointer-events-none">
-                        {/* Tiefen-Badge (Scan-Reihenfolge) oben links — nur wenn
-                            dort nicht schon Cards „ungeprüft"-Badge (tl) sitzt. */}
-                        {hasDepthBadge && !ownedNeedsReview && (
+                        {/* Tiefen-Badge (Scan-Reihenfolge) oben links. */}
+                        {hasDepthBadge && (
                           <div
                             className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold z-10"
                             style={{
@@ -3479,17 +3471,11 @@ function ScannedCardTile({ job, isLatest, isFirst, symbolUrl, onRemove, onOpen }
           ) : null;
         })()}
 
-        {/* Standard-Badges wie auf den App-Kacheln (CardBadge): Anzahl (grün,
-            oben rechts, ab 1 Exemplar — Dubletten beim Scannen erkennen) +
-            „ungeprüft" (gelb „!", oben links). */}
+        {/* Standard-Badge wie auf den App-Kacheln (CardBadge): Anzahl (grün,
+            oben rechts, ab 1 Exemplar — Dubletten beim Scannen erkennen). */}
         {ownedTotal > 0 && (
           <CardBadge size={24} color="rgba(53,209,90,.9)" corner="tr" cornerRadius={6} style={{ top: 0, right: 0 }}>
             ×{ownedTotal}
-          </CardBadge>
-        )}
-        {job.result?.ownedNeedsReview && (
-          <CardBadge size={24} color="var(--pokedex-yellow)" corner="tl" cornerRadius={6} style={{ top: 0, left: 0 }} ariaLabel="Besitz ungeprüft" title="Mind. ein Exemplar ungeprüft">
-            <ExclamationMark size={13} strokeWidth={3} className="text-white" />
           </CardBadge>
         )}
 

@@ -1382,7 +1382,7 @@ function CollectionContent() {
       </div>
 
       <ScrollToTopButton />
-      <LegendButton symbols={['wishlist-heart', 'unreviewed', 'count', 'foreign-lang', 'pending']} />
+      <LegendButton symbols={['wishlist-heart', 'count', 'foreign-lang', 'pending']} />
 
     </div>
   );

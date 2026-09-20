@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { X, Plus, Heart, ChevronDown, ChevronRight, ChevronLeft, Info, Repeat2, LayoutGrid, Trash2, Check, Layers } from 'lucide-react';
+import { X, Plus, Heart, ChevronDown, ChevronRight, ChevronLeft, Info, Repeat2, LayoutGrid, Trash2, Layers } from 'lucide-react';
 import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/modal';
@@ -13,7 +13,7 @@ import { detectVariants, VARIANT_LABELS, getRarityGroup, SERIES_NAMES_DE, getSub
 import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
 import { cardImageCandidates } from '@/lib/card-image';
 import { formatCardNumber } from '@/lib/format';
-import { deleteCard, getCardsByTcgId, markReviewed } from '@/lib/firestore/cards';
+import { deleteCard, getCardsByTcgId } from '@/lib/firestore/cards';
 import { getBinders, removeCardFromBinderAndCleanup, ensureDefaultBinder, setCardExclusiveBinder } from '@/lib/firestore/binders';
 import { matchTemplateBinders } from '@/lib/template-binders/match-hint';
 import { syncTemplateBinders } from '@/lib/template-binders/sync';
@@ -63,13 +63,11 @@ const CONDITION_COLOR: Record<string, string> = {
   Poor: '#9ca3af',
 };
 /** Eine Zeile "eigene Kopie" im Kartendetail: Zeile 1 = Sprache · Zustand ·
- *  (nur bei `needsReview`) „Geprüft"-Button · Löschen (rot, 2-Tap „Wirklich?");
- *  Zeile 2 = aktuelle Sammlung (Tap öffnet die Verschieben-Auswahl).
- *  Ungeprüfte (per Scanner hinzugefügte) Exemplare bekommen einen gelben
- *  Rahmen (passend zum „!"-Prüfen-Badge) + den „Geprüft"-Button. */
+ *  Löschen (rot, 2-Tap „Wirklich?"); Zeile 2 = aktuelle Sammlung (Tap öffnet
+ *  die Verschieben-Auswahl). */
 export function OwnedCopyRow({
   copy, condColor, binder, isDefaultBinder,
-  allBinders, suggestedBinderIds, onMoveToBinder, onDelete, onMarkReviewed, isDeleting,
+  allBinders, suggestedBinderIds, onMoveToBinder, onDelete, isDeleting,
 }: {
   copy: CardDoc;
   condColor: string;
@@ -82,8 +80,6 @@ export function OwnedCopyRow({
   /** Verschiebt die Kopie exklusiv in den Ziel-Binder (`null` = Unsortiert). */
   onMoveToBinder: (targetBinderId: string | null) => void;
   onDelete: () => void;
-  /** „Geprüft": setzt needsReview:false für dieses Exemplar. */
-  onMarkReviewed: () => void;
   isDeleting: boolean;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -120,14 +116,9 @@ export function OwnedCopyRow({
   return (
     <div
       className="glass rounded-xl px-3 py-2.5 flex flex-col gap-2"
-      style={{
-        opacity: isDeleting ? 0.5 : 1,
-        // Ungeprüftes (per Scanner hinzugefügtes) Exemplar → gelber Rahmen
-        // (inset, kein Layout-Sprung), passend zum „!"-Prüfen-Badge.
-        boxShadow: copy.needsReview ? 'inset 0 0 0 1.5px #ecc94b' : undefined,
-      }}
+      style={{ opacity: isDeleting ? 0.5 : 1 }}
     >
-      {/* Zeile 1 — Sprache · Zustand · (Geprüft) · Löschen (rot, 2-Tap) */}
+      {/* Zeile 1 — Sprache · Zustand · Löschen (rot, 2-Tap) */}
       <div className="flex items-center gap-2">
         <span className="w-7 h-7 rounded-full overflow-hidden shrink-0 flex items-center justify-center">
           <LanguageFlag lang={copy.language} size={28} />
@@ -138,24 +129,11 @@ export function OwnedCopyRow({
         >
           {CONDITION_LABEL[copy.condition] ?? copy.condition}
         </span>
-        {copy.needsReview && (
-          <Button
-            variant="primary"
-            accentColor="#2f855a"
-            size="sm"
-            className="ml-auto shrink-0"
-            onClick={onMarkReviewed}
-            disabled={isDeleting}
-            aria-label="Als geprüft markieren"
-          >
-            <Check size={14} /><span className="ml-1">Geprüft</span>
-          </Button>
-        )}
         <Button
           variant="primary"
           accentColor="#c53030"
           size="sm"
-          className={copy.needsReview ? 'shrink-0' : 'ml-auto shrink-0'}
+          className="ml-auto shrink-0"
           onClick={armDelete}
           disabled={isDeleting}
           aria-label="Aus Besitz löschen"
@@ -670,15 +648,6 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
     } finally { setDeletingId(null); }
   }
 
-  // „Geprüft": ungeprüftes (per Scanner hinzugefügtes) Exemplar bestätigen →
-  // needsReview:false. `onSaved` aktualisiert das „!"-Badge auf Kachel/Grid.
-  async function handleMarkReviewed(copy: CardDoc) {
-    if (!copy.needsReview) return;
-    await markReviewed(copy.id);
-    await reloadCopies();
-    onSaved?.();
-  }
-
   // ── Karten-Header (wie echte Pokémon-Karte) — als `header`-Slot an `Sheet`
   // übergeben, bleibt dadurch außerhalb des scrollenden Bereichs (shrink-0).
   const header = (
@@ -1180,7 +1149,6 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                                 suggestedBinderIds={suggestedBinderIds}
                                 onMoveToBinder={(targetId) => handleMoveToBinder(copy, targetId)}
                                 onDelete={() => handleDelete(copy)}
-                                onMarkReviewed={() => handleMarkReviewed(copy)}
                               />
                             );
                           });

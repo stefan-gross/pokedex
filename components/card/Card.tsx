@@ -1,7 +1,6 @@
 'use client';
 
 import { useId, memo } from 'react';
-import { ExclamationMark } from '@/lib/binder-icons';
 import { LanguageFlag } from '@/components/card/LanguageFlag';
 import type { CardInfo } from '@/lib/card-info';
 import type { CardDoc } from '@/types';
@@ -216,7 +215,6 @@ function CardImpl({
   const layout = badgeLayout;
   const totalOwned    = ownedCards.reduce((s, c) => s + c.quantity, 0);
   const isOwned       = totalOwned > 0;
-  const needsReview   = ownedCards.some(c => c.needsReview);
   // Holo-Glanz (nur bei Besitz — der „fehlt"-Look hat einen eigenen Hologramm-
   // Effekt): Holo glänzt auf dem Artwork, Reverse Holo auf dem Rahmen (Pokémon-
   // Bild bleibt frei). Beides kann gleichzeitig gelten (Karte in beiden
@@ -324,26 +322,11 @@ function CardImpl({
           />
         )}
 
-        {/* Prüfen-Badge — gelb, oben links, nur bei ungeprüften eigenen
-            Exemplaren. Vorläufige (nicht im Katalog gefundene) Karten bekommen
-            KEIN Badge hier: ihr Platzhalter (CardPlaceholder) zeichnet bereits
-            ein eigenes rotes „?"-Eck-Badge (gleiche Form wie dieses „!"). */}
-        {!bare && !card.pendingCatalog && needsReview && (
-          <CardBadge
-            size={preset.badgeSize} color="var(--pokedex-yellow)" corner="tl" cornerRadius={badgeCornerRadius}
-            style={{ top: layout.reviewBadge.top, left: layout.reviewBadge.left }}
-            ariaLabel="Ungeprüft" title="Ungeprüft"
-          >
-            <ExclamationMark size={preset.badgeIconSize} strokeWidth={3} className="text-white" />
-          </CardBadge>
-        )}
-
-        {/* Sprach-Badge — Länderflagge, oben links (gleiche Ecke wie „Prüfen",
-            per !needsReview kollisionsfrei). Nur wenn die Karte ausschließlich in
-            einer anderen Sprache als Deutsch besessen wird → Signal „noch auf
-            Deutsch besorgen/ersetzen". `elevated` = weißer Ring + Schatten für
-            Ablesbarkeit über dem Artwork. */}
-        {!bare && ownedForeignOnly && !needsReview && (
+        {/* Sprach-Badge — Länderflagge, oben links. Nur wenn die Karte
+            ausschließlich in einer anderen Sprache als Deutsch besessen wird →
+            Signal „noch auf Deutsch besorgen/ersetzen". `elevated` = weißer Ring
+            + Schatten für Ablesbarkeit über dem Artwork. */}
+        {!bare && ownedForeignOnly && (
           <CardBadge
             size={preset.badgeSize} background={false} corner="tl" cornerRadius={badgeCornerRadius}
             style={{ top: layout.reviewBadge.top, left: layout.reviewBadge.left, overflow: 'hidden' }}

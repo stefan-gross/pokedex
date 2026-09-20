@@ -31,7 +31,6 @@ export interface CardDoc {
   language: CardLanguage;
   quantity: number;
   notes?: string;
-  needsReview?: boolean;   // true = per Scanner hinzugefügt, noch nicht manuell geprüft
   /** true = gescannt, aber (noch) nicht im TCGdex-Katalog gefunden. Die Karte
    *  existiert ohne `tcgId`/Katalogbild; angezeigt wird ein generierter
    *  Platzhalter aus `manualData`. Ein späterer Katalog-Sync verknüpft sie

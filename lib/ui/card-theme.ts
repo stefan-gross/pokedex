@@ -30,8 +30,7 @@ export const MISSING_CARD_EFFECTS: { value: MissingCardEffect; label: string }[]
 export interface MissingCardStyle { opacity: number; blur: number; saturate: number; effect: MissingCardEffect }
 
 export interface CardTileBadgeLayout {
-  /** Ungeprüft-Ausrufezeichen — oben links (ersetzt den früheren, entfernten
-   *  Set-Badge an derselben Stelle). */
+  /** Badge oben links (Sprach-Flagge, wenn Karte nur fremdsprachig besessen). */
   reviewBadge: { top: number; left: number };
   ownedBadge: { top: number; right: number };
   /** Vorformatierter Preis — unten links. */

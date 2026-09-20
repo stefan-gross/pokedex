@@ -101,15 +101,9 @@ export function AddToCollectionModal({
   const save = async () => {
     setSaving(true);
     try {
-      // „Prüfen" nur für Scanner-Ergebnisse (KI-Erkennung, kann falsch liegen).
-      // Manuelles Hinzufügen aus Suche/Kartendetail ist bewusst gewählt → kein
-      // Review-Status. Vorläufige Karten (pendingCatalog) behandelt der Helper.
+      // Vorläufige Karten (pendingCatalog) behandelt der Helper.
       const cardId = await addCard(
-        // Einzeln, manuell bestätigtes Hinzufügen (Grid-„+", Erkennen-FAB,
-        // Kartendetail, Suche) — der Nutzer prüft die Karte selbst → kein
-        // Prüfen-Badge. Der bleibt „Alle hinzufügen" (Bulk) + Auto-Save beim
-        // Verlassen vorbehalten, wo NICHT einzeln geprüft wird.
-        cardInfoToAddInput(card, { variant, condition, language, needsReview: false }),
+        cardInfoToAddInput(card, { variant, condition, language }),
       );
       const chosen = allBinders.find(b => b.id === targetId);
       if (chosen?.template) {

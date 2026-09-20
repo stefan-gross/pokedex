@@ -170,9 +170,9 @@ export function ownedCardToInfo(doc: CardDoc, catalogById: Map<string, CardInfo>
  *  leere Felder inkl. verschachtelter `manualData`-Werte. */
 export function cardInfoToAddInput(
   card: CardInfo,
-  opts: { variant: CardVariant; condition: CardCondition; language: CardLanguage; needsReview?: boolean },
+  opts: { variant: CardVariant; condition: CardCondition; language: CardLanguage },
 ): Omit<CardDoc, 'id' | 'addedAt' | 'updatedAt'> {
-  const { variant, condition, language, needsReview } = opts;
+  const { variant, condition, language } = opts;
   const base: Omit<CardDoc, 'id' | 'addedAt' | 'updatedAt'> = {
     name: card.name,
     setId: card.setId,
@@ -188,7 +188,6 @@ export function cardInfoToAddInput(
     quantity: 1,
   };
   if (card.pendingCatalog) {
-    // Rotes „?"-Badge ersetzt das Review-„!" → kein needsReview für Pending.
     return {
       ...base,
       pendingCatalog: true,
@@ -208,6 +207,5 @@ export function cardInfoToAddInput(
     tcgId: card.id,
     // Kein eingefrorenes Bild mehr — die Anzeige joint live über `tcgId` den
     // Katalog (siehe ownedCardToInfo). Katalog = Quelle der Wahrheit.
-    ...(needsReview ? { needsReview: true } : {}),
   };
 }

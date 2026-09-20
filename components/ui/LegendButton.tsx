@@ -5,14 +5,12 @@ import { createPortal } from 'react-dom';
 import { HelpCircle, Flag, X } from 'lucide-react';
 import { WishlistHeart } from '@/components/card/Card';
 import { AutomaticBadge, SystemBadge } from '@/components/binder/CollectionTypeBadge';
-import { ExclamationMark } from '@/lib/binder-icons';
 import { LanguageFlag } from '@/components/card/LanguageFlag';
 
 /** Erklärbare Symbole der App. Jede Seite gibt an, welche sie zeigt →
  *  kontextbasierte Legende. */
 export type LegendKey =
   | 'wishlist-heart'
-  | 'unreviewed'
   | 'automatic'
   | 'system'
   | 'count'
@@ -56,15 +54,6 @@ const ENTRIES: Record<LegendKey, Entry> = {
       { node: <WishlistHeart manual auto width={22} height={20} gradId={`${g}-b`} />, label: 'Auf manueller und automatischer' },
       { node: <WishlistHeart manual={false} auto={false} width={22} height={20} gradId={`${g}-n`} />, label: 'Auf keiner Liste' },
     ],
-  },
-  'unreviewed': {
-    title: 'Ungeprüft',
-    desc: 'Dein Exemplar ist noch nicht bestätigt.',
-    visual: () => (
-      <SquareBadge color="var(--pokedex-yellow)">
-        <ExclamationMark size={14} strokeWidth={3} className="text-white" />
-      </SquareBadge>
-    ),
   },
   'automatic': {
     title: 'Automatisch',
@@ -121,7 +110,7 @@ const ENTRIES: Record<LegendKey, Entry> = {
 };
 
 const ORDER: LegendKey[] = [
-  'wishlist-heart', 'unreviewed', 'automatic', 'system', 'count', 'foreign-lang', 'pending', 'scan-frame', 'fake-suspect',
+  'wishlist-heart', 'automatic', 'system', 'count', 'foreign-lang', 'pending', 'scan-frame', 'fake-suspect',
 ];
 
 /**

@@ -182,9 +182,7 @@ export function RecognizedAddBar({
     setSaving(true);
     try {
       const cardId = await addCard(
-        // Einzelscan: die erkannte Karte wird direkt gesehen + bestätigt → kein
-        // Prüfen-Badge (der bleibt dem Mehrfachscan/Batch vorbehalten).
-        cardInfoToAddInput(card, { variant, condition, language, needsReview: false }),
+        cardInfoToAddInput(card, { variant, condition, language }),
       );
       const chosen = binders.find(b => b.id === targetId);
       if (chosen?.template) {

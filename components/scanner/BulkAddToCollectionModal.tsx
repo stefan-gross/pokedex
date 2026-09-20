@@ -48,7 +48,7 @@ export function BulkAddToCollectionModal({ jobs, onClose, onJobSaved, onAllSaved
         const language  = (job.language ?? 'de') as CardLanguage;
         try {
           const cardId = await addCard(
-            cardInfoToAddInput(card, { variant, condition, language, needsReview: true }),
+            cardInfoToAddInput(card, { variant, condition, language }),
           );
           await addCardToBinder(unsortedId, cardId);
           onJobSaved(job.id);

@@ -107,9 +107,9 @@ export default function DashboardPage() {
     : [], [cards]);
 
   // Alle besessenen Exemplare je Karte (tcgId) — damit die Kachel den GESAMT-
-  // Zähler (×N) und „ungeprüft" (!) über ALLE Exemplare zeigt, nicht nur über das
-  // eine zuletzt hinzugefügte (sonst fehlten Zähler/„!", siehe „Zuletzt
-  // hinzugefügt": vorher ownedCards={[card]}).
+  // Zähler (×N) über ALLE Exemplare zeigt, nicht nur über das eine zuletzt
+  // hinzugefügte (sonst fehlte der Zähler, siehe „Zuletzt hinzugefügt": vorher
+  // ownedCards={[card]}).
   const ownedByTcg = useMemo(() => {
     const m = new Map<string, CardDoc[]>();
     (cards ?? []).forEach(c => {

@@ -71,12 +71,3 @@ export async function deleteCard(id: string): Promise<void> {
 export async function getCardsByTcgId(tcgId: string): Promise<CardDoc[]> {
   return (await getCards()).filter(c => c.tcgId === tcgId);
 }
-
-export async function getReviewCount(): Promise<number> {
-  return (await getCards()).filter(c => c.needsReview).length;
-}
-
-export async function markReviewed(id: string): Promise<void> {
-  await updateDoc(doc(db, COL, id), { needsReview: false, updatedAt: Timestamp.now() });
-  invalidateCardsCache();
-}

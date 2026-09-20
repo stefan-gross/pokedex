@@ -274,9 +274,8 @@ const CARD_GRID_URLS = CARD_GRID_NUMBERS.map(n => `https://assets.tcgdex.net/en/
 const SAMPLE_CARD = {
   id: 'swsh2-1', name: 'Mimigma', number: '1', imgSmall: 'https://assets.tcgdex.net/en/swsh/swsh2/1/low.webp',
 } as CardInfo;
-const SAMPLE_OWNED_CARD = { quantity: 2, needsReview: false, variant: 'holo' } as CardDoc;
-const SAMPLE_OWNED_CARD_REVERSE = { quantity: 1, needsReview: false, variant: 'reverse' } as CardDoc;
-const SAMPLE_OWNED_CARD_REVIEW = { quantity: 1, needsReview: true } as CardDoc;
+const SAMPLE_OWNED_CARD = { quantity: 2, variant: 'holo' } as CardDoc;
+const SAMPLE_OWNED_CARD_REVERSE = { quantity: 1, variant: 'reverse' } as CardDoc;
 
 export default function DesignSystemPreviewPage() {
   const [mode, setMode] = useState<'light' | 'dark'>('light');
@@ -480,7 +479,6 @@ export default function DesignSystemPreviewPage() {
   const badgeLayout = draftCardTheme.badgeLayout[cardSize];
   const cornerRadius = draftCardTheme.cornerRadius[cardSize];
   const setCornerRadius = (v: number) => setDraftCardTheme(prev => ({ ...prev, cornerRadius: { ...prev.cornerRadius, [cardSize]: v } }));
-  const [showReviewBadge, setShowReviewBadge] = useState(false);
   // Preis-Badge (unten links, Pillenform) — Demo-Preis einspeisen, damit die
   // Preis-Badge-Positions-Slider unten sichtbar etwas bewegen.
   const [showPriceBadge, setShowPriceBadge] = useState(false);
@@ -536,8 +534,8 @@ export default function DesignSystemPreviewPage() {
     ...overrides,
   });
   const [demoCopies, setDemoCopies] = useState<CardDoc[]>([
-    makeDemoCopy('demo-1', { needsReview: true }),
-    makeDemoCopy('demo-2', { condition: 'LP', language: 'en', needsReview: false }),
+    makeDemoCopy('demo-1', {}),
+    makeDemoCopy('demo-2', { condition: 'LP', language: 'en' }),
     makeDemoCopy('demo-3', { condition: 'HP', language: 'jp', quantity: 3 }),
   ]);
   const [demoLog, setDemoLog] = useState<string>('—');
@@ -982,7 +980,7 @@ export default function DesignSystemPreviewPage() {
             <Card
               card={SAMPLE_CARD}
               size={cardSize}
-              ownedCards={[showReviewBadge ? SAMPLE_OWNED_CARD_REVIEW : SAMPLE_OWNED_CARD]}
+              ownedCards={[SAMPLE_OWNED_CARD]}
               missingStyle={missingStyle}
               badgeLayout={badgeLayout}
               cornerRadius={cornerRadius}
@@ -1018,7 +1016,6 @@ export default function DesignSystemPreviewPage() {
           </div>
 
           <div className="flex-1 min-w-[220px] space-y-3">
-            <Checkbox checked={showReviewBadge} onChange={setShowReviewBadge} label="Prüfen-Badge zeigen (vorhanden)" />
             <Checkbox checked={showPriceBadge} onChange={setShowPriceBadge} label="Preis-Badge zeigen (4,59 €)" />
 
             <label className="block text-role-label text-glass-muted space-y-1">
@@ -1256,17 +1253,13 @@ export default function DesignSystemPreviewPage() {
                   setDemoCopies(cs => cs.filter(c => c.id !== copy.id));
                   setDemoLog(`"${copy.id}" gelöscht`);
                 }}
-                onMarkReviewed={() => {
-                  setDemoCopies(cs => cs.map(c => c.id === copy.id ? { ...c, needsReview: false } : c));
-                  setDemoLog(`"${copy.id}" als geprüft markiert`);
-                }}
               />
             ))}
             {demoCopies.length === 0 && (
               <button
                 onClick={() => setDemoCopies([
-                  makeDemoCopy('demo-1', { needsReview: true }),
-                  makeDemoCopy('demo-2', { condition: 'LP', language: 'en', needsReview: false }),
+                  makeDemoCopy('demo-1', {}),
+                  makeDemoCopy('demo-2', { condition: 'LP', language: 'en' }),
                   makeDemoCopy('demo-3', { condition: 'HP', language: 'jp', quantity: 3 }),
                 ])}
                 className="text-role-label text-glass-muted underline self-start"
