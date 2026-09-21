@@ -36,8 +36,14 @@ const PROMPT_H = [
   'RIGHT thirds. Repaint the left and right thirds into natural, continuous scenery that seamlessly',
   'extends the center outward to both sides. Fully replace the placeholder — leave no stripes,',
   'bands or seams. Match the SAME art style and color palette as the center (keep the clay/plasticine',
-  'look if present; no photorealism). Extend only the environment/background; do NOT add any character',
-  'or a copy of the central subject. Output one image, same wide aspect ratio, edge to edge.',
+  'look if present; no photorealism).',
+  'IMPORTANT — UNIFORM FOCUS: the FINAL image must be SHARP and in focus across the ENTIRE frame.',
+  'If ANY area is blurred or out of focus (including the middle / the background BEHIND the central',
+  'figure), re-render it as sharp, detailed environment (leaves, plants, rocks, ground) — no bokeh,',
+  'no empty green haze, no soft focus band anywhere. Keep the central FIGURE exactly where it is,',
+  'sharp and unchanged; only the surrounding environment becomes sharp and detailed.',
+  'Do NOT add any character or a copy of the central subject. Output one image, same wide aspect',
+  'ratio, edge to edge.',
 ].join(' ');
 
 // Kaskade Pass 2 (vertikal): breite Szene, oben/unten = Platzhalter → nahtlos ergänzen.
@@ -46,9 +52,13 @@ const PROMPT_V = [
   'the TOP and BOTTOM. Repaint the top into a natural continuation upward (canopy, branches, sky) and',
   'the bottom downward (forest floor, ground, foreground plants), seamlessly connected. Fully replace',
   'the placeholder — leave no stripes, bands or seams. Match the SAME art style and color palette as',
-  'the center (keep the clay/plasticine look if present; no photorealism). Extend only the',
-  'environment/background; do NOT add any character or copy of any subject. Output one image, same',
-  'tall aspect ratio, edge to edge.',
+  'the center (keep the clay/plasticine look if present; no photorealism).',
+  'IMPORTANT — UNIFORM FOCUS: the FINAL image must be SHARP and in focus across the ENTIRE frame.',
+  'If ANY area is blurred or out of focus (including the middle / the background BEHIND the central',
+  'figure), re-render it as sharp, detailed environment — no bokeh, no empty green haze, no soft',
+  'focus band anywhere. Keep the central FIGURE exactly where it is, sharp and unchanged; only the',
+  'surrounding environment becomes sharp and detailed.',
+  'Do NOT add any character or copy of any subject. Output one image, same tall aspect ratio, edge to edge.',
 ].join(' ');
 
 async function fetchImageBase64(url: string): Promise<{ data: string; mimeType: string }> {
