@@ -42,6 +42,8 @@ const PROMPT_CF_GRID3X3 = [
   'keine Kacheln, keine Panels, keine Wiederholung, keine gespiegelte Symmetrie, keine',
   'senkrechten/waagerechten Streifen oder Bänder, keine Gitterlinien, kein Rahmen, kein Text. Alles',
   'scharf und im Fokus. Du darfst dasselbe Pokémon zusätzlich in anderen Posen einbauen. Hochformat.',
+  'Fülle das GESAMTE rechteckige Bild randlos bis in alle vier ECKEN — keine leeren/hellen Flächen,',
+  'keine kreisförmige Vignette, kein weicher Auslauf am Rand.',
 ].join(' ');
 
 // ── Replicate (FLUX Fill = dediziertes Outpainting) ───────────────────────
@@ -53,27 +55,25 @@ const REPLICATE_FILL_MODEL = 'black-forest-labs/flux-fill-pro';
 // lange Kante ≤ diesem Wert bleibt; fürs Drucken später separat upscalen.
 const FLUX_MAX_LONG = 1408;
 
-/** Baut aus der Illustration eine 3×-Leinwand (Motiv mittig) + Maske (Rand weiß =
- *  füllen, Mitte schwarz = behalten), beides als Data-URI für Replicate. */
-async function buildOutpaintCanvas(srcBuf: Buffer): Promise<{ image: string; mask: string }> {
-  const md = await sharp(srcBuf).metadata();
-  const w0 = md.width ?? 864, h0 = md.height ?? 1184;
-  // Zentrum so skalieren, dass die 3×-Leinwand FLUX_MAX_LONG nicht überschreitet.
-  const longSide3 = Math.max(w0, h0) * 3;
-  const scale = longSide3 > FLUX_MAX_LONG ? FLUX_MAX_LONG / longSide3 : 1;
-  const cw = Math.round(w0 * scale), ch = Math.round(h0 * scale);
-  const center = await sharp(srcBuf).resize(cw, ch, { fit: 'fill' }).png().toBuffer();
-  const CW = cw * 3, CH = ch * 3;
+// Mehrstufiges Outpainting: pro Schritt nur ein MODERATER Ring (Faktor ~1.7),
+// damit FLUX genug Kontext am Rand hat (keine dunkle Vignette). 2 Schritte ≈ 2.9×.
+const FLUX_PASS_FACTOR = 2.2; // moderate Erweiterung (Motiv ~1/5) — FLUX' Stärke
+const FLUX_PASSES = 1;
 
-  // Bild-Leinwand: Motiv mittig auf neutralem Grund (Rand-Inhalt egal, Maske deckt).
+/** Legt `buf` mittig auf eine `factor`× größere Leinwand und baut die Maske
+ *  (Rand weiß = füllen, Mitte schwarz = behalten). Kein Re-Scale des Inhalts. */
+async function outpaintCanvas(buf: Buffer, factor: number): Promise<{ image: string; mask: string }> {
+  const md = await sharp(buf).metadata();
+  const w = md.width ?? 512, h = md.height ?? 700;
+  const CW = Math.round(w * factor), CH = Math.round(h * factor);
+  const left = Math.round((CW - w) / 2), top = Math.round((CH - h) / 2);
+
   const image = await sharp({ create: { width: CW, height: CH, channels: 3, background: { r: 127, g: 127, b: 127 } } })
-    .composite([{ input: center, left: cw, top: ch }])
+    .composite([{ input: buf, left, top }])
     .png().toBuffer();
-
-  // Maske: alles weiß (füllen), Mitte schwarzes Rechteck (behalten).
-  const blackRect = await sharp({ create: { width: cw, height: ch, channels: 3, background: { r: 0, g: 0, b: 0 } } }).png().toBuffer();
+  const blackRect = await sharp({ create: { width: w, height: h, channels: 3, background: { r: 0, g: 0, b: 0 } } }).png().toBuffer();
   const mask = await sharp({ create: { width: CW, height: CH, channels: 3, background: { r: 255, g: 255, b: 255 } } })
-    .composite([{ input: blackRect, left: cw, top: ch }])
+    .composite([{ input: blackRect, left, top }])
     .png().toBuffer();
 
   return {
@@ -321,9 +321,23 @@ export async function POST(req: NextRequest) {
       const t0 = Date.now();
       try {
         const s = await fetchImageBase64(imageUrl); // data:- ODER http-URL
-        const { image, mask } = await buildOutpaintCanvas(Buffer.from(s.data, 'base64'));
-        const { url } = await genImageReplicate(PROMPT_CF_GRID3X3, image, mask);
-        return NextResponse.json({ provider: 'replicate', model: REPLICATE_FILL_MODEL, latencyMs: Date.now() - t0, image: url });
+        let buf: Buffer = Buffer.from(s.data, 'base64');
+        // Vorskalieren, damit die finale Leinwand (nach allen Pässen) ≤ FLUX-Limit bleibt.
+        const total = Math.pow(FLUX_PASS_FACTOR, FLUX_PASSES);
+        const md0 = await sharp(buf).metadata();
+        const long0 = Math.max(md0.width ?? 512, md0.height ?? 700);
+        const targetCenter = Math.floor(FLUX_MAX_LONG / total);
+        if (long0 > targetCenter) {
+          const sc = targetCenter / long0;
+          buf = await sharp(buf).resize(Math.round((md0.width ?? 512) * sc), Math.round((md0.height ?? 700) * sc)).png().toBuffer();
+        }
+        let url = '';
+        for (let i = 0; i < FLUX_PASSES; i++) {
+          const { image, mask } = await outpaintCanvas(buf, FLUX_PASS_FACTOR);
+          url = (await genImageReplicate(PROMPT_CF_GRID3X3, image, mask)).url;
+          if (i < FLUX_PASSES - 1) buf = Buffer.from(await (await fetch(url)).arrayBuffer());
+        }
+        return NextResponse.json({ provider: 'replicate', model: REPLICATE_FILL_MODEL, passes: FLUX_PASSES, latencyMs: Date.now() - t0, image: url });
       } catch (e) {
         return NextResponse.json({ provider: 'replicate', error: e instanceof Error ? e.message : String(e) }, { status: 502 });
       }
