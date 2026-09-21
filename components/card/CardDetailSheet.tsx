@@ -1335,8 +1335,8 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
               onClick={e => { e.stopPropagation(); handleDownloadImage(); }}
               disabled={downloading}
               aria-label="Bild in Originalgröße herunterladen"
-              className="absolute top-5 left-5 w-11 h-11 rounded-full flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50"
-              style={{ background: 'rgba(255,255,255,.15)' }}
+              className="absolute left-5 w-11 h-11 rounded-full flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50"
+              style={{ background: 'rgba(255,255,255,.15)', top: 'calc(env(safe-area-inset-top, 0px) + 20px)' }}
             >
               {downloading
                 ? <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1345,8 +1345,8 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
           )}
           <button
             onClick={() => setZoomed(false)}
-            className="absolute top-5 right-5 w-11 h-11 rounded-full flex items-center justify-center"
-            style={{ background: 'rgba(255,255,255,.15)' }}
+            className="absolute right-5 w-11 h-11 rounded-full flex items-center justify-center"
+            style={{ background: 'rgba(255,255,255,.15)', top: 'calc(env(safe-area-inset-top, 0px) + 20px)' }}
           >
             <X size={20} color="#fff" />
           </button>
