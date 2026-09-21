@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { X, Plus, Heart, ChevronDown, ChevronRight, ChevronLeft, Info, Repeat2, LayoutGrid, Trash2, Layers } from 'lucide-react';
+import { X, Plus, Heart, ChevronDown, ChevronRight, ChevronLeft, Info, Repeat2, LayoutGrid, Trash2, Layers, Download } from 'lucide-react';
 import { BinderIcon } from '@/lib/binder-icons';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/modal';
@@ -348,6 +348,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   // selbst — hier nur noch das einfache offen/zu.
   const [sheetOpen,    setSheetOpen]    = useState(true);
   const [zoomed,       setZoomed]       = useState(false);
+  const [downloading,  setDownloading]  = useState(false);
   const [openSec,      setOpenSec]      = useState<Set<Section>>(new Set(['details', 'cards']));
   const [imgSrcDe,     setImgSrcDe]     = useState<string | undefined>(undefined);
   const [addVariant,   setAddVariant]   = useState<CardVariant | null>(null);
@@ -555,6 +556,39 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
   const isPromo     = rarityInfo?.order === 99;
   // Promos: nie „/Total" anhängen (offene Reihe, interne Katalogzahl ≠ Aufdruck).
   const numFmt      = formatCardNumber(card.number, isPromo ? undefined : resolvedMeta?.printedTotal);
+
+  // Bild in Originalgröße herunterladen (Vollbildmodus). Bevorzugt die aktuell
+  // gezeigte DE-Lead-URL, sonst die beste Katalog-URL (large = Original). Cross-
+  // Origin-Bilder (TCGdex/Storage senden CORS) via fetch→Blob→<a download>
+  // holen, damit der Browser wirklich speichert statt zu navigieren; scheitert
+  // das (kein CORS), Bild in neuem Tab öffnen (Nutzer kann manuell sichern).
+  const downloadImageUrl = imgSrcDe ?? cardImageCandidates(card, { size: 'large' })[0];
+  async function handleDownloadImage() {
+    if (!card || !downloadImageUrl || downloading) return;
+    const ext = (downloadImageUrl.split('?')[0].match(/\.(png|jpg|jpeg|webp)$/i)?.[1] ?? 'png').toLowerCase();
+    const safe = (s: string) => s.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '');
+    const filename = `${safe(setCode)}-${safe(numFmt || card.number)}-${safe(card.name)}.${ext}`;
+    setDownloading(true);
+    try {
+      const res = await fetch(downloadImageUrl, { mode: 'cors' });
+      if (!res.ok) throw new Error(String(res.status));
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      // Fallback: neuer Tab (z.B. wenn CORS den Blob-Download verhindert).
+      window.open(downloadImageUrl, '_blank', 'noopener');
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   const logoUrl     = resolvedMeta?.logoUrl ?? "";
   const setNameDe   = resolvedMeta?.nameDe ?? card.setName;
   // Sets vor Scarlet & Violet tragen keinen echten Kürzel-Aufdruck — nur ein
@@ -1295,6 +1329,19 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
               className="rounded-2xl overflow-hidden"
               style={{ width: 'min(90vw, calc(85dvh * 5 / 7))', aspectRatio: '2.5 / 3.5' }}
             />
+          )}
+          {downloadImageUrl && (
+            <button
+              onClick={e => { e.stopPropagation(); handleDownloadImage(); }}
+              disabled={downloading}
+              aria-label="Bild in Originalgröße herunterladen"
+              className="absolute top-5 left-5 w-11 h-11 rounded-full flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50"
+              style={{ background: 'rgba(255,255,255,.15)' }}
+            >
+              {downloading
+                ? <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                : <Download size={20} color="#fff" />}
+            </button>
           )}
           <button
             onClick={() => setZoomed(false)}
