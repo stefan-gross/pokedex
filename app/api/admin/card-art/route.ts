@@ -107,6 +107,16 @@ async function genImageReplicate(prompt: string, image: string, mask: string): P
   return { url };
 }
 
+// FLUX (Diffusion) mag POSITIVE Beschreibungen, kaum Verneinungen. Daher ein
+// eigener, knapper Prompt, der die gewünschte Szene beschreibt (statt „kein …").
+const PROMPT_FLUX = [
+  'A single, wide, continuous painted landscape illustration that seamlessly extends the central',
+  'scene outward in every direction, all the way to the edges of the frame. Same art style, color',
+  'palette, lighting and time of day as the center. The surroundings are a natural, richly detailed',
+  'environment matching the center (rooftops, buildings, sky and clouds, trees, hills or water as',
+  'fitting). Sharp and in focus, edge to edge, one coherent scene.',
+].join(' ');
+
 interface CFOptions { imageSize?: string; aspectRatio?: string }
 
 /** Ein Creative-Fabrica-Generationslauf: POST → pollen bis fertig → Bild-URL.
@@ -334,7 +344,7 @@ export async function POST(req: NextRequest) {
         let url = '';
         for (let i = 0; i < FLUX_PASSES; i++) {
           const { image, mask } = await outpaintCanvas(buf, FLUX_PASS_FACTOR);
-          url = (await genImageReplicate(PROMPT_CF_GRID3X3, image, mask)).url;
+          url = (await genImageReplicate(PROMPT_FLUX, image, mask)).url;
           if (i < FLUX_PASSES - 1) buf = Buffer.from(await (await fetch(url)).arrayBuffer());
         }
         return NextResponse.json({ provider: 'replicate', model: REPLICATE_FILL_MODEL, passes: FLUX_PASSES, latencyMs: Date.now() - t0, image: url });
