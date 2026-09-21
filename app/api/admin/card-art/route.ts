@@ -44,6 +44,69 @@ const PROMPT_CF_GRID3X3 = [
   'scharf und im Fokus. Du darfst dasselbe Pokémon zusätzlich in anderen Posen einbauen. Hochformat.',
 ].join(' ');
 
+// ── Replicate (FLUX Fill = dediziertes Outpainting) ───────────────────────
+// Füllt NUR den maskierten Rand, lässt die Mitte pixelgenau → kein Kacheln,
+// keine Motiv-Dopplung. Token NUR aus Env (Secret).
+const REPLICATE_TOKEN = process.env.REPLICATE_API_TOKEN;
+const REPLICATE_FILL_MODEL = 'black-forest-labs/flux-fill-pro';
+// FLUX begrenzt die Auflösung (~2 MP). Wir skalieren die 3×-Leinwand so, dass die
+// lange Kante ≤ diesem Wert bleibt; fürs Drucken später separat upscalen.
+const FLUX_MAX_LONG = 1408;
+
+/** Baut aus der Illustration eine 3×-Leinwand (Motiv mittig) + Maske (Rand weiß =
+ *  füllen, Mitte schwarz = behalten), beides als Data-URI für Replicate. */
+async function buildOutpaintCanvas(srcBuf: Buffer): Promise<{ image: string; mask: string }> {
+  const md = await sharp(srcBuf).metadata();
+  const w0 = md.width ?? 864, h0 = md.height ?? 1184;
+  // Zentrum so skalieren, dass die 3×-Leinwand FLUX_MAX_LONG nicht überschreitet.
+  const longSide3 = Math.max(w0, h0) * 3;
+  const scale = longSide3 > FLUX_MAX_LONG ? FLUX_MAX_LONG / longSide3 : 1;
+  const cw = Math.round(w0 * scale), ch = Math.round(h0 * scale);
+  const center = await sharp(srcBuf).resize(cw, ch, { fit: 'fill' }).png().toBuffer();
+  const CW = cw * 3, CH = ch * 3;
+
+  // Bild-Leinwand: Motiv mittig auf neutralem Grund (Rand-Inhalt egal, Maske deckt).
+  const image = await sharp({ create: { width: CW, height: CH, channels: 3, background: { r: 127, g: 127, b: 127 } } })
+    .composite([{ input: center, left: cw, top: ch }])
+    .png().toBuffer();
+
+  // Maske: alles weiß (füllen), Mitte schwarzes Rechteck (behalten).
+  const blackRect = await sharp({ create: { width: cw, height: ch, channels: 3, background: { r: 0, g: 0, b: 0 } } }).png().toBuffer();
+  const mask = await sharp({ create: { width: CW, height: CH, channels: 3, background: { r: 255, g: 255, b: 255 } } })
+    .composite([{ input: blackRect, left: cw, top: ch }])
+    .png().toBuffer();
+
+  return {
+    image: `data:image/png;base64,${image.toString('base64')}`,
+    mask: `data:image/png;base64,${mask.toString('base64')}`,
+  };
+}
+
+/** Ein Replicate-FLUX-Fill-Lauf: POST → pollen → Ergebnis-URL. */
+async function genImageReplicate(prompt: string, image: string, mask: string): Promise<{ url: string }> {
+  if (!REPLICATE_TOKEN) throw new Error('REPLICATE_API_TOKEN fehlt');
+  const headers = { Authorization: `Bearer ${REPLICATE_TOKEN}`, 'Content-Type': 'application/json' };
+  const startRes = await fetch(`https://api.replicate.com/v1/models/${REPLICATE_FILL_MODEL}/predictions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ input: { prompt, image, mask, output_format: 'png', safety_tolerance: 6 } }),
+  });
+  const startText = await startRes.text();
+  if (!startRes.ok) throw new Error(`Replicate start ${startRes.status}: ${startText.slice(0, 250)}`);
+  let job = JSON.parse(startText);
+  const getUrl = job.urls?.get || `https://api.replicate.com/v1/predictions/${job.id}`;
+  const deadline = Date.now() + 150_000;
+  while (!['succeeded', 'failed', 'canceled'].includes(job.status)) {
+    if (Date.now() > deadline) throw new Error('Replicate Timeout');
+    await new Promise(r => setTimeout(r, 2500));
+    job = await (await fetch(getUrl, { headers })).json();
+  }
+  if (job.status !== 'succeeded') throw new Error(`Replicate ${job.status}: ${JSON.stringify(job.error ?? '').slice(0, 200)}`);
+  const url = Array.isArray(job.output) ? job.output[0] : job.output;
+  if (!url) throw new Error('Replicate: keine Ausgabe');
+  return { url };
+}
+
 interface CFOptions { imageSize?: string; aspectRatio?: string }
 
 /** Ein Creative-Fabrica-Generationslauf: POST → pollen bis fertig → Bild-URL.
@@ -250,6 +313,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ provider: 'cf', model, mode: mode ?? 'card', latencyMs: Date.now() - t0, image: url });
       } catch (e) {
         return NextResponse.json({ provider: 'cf', model, error: e instanceof Error ? e.message : String(e) }, { status: 502 });
+      }
+    }
+
+    // ── Replicate FLUX Fill (Outpaint): Illustration → 3×-Szene, Mitte exakt.
+    if (provider === 'replicate') {
+      const t0 = Date.now();
+      try {
+        const s = await fetchImageBase64(imageUrl); // data:- ODER http-URL
+        const { image, mask } = await buildOutpaintCanvas(Buffer.from(s.data, 'base64'));
+        const { url } = await genImageReplicate(PROMPT_CF_GRID3X3, image, mask);
+        return NextResponse.json({ provider: 'replicate', model: REPLICATE_FILL_MODEL, latencyMs: Date.now() - t0, image: url });
+      } catch (e) {
+        return NextResponse.json({ provider: 'replicate', error: e instanceof Error ? e.message : String(e) }, { status: 502 });
       }
     }
 

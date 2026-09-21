@@ -76,6 +76,26 @@ export default function CardArtPreviewTempPage() {
     finally { setCfLoad2(false); }
   }
 
+  // Replicate FLUX Fill (Outpaint) — nutzt eine Illustration (Gemini/CF Schritt 1) oder die Karten-URL.
+  const [repLoad, setRepLoad] = useState(false);
+  const [repImg, setRepImg] = useState<string | null>(null);
+  const [repMeta, setRepMeta] = useState<string | null>(null);
+
+  async function runReplicate() {
+    const input = art ?? cfArt ?? url; // bevorzugt freigestellte Illustration
+    setRepLoad(true); setError(null); setRepImg(null); setRepMeta(null);
+    try {
+      const res = await fetch('/api/admin/card-art', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl: input, provider: 'replicate' }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.image) throw new Error(`${d.error ?? res.status}`);
+      setRepImg(d.image); setRepMeta(`${d.model} · ${d.latencyMs} ms`);
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setRepLoad(false); }
+  }
+
   const CF_MODELS = [
     ['gemini_pro_3', 'Nano Banana Pro (3 Pro)'],
     ['gemini_flash_3_1', 'Nano Banana 2 (3.1)'],
@@ -174,6 +194,24 @@ export default function CardArtPreviewTempPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Replicate FLUX Fill — dediziertes Outpainting, Mitte bleibt exakt */}
+      <div className="glass rounded-[16px] p-3 space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-role-label text-glass-muted flex-1">FLUX Fill (Replicate) — Outpaint, Mitte pixelgenau. Nutzt Illustration aus Schritt 1 (Gemini/CF), sonst die Karten-URL.</p>
+          <Button onClick={runReplicate} disabled={repLoad || !url} variant="secondary" size="sm">
+            {repLoad ? 'FLUX…' : 'FLUX Fill 3×3'}
+          </Button>
+          {repMeta && <span className="text-role-label text-glass-muted">{repMeta}</span>}
+        </div>
+        {repImg && (
+          <div className="space-y-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={repImg} alt="FLUX" className="max-w-full rounded-xl" style={{ maxHeight: '80vh' }} />
+            <a href={repImg} target="_blank" rel="noreferrer"><Button variant="ghost" size="sm">Öffnen</Button></a>
+          </div>
+        )}
       </div>
 
       {error && (
