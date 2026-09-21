@@ -42,6 +42,9 @@ const PROMPT_H = [
   'figure), re-render it as sharp, detailed environment (leaves, plants, rocks, ground) — no bokeh,',
   'no empty green haze, no soft focus band anywhere. Keep the central FIGURE exactly where it is,',
   'sharp and unchanged; only the surrounding environment becomes sharp and detailed.',
+  'ASYMMETRY: make the LEFT and RIGHT sides look CLEARLY DIFFERENT from each other — different plants,',
+  'trees, rocks, shapes and spacing; no mirror symmetry, no matching pair of framing trees, and no',
+  'repeated/duplicated elements between the two sides.',
   'Do NOT add any character or a copy of the central subject. Output one image, same wide aspect',
   'ratio, edge to edge.',
 ].join(' ');
@@ -58,6 +61,9 @@ const PROMPT_V = [
   'figure), re-render it as sharp, detailed environment — no bokeh, no empty green haze, no soft',
   'focus band anywhere. Keep the central FIGURE exactly where it is, sharp and unchanged; only the',
   'surrounding environment becomes sharp and detailed.',
+  'ASYMMETRY: make the TOP and BOTTOM (and the top-left vs top-right corners) look CLEARLY DIFFERENT',
+  'from each other — vary plants, trees, rocks and shapes; no mirror symmetry and no matching/',
+  'duplicated framing elements between corners or sides.',
   'Do NOT add any character or copy of any subject. Output one image, same tall aspect ratio, edge to edge.',
 ].join(' ');
 
