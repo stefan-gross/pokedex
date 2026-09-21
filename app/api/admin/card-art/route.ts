@@ -57,8 +57,11 @@ const FLUX_MAX_LONG = 1408;
 
 // Mehrstufiges Outpainting: pro Schritt nur ein MODERATER Ring (Faktor ~1.7),
 // damit FLUX genug Kontext am Rand hat (keine dunkle Vignette). 2 Schritte ≈ 2.9×.
-const FLUX_PASS_FACTOR = 2.2; // moderate Erweiterung (Motiv ~1/5) — FLUX' Stärke
-const FLUX_PASSES = 1;
+// Echtes 3×3: 2 Pässe à √3 ≈ 1.732 = exakt 3× (Mitte = 1/3 je Achse → in 9
+// gleiche Kacheln schneidbar). Moderater Ring pro Pass + positiver Prompt =
+// keine Vignette / kein Kartenrahmen. Mitte bleibt über beide Pässe pixelgenau.
+const FLUX_PASS_FACTOR = Math.sqrt(3);
+const FLUX_PASSES = 2;
 
 /** Legt `buf` mittig auf eine `factor`× größere Leinwand und baut die Maske
  *  (Rand weiß = füllen, Mitte schwarz = behalten). Kein Re-Scale des Inhalts. */
@@ -86,12 +89,19 @@ async function outpaintCanvas(buf: Buffer, factor: number): Promise<{ image: str
 async function genImageReplicate(prompt: string, image: string, mask: string): Promise<{ url: string }> {
   if (!REPLICATE_TOKEN) throw new Error('REPLICATE_API_TOKEN fehlt');
   const headers = { Authorization: `Bearer ${REPLICATE_TOKEN}`, 'Content-Type': 'application/json' };
-  const startRes = await fetch(`https://api.replicate.com/v1/models/${REPLICATE_FILL_MODEL}/predictions`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ input: { prompt, image, mask, output_format: 'png', safety_tolerance: 6 } }),
-  });
-  const startText = await startRes.text();
+  const body = JSON.stringify({ input: { prompt, image, mask, output_format: 'png', safety_tolerance: 6 } });
+
+  // Rate-Limit (429) tolerieren: bei <$5 Guthaben ist der Burst = 1/min. Warten
+  // (retry_after o. 12 s) und erneut versuchen.
+  let startRes: Response, startText = '';
+  for (let attempt = 0; ; attempt++) {
+    startRes = await fetch(`https://api.replicate.com/v1/models/${REPLICATE_FILL_MODEL}/predictions`, { method: 'POST', headers, body });
+    startText = await startRes.text();
+    if (startRes.status !== 429 || attempt >= 5) break;
+    let wait = 12_000;
+    try { const j = JSON.parse(startText); if (j.retry_after) wait = Math.max(2000, j.retry_after * 1000 + 500); } catch { /* default */ }
+    await new Promise(r => setTimeout(r, wait));
+  }
   if (!startRes.ok) throw new Error(`Replicate start ${startRes.status}: ${startText.slice(0, 250)}`);
   let job = JSON.parse(startText);
   const getUrl = job.urls?.get || `https://api.replicate.com/v1/predictions/${job.id}`;
@@ -343,6 +353,7 @@ export async function POST(req: NextRequest) {
         }
         let url = '';
         for (let i = 0; i < FLUX_PASSES; i++) {
+          if (i > 0) await new Promise(r => setTimeout(r, 11_000)); // Rate-Limit (<$5: ~1/10s)
           const { image, mask } = await outpaintCanvas(buf, FLUX_PASS_FACTOR);
           url = (await genImageReplicate(PROMPT_FLUX, image, mask)).url;
           if (i < FLUX_PASSES - 1) buf = Buffer.from(await (await fetch(url)).arrayBuffer());
