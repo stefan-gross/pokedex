@@ -47,6 +47,9 @@ const PROMPT_H = [
   'and unchanged; only the surroundings are rebuilt.',
   'ASYMMETRY: the LEFT and RIGHT sides must look CLEARLY DIFFERENT from each other — no mirror',
   'symmetry, no matching pair of framing elements, no duplicated shapes between the two sides.',
+  'QUALITY: no vertical or horizontal streaks/bands/smears on walls, buildings or sky; skies and',
+  'clouds must look natural (no swirled or warped patterns); keep the central creature\'s anatomy',
+  'intact and correct (wings, tail, limbs) — do not cut, duplicate or distort the tail or wings.',
   'Do NOT add any character or a copy of the central subject. Output one image, same wide aspect',
   'ratio, edge to edge.',
 ].join(' ');
@@ -66,6 +69,9 @@ const PROMPT_V = [
   'SUBJECT exactly where it is, sharp and unchanged; only the surroundings are rebuilt.',
   'ASYMMETRY: TOP and BOTTOM (and the top-left vs top-right corners) must look CLEARLY DIFFERENT — no',
   'mirror symmetry, no matching/duplicated framing elements between corners or sides.',
+  'QUALITY: no vertical or horizontal streaks/bands/smears on walls, buildings or sky; skies and',
+  'clouds must look natural (no swirled or warped patterns); keep the central creature\'s anatomy',
+  'intact and correct (wings, tail, limbs) — do not cut, duplicate or distort the tail or wings.',
   'Do NOT add any character or copy of any subject. Output one image, same tall aspect ratio, edge to edge.',
 ].join(' ');
 
@@ -103,14 +109,19 @@ async function genImage(
   return { mimeType: img.inlineData.mimeType || 'image/png', data: img.inlineData.data };
 }
 
-/** Leinwand um die Ränder mit gestreckten Kantenpixeln erweitern (Outpaint-Seed).
- *  `copy` (Kanten-Streckung) statt `mirror`: Spiegelung erzeugte bei
- *  unvollständigem Übermalen auffällige Symmetrie; die Streckung ist unauffälliger
- *  und lieferte mit schlankem Prompt das beste Ergebnis. */
+/** Leinwand um die Ränder als Outpaint-Seed erweitern: Kanten strecken (`copy`),
+ *  das Ganze WEICHZEICHNEN und dann die SCHARFE Mitte wieder einsetzen. So gibt
+ *  es am Rand keine harten senkrechten Streifen mehr (die Gemini bei
+ *  unvollständigem Übermalen als Barcode stehen ließ), sondern nur weiche
+ *  Farbverläufe; die Mitte (Motiv) bleibt scharf und korrekt. */
 async function extendEdges(b64: string, side: number, vert: number): Promise<string> {
   const buf = Buffer.from(b64, 'base64');
-  const out = await sharp(buf)
+  const blurredBorder = await sharp(buf)
     .extend({ left: side, right: side, top: vert, bottom: vert, extendWith: 'copy' })
+    .blur(28)
+    .toBuffer();
+  const out = await sharp(blurredBorder)
+    .composite([{ input: buf, left: side, top: vert }]) // scharfe Original-Mitte zurück
     .png().toBuffer();
   return out.toString('base64');
 }
