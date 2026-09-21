@@ -75,6 +75,29 @@ const hasSearchQuery = (q: string) => {
   return t.length >= MIN_SEARCH_CHARS || /^#\d+$/.test(t);
 };
 
+// ── Persistenter Tab-Zustand (sessionStorage) ──────────────────────
+// Damit Suche/Filter je Tab auch über Navigationen (z.B. „Alle Karten") hinweg
+// erhalten bleiben, nicht nur beim manuellen Umschalten im selben Mount.
+type Scope = 'cards' | 'pokemon' | 'illustrator';
+interface SavedCardFilters {
+  ownedFilter: OwnedFilter; activeSupertype: Supertype | 'all'; activeTypes: string[];
+  activeRegion: string; activeRarity: string | null; activeSpecialMechanics: string[];
+  activeEvolutions: string[]; filterSet: string;
+}
+interface SavedCollectionState {
+  scope: Scope; queryByScope: Record<Scope, string>; cardFilters: SavedCardFilters | null;
+  pokemonSort: 'name' | 'dex'; pokemonSortDir: 'asc' | 'desc';
+}
+const COLLECTION_STATE_KEY = 'collectionState';
+function readCollectionState(): SavedCollectionState | null {
+  if (typeof window === 'undefined') return null;
+  try { const s = sessionStorage.getItem(COLLECTION_STATE_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+const EMPTY_FILTERS: SavedCardFilters = {
+  ownedFilter: 'all', activeSupertype: 'all', activeTypes: [], activeRegion: '',
+  activeRarity: null, activeSpecialMechanics: [], activeEvolutions: [], filterSet: '',
+};
+
 // Limits sind reine Kosten-/Sicherheitsbremsen gegen einen extrem generischen
 // Suchbegriff (z.B. 1 Buchstabe), der sonst den ganzen Katalog laden würde —
 // keine Notwendigkeit für die Korrektheit der Suche selbst.
@@ -132,20 +155,40 @@ function CollectionContent() {
   // Rückkehr von einer Pokémon-Detailseite (in sessionStorage gesichert): Tab,
   // Suchbegriff, Sortierung und Scroll. SYNCHRON beim ersten Render gelesen, damit
   // die Seite nicht erst kurz im Karten-Tab (Default) aufblitzt und dann umspringt.
+  // ABER: Kommt die URL mit explizitem `?q=` (z.B. „Alle Karten"→`#<dex>`), gewinnt
+  // dieser Link — der gespeicherte Rückkehr-Zustand wird dann ignoriert.
   const returnState = useMemo<{
     scope?: 'cards' | 'pokemon' | 'illustrator'; query?: string;
     sort?: 'name' | 'dex'; dir?: 'asc' | 'desc'; scrollY?: number;
   } | null>(() => {
-    if (typeof window === 'undefined') return null;
+    if (typeof window === 'undefined' || initialQ) return null;
     try { const s = sessionStorage.getItem('collectionReturn'); return s ? JSON.parse(s) : null; } catch { return null; }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persistenter Tab-Zustand (Suche/Filter je Tab) — beim Mount wiederhergestellt,
+  // damit er auch Navigationen wie „Alle Karten" überlebt. Ein explizites `?q=`
+  // erzwingt Karten-Tab + überschreibt NUR dessen Suchbegriff.
+  const saved = useMemo(readCollectionState, []);
+  const hydScope: Scope = initialQ ? 'cards' : (saved?.scope ?? 'cards');
+  const hydQueries: Record<Scope, string> = {
+    cards: '', pokemon: '', illustrator: '',
+    ...(saved?.queryByScope ?? {}),
+    ...(initialQ ? { cards: initialQ } : {}),
+  };
+  // Karten-Filter aus dem Speicher; die Region kann ein Deep-Link (?region=) setzen.
+  const hydFilters: SavedCardFilters = saved?.cardFilters ?? EMPTY_FILTERS;
+  const onCards = hydScope === 'cards';
 
   // ── Geteilter Filter-State ─────────────────────────────────────
-  const [activeTypes,      setActiveTypes]      = useState<Set<TcgType>>(new Set());
-  const [activeSupertype,  setActiveSupertype]  = useState<Supertype | 'all'>('all');
-  const [ownedFilter,      setOwnedFilter]      = useState<OwnedFilter>('all');
-  const [activeRarity,     setActiveRarity]     = useState<string | null>(null);
-  const [activeRegion,     setActiveRegion]     = useState(REGIONS.includes(initialRegion) ? initialRegion : '');
+  // Beim Mount auf dem Karten-Tab die gespeicherten Filter übernehmen (sonst leer;
+  // sie liegen dann im cardFilterStash und kehren beim Umschalten zurück).
+  const [activeTypes,      setActiveTypes]      = useState<Set<TcgType>>(() => new Set(onCards ? hydFilters.activeTypes as TcgType[] : []));
+  const [activeSupertype,  setActiveSupertype]  = useState<Supertype | 'all'>(onCards ? hydFilters.activeSupertype : 'all');
+  const [ownedFilter,      setOwnedFilter]      = useState<OwnedFilter>(onCards ? hydFilters.ownedFilter : 'all');
+  const [activeRarity,     setActiveRarity]     = useState<string | null>(onCards ? hydFilters.activeRarity : null);
+  const [activeRegion,     setActiveRegion]     = useState(
+    REGIONS.includes(initialRegion) ? initialRegion : (onCards ? hydFilters.activeRegion : ''),
+  );
   // Katalog-weite Statistik je Region (Karten + Arten) für den Stöber-Modus —
   // aus meta/region_stats (Firestore kann „distinct" nicht zählen).
   const [regionStats,      setRegionStats]      = useState<Record<string, { cards: number; species: number }>>({});
@@ -157,8 +200,8 @@ function CollectionContent() {
   // vor den client-/server-seitigen Zählern; null = nicht verfügbar → Fallback.
   const [algoliaFacets, setAlgoliaFacets] = useState<AlgoliaFacetCounts | null>(null);
   const algoliaFacetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [activeEvolutions, setActiveEvolutions] = useState<Set<string>>(new Set());
-  const [activeSpecialMechanics, setActiveSpecialMechanics] = useState<Set<string>>(new Set());
+  const [activeEvolutions, setActiveEvolutions] = useState<Set<string>>(() => new Set(onCards ? hydFilters.activeEvolutions : []));
+  const [activeSpecialMechanics, setActiveSpecialMechanics] = useState<Set<string>>(() => new Set(onCards ? hydFilters.activeSpecialMechanics : []));
   const [evoLineActive,    setEvoLineActive]    = useState(false);
   const [allSets,          setAllSets]          = useState<TcgSet[]>([]);
   const baseResultsRef = useRef<CardInfo[]>([]); // Suchergebnisse vor Evo-Line-Erweiterung
@@ -168,7 +211,7 @@ function CollectionContent() {
   const [browseSortDir, setBrowseSortDir] = useState<'asc' | 'desc'>('asc');
 
   // ── Suche ─────────────────────────────────────────────────────
-  const [inputValue,    setInputValue]    = useState(returnState?.query ?? initialQ);
+  const [inputValue,    setInputValue]    = useState(hydQueries[hydScope]);
   // Geteilter Autosuggest-/Fuzzy-Index — nur noch für die „Meintest du …?"-
   // Korrektur unten; das Autosuggest-Panel selbst steckt in `CardSearchField`.
   const suggestIndex = useSuggestIndex();
@@ -182,7 +225,7 @@ function CollectionContent() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchSort,    setSearchSort]    = useState<SearchSortKey>('number');
   const [searchSortDir, setSearchSortDir] = useState<'asc' | 'desc'>('asc');
-  const [filterSet,     setFilterSet]     = useState('');
+  const [filterSet,     setFilterSet]     = useState(onCards ? hydFilters.filterSet : '');
   const [sets,          setSets]          = useState<{ id: string; name: string; count: number }[]>([]);
   const [catalogCount,  setCatalogCount]  = useState(0);
   // -1 = „noch nicht geladen" (unterscheidet vom echten Leer-Katalog 0). Wichtig
@@ -197,18 +240,27 @@ function CollectionContent() {
   const searchSentinelRef = useRef<HTMLDivElement>(null);
 
   // ── Such-Scope (mobile-first Umbau): Karten | Pokémon | Illustrator ───────
-  const [scope, setScope] = useState<'cards' | 'pokemon' | 'illustrator'>(returnState?.scope ?? 'cards');
+  const [scope, setScope] = useState<'cards' | 'pokemon' | 'illustrator'>(hydScope);
   const [filterOpen, setFilterOpen] = useState(false);
-  // Pro Tab eigener Suchbegriff (+ nur Karten: eigene Filter). Beim Zurückwechseln
-  // wird der jeweilige Stand wiederhergestellt statt zurückgesetzt.
-  const queryStash    = useRef<Record<'cards' | 'pokemon' | 'illustrator', string>>({ cards: initialQ, pokemon: '', illustrator: '' });
+  // Pro Tab eigener Suchbegriff (+ nur Karten: eigene Filter). Beim Umschalten
+  // wird der jeweilige Stand wiederhergestellt; aus sessionStorage vor-hydriert.
+  const queryStash    = useRef<Record<'cards' | 'pokemon' | 'illustrator', string>>({ ...hydQueries });
   const cardFilterStash = useRef<null | {
     activeSupertype: Supertype | 'all'; activeTypes: Set<TcgType>; activeEvolutions: Set<string>;
     activeSpecialMechanics: Set<string>; activeRarity: string | null; activeRegion: string;
     filterSet: string; ownedFilter: OwnedFilter;
-  }>(null);
-  const [pokemonSort, setPokemonSort] = useState<'name' | 'dex'>(returnState?.sort ?? 'dex');
-  const [pokemonSortDir, setPokemonSortDir] = useState<'asc' | 'desc'>(returnState?.dir ?? 'asc');
+  }>(saved?.cardFilters ? {
+    activeSupertype: hydFilters.activeSupertype,
+    activeTypes: new Set(hydFilters.activeTypes as TcgType[]),
+    activeEvolutions: new Set(hydFilters.activeEvolutions),
+    activeSpecialMechanics: new Set(hydFilters.activeSpecialMechanics),
+    activeRarity: hydFilters.activeRarity,
+    activeRegion: hydFilters.activeRegion,
+    filterSet: hydFilters.filterSet,
+    ownedFilter: hydFilters.ownedFilter,
+  } : null);
+  const [pokemonSort, setPokemonSort] = useState<'name' | 'dex'>(saved?.pokemonSort ?? returnState?.sort ?? 'dex');
+  const [pokemonSortDir, setPokemonSortDir] = useState<'asc' | 'desc'>(saved?.pokemonSortDir ?? returnState?.dir ?? 'asc');
   // Trefferzahl des Illustrator-Scopes (von IllustratorResults gemeldet) für die
   // Anzeige rechts neben dem Suchfeld.
   const [illustratorCount, setIllustratorCount] = useState<number | null>(null);
@@ -580,6 +632,9 @@ function CollectionContent() {
   // bereits aus den useState-Initialisierern (kein Flash). Hier nur noch die
   // Scrollposition wiederherstellen, den Stash nachziehen und den Marker löschen.
   useEffect(() => {
+    // Marker IMMER konsumieren (auch wenn er via `?q=`-Link ignoriert wurde),
+    // damit er später keine falsche Wiederherstellung mehr auslöst.
+    try { sessionStorage.removeItem('collectionReturn'); } catch {}
     if (!returnState) return;
     if (returnState.scope && typeof returnState.query === 'string') {
       queryStash.current[returnState.scope] = returnState.query;
@@ -588,8 +643,29 @@ function CollectionContent() {
       const y = returnState.scrollY;
       requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, y)));
     }
-    try { sessionStorage.removeItem('collectionReturn'); } catch {}
   }, [returnState]);
+
+  // Tab-Zustand (Suche/Filter je Tab + Sortierung) laufend in sessionStorage
+  // sichern, damit er Navigationen (z.B. „Alle Karten") überlebt.
+  useEffect(() => {
+    const stash = cardFilterStash.current;
+    const cardFilters: SavedCardFilters = scope === 'cards'
+      ? { ownedFilter, activeSupertype, activeTypes: [...activeTypes], activeRegion, activeRarity,
+          activeSpecialMechanics: [...activeSpecialMechanics], activeEvolutions: [...activeEvolutions], filterSet }
+      : stash
+        ? { ownedFilter: stash.ownedFilter, activeSupertype: stash.activeSupertype, activeTypes: [...stash.activeTypes],
+            activeRegion: stash.activeRegion, activeRarity: stash.activeRarity,
+            activeSpecialMechanics: [...stash.activeSpecialMechanics], activeEvolutions: [...stash.activeEvolutions],
+            filterSet: stash.filterSet }
+        : EMPTY_FILTERS;
+    const state: SavedCollectionState = {
+      scope,
+      queryByScope: { ...queryStash.current, [scope]: inputValue },
+      cardFilters,
+      pokemonSort, pokemonSortDir,
+    };
+    try { sessionStorage.setItem(COLLECTION_STATE_KEY, JSON.stringify(state)); } catch {}
+  }, [scope, inputValue, ownedFilter, activeSupertype, activeTypesKey, activeRegion, activeRarity, activeSpecialMechanicsKey, activeEvolutionsKey, filterSet, pokemonSort, pokemonSortDir]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Deep-Link ?region=… auch übernehmen, wenn wir schon auf /collection sind
   // (Kartendetail als Overlay → Push auf dieselbe Route re-mountet nicht). Nur

@@ -7,6 +7,12 @@ import { ChevronDown, ChevronLeft, ChevronRight, LayoutGrid } from 'lucide-react
 import { Button } from '@/components/ui/button';
 import { pokemonArtworkUrl } from '@/lib/binder-icons';
 import { getCardsByDexNumberRest } from '@/lib/firestore/catalog-rest';
+import { getCardsRest } from '@/lib/firestore/cards-rest';
+import { CardImage } from '@/components/card/CardImage';
+import { CardDetailSheet } from '@/components/card/CardDetailSheet';
+import { catalogCardToInfo, type CardInfo } from '@/lib/card-info';
+import type { CatalogCard } from '@/lib/firestore/catalog';
+import type { CardDoc } from '@/types';
 import { fetchSpeciesDetail, type SpeciesDetail, type EvoStep } from '@/lib/pokemon/species-detail';
 import type { PokemonProfile } from '@/lib/firestore/pokemon';
 import SPECIES_JSON from '@/lib/pokemon-species-de.json';
@@ -103,6 +109,9 @@ export default function PokemonDetailPage() {
   const [cat, setCat] = useState<CatalogFacts | null>(null);
   const [profile, setProfile] = useState<PokemonProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
+  const [cards, setCards] = useState<CatalogCard[]>([]);
+  const [ownedMap, setOwnedMap] = useState<Map<string, CardDoc[]>>(new Map());
+  const [selected, setSelected] = useState<CardInfo | null>(null);
   const [artOk, setArtOk] = useState(true);
 
   useEffect(() => {
@@ -112,12 +121,14 @@ export default function PokemonDetailPage() {
     setDetail(null);
     setCat(null);
     setProfile(null);
+    setCards([]);
     let alive = true;
 
-    // Firestore-First: deutsche Textfakten + Evolutionslinie aus dem Katalog.
-    getCardsByDexNumberRest(dex, 60)
+    // Firestore-First: deutsche Textfakten + Evolutionslinie + Karten aus dem Katalog.
+    getCardsByDexNumberRest(dex, 100)
       .then(cards => {
         if (!alive) return;
+        setCards(cards);
         const withFacts = cards.find(c => c.genusDe || c.flavorTextDe);
         const withFam = cards.find(c => c.evolutionFamily?.length);
         setCat({
@@ -144,8 +155,22 @@ export default function PokemonDetailPage() {
       .catch(() => {})
       .finally(() => { if (alive) setProfileLoading(false); });
 
+    // Eigene Sammlung (für Besitz-Badges im Karten-Detail).
+    getCardsRest().then(docs => {
+      if (!alive) return;
+      const m = new Map<string, CardDoc[]>();
+      docs.forEach(c => { if (c.tcgId) (m.get(c.tcgId) ?? m.set(c.tcgId, []).get(c.tcgId)!).push(c); });
+      setOwnedMap(m);
+    }).catch(() => {});
+
     return () => { alive = false; };
   }, [dex]);
+
+  // Vorschau: die 6 wertvollsten Karten dieses Pokémon (Trendpreis absteigend).
+  const topCards = useMemo(
+    () => [...cards].sort((a, b) => (b.priceEur ?? 0) - (a.priceEur ?? 0)).slice(0, 6),
+    [cards],
+  );
 
   // Effektive Fakten: Katalog (deutsch) bevorzugt, PokéAPI als Quelle/Fallback.
   const genus = cat?.genusDe || detail?.genus || '';
@@ -186,10 +211,10 @@ export default function PokemonDetailPage() {
           Zurück
         </Button>
 
-        {/* Kopf: Name + Pokédex-Nr. gleichwertig in einer Zeile */}
-        <div className="flex items-baseline gap-2 flex-wrap">
-          <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)] leading-tight">{name}</h1>
-          <span className="text-role-h1 text-glass-muted tabular-nums leading-tight">{padDex(dex)}</span>
+        {/* Kopf: Name links, Pokédex-Nr. rechtsbündig — gleichwertig in einer Zeile */}
+        <div className="flex items-baseline justify-between gap-2">
+          <h1 className="text-role-h1 text-glass dark:[text-shadow:0_1px_8px_rgba(0,0,0,0.2)] leading-tight min-w-0 truncate">{name}</h1>
+          <span className="text-role-h1 text-glass-muted tabular-nums leading-tight shrink-0">{padDex(dex)}</span>
         </div>
 
         {/* Allgemeiner Text (mehrere Absätze) über die volle Breite */}
@@ -311,14 +336,48 @@ export default function PokemonDetailPage() {
           ]}
         />
 
-        {/* Karten dieses Pokémon → gefilterter Karten-Tab */}
+        {/* Karten dieses Pokémon: 6 wertvollste als Vorschau (3×2) + Link zu allen */}
+        {topCards.length > 0 && (
+          <div>
+            <h2 className="text-role-h2 text-glass mb-2">Karten</h2>
+            <div className="grid grid-cols-3 gap-2">
+              {topCards.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => setSelected(catalogCardToInfo(c))}
+                  className="block active:scale-[.98] transition-transform"
+                  aria-label={`${c.nameDe || c.name} – Details`}
+                >
+                  <CardImage
+                    card={c}
+                    size="small"
+                    alt={c.nameDe || c.name || name}
+                    width={140}
+                    height={196}
+                    className="w-full h-auto rounded-[6px]"
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Karten-Detail (Sheet) beim Antippen einer Vorschau-Karte */}
+        {selected && (
+          <CardDetailSheet
+            card={selected}
+            ownedCopies={ownedMap.get(selected.id) ?? []}
+            onClose={() => setSelected(null)}
+          />
+        )}
+
         <Button
           variant="primary"
           className="w-full"
           href={`/collection?q=${encodeURIComponent(`#${dex}`)}`}
           icon={<LayoutGrid size={18} />}
         >
-          Karten anzeigen
+          {topCards.length >= 6 ? 'Alle Karten' : 'Karten anzeigen'}
         </Button>
 
         {/* Quellen / Lizenz */}
