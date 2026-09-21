@@ -16,6 +16,80 @@ const IMAGE_MODELS = [
   'gemini-2.0-flash-exp-image-generation',
 ];
 
+// Creative Fabrica GenAI API (async): gibt uns u.a. Gemini 3.x (regional bei
+// Google direkt gesperrt), SeeDream, GPT Image 2 — bis 4K, ein Request-Schema,
+// Modell per String tauschbar. Key NUR aus Env (Secret, nicht im Repo).
+const CF_BASE = 'https://api.creativefabrica.com/genai/v1';
+const CF_KEY = process.env.CREATIVEFABRICA_API_KEY;
+
+// CF-Schritt 1: nur die Illustration freistellen (Text/Rahmen weg), Hochformat.
+const PROMPT_CF_CARD = [
+  'Nutze ausschließlich die Illustration dieser Pokémon-Karte und entferne Rahmen, Text, Name, KP,',
+  'Attacken, Set-Symbole, Logos und Copyright VOLLSTÄNDIG. Gib NUR die Illustration randlos im',
+  'Hochformat zurück — das Motiv unverändert (Anatomie korrekt); wo Text/Rahmen war, setze den',
+  'vorhandenen Hintergrund im gleichen Stil nahtlos fort. Kein Rahmen, kein Text, keine Ränder.',
+].join(' ');
+
+// CF-Schritt 2: freigestellte Illustration → EINE zusammenhängende, weit
+// herausgezoomte Szene (Motiv mittig, Umgebung nahtlos rundum). Eingabe ist die
+// öffentliche CDN-URL aus Schritt 1 (oder direkt eine Illustrations-URL).
+const PROMPT_CF_GRID3X3 = [
+  'Erweitere diese Illustration zu EINEM EINZIGEN, zusammenhängenden, weit herausgezoomten Bild:',
+  'Das Motiv bleibt zentral und unverändert (Anatomie korrekt — Flügel/Schwanz/Glieder), und ringsum',
+  'wird DIESELBE Umgebung/Szene (z. B. Wald, Obstwiese, Stadt/Dächer, Abendhimmel, Wasser, Berge)',
+  'nahtlos in ALLE Richtungen fortgesetzt — als wäre es schon immer ein großes Bild gewesen. Halte',
+  'Stil, Farbpalette, Beleuchtung und Tageszeit exakt ein; wechsle die Umgebung NICHT. Kein Raster,',
+  'keine Kacheln, keine Panels, keine Wiederholung, keine gespiegelte Symmetrie, keine',
+  'senkrechten/waagerechten Streifen oder Bänder, keine Gitterlinien, kein Rahmen, kein Text. Alles',
+  'scharf und im Fokus. Du darfst dasselbe Pokémon zusätzlich in anderen Posen einbauen. Hochformat.',
+].join(' ');
+
+interface CFOptions { imageSize?: string; aspectRatio?: string }
+
+/** Ein Creative-Fabrica-Generationslauf: POST → pollen bis fertig → Bild-URL.
+ *  `imageUrl` MUSS eine öffentliche URL sein (CF lädt sie selbst). */
+async function genImageCF(
+  model: string,
+  prompt: string,
+  imageUrl: string,
+  opts: CFOptions = {},
+): Promise<{ url: string }> {
+  if (!CF_KEY) throw new Error('CREATIVEFABRICA_API_KEY fehlt');
+  const headers = { Authorization: `Bearer ${CF_KEY}`, 'Content-Type': 'application/json' };
+  const startRes = await fetch(`${CF_BASE}/generations`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model,
+      modality: 'imageToImage',
+      prompt,
+      files: [{ url: imageUrl }],
+      options: {
+        // aspectRatio variiert je Modell — nur senden, wenn explizit gewünscht;
+        // sonst behält imageToImage das Hochformat der Eingabe.
+        ...(opts.aspectRatio ? { aspectRatio: opts.aspectRatio } : {}),
+        imageSize: opts.imageSize ?? '2k',
+      },
+    }),
+  });
+  const startText = await startRes.text();
+  if (!startRes.ok) throw new Error(`CF start ${startRes.status}: ${startText.slice(0, 200)}`);
+  let job = JSON.parse(startText);
+
+  // Pollen (async): bis completed/failed/cancelled, max ~150 s.
+  const deadline = Date.now() + 150_000;
+  while (!['completed', 'failed', 'cancelled'].includes(job.status)) {
+    if (Date.now() > deadline) throw new Error('CF Timeout');
+    await new Promise(r => setTimeout(r, 2500));
+    const pollRes = await fetch(`${CF_BASE}/generations/${job.id}`, { headers });
+    job = await pollRes.json();
+  }
+  if (job.status !== 'completed') throw new Error(`CF ${job.status}: ${JSON.stringify(job.error ?? job).slice(0, 200)}`);
+  const url = job.output?.[0]?.url;
+  if (!url) throw new Error('CF: keine Ausgabe-URL');
+  return { url };
+}
+
 // Schritt 1: Karte → randlose Illustration (Text/Rahmen weg, aufs Kartenformat erweitert).
 const PROMPT_CARD = [
   'You are given the artwork window of a Pokémon trading card.',
@@ -75,6 +149,29 @@ const PROMPT_V = [
   'Do NOT add any character or copy of any subject. Output one image, same tall aspect ratio, edge to edge.',
 ].join(' ');
 
+// Test-Variante 'gem': das AI-Studio-Gem so exakt wie möglich nachbauen — lange
+// kaskadierende Anweisung als systemInstruction (eigener Kanal → bessere
+// Befolgung), Bild OHNE Seed, EIN Aufruf. Kein Vor-Seeding, kein 2-Pass.
+const GEM_SYSTEM = [
+  'Erzeuge EINE EINZIGE, zusammenhängende, weit herausgezoomte Szene (KEIN Raster, KEINE Kacheln,',
+  'KEINE Panels, KEINE Wiederholung, keine Gitterlinien).',
+  'Analysiere zuerst das Quellbild gründlich: Inhalt, Stil (z. B. gemalt/Illustration, Knetmodell,',
+  'Foto), Farbpalette, Textur, Beleuchtung, Tageszeit, Wetter und Umgebung (z. B. Wald, Stadt/Dächer,',
+  'Himmel, Wasser, Berge). Halte diesen Look strikt ein; wechsle NICHT die Umgebung.',
+  'Stell dir vor, die Kamera zoomt weit heraus: Das komplette Originalbild bleibt UNVERÄNDERT in der',
+  'BILDMITTE (nicht skaliert, nicht beschnitten, Motiv-Anatomie korrekt: Flügel/Schwanz/Glieder), und',
+  'ringsherum in ALLE Richtungen wird DIESELBE Szene nahtlos fortgeführt — als wäre es schon immer ein',
+  'großes zusammenhängendes Bild gewesen. Das Motiv der Mitte soll ca. das mittlere Drittel einnehmen.',
+  'Das Ausgabebild ist dreimal so hoch und dreimal so breit wie das Quellbild (gleiches Seitenverhältnis),',
+  'randlos gefüllt.',
+  'Alles scharf und im Fokus (kein Bokeh-Band). KEINE senkrechten/waagerechten Streifen, Bänder,',
+  'Barcode-Muster, Smears, verwirbelten Wolken oder gespiegelte Symmetrie; linke/rechte Seite und die',
+  'Ecken sollen sich klar unterscheiden. Keine Ränder, Rahmen, Texte oder UI-Elemente.',
+  'Du DARFST dasselbe Pokémon zusätzlich in anderen Posen/Perspektiven in die Szene einbauen',
+  '(z. B. weitere Exemplare im Flug) — das ist erwünscht und keine Spiegelung.',
+  'Gib NUR EIN fertiges, zusammenhängendes Bild zurück.',
+].join(' ');
+
 async function fetchImageBase64(url: string): Promise<{ data: string; mimeType: string }> {
   // Data-URL direkt zerlegen (Schritt-1-Ergebnis wird so verkettet), sonst HTTP holen.
   const m = url.match(/^data:([^;]+);base64,([\s\S]*)$/);
@@ -92,9 +189,11 @@ async function genImage(
   modelName: string,
   promptText: string,
   input: { mimeType: string; data: string },
+  systemInstruction?: string,
 ): Promise<{ mimeType: string; data: string }> {
   const model = genAI.getGenerativeModel({
     model: modelName,
+    ...(systemInstruction ? { systemInstruction } : {}),
     generationConfig: { responseModalities: ['IMAGE'] } as unknown as Record<string, unknown>,
   });
   const result = await model.generateContent([
@@ -131,9 +230,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   try {
-    const { imageUrl, model: modelOverride, mode } = await req.json();
+    const { imageUrl, model: modelOverride, mode, variant, provider, cfModel, imageSize, aspectRatio } = await req.json();
     if (!imageUrl || typeof imageUrl !== 'string') {
       return NextResponse.json({ error: 'imageUrl fehlt' }, { status: 400 });
+    }
+
+    // ── Creative-Fabrica-Provider (async REST): EIN Schritt aus der öffentlichen
+    // Karten-URL (Text entfernen + zur 3×3-Szene erweitern). Bild-URL muss public
+    // sein (data:-URLs gehen NICHT — CF lädt selbst).
+    if (provider === 'cf') {
+      if (imageUrl.startsWith('data:')) {
+        return NextResponse.json({ error: 'CF braucht eine öffentliche URL (keine data:-URL)' }, { status: 400 });
+      }
+      const model = typeof cfModel === 'string' && cfModel ? cfModel : 'gemini_pro_3';
+      const prompt = mode === 'grid3x3' ? PROMPT_CF_GRID3X3 : PROMPT_CF_CARD;
+      const t0 = Date.now();
+      try {
+        const { url } = await genImageCF(model, prompt, imageUrl, { imageSize, aspectRatio });
+        return NextResponse.json({ provider: 'cf', model, mode: mode ?? 'card', latencyMs: Date.now() - t0, image: url });
+      } catch (e) {
+        return NextResponse.json({ provider: 'cf', model, error: e instanceof Error ? e.message : String(e) }, { status: 502 });
+      }
     }
 
     const src = await fetchImageBase64(imageUrl);
@@ -144,8 +261,22 @@ export async function POST(req: NextRequest) {
       try {
         const t0 = Date.now();
 
-        if (mode === 'grid3x3') {
-          // Kaskade: erst links/rechts, dann oben/unten erweitern. So sieht das
+        if (mode === 'grid3x3' && variant !== 'cascade') {
+          // STANDARD: Gem-Nachbau — lange Anweisung als systemInstruction, Bild ohne Seed, ein Aufruf.
+          const out = await genImage(
+            modelName,
+            'Erweitere dieses Bild gemäß deinen System-Anweisungen zu einem nahtlosen 3×3-Gesamtbild.',
+            src,
+            GEM_SYSTEM,
+          );
+          return NextResponse.json({
+            model: modelName, latencyMs: Date.now() - t0, passes: 1, variant: 'gem',
+            mimeType: out.mimeType, image: `data:${out.mimeType};base64,${out.data}`,
+          });
+        }
+
+        if (mode === 'grid3x3' && variant === 'cascade') {
+          // FALLBACK (variant:'cascade'): erst links/rechts, dann oben/unten erweitern. So sieht das
           // Modell an jedem Rand ECHTEN Bildinhalt (kein leeres 8-Feld-Raster) →
           // keine Spalten-Wiederholung, kein doppeltes Motiv (Ränder sind reine
           // Umgebung ohne Figur).

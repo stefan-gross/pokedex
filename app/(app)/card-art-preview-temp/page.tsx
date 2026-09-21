@@ -36,6 +36,55 @@ export default function CardArtPreviewTempPage() {
   const [grid, setGrid] = useState<string | null>(null);
   const [meta2, setMeta2] = useState<string | null>(null);
 
+  // Creative-Fabrica-Provider — zweistufig, je Schritt eigenes Modell.
+  const [cfSize, setCfSize] = useState('1k'); // erst niedrig testen
+  const [cfModel1, setCfModel1] = useState('gemini_flash_3_1');
+  const [cfModel2, setCfModel2] = useState('gemini_pro_3');
+  const [cfLoad1, setCfLoad1] = useState(false);
+  const [cfLoad2, setCfLoad2] = useState(false);
+  const [cfArt, setCfArt] = useState<string | null>(null);   // CDN-URL Schritt 1
+  const [cfGrid, setCfGrid] = useState<string | null>(null); // CDN-URL Schritt 2
+  const [cfMeta1, setCfMeta1] = useState<string | null>(null);
+  const [cfMeta2, setCfMeta2] = useState<string | null>(null);
+
+  async function cfCall(imageUrl: string, mode: 'card' | 'grid3x3', cfModel: string) {
+    const res = await fetch('/api/admin/card-art', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageUrl, provider: 'cf', mode, cfModel, imageSize: cfSize }),
+    });
+    const d = await res.json();
+    if (!res.ok || !d.image) throw new Error(`${d.error ?? res.status}`);
+    return d as { image: string; model: string; latencyMs: number };
+  }
+
+  async function cfStep1() {
+    setCfLoad1(true); setError(null); setCfArt(null); setCfMeta1(null); setCfGrid(null); setCfMeta2(null);
+    try {
+      const d = await cfCall(url, 'card', cfModel1);
+      setCfArt(d.image); setCfMeta1(`${d.model} · ${d.latencyMs} ms`);
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setCfLoad1(false); }
+  }
+
+  async function cfStep2() {
+    if (!cfArt) return;
+    setCfLoad2(true); setError(null); setCfGrid(null); setCfMeta2(null);
+    try {
+      const d = await cfCall(cfArt, 'grid3x3', cfModel2);
+      setCfGrid(d.image); setCfMeta2(`${d.model} · ${d.latencyMs} ms`);
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setCfLoad2(false); }
+  }
+
+  const CF_MODELS = [
+    ['gemini_pro_3', 'Nano Banana Pro (3 Pro)'],
+    ['gemini_flash_3_1', 'Nano Banana 2 (3.1)'],
+    ['seedream_5_pro', 'SeeDream 5.0 Pro'],
+    ['chatgpt_image_2', 'GPT Image 2'],
+    ['gemini_flash_2_5_image', 'Nano Banana (2.5)'],
+    ['gemini_flash_lite_image', 'Nano Banana 2 Lite'],
+  ] as const;
+
   async function step1() {
     setLoading1(true); setError(null); setArt(null); setMeta1(null); setGrid(null); setMeta2(null);
     try {
@@ -67,6 +116,64 @@ export default function CardArtPreviewTempPage() {
         <Button onClick={step1} disabled={loading1 || !url}>
           {loading1 ? 'Schritt 1…' : 'Schritt 1: Illustration'}
         </Button>
+      </div>
+
+      {/* Creative Fabrica — zweistufig, je Schritt eigenes Modell */}
+      <div className="glass rounded-[16px] p-3 space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-role-label text-glass-muted flex-1">Creative Fabrica (Schritt 1 → Schritt 2, Modelle mischbar)</p>
+          <span className="text-role-label text-glass-muted">Auflösung</span>
+          <select value={cfSize} onChange={e => setCfSize(e.target.value)}
+            className="rounded-lg px-2 py-2 text-sm bg-black/5 dark:bg-white/10 text-glass">
+            <option value="1k">1k (Test)</option>
+            <option value="2k">2k</option>
+            <option value="4k">4k (Druck)</option>
+          </select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          {/* CF Schritt 1 */}
+          <div className="space-y-2">
+            <div className="flex gap-2 items-center flex-wrap">
+              <select value={cfModel1} onChange={e => setCfModel1(e.target.value)}
+                className="rounded-lg px-2 py-2 text-sm bg-black/5 dark:bg-white/10 text-glass flex-1 min-w-0">
+                {CF_MODELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+              <Button onClick={cfStep1} disabled={cfLoad1 || !url} variant="secondary" size="sm">
+                {cfLoad1 ? 'S1…' : 'CF S1: Illu'}
+              </Button>
+            </div>
+            {cfMeta1 && <p className="text-role-label text-glass-muted">{cfMeta1}</p>}
+            {cfArt && (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={cfArt} alt="CF Illustration" className="w-full rounded-xl" />
+                <a href={cfArt} target="_blank" rel="noreferrer"><Button variant="ghost" size="sm" className="w-full">Öffnen</Button></a>
+              </>
+            )}
+          </div>
+
+          {/* CF Schritt 2 */}
+          <div className="space-y-2">
+            <div className="flex gap-2 items-center flex-wrap">
+              <select value={cfModel2} onChange={e => setCfModel2(e.target.value)}
+                className="rounded-lg px-2 py-2 text-sm bg-black/5 dark:bg-white/10 text-glass flex-1 min-w-0">
+                {CF_MODELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+              <Button onClick={cfStep2} disabled={cfLoad2 || !cfArt} variant="secondary" size="sm">
+                {cfLoad2 ? 'S2…' : 'CF S2: 3×3'}
+              </Button>
+            </div>
+            {cfMeta2 && <p className="text-role-label text-glass-muted">{cfMeta2}</p>}
+            {cfGrid && (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={cfGrid} alt="CF 3x3" className="w-full rounded-xl" />
+                <a href={cfGrid} target="_blank" rel="noreferrer"><Button variant="ghost" size="sm" className="w-full">Öffnen</Button></a>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {error && (
