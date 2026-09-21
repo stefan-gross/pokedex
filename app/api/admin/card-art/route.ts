@@ -22,12 +22,17 @@ const IMAGE_MODELS = [
 const CF_BASE = 'https://api.creativefabrica.com/genai/v1';
 const CF_KEY = process.env.CREATIVEFABRICA_API_KEY;
 
-// CF-Schritt 1: nur die Illustration freistellen (Text/Rahmen weg), Hochformat.
+// Schritt 1 (Karte → randlose Illustration). WICHTIG für den späteren Outpaint:
+// bis in alle Ecken DETAILLIERT füllen (kein Bokeh-Rand) und VORDERGRUND SCHARF —
+// sonst hat FLUX am Rand keinen klaren Kontext und driftet stilistisch ab.
 const PROMPT_CF_CARD = [
   'Nutze ausschließlich die Illustration dieser Pokémon-Karte und entferne Rahmen, Text, Name, KP,',
-  'Attacken, Set-Symbole, Logos und Copyright VOLLSTÄNDIG. Gib NUR die Illustration randlos im',
-  'Hochformat zurück — das Motiv unverändert (Anatomie korrekt); wo Text/Rahmen war, setze den',
-  'vorhandenen Hintergrund im gleichen Stil nahtlos fort. Kein Rahmen, kein Text, keine Ränder.',
+  'Attacken, Set-Symbole, Logos und Copyright vollständig. Erweitere die Szene so, dass sie das',
+  'GESAMTE Hochformat randlos bis in ALLE Ecken füllt — mit ECHTEN, DETAILLIERTEN Bildinhalten',
+  '(z. B. Waldboden, Pflanzen, Blätter, Felsen, Zweige), NICHT mit einer gleichmäßigen',
+  'Unschärfe-/Bokeh-Fläche. Das Motiv und der gesamte VORDERGRUND bleiben SCHARF und im Fokus; nur',
+  'der FERNE Hintergrund darf leicht weich sein (wie im Original). Motiv unverändert (Anatomie',
+  'korrekt), gleicher Stil/Farben. Kein Rahmen, kein Text.',
 ].join(' ');
 
 // CF-Schritt 2: freigestellte Illustration → EINE zusammenhängende, weit
@@ -121,10 +126,10 @@ async function genImageReplicate(prompt: string, image: string, mask: string): P
 // eigener, knapper Prompt, der die gewünschte Szene beschreibt (statt „kein …").
 const PROMPT_FLUX = [
   'A single, wide, continuous painted landscape illustration that seamlessly extends the central',
-  'scene outward in every direction, all the way to the edges of the frame. Same art style, color',
-  'palette, lighting and time of day as the center. The surroundings are a natural, richly detailed',
-  'environment matching the center (rooftops, buildings, sky and clouds, trees, hills or water as',
-  'fitting). Sharp and in focus, edge to edge, one coherent scene.',
+  'scene outward in every direction, all the way to the edges of the frame. Keep the SAME kind of',
+  'place and environment as the center — if the center is a forest, continue the forest; if a city,',
+  'continue the city — do not switch to a different setting. Same art style, color palette, lighting',
+  'and time of day as the center. Richly detailed, sharp and in focus, edge to edge, one coherent scene.',
 ].join(' ');
 
 interface CFOptions { imageSize?: string; aspectRatio?: string }
@@ -175,13 +180,14 @@ async function genImageCF(
 
 // Schritt 1: Karte → randlose Illustration (Text/Rahmen weg, aufs Kartenformat erweitert).
 const PROMPT_CARD = [
-  'You are given the artwork window of a Pokémon trading card.',
-  'Produce a single image that shows ONLY the illustration — no card frame, no border,',
-  'no name, no HP, no attack text, no set symbols, no logos, no copyright line.',
-  'Keep the original subject and the existing artwork EXACTLY as it is; do not redraw,',
-  'restyle or move it. Only EXTEND (outpaint) the scenery outward so the artwork fills',
-  'the entire canvas edge-to-edge in a full-bleed portrait card format (aspect ratio 5:7),',
-  'seamlessly continuing the same style, lighting, colors, depth of field and background.',
+  'You are given a Pokémon trading card. Remove the card frame, border, name, HP, attack text, set',
+  'symbols, logos and copyright line completely, and show ONLY the illustration.',
+  'Keep the subject and the existing foreground EXACTLY as they are; do not redraw, restyle or move',
+  'them. EXTEND the scenery outward so it fills the ENTIRE portrait canvas edge-to-edge, all the way',
+  'into every corner, with REAL, DETAILED content (e.g. forest floor, plants, leaves, rocks,',
+  'branches) — NOT a uniform out-of-focus / bokeh blur.',
+  'Keep the subject and the whole FOREGROUND SHARP and in focus; only the FAR background may be',
+  'gently soft, like in the original. Same art style, colors and lighting.',
 ].join(' ');
 
 // Kaskade Pass 1 (horizontal): Mitte = echte Szene, links/rechts = Kanten-
