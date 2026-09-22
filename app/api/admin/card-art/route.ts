@@ -402,10 +402,11 @@ export async function POST(req: NextRequest) {
 
         const { url } = await genImageNanoBanana(model, PROMPT_NB_FILL, `data:image/png;base64,${canvas.toString('base64')}`, res);
 
-        // Ergebnis auf die exakte 3×-Leinwand ziehen + scharfe Mitte wieder einsetzen.
+        // Nur auf die exakte 3×-Leinwand ziehen — KEIN Wieder-Einsetzen der Mitte
+        // (das erzeugte eine harte Naht). Nano Banana behält die Mitte selbst und
+        // führt sie nahtlos in den Rand über.
         const outBuf = Buffer.from(await (await fetch(url)).arrayBuffer());
-        const final = await sharp(outBuf).resize(CW, CH, { fit: 'fill' })
-          .composite([{ input: center, left: tileW, top: tileH }]).png().toBuffer();
+        const final = await sharp(outBuf).resize(CW, CH, { fit: 'fill' }).png().toBuffer();
         return NextResponse.json({
           provider: 'nb', model, latencyMs: Date.now() - t0,
           image: `data:image/png;base64,${final.toString('base64')}`,
