@@ -96,6 +96,35 @@ export default function CardArtPreviewTempPage() {
     finally { setRepLoad(false); }
   }
 
+  // Nano Banana (Gemini via Replicate) — Ein-Schritt-3×3
+  const [nbModel, setNbModel] = useState('google/nano-banana-2');
+  const [nbRes, setNbRes] = useState('2K');
+  const [nbLoad, setNbLoad] = useState(false);
+  const [nbImg, setNbImg] = useState<string | null>(null);
+  const [nbMeta, setNbMeta] = useState<string | null>(null);
+
+  async function runNB() {
+    const input = art ?? cfArt ?? url; // freigestellte Illustration bevorzugt
+    setNbLoad(true); setError(null); setNbImg(null); setNbMeta(null);
+    try {
+      const res = await fetch('/api/admin/card-art', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl: input, provider: 'nb', cfModel: nbModel, imageSize: nbRes }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.image) throw new Error(`${d.error ?? res.status}`);
+      setNbImg(d.image); setNbMeta(`${d.model} · ${d.latencyMs} ms`);
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setNbLoad(false); }
+  }
+
+  const NB_MODELS = [
+    ['google/nano-banana-2', 'Nano Banana 2 (3.1)'],
+    ['google/nano-banana-pro', 'Nano Banana Pro'],
+    ['google/nano-banana-2-lite', 'Nano Banana 2 Lite'],
+    ['google/nano-banana', 'Nano Banana (2.5)'],
+  ] as const;
+
   const CF_MODELS = [
     ['gemini_pro_3', 'Nano Banana Pro (3 Pro)'],
     ['gemini_flash_3_1', 'Nano Banana 2 (3.1)'],
@@ -194,6 +223,34 @@ export default function CardArtPreviewTempPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Nano Banana (Gemini via Replicate) — Ein-Schritt-3×3, kein Rahmen, hochauflösend */}
+      <div className="glass rounded-[16px] p-3 space-y-2" style={{ outline: '2px solid rgba(53,209,90,.5)' }}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-role-label text-glass flex-1">★ Nano Banana (Gemini) — Ein Schritt, kein Rahmen, hochauflösend. Nutzt Illustration aus Schritt 1.</p>
+          <select value={nbModel} onChange={e => setNbModel(e.target.value)}
+            className="rounded-lg px-2 py-2 text-sm bg-black/5 dark:bg-white/10 text-glass">
+            {NB_MODELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          <select value={nbRes} onChange={e => setNbRes(e.target.value)}
+            className="rounded-lg px-2 py-2 text-sm bg-black/5 dark:bg-white/10 text-glass">
+            <option value="1K">1K</option>
+            <option value="2K">2K</option>
+            <option value="4K">4K</option>
+          </select>
+          <Button onClick={runNB} disabled={nbLoad || !url} variant="secondary" size="sm">
+            {nbLoad ? 'NB…' : 'NB 3×3'}
+          </Button>
+          {nbMeta && <span className="text-role-label text-glass-muted">{nbMeta}</span>}
+        </div>
+        {nbImg && (
+          <div className="space-y-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={nbImg} alt="NB" className="max-w-full rounded-xl" style={{ maxHeight: '80vh' }} />
+            <a href={nbImg} target="_blank" rel="noreferrer"><Button variant="ghost" size="sm">Öffnen</Button></a>
+          </div>
+        )}
       </div>
 
       {/* Replicate FLUX Fill — dediziertes Outpainting, Mitte bleibt exakt */}
