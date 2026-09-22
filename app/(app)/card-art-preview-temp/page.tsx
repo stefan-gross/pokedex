@@ -137,7 +137,13 @@ export default function CardArtPreviewTempPage() {
   async function step1() {
     setLoading1(true); setError(null); setArt(null); setMeta1(null); setGrid(null); setMeta2(null);
     try {
-      const d = await callCardArt(url, 'card');
+      // Schritt 1 über Nano Banana 2 (erhält die Illustration, entfernt nur Rahmen/Text).
+      const res = await fetch('/api/admin/card-art', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl: url, provider: 'nb', mode: 'card', cfModel: 'google/nano-banana-2', imageSize: '2K' }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.image) throw new Error(`${d.error ?? res.status}`);
       setArt(d.image); setMeta1(`${d.model} · ${d.latencyMs} ms`);
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setLoading1(false); }
