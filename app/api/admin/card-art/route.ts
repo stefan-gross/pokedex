@@ -148,8 +148,22 @@ const PROMPT_FLUX = [
   'in focus, one single coherent scene that fills the whole canvas completely to the very edges.',
 ].join(' ');
 
-// Nano Banana (Gemini) — Ein-Schritt-3×3. Gemini folgt Anweisungen (inkl.
-// Verneinungen) gut, daher explizit „herauszoomen, Mitte = 1/3, kein Rahmen".
+// Nano Banana (Gemini) — Rand füllen bei fest vorkomponierter Mitte (exakte
+// 3×3-Geometrie). Gemini verträgt Verneinungen.
+const PROMPT_NB_FILL = [
+  'Das mittlere Drittel dieses Bildes ist eine fertige Illustration; die GRAUE Fläche ringsum muss',
+  'vollständig ERSETZT werden. Fülle den gesamten grauen Rand mit einer NAHTLOSEN Fortsetzung',
+  'DERSELBEN Szene/Umgebung wie in der Mitte — gleicher Kunststil, gleiche Farben, Beleuchtung und',
+  'Tageszeit, scharf und detailliert bis in alle Ecken, als Ausschnitt einer größeren durchgehenden',
+  'Welt. Das mittlere Drittel bleibt unverändert. KEIN Rahmen, kein Bilderrahmen, kein Passepartout,',
+  'kein Rand, kein Text, kein Copyright, keine Kacheln/Wiederholung, kein Grau mehr übrig.',
+].join(' ');
+
+// Kartenformat (63:88) — für exakt in 9 gleiche Kartenkacheln schneidbares 3×3.
+const CARD_W = 63, CARD_H = 88;
+
+// Nano Banana (Gemini) — Ein-Schritt-3×3 (ohne feste Geometrie). Gemini folgt
+// Anweisungen (inkl. Verneinungen) gut.
 const PROMPT_NB_GRID = [
   'Zoome bei dieser Illustration weit heraus und erzeuge EIN EINZIGES, zusammenhängendes Bild, in dem',
   'das komplette Originalbild unverändert das MITTLERE DRITTEL (Bildmitte, ~1/3 der Breite und Höhe)',
@@ -376,8 +390,26 @@ export async function POST(req: NextRequest) {
       const res = typeof imageSize === 'string' && imageSize ? imageSize.toUpperCase() : '2K';
       const t0 = Date.now();
       try {
-        const { url } = await genImageNanoBanana(model, PROMPT_NB_GRID, imageUrl, res);
-        return NextResponse.json({ provider: 'nb', model, latencyMs: Date.now() - t0, image: url });
+        // Feste 3×3-Geometrie: Mitte = exakt eine Kartenkachel (63:88), grauer
+        // Rand → Nano Banana füllt nur den Rand → danach Mitte pixelgenau zurück.
+        const tileH = res === '4K' ? 1200 : res === '1K' ? 512 : 800;
+        const tileW = Math.round((tileH * CARD_W) / CARD_H);
+        const s = await fetchImageBase64(imageUrl);
+        const center = await sharp(Buffer.from(s.data, 'base64')).resize(tileW, tileH, { fit: 'cover' }).png().toBuffer();
+        const CW = tileW * 3, CH = tileH * 3;
+        const canvas = await sharp({ create: { width: CW, height: CH, channels: 3, background: { r: 127, g: 127, b: 127 } } })
+          .composite([{ input: center, left: tileW, top: tileH }]).png().toBuffer();
+
+        const { url } = await genImageNanoBanana(model, PROMPT_NB_FILL, `data:image/png;base64,${canvas.toString('base64')}`, res);
+
+        // Ergebnis auf die exakte 3×-Leinwand ziehen + scharfe Mitte wieder einsetzen.
+        const outBuf = Buffer.from(await (await fetch(url)).arrayBuffer());
+        const final = await sharp(outBuf).resize(CW, CH, { fit: 'fill' })
+          .composite([{ input: center, left: tileW, top: tileH }]).png().toBuffer();
+        return NextResponse.json({
+          provider: 'nb', model, latencyMs: Date.now() - t0,
+          image: `data:image/png;base64,${final.toString('base64')}`,
+        });
       } catch (e) {
         return NextResponse.json({ provider: 'nb', model, error: e instanceof Error ? e.message : String(e) }, { status: 502 });
       }
