@@ -162,6 +162,19 @@ const PROMPT_NB_FILL = [
 // Kartenformat (63:88) — für exakt in 9 gleiche Kartenkacheln schneidbares 3×3.
 const CARD_W = 63, CARD_H = 88;
 
+// Nano-Banana Schritt 1: NUR Rahmen/Text entfernen, Illustration ERHALTEN,
+// entfernte Flächen (v. a. Textbox unten) als Fortsetzung füllen.
+const PROMPT_NB_CARD = [
+  'Dies ist eine Pokémon-Karte. Entferne NUR den Kartenrahmen, den Namensbalken oben, die Textbox',
+  'unten, alle Symbole, Logos, Werte und die Copyright-Zeile. Das gemalte ILLUSTRATIONSFENSTER bleibt',
+  'völlig UNVERÄNDERT an genau seiner Position (bei dieser Karte im oberen Bereich) — verschiebe,',
+  'skaliere oder verändere das Motiv NICHT und ändere den vorhandenen Hintergrund NICHT.',
+  'Fülle NUR die durch das Entfernen frei gewordenen Flächen (vor allem die Textbox-Fläche darunter',
+  'und die schmalen Rahmenränder), indem du die BEREITS VORHANDENE Szene/den Hintergrund des',
+  'Illustrationsfensters natürlich, scharf und detailliert fortsetzt. Ergebnis: exakt dieselbe',
+  'Illustration, nur ohne Rahmen/Text, randlos im gleichen Hochformat. Kein Rahmen, kein Text.',
+].join(' ');
+
 // Nano Banana (Gemini) — Ein-Schritt-3×3 (ohne feste Geometrie). Gemini folgt
 // Anweisungen (inkl. Verneinungen) gut.
 const PROMPT_NB_GRID = [
@@ -390,6 +403,12 @@ export async function POST(req: NextRequest) {
       const res = typeof imageSize === 'string' && imageSize ? imageSize.toUpperCase() : '2K';
       const t0 = Date.now();
       try {
+        // Schritt 1 über Nano Banana: Rahmen/Text weg, Illustration erhalten.
+        if (mode === 'card') {
+          const { url } = await genImageNanoBanana(model, PROMPT_NB_CARD, imageUrl, res);
+          return NextResponse.json({ provider: 'nb', model, mode: 'card', latencyMs: Date.now() - t0, image: url });
+        }
+
         // Feste 3×3-Geometrie: Mitte = exakt eine Kartenkachel (63:88), grauer
         // Rand → Nano Banana füllt nur den Rand → danach Mitte pixelgenau zurück.
         const tileH = res === '4K' ? 1200 : res === '1K' ? 512 : 800;
