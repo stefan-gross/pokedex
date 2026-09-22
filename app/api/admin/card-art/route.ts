@@ -69,16 +69,26 @@ const FLUX_PASS_FACTOR = Math.sqrt(3); // 2 Ringe = exakt 3× (sauber für fotog
 const FLUX_PASSES = 2;
 
 /** Legt `buf` mittig auf eine `factor`× größere Leinwand und baut die Maske
- *  (Rand weiß = füllen, Mitte schwarz = behalten). Kein Re-Scale des Inhalts. */
-async function outpaintCanvas(buf: Buffer, factor: number): Promise<{ image: string; mask: string }> {
+ *  (Rand weiß = füllen, Mitte schwarz = behalten). Kein Re-Scale des Inhalts.
+ *  `seedEdge`: Rand mit gestreckten+verwischten Mitten-Kanten vorbelegen (Farb-/
+ *  Maßstabs-Anker) statt flachem Grau → weniger Streifen-Artefakte beim FLUX-Fill. */
+async function outpaintCanvas(buf: Buffer, factor: number, seedEdge = false): Promise<{ image: string; mask: string }> {
   const md = await sharp(buf).metadata();
   const w = md.width ?? 512, h = md.height ?? 700;
   const CW = Math.round(w * factor), CH = Math.round(h * factor);
   const left = Math.round((CW - w) / 2), top = Math.round((CH - h) / 2);
 
-  const image = await sharp({ create: { width: CW, height: CH, channels: 3, background: { r: 127, g: 127, b: 127 } } })
-    .composite([{ input: buf, left, top }])
-    .png().toBuffer();
+  let image: Buffer;
+  if (seedEdge) {
+    const seed = await sharp(buf)
+      .extend({ left, right: CW - w - left, top, bottom: CH - h - top, extendWith: 'copy' })
+      .blur(Math.max(12, Math.round(Math.min(w, h) * 0.06))).toBuffer();
+    image = await sharp(seed).composite([{ input: buf, left, top }]).png().toBuffer();
+  } else {
+    image = await sharp({ create: { width: CW, height: CH, channels: 3, background: { r: 127, g: 127, b: 127 } } })
+      .composite([{ input: buf, left, top }])
+      .png().toBuffer();
+  }
   const blackRect = await sharp({ create: { width: w, height: h, channels: 3, background: { r: 0, g: 0, b: 0 } } }).png().toBuffer();
   const mask = await sharp({ create: { width: CW, height: CH, channels: 3, background: { r: 255, g: 255, b: 255 } } })
     .composite([{ input: blackRect, left, top }])
@@ -90,15 +100,139 @@ async function outpaintCanvas(buf: Buffer, factor: number): Promise<{ image: str
   };
 }
 
+/** Overlay-Maske für Inpainting: gleiche Größe wie das Kartenbild. Ein oder mehrere
+ *  „behalten"-Rechtecke (Illustrationsfenster, in Bruchteilen 0..1) werden SCHWARZ,
+ *  der ganze Rest (Rahmen, Namensbalken, Textboxen, Infozeile) WEISS = auffüllen.
+ *  So bleibt das Motiv pixelgenau und nur die Element-Flächen werden ersetzt. */
+async function buildOverlayMask(
+  w: number, h: number,
+  keeps: Array<{ x0: number; y0: number; x1: number; y1: number }>,
+): Promise<Buffer> {
+  const rects = [];
+  for (const k of keeps) {
+    const kx = Math.round(k.x0 * w), ky = Math.round(k.y0 * h);
+    const kw = Math.max(1, Math.round((k.x1 - k.x0) * w));
+    const kh = Math.max(1, Math.round((k.y1 - k.y0) * h));
+    const black = await sharp({ create: { width: kw, height: kh, channels: 3, background: { r: 0, g: 0, b: 0 } } }).png().toBuffer();
+    rects.push({ input: black, left: kx, top: ky });
+  }
+  return sharp({ create: { width: w, height: h, channels: 3, background: { r: 255, g: 255, b: 255 } } })
+    .composite(rects).png().toBuffer();
+}
+
+/** FLUX-Maske aus „entfernen"-Rechtecken: schwarz (behalten) überall, WEISS (füllen)
+ *  nur auf den angegebenen Zonen → FLUX lässt alles außerhalb pixelgenau, füllt nur
+ *  die kleinen Text-/Rahmen-Streifen. Ideal für Full-Bleed-Arts mit Text-Overlay. */
+async function buildRemoveMask(
+  w: number, h: number,
+  removes: Array<{ x0: number; y0: number; x1: number; y1: number }>,
+): Promise<Buffer> {
+  const rects = [];
+  for (const k of removes) {
+    const kx = Math.round(k.x0 * w), ky = Math.round(k.y0 * h);
+    const kw = Math.max(1, Math.round((k.x1 - k.x0) * w));
+    const kh = Math.max(1, Math.round((k.y1 - k.y0) * h));
+    const white = await sharp({ create: { width: kw, height: kh, channels: 3, background: { r: 255, g: 255, b: 255 } } }).png().toBuffer();
+    rects.push({ input: white, left: kx, top: ky });
+  }
+  return sharp({ create: { width: w, height: h, channels: 3, background: { r: 0, g: 0, b: 0 } } })
+    .composite(rects).png().toBuffer();
+}
+
+/** Nur die angegebenen Rechtecke im Bild GRAU übermalen (Rest bleibt Original) —
+ *  für den NB-Inpaint, der dann NUR diese grauen Text-/Rahmen-Streifen ersetzt. */
+async function grayOutRects(
+  buf: Buffer, w: number, h: number,
+  rects: Array<{ x0: number; y0: number; x1: number; y1: number }>,
+): Promise<Buffer> {
+  const parts = [];
+  for (const k of rects) {
+    const kx = Math.round(k.x0 * w), ky = Math.round(k.y0 * h);
+    const kw = Math.max(1, Math.round((k.x1 - k.x0) * w));
+    const kh = Math.max(1, Math.round((k.y1 - k.y0) * h));
+    const gray = await sharp({ create: { width: kw, height: kh, channels: 3, background: { r: 127, g: 127, b: 127 } } }).png().toBuffer();
+    parts.push({ input: gray, left: kx, top: ky });
+  }
+  return sharp(buf).composite(parts).png().toBuffer();
+}
+
+/** Weiche Alpha-Maske (1-Kanal PNG) für ein Rechteck: innen deckend, Rand ausgefadet. */
+async function featherAlpha(kw: number, kh: number, f: number): Promise<Buffer> {
+  const inner = await sharp({ create: { width: Math.max(1, kw - 2 * f), height: Math.max(1, kh - 2 * f), channels: 3, background: { r: 255, g: 255, b: 255 } } }).png().toBuffer();
+  return sharp({ create: { width: kw, height: kh, channels: 3, background: { r: 0, g: 0, b: 0 } } })
+    .composite([{ input: inner, left: f, top: f }]).blur(f).extractChannel(0).toColourspace('b-w').png().toBuffer();
+}
+
+// Standard-Schablone (moderne Normalkarte): Illustrationsfenster = behalten (schwarz),
+// alles andere (Rahmen oben/unten/seitlich, Namensbalken, Textbox, Infozeile) = füllen.
+const MASK_KEEP_STANDARD = [{ x0: 0.075, y0: 0.105, x1: 0.925, y1: 0.485 }];
+
+/** Graues Composite fürs NB-Inpainting: die „behalten"-Rechtecke aus dem Original
+ *  bleiben sichtbar, alles andere wird neutral GRAU → Nano Banana ersetzt nur das
+ *  Grau (kein Text-Halluzinieren wie FLUX, Position bleibt exakt). */
+async function buildGrayComposite(
+  buf: Buffer, w: number, h: number,
+  keeps: Array<{ x0: number; y0: number; x1: number; y1: number }>,
+): Promise<Buffer> {
+  const parts = [];
+  for (const k of keeps) {
+    const kx = Math.round(k.x0 * w), ky = Math.round(k.y0 * h);
+    const kw = Math.max(1, Math.round((k.x1 - k.x0) * w));
+    const kh = Math.max(1, Math.round((k.y1 - k.y0) * h));
+    const crop = await sharp(buf).extract({ left: kx, top: ky, width: kw, height: kh }).png().toBuffer();
+    parts.push({ input: crop, left: kx, top: ky });
+  }
+  return sharp({ create: { width: w, height: h, channels: 3, background: { r: 127, g: 127, b: 127 } } })
+    .composite(parts).png().toBuffer();
+}
+
+// Nano-Banana-Inpaint für ABSTRAKTE Full-Arts: kein realistisches Setting erfinden,
+// sondern das grafische Muster (Blitze/Strahlen/Sterne/Energie) fortführen.
+const PROMPT_NB_INPAINT_ABSTRACT = [
+  'Die GRAUEN Flächen in diesem Bild müssen vollständig ERSETZT werden. Führe das ABSTRAKTE',
+  'GRAFISCHE MUSTER des sichtbaren Artworks nahtlos fort: dieselben Energie-Blitze, dynamischen',
+  'Strahlen, Sterne, Funken, Farbverläufe und Lichteffekte im GLEICHEN Kunststil, mit denselben',
+  'Farben und Kontrasten. ERFINDE KEINE realistische Umgebung oder Landschaft (kein Dschungel, keine',
+  'Felsen, keine Gebäude, keine Maschinen). Der NICHT-graue Bildteil (die Kreatur) bleibt völlig',
+  'unverändert an exakt seiner Position und Größe. Ergebnis: eine randlose, zusammenhängende',
+  'Grafik im gleichen Hochformat. Kein Text, kein Titel, kein Namensbalken, kein Rahmen, kein Rand,',
+  'keine Textbox, kein Grau mehr übrig.',
+].join(' ');
+
+// Nano-Banana-Inpaint: graue Flächen szenengerecht ersetzen, Rest (Artwork) behalten.
+const PROMPT_NB_INPAINT = [
+  'Die GRAUEN Flächen in diesem Bild müssen vollständig ERSETZT werden durch eine nahtlose',
+  'Fortsetzung der bereits vorhandenen, gemalten Illustration (dieselbe Szene/Umgebung, gleicher',
+  'Kunststil, gleiche Farben, Beleuchtung und Tageszeit), scharf und detailliert bis in alle Ecken.',
+  'Der NICHT-graue Bildteil (das Motiv/Artwork) bleibt völlig UNVERÄNDERT an exakt seiner Position',
+  'und Größe — verschiebe oder verändere ihn NICHT. Ergebnis: eine randlose, zusammenhängende',
+  'Illustration im gleichen Hochformat. Kein Text, kein Rahmen, keine Textbox, kein Grau mehr übrig.',
+].join(' ');
+
+// FLUX-Fill-Inpaint: nur die maskierten (weißen) Element-Flächen szenengerecht
+// auffüllen; das sichtbare Artwork in der Mitte bleibt. Positiver Prompt (FLUX mag
+// keine Verneinungen).
+const PROMPT_INPAINT = [
+  'Fill the masked regions with a natural, seamless continuation of the painted illustration that is',
+  'visible in the unmasked area — the SAME scene and surroundings, the SAME art style, colour palette,',
+  'lighting and time of day. Extend the artwork so the whole picture becomes one single coherent,',
+  'borderless illustration, sharp and detailed all the way to every edge. Keep the unmasked artwork',
+  'exactly as it is; only paint inside the masked areas, blending them invisibly into the scene.',
+].join(' ');
+
 /** Generischer Replicate-Lauf: POST an ein Modell → pollen → Ergebnis-URL.
  *  Mit 429-Handling (bei <$5 Guthaben Burst 1/min). */
 async function replicateRun(modelPath: string, input: Record<string, unknown>): Promise<{ url: string }> {
   if (!REPLICATE_TOKEN) throw new Error('REPLICATE_API_TOKEN fehlt');
   const headers = { Authorization: `Bearer ${REPLICATE_TOKEN}`, 'Content-Type': 'application/json' };
-  const body = JSON.stringify({ input });
+  // 64-hex = Versionshash → generischer /v1/predictions-Endpoint (Community-Modelle);
+  // sonst offizieller models/{owner}/{name}/predictions-Endpoint.
+  const isVersion = /^[0-9a-f]{64}$/.test(modelPath);
+  const endpoint = isVersion ? 'https://api.replicate.com/v1/predictions' : `https://api.replicate.com/v1/models/${modelPath}/predictions`;
+  const body = JSON.stringify(isVersion ? { version: modelPath, input } : { input });
   let startRes: Response, startText = '';
   for (let attempt = 0; ; attempt++) {
-    startRes = await fetch(`https://api.replicate.com/v1/models/${modelPath}/predictions`, { method: 'POST', headers, body });
+    startRes = await fetch(endpoint, { method: 'POST', headers, body });
     startText = await startRes.text();
     if (startRes.status !== 429 || attempt >= 5) break;
     let wait = 12_000;
@@ -108,7 +242,7 @@ async function replicateRun(modelPath: string, input: Record<string, unknown>): 
   if (!startRes.ok) throw new Error(`Replicate start ${startRes.status}: ${startText.slice(0, 250)}`);
   let job = JSON.parse(startText);
   const getUrl = job.urls?.get || `https://api.replicate.com/v1/predictions/${job.id}`;
-  const deadline = Date.now() + 180_000;
+  const deadline = Date.now() + 280_000;
   while (!['succeeded', 'failed', 'canceled'].includes(job.status)) {
     if (Date.now() > deadline) throw new Error('Replicate Timeout');
     await new Promise(r => setTimeout(r, 2500));
@@ -146,6 +280,9 @@ const PROMPT_FLUX = [
   'the center is a forest, continue the forest; if a city, continue the city — do not switch settings.',
   'Same art style, color palette, lighting and time of day as the center. Richly detailed, sharp and',
   'in focus, one single coherent scene that fills the whole canvas completely to the very edges.',
+  'The extension must look smooth, natural and organic, with the same texture scale as the center;',
+  'skies and open areas are smooth gradients with soft clouds. Avoid any vertical or horizontal',
+  'streaks, bands, stripes or repeated smears.',
 ].join(' ');
 
 // Nano Banana (Gemini) — Rand füllen bei fest vorkomponierter Mitte (exakte
@@ -159,20 +296,37 @@ const PROMPT_NB_FILL = [
   'kein Rand, kein Text, kein Copyright, keine Kacheln/Wiederholung, kein Grau mehr übrig.',
 ].join(' ');
 
-// Kartenformat (63:88) — für exakt in 9 gleiche Kartenkacheln schneidbares 3×3.
-const CARD_W = 63, CARD_H = 88;
+// 3×3-Rand mit KANTEN-VORLAGE: der Rand ist bereits eine unscharfe, aus der Mitte
+// herausgezogene Version → NB soll ihn nur SCHARF ausarbeiten, streng im Maßstab der Mitte.
+const PROMPT_NB_FILL_EDGE = [
+  'Das mittlere Drittel dieses Bildes ist eine fertige, SCHARFE Illustration. Der unscharfe Bereich',
+  'ringsum ist eine aus den Rändern der Mitte herausgezogene VORLAGE — arbeite ihn SCHARF und',
+  'detailliert aus als NAHTLOSE Fortsetzung DERSELBEN Szene. ENTSCHEIDEND: exakt DERSELBE MASSSTAB',
+  'wie in der Mitte — KEINE Maßstabssprünge, keine plötzlich größeren oder kleineren Objekte.',
+  'Führe die vorhandenen Strukturen (z. B. Gebäude, Dächer, Äste, Felsen, Flügel, Boden) direkt über',
+  'die Kanten der Mitte hinaus WEITER, als würde man aus der Szene herauszoomen und mehr von',
+  'derselben Welt sehen. Gleicher Kunststil, gleiche Farben, Beleuchtung und Tageszeit. Die Mitte',
+  'bleibt unverändert an ihrer Stelle. Kein Rahmen, kein Rand, kein Text, keine Kacheln.',
+].join(' ');
 
-// Nano-Banana Schritt 1: NUR Rahmen/Text entfernen, Illustration ERHALTEN,
-// entfernte Flächen (v. a. Textbox unten) als Fortsetzung füllen.
+
+// Nano-Banana Schritt 1: Illustration ERHALTEN (Position/Größe/Stil), aber ALLE
+// Nicht-Bild-Elemente VOLLSTÄNDIG entfernen (auch Panels über Full-Art) und die frei
+// gewordenen Flächen szenengerecht fortsetzen — NICHT flach füllen, Motiv NIE entfernen.
 const PROMPT_NB_CARD = [
-  'Dies ist eine Pokémon-Karte. Entferne NUR den Kartenrahmen, den Namensbalken oben, die Textbox',
-  'unten, alle Symbole, Logos, Werte und die Copyright-Zeile. Das gemalte ILLUSTRATIONSFENSTER bleibt',
-  'völlig UNVERÄNDERT an genau seiner Position (bei dieser Karte im oberen Bereich) — verschiebe,',
-  'skaliere oder verändere das Motiv NICHT und ändere den vorhandenen Hintergrund NICHT.',
-  'Fülle NUR die durch das Entfernen frei gewordenen Flächen (vor allem die Textbox-Fläche darunter',
-  'und die schmalen Rahmenränder), indem du die BEREITS VORHANDENE Szene/den Hintergrund des',
-  'Illustrationsfensters natürlich, scharf und detailliert fortsetzt. Ergebnis: exakt dieselbe',
-  'Illustration, nur ohne Rahmen/Text, randlos im gleichen Hochformat. Kein Rahmen, kein Text.',
+  'Dies ist eine Pokémon-Karte. Entferne VOLLSTÄNDIG ALLE Nicht-Bild-Elemente: den äußeren',
+  'Kartenrahmen und Rand, den Namensbalken oben, HP, alle Typ-/Energiesymbole, die Attacken- und',
+  'Fähigkeits-Textboxen, Schwäche/Resistenz/Rückzug, das Set-Symbol, die Seltenheit, die',
+  'Sammlernummer und die Illustrator-/Copyright-Zeile — auch halbtransparente Text- oder Wert-Panels,',
+  'die BEI FULL-ART-KARTEN ÜBER dem Bild liegen. Danach darf KEIN Text, KEINE Zahl, KEIN Symbol,',
+  'KEIN Rahmen und KEINE Textbox mehr zu sehen sein.',
+  'WICHTIG — verändere die Illustration selbst NICHT: das Motiv/Pokémon und die gesamte Szene bleiben',
+  'an EXAKT derselben Position, Größe, Pose und im selben Stil, mit demselben Hintergrund; verschiebe,',
+  'skaliere, spiegele oder verändere sie NICHT und entferne das Pokémon NIEMALS.',
+  'Rekonstruiere NUR die durch das Entfernen frei gewordenen Flächen, indem du die unmittelbar',
+  'angrenzende Illustration natürlich, scharf und detailliert fortsetzt — KEINE flache Farbfläche,',
+  'kein Farbverlauf, kein Balken. Ergebnis: exakt dieselbe Illustration, randlos im gleichen',
+  'Hochformat, ohne Rahmen und ohne jeglichen Text.',
 ].join(' ');
 
 // Nano Banana (Gemini) — Ein-Schritt-3×3 (ohne feste Geometrie). Gemini folgt
@@ -233,16 +387,29 @@ async function genImageCF(
   return { url };
 }
 
-// Schritt 1: Karte → randlose Illustration (Text/Rahmen weg, aufs Kartenformat erweitert).
+// Schritt 1: Karte → randlose Illustration. WICHTIG: EDIT-ONLY / Inpainting-Denke —
+// NUR die Overlay-Elemente entfernen und exakt DIESE Stellen auffüllen; die Illustration
+// selbst (Motiv, Position, Größe, Hintergrund, Stil) bleibt unangetastet; NICHTS dazu erfinden.
 const PROMPT_CARD = [
-  'You are given a Pokémon trading card. Remove the card frame, border, name, HP, attack text, set',
-  'symbols, logos and copyright line completely, and show ONLY the illustration.',
-  'Keep the subject and the existing foreground EXACTLY as they are; do not redraw, restyle or move',
-  'them. EXTEND the scenery outward so it fills the ENTIRE portrait canvas edge-to-edge, all the way',
-  'into every corner, with REAL, DETAILED content (e.g. forest floor, plants, leaves, rocks,',
-  'branches) — NOT a uniform out-of-focus / bokeh blur.',
-  'Keep the subject and the whole FOREGROUND SHARP and in focus; only the FAR background may be',
-  'gently soft, like in the original. Same art style, colors and lighting.',
+  'You are given a Pokémon trading card. Treat this as a precise EDIT/INPAINTING task, NOT a redraw.',
+  'REMOVE ONLY the overlay graphics that are not part of the painting: the outer card frame and',
+  'border, the holo/foil frame edges, the name bar, HP, the type/energy and weakness/resistance/retreat',
+  'symbols, the attack and ability TEXT BOXES, the rarity mark, the set symbol, the collector number,',
+  'and the illustrator/copyright line. Show ONLY the painted illustration, borderless in the same',
+  'portrait aspect ratio.',
+  'CRITICAL — do NOT change the illustration itself: keep the creature/subject and ALL scenery at',
+  'EXACTLY the same position, size, pose, framing, colors, lighting and art style as in the original.',
+  'Do NOT move, rescale, shift, mirror, zoom, re-center, restyle or repaint the subject or the scene.',
+  'NEVER remove, hide or replace the creature/subject — it must always stay fully visible exactly where',
+  'it is. Do NOT invent or add ANY new objects, characters, buildings, plants or scenery.',
+  'Reconstruct ONLY the exact areas that the removed elements used to cover (the text boxes, bars,',
+  'borders, and — for full-art cards — the semi-transparent panels lying ON TOP of the artwork) by',
+  'naturally continuing the immediately adjacent painting, so those spots blend in seamlessly. Where a',
+  'removed panel overlapped the creature or scenery, rebuild only what was plausibly behind it, matching',
+  'the surrounding art. Everything that was NOT covered by a removed element must stay pixel-faithful.',
+  'Fill all the way into every corner with real, detailed continuation of the SAME scene — no empty',
+  'bokeh haze. Keep the foreground sharp; only the far background may be gently soft, as in the original.',
+  'Output one image, same portrait aspect ratio, edge to edge, no frame, no text.',
 ].join(' ');
 
 // Kaskade Pass 1 (horizontal): Mitte = echte Szene, links/rechts = Kanten-
@@ -374,7 +541,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   try {
-    const { imageUrl, model: modelOverride, mode, variant, provider, cfModel, imageSize, aspectRatio } = await req.json();
+    const { imageUrl, model: modelOverride, mode, variant, provider, cfModel, imageSize, aspectRatio, maskKeep, maskRemove, engine, pasteBack } = await req.json();
     if (!imageUrl || typeof imageUrl !== 'string') {
       return NextResponse.json({ error: 'imageUrl fehlt' }, { status: 400 });
     }
@@ -397,6 +564,75 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── Inpaint-Provider (FLUX Fill mit Schablonen-Maske): Elemente entfernen, Motiv
+    // pixelgenau behalten. `maskKeep` = optionale „behalten"-Rechtecke (Bruchteile),
+    // sonst Standard-Normalkarte. Antwort enthält auch die Maske (Debug/Overlay).
+    if (provider === 'inpaint') {
+      const t0 = Date.now();
+      try {
+        const s = await fetchImageBase64(imageUrl);
+        const buf = Buffer.from(s.data, 'base64');
+        const md = await sharp(buf).metadata();
+        const w = md.width ?? 600, h = md.height ?? 825;
+        const keeps = Array.isArray(maskKeep) && maskKeep.length ? maskKeep : MASK_KEEP_STANDARD;
+        const eng = engine === 'flux' ? 'flux' : 'nb';
+        if (eng === 'flux') {
+          // FLUX Fill (echter Inpainter): schwarz = pixelgenau behalten, weiß = füllen.
+          // `maskRemove` (Text-/Rahmen-Streifen) bevorzugt → kleine Füllfläche, Rest exakt;
+          // sonst aus `keeps` (Fenster behalten, Rest füllen).
+          const maskBuf = Array.isArray(maskRemove) && maskRemove.length
+            ? await buildRemoveMask(w, h, maskRemove)
+            : await buildOverlayMask(w, h, keeps);
+          const imgURI = `data:image/png;base64,${buf.toString('base64')}`;
+          const maskURI = `data:image/png;base64,${maskBuf.toString('base64')}`;
+          const { url } = await genImageReplicate(PROMPT_INPAINT, imgURI, maskURI);
+          const outBuf = Buffer.from(await (await fetch(url)).arrayBuffer());
+          const outURI = `data:image/png;base64,${(await sharp(outBuf).png().toBuffer()).toString('base64')}`;
+          return NextResponse.json({ provider: 'inpaint', engine: 'flux', latencyMs: Date.now() - t0, image: outURI, mask: maskURI });
+        }
+        // NB-Inpaint. Zwei Modi:
+        //  • maskRemove: NUR diese Zonen grauen → NB füllt sie → Rest bleibt Original
+        //    pixelgenau (nur die Streifen aus NB, weiche Kante). Ideal als Stufe 2 nach FLUX.
+        //  • sonst keeps: alles außer dem Fenster grauen → NB füllt → optional Fenster-Paste-Back.
+        const removes = Array.isArray(maskRemove) && maskRemove.length ? maskRemove : null;
+        const grayBuf = removes ? await grayOutRects(buf, w, h, removes) : await buildGrayComposite(buf, w, h, keeps);
+        const grayURI = `data:image/png;base64,${grayBuf.toString('base64')}`;
+        const model = typeof cfModel === 'string' && cfModel ? cfModel : 'google/nano-banana-2';
+        const res = typeof imageSize === 'string' ? imageSize : '2K';
+        const inpaintPrompt = variant === 'abstract' ? PROMPT_NB_INPAINT_ABSTRACT : PROMPT_NB_INPAINT;
+        const { url } = await genImageNanoBanana(model, inpaintPrompt, grayURI, res);
+        const nbBuf = await sharp(Buffer.from(await (await fetch(url)).arrayBuffer())).resize(w, h, { fit: 'fill' }).png().toBuffer();
+        let composed: Buffer;
+        if (removes) {
+          // Rest = Original pixelgenau; nur die Remove-Zonen aus NB (weiche Kante).
+          composed = await sharp(buf).png().toBuffer();
+          for (const k of removes) {
+            const kx = Math.round(k.x0 * w), ky = Math.round(k.y0 * h);
+            const kw = Math.max(1, Math.round((k.x1 - k.x0) * w));
+            const kh = Math.max(1, Math.round((k.y1 - k.y0) * h));
+            const f = Math.max(4, Math.round(Math.min(kw, kh) * 0.08));
+            const nbCrop = await sharp(nbBuf).extract({ left: kx, top: ky, width: kw, height: kh }).removeAlpha().joinChannel(await featherAlpha(kw, kh, f)).png().toBuffer();
+            composed = await sharp(composed).composite([{ input: nbCrop, left: kx, top: ky }]).png().toBuffer();
+          }
+        } else {
+          composed = nbBuf;
+          if (pasteBack !== false) {
+            for (const k of keeps) {
+              const kx = Math.round(k.x0 * w), ky = Math.round(k.y0 * h);
+              const kw = Math.max(1, Math.round((k.x1 - k.x0) * w));
+              const kh = Math.max(1, Math.round((k.y1 - k.y0) * h));
+              const crop = await sharp(buf).extract({ left: kx, top: ky, width: kw, height: kh }).removeAlpha().joinChannel(await featherAlpha(kw, kh, Math.max(4, Math.round(Math.min(kw, kh) * 0.05)))).png().toBuffer();
+              composed = await sharp(composed).composite([{ input: crop, left: kx, top: ky }]).png().toBuffer();
+            }
+          }
+        }
+        const outURI = `data:image/png;base64,${composed.toString('base64')}`;
+        return NextResponse.json({ provider: 'inpaint', engine: 'nb', model, latencyMs: Date.now() - t0, image: outURI, mask: grayURI });
+      } catch (e) {
+        return NextResponse.json({ provider: 'inpaint', error: e instanceof Error ? e.message : String(e) }, { status: 502 });
+      }
+    }
+
     // ── Nano Banana (Gemini via Replicate): Ein-Schritt-3×3, kein FLUX-Rahmen.
     if (provider === 'nb') {
       const model = typeof cfModel === 'string' && cfModel ? cfModel : 'google/nano-banana-2';
@@ -409,17 +645,31 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ provider: 'nb', model, mode: 'card', latencyMs: Date.now() - t0, image: url });
         }
 
-        // Feste 3×3-Geometrie: Mitte = exakt eine Kartenkachel (63:88), grauer
-        // Rand → Nano Banana füllt nur den Rand → danach Mitte pixelgenau zurück.
-        const tileH = res === '4K' ? 1200 : res === '1K' ? 512 : 800;
-        const tileW = Math.round((tileH * CARD_W) / CARD_H);
+        // Feste 3×3-Geometrie: Kachel = echte Kartengröße 63×88 mm @ 300 dpi = 744×1039 px
+        // → Gesamtbild 2232×3117, 9 exakt gleiche Kacheln (Ratio 63:88). Kein Bleed/Schnittmarken.
+        // Mitte verzerrungsfrei (cover) — das Bild soll auch als GANZES Motiv (ohne Karte) taugen.
+        // Rand intern in 4K generieren → genug Detail für den Druck.
+        const tileW = 744, tileH = 1039;
         const s = await fetchImageBase64(imageUrl);
         const center = await sharp(Buffer.from(s.data, 'base64')).resize(tileW, tileH, { fit: 'cover' }).png().toBuffer();
         const CW = tileW * 3, CH = tileH * 3;
-        const canvas = await sharp({ create: { width: CW, height: CH, channels: 3, background: { r: 127, g: 127, b: 127 } } })
-          .composite([{ input: center, left: tileW, top: tileH }]).png().toBuffer();
+        // Rand-Vorlage: 'edge' = Kanten der Mitte herausziehen (extendWith:'copy') + verwischen
+        // → gibt NB einen MASSSTABS-/Farb-Anker (statt grauem Nichts) → gleicher Maßstab beim
+        // Fortführen. Sonst flaches Grau (altes Verhalten).
+        let canvas: Buffer, fillPrompt: string;
+        if (variant === 'edge') {
+          const seed = await sharp(center)
+            .extend({ left: tileW, right: tileW, top: tileH, bottom: tileH, extendWith: 'copy' })
+            .blur(60).png().toBuffer();
+          canvas = await sharp(seed).composite([{ input: center, left: tileW, top: tileH }]).png().toBuffer();
+          fillPrompt = PROMPT_NB_FILL_EDGE;
+        } else {
+          canvas = await sharp({ create: { width: CW, height: CH, channels: 3, background: { r: 127, g: 127, b: 127 } } })
+            .composite([{ input: center, left: tileW, top: tileH }]).png().toBuffer();
+          fillPrompt = PROMPT_NB_FILL;
+        }
 
-        const { url } = await genImageNanoBanana(model, PROMPT_NB_FILL, `data:image/png;base64,${canvas.toString('base64')}`, res);
+        const { url } = await genImageNanoBanana(model, fillPrompt, `data:image/png;base64,${canvas.toString('base64')}`, '4K');
 
         // Nur auf die exakte 3×-Leinwand ziehen — KEIN Wieder-Einsetzen der Mitte
         // (das erzeugte eine harte Naht). Nano Banana behält die Mitte selbst und
@@ -460,6 +710,43 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ provider: 'replicate', model: REPLICATE_FILL_MODEL, passes: FLUX_PASSES, latencyMs: Date.now() - t0, image: url });
       } catch (e) {
         return NextResponse.json({ provider: 'replicate', error: e instanceof Error ? e.message : String(e) }, { status: 502 });
+      }
+    }
+
+    // ── SDXL-Outpainting (fermatresearch/sdxl-outpainting-lora): erweitert den Bildinhalt
+    // richtungsweise (max 512 px/Seite), SDXL → kein Text-/Rahmen-Hang wie FLUX-Fill.
+    // Testweise EIN Pass ~2.4×; `grow` (px je Seite) überschreibbar.
+    if (provider === 'sdxlout') {
+      const t0 = Date.now();
+      try {
+        // KARTE-IN-MITTE (3×3): Zentrum = Karte pixelgenau, ringsum SDXL-Outpaint,
+        // exakt 3× in EINEM Pass (Center klein genug, dass grow ≤ 512/Seite reicht).
+        const s = await fetchImageBase64(imageUrl);
+        const buf0 = Buffer.from(s.data, 'base64');
+        const TILE_W = 744, TILE_H = 1039;                 // Zielkachel 63:88 @ 300 dpi
+        const centerHi = await sharp(buf0).resize(TILE_W, TILE_H, { fit: 'cover' }).png().toBuffer();
+        // Kleine Center-Variante für SDXL: grow = Center-Maß (=3×), beide ≤ 512.
+        const SC_H = 500, SC_W = Math.round(SC_H * TILE_W / TILE_H); // 358×500
+        const small = await sharp(centerHi).resize(SC_W, SC_H, { fit: 'fill' }).png().toBuffer();
+        const input = {
+          image: `data:image/png;base64,${small.toString('base64')}`,
+          prompt: 'Extend ONLY the empty surrounding environment and background outward — just more of the same ground, terrain, sky and scenery. One continuous empty landscape at the exact same scale, same art style, colors and lighting. Absolutely no living things.',
+          negative_prompt: 'creature, animal, monster, character, pokemon, mascot, lizard, dragon, reptile, orange creature, dinosaur, figure, mascot in the background, duplicate character, second character, multiple characters, extra creature, another creature, cloned subject, repeated subject, two creatures, many creatures, copy of the subject, text, letters, words, title, caption, signature, watermark, logo, frame, border, picture frame, ornate frame, passepartout, vignette',
+          outpaint_left: SC_W, outpaint_right: SC_W, outpaint_up: SC_H, outpaint_down: SC_H,
+          guidance_scale: 8, condition_scale: 1, apply_watermark: false,
+        };
+        const { url } = await replicateRun('a542ccf352995f3c41f0bcfaef641daa3058bf2b00e08e04feb0295334ab9804', input);
+        const outBuf = Buffer.from(await (await fetch(url)).arrayBuffer());
+        // Auf exakte 2232×3117 skalieren (Ratio ist identisch → keine Verzerrung) …
+        const CW = TILE_W * 3, CH = TILE_H * 3;
+        let final = await sharp(outBuf).resize(CW, CH, { fit: 'fill', kernel: 'lanczos3' }).png().toBuffer();
+        // … und die HOCHAUFLÖSENDE Karte scharf in die Mittelkachel setzen (kleine Feder).
+        const f = 22;
+        const centerA = await sharp(centerHi).removeAlpha().joinChannel(await featherAlpha(TILE_W, TILE_H, f)).png().toBuffer();
+        final = await sharp(final).composite([{ input: centerA, left: TILE_W, top: TILE_H }]).png().toBuffer();
+        return NextResponse.json({ provider: 'sdxlout', latencyMs: Date.now() - t0, image: `data:image/png;base64,${final.toString('base64')}` });
+      } catch (e) {
+        return NextResponse.json({ provider: 'sdxlout', error: e instanceof Error ? e.message : String(e) }, { status: 502 });
       }
     }
 
