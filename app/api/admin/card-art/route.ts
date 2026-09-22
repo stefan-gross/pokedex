@@ -3,8 +3,8 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import sharp from 'sharp';
 import { isAdminRequest } from '@/lib/admin-auth';
 
-// Bildgenerierung (bei 3×3 zwei Aufrufe) dauert länger.
-export const maxDuration = 180;
+// Bildgenerierung (bei 3×3 mehrere Aufrufe + Rate-Limit-Pausen) dauert länger.
+export const maxDuration = 300;
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -65,7 +65,7 @@ const FLUX_MAX_LONG = 1408;
 // Echtes 3×3: 2 Pässe à √3 ≈ 1.732 = exakt 3× (Mitte = 1/3 je Achse → in 9
 // gleiche Kacheln schneidbar). Moderater Ring pro Pass + positiver Prompt =
 // keine Vignette / kein Kartenrahmen. Mitte bleibt über beide Pässe pixelgenau.
-const FLUX_PASS_FACTOR = Math.sqrt(3);
+const FLUX_PASS_FACTOR = Math.sqrt(3); // 2 Ringe = exakt 3× (sauber für fotografische Full-Arts)
 const FLUX_PASSES = 2;
 
 /** Legt `buf` mittig auf eine `factor`× größere Leinwand und baut die Maske
@@ -125,11 +125,12 @@ async function genImageReplicate(prompt: string, image: string, mask: string): P
 // FLUX (Diffusion) mag POSITIVE Beschreibungen, kaum Verneinungen. Daher ein
 // eigener, knapper Prompt, der die gewünschte Szene beschreibt (statt „kein …").
 const PROMPT_FLUX = [
-  'A single, wide, continuous painted landscape illustration that seamlessly extends the central',
-  'scene outward in every direction, all the way to the edges of the frame. Keep the SAME kind of',
-  'place and environment as the center — if the center is a forest, continue the forest; if a city,',
-  'continue the city — do not switch to a different setting. Same art style, color palette, lighting',
-  'and time of day as the center. Richly detailed, sharp and in focus, edge to edge, one coherent scene.',
+  'We see only a CROPPED PART of a much larger, continuous world. Extend the central scene outward in',
+  'every direction so it bleeds off all four edges of the frame, as if the camera simply shows a',
+  'section of an endless landscape. Keep the SAME kind of place and environment as the center — if',
+  'the center is a forest, continue the forest; if a city, continue the city — do not switch settings.',
+  'Same art style, color palette, lighting and time of day as the center. Richly detailed, sharp and',
+  'in focus, one single coherent scene that fills the whole canvas completely to the very edges.',
 ].join(' ');
 
 interface CFOptions { imageSize?: string; aspectRatio?: string }
