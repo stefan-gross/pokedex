@@ -90,17 +90,15 @@ async function outpaintCanvas(buf: Buffer, factor: number): Promise<{ image: str
   };
 }
 
-/** Ein Replicate-FLUX-Fill-Lauf: POST → pollen → Ergebnis-URL. */
-async function genImageReplicate(prompt: string, image: string, mask: string): Promise<{ url: string }> {
+/** Generischer Replicate-Lauf: POST an ein Modell → pollen → Ergebnis-URL.
+ *  Mit 429-Handling (bei <$5 Guthaben Burst 1/min). */
+async function replicateRun(modelPath: string, input: Record<string, unknown>): Promise<{ url: string }> {
   if (!REPLICATE_TOKEN) throw new Error('REPLICATE_API_TOKEN fehlt');
   const headers = { Authorization: `Bearer ${REPLICATE_TOKEN}`, 'Content-Type': 'application/json' };
-  const body = JSON.stringify({ input: { prompt, image, mask, output_format: 'png', safety_tolerance: 6 } });
-
-  // Rate-Limit (429) tolerieren: bei <$5 Guthaben ist der Burst = 1/min. Warten
-  // (retry_after o. 12 s) und erneut versuchen.
+  const body = JSON.stringify({ input });
   let startRes: Response, startText = '';
   for (let attempt = 0; ; attempt++) {
-    startRes = await fetch(`https://api.replicate.com/v1/models/${REPLICATE_FILL_MODEL}/predictions`, { method: 'POST', headers, body });
+    startRes = await fetch(`https://api.replicate.com/v1/models/${modelPath}/predictions`, { method: 'POST', headers, body });
     startText = await startRes.text();
     if (startRes.status !== 429 || attempt >= 5) break;
     let wait = 12_000;
@@ -110,7 +108,7 @@ async function genImageReplicate(prompt: string, image: string, mask: string): P
   if (!startRes.ok) throw new Error(`Replicate start ${startRes.status}: ${startText.slice(0, 250)}`);
   let job = JSON.parse(startText);
   const getUrl = job.urls?.get || `https://api.replicate.com/v1/predictions/${job.id}`;
-  const deadline = Date.now() + 150_000;
+  const deadline = Date.now() + 180_000;
   while (!['succeeded', 'failed', 'canceled'].includes(job.status)) {
     if (Date.now() > deadline) throw new Error('Replicate Timeout');
     await new Promise(r => setTimeout(r, 2500));
@@ -122,6 +120,23 @@ async function genImageReplicate(prompt: string, image: string, mask: string): P
   return { url };
 }
 
+/** FLUX Fill (Outpaint mit Maske). */
+function genImageReplicate(prompt: string, image: string, mask: string) {
+  return replicateRun(REPLICATE_FILL_MODEL, { prompt, image, mask, output_format: 'png', safety_tolerance: 6 });
+}
+
+/** Nano Banana (Gemini via Replicate): Image-to-Image, EIN Schritt (kein FLUX,
+ *  kein Rahmen-Problem). `image` als Data-URI oder URL. */
+function genImageNanoBanana(model: string, prompt: string, image: string, resolution: string) {
+  return replicateRun(model, {
+    prompt,
+    image_input: [image],
+    resolution,               // "1K" | "2K" | "4K"
+    aspect_ratio: 'match_input_image',
+    output_format: 'png',
+  });
+}
+
 // FLUX (Diffusion) mag POSITIVE Beschreibungen, kaum Verneinungen. Daher ein
 // eigener, knapper Prompt, der die gewünschte Szene beschreibt (statt „kein …").
 const PROMPT_FLUX = [
@@ -131,6 +146,18 @@ const PROMPT_FLUX = [
   'the center is a forest, continue the forest; if a city, continue the city — do not switch settings.',
   'Same art style, color palette, lighting and time of day as the center. Richly detailed, sharp and',
   'in focus, one single coherent scene that fills the whole canvas completely to the very edges.',
+].join(' ');
+
+// Nano Banana (Gemini) — Ein-Schritt-3×3. Gemini folgt Anweisungen (inkl.
+// Verneinungen) gut, daher explizit „herauszoomen, Mitte = 1/3, kein Rahmen".
+const PROMPT_NB_GRID = [
+  'Zoome bei dieser Illustration weit heraus und erzeuge EIN EINZIGES, zusammenhängendes Bild, in dem',
+  'das komplette Originalbild unverändert das MITTLERE DRITTEL (Bildmitte, ~1/3 der Breite und Höhe)',
+  'einnimmt und ringsum in ALLE Richtungen nahtlos DIESELBE Szene/Umgebung fortgesetzt wird — als',
+  'Ausschnitt einer viel größeren, durchgehenden Welt. Gleicher Kunststil, gleiche Farben, Beleuchtung',
+  'und Tageszeit; wechsle die Umgebung NICHT. Alles scharf und detailliert bis in die Ecken. KEIN',
+  'Kartenrahmen, kein Bilderrahmen, kein Passepartout, kein Rand, kein Text, kein Copyright, keine',
+  'Kacheln/Wiederholung. Gleiches Hochformat-Seitenverhältnis wie die Eingabe.',
 ].join(' ');
 
 interface CFOptions { imageSize?: string; aspectRatio?: string }
@@ -340,6 +367,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ provider: 'cf', model, mode: mode ?? 'card', latencyMs: Date.now() - t0, image: url });
       } catch (e) {
         return NextResponse.json({ provider: 'cf', model, error: e instanceof Error ? e.message : String(e) }, { status: 502 });
+      }
+    }
+
+    // ── Nano Banana (Gemini via Replicate): Ein-Schritt-3×3, kein FLUX-Rahmen.
+    if (provider === 'nb') {
+      const model = typeof cfModel === 'string' && cfModel ? cfModel : 'google/nano-banana-2';
+      const res = typeof imageSize === 'string' && imageSize ? imageSize.toUpperCase() : '2K';
+      const t0 = Date.now();
+      try {
+        const { url } = await genImageNanoBanana(model, PROMPT_NB_GRID, imageUrl, res);
+        return NextResponse.json({ provider: 'nb', model, latencyMs: Date.now() - t0, image: url });
+      } catch (e) {
+        return NextResponse.json({ provider: 'nb', model, error: e instanceof Error ? e.message : String(e) }, { status: 502 });
       }
     }
 
