@@ -541,7 +541,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   try {
-    const { imageUrl, model: modelOverride, mode, variant, provider, cfModel, imageSize, aspectRatio, maskKeep, maskRemove, engine, pasteBack } = await req.json();
+    const { imageUrl, model: modelOverride, mode, variant, provider, cfModel, imageSize, aspectRatio, maskKeep, maskRemove, engine, pasteBack, centerScale } = await req.json();
     if (!imageUrl || typeof imageUrl !== 'string') {
       return NextResponse.json({ error: 'imageUrl fehlt' }, { status: 400 });
     }
@@ -664,8 +664,14 @@ export async function POST(req: NextRequest) {
           canvas = await sharp(seed).composite([{ input: center, left: tileW, top: tileH }]).png().toBuffer();
           fillPrompt = PROMPT_NB_FILL_EDGE;
         } else {
+          // centerScale < 1: Karte kleiner mittig einsetzen (mehr Grau) → Modelle, die das
+          // Motiv beim Füllen vergrößern (nano-banana-pro ~1,5×), landen so wieder ~auf 1/3.
+          const cs = typeof centerScale === 'number' && centerScale > 0.2 && centerScale <= 1 ? centerScale : 1;
+          const cw2 = Math.round(tileW * cs), ch2 = Math.round(tileH * cs);
+          const centerS = cs === 1 ? center : await sharp(center).resize(cw2, ch2).png().toBuffer();
+          const cx = Math.round((CW - cw2) / 2), cy = Math.round((CH - ch2) / 2);
           canvas = await sharp({ create: { width: CW, height: CH, channels: 3, background: { r: 127, g: 127, b: 127 } } })
-            .composite([{ input: center, left: tileW, top: tileH }]).png().toBuffer();
+            .composite([{ input: centerS, left: cx, top: cy }]).png().toBuffer();
           fillPrompt = PROMPT_NB_FILL;
         }
 
@@ -747,6 +753,97 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ provider: 'sdxlout', latencyMs: Date.now() - t0, image: `data:image/png;base64,${final.toString('base64')}` });
       } catch (e) {
         return NextResponse.json({ provider: 'sdxlout', error: e instanceof Error ? e.message : String(e) }, { status: 502 });
+      }
+    }
+
+    // ── Bria Expand (bria/expand-image, offiziell, "Warm", $0.04/Bild): behält das
+    // Originalbild an exakter Position/Größe und generiert NUR die neuen Pixel drumherum
+    // → Karte bleibt pixelgenau in der Mitte. `maskKeep` (Zahl) = Zielskalierung (Default 3×).
+    if (provider === 'bria') {
+      const t0 = Date.now();
+      try {
+        // STEP-Modus: übergebenes Bild EINMAL auf ein festes aspect_ratio erweitern
+        // (Bria behält Originalgröße, fügt echte Szene an). Für die stufenweise Kette.
+        if (variant === 'step') {
+          const ar = typeof aspectRatio === 'string' && aspectRatio ? aspectRatio : '1:1';
+          const s2 = await fetchImageBase64(imageUrl);
+          const inp = await sharp(Buffer.from(s2.data, 'base64')).metadata();
+          const { url } = await replicateRun('bria/expand-image', {
+            image: `data:image/png;base64,${Buffer.from(s2.data, 'base64').toString('base64')}`,
+            aspect_ratio: ar,
+            prompt: 'seamless continuation of the same illustrated scene, same art style, colours, lighting and time of day; extend only the surrounding sky and city, keep it one coherent scene',
+            negative_prompt: 'frame, border, text, watermark, duplicate subject, second creature, extra bird, tiling',
+            preserve_alpha: false,
+          });
+          return NextResponse.json({ provider: 'bria', step: true, ar, inSize: [inp.width, inp.height], latencyMs: Date.now() - t0, image: url });
+        }
+        const s = await fetchImageBase64(imageUrl);
+        // Arbeits-Kachel klein halten (Bria-Canvas ≤ ~1400 lange Kante), danach hochskalieren.
+        const wTile = 466, wTileW = Math.round(wTile * 744 / 1039); // 334×466 (63:88)
+        const center = await sharp(Buffer.from(s.data, 'base64')).resize(wTileW, wTile, { fit: 'cover' }).png().toBuffer();
+        const mult = typeof maskKeep === 'number' && maskKeep >= 1.2 ? maskKeep : 3;
+        const CW = Math.round(wTileW * mult), CH = Math.round(wTile * mult);
+        const ox = Math.round((CW - wTileW) / 2), oy = Math.round((CH - wTile) / 2);
+        const input = {
+          image: `data:image/png;base64,${center.toString('base64')}`,
+          canvas_size: [CW, CH],
+          original_image_size: [wTileW, wTile],
+          original_image_location: [ox, oy],
+          prompt: typeof variant === 'string' && variant ? variant : 'seamless continuation of the same illustrated scene, same art style, colours, lighting and time of day; extend the surroundings naturally',
+          negative_prompt: 'frame, border, picture frame, text, letters, watermark, logo, signature, duplicate subject, second creature, tiling, seam',
+          preserve_alpha: false,
+        };
+        const { url } = await replicateRun('bria/expand-image', input);
+        if (variant === 'raw') {
+          return NextResponse.json({ provider: 'bria', raw: true, canvas: [CW, CH], center: [wTileW, wTile], loc: [ox, oy], image: url });
+        }
+        // auf exakte Druckgröße 2232×3117 hochskalieren (Ratio identisch) …
+        const outBuf = Buffer.from(await (await fetch(url)).arrayBuffer());
+        const TILE_W = 744, TILE_H = 1039, GW = TILE_W * 3, GH = TILE_H * 3;
+        let final = await sharp(outBuf).resize(GW, GH, { fit: 'fill', kernel: 'lanczos3' }).png().toBuffer();
+        // … und die HOCHAUFLÖSENDE freigestellte Karte pixelgenau in die Mittelkachel setzen,
+        // damit „in 9 splitten → Mitte = Karte" exakt stimmt (kleine Feder gegen Naht; Bria ist
+        // von der Karte aus gewachsen → Umgebung passt an der Kante).
+        const centerHi = await sharp(Buffer.from(s.data, 'base64')).resize(TILE_W, TILE_H, { fit: 'cover' }).png().toBuffer();
+        const cardA = await sharp(centerHi).removeAlpha().joinChannel(await featherAlpha(TILE_W, TILE_H, 10)).png().toBuffer();
+        final = await sharp(final).composite([{ input: cardA, left: TILE_W, top: TILE_H }]).png().toBuffer();
+        return NextResponse.json({ provider: 'bria', canvas: [CW, CH], latencyMs: Date.now() - t0, image: `data:image/png;base64,${final.toString('base64')}` });
+      } catch (e) {
+        return NextResponse.json({ provider: 'bria', error: e instanceof Error ? e.message : String(e) }, { status: 502 });
+      }
+    }
+
+    // ── EXTEND: ein VORHANDENES Bild pixelgenau behalten und nur den ÄUSSEREN Rand
+    // erweitern (Himmel/Stadt ohne Motiv → sauber). factor via `centerScale` (Default 1.5).
+    // Nutzt Kanten-Anker + Modell-Fill, danach Original pixelgenau (weiche Kante) wieder rein.
+    if (provider === 'extend') {
+      const t0 = Date.now();
+      try {
+        const s = await fetchImageBase64(imageUrl);
+        const G = Buffer.from(s.data, 'base64');
+        const md = await sharp(G).metadata();
+        const w = md.width ?? 1000, h = md.height ?? 1000;
+        const factor = typeof centerScale === 'number' && centerScale > 1 && centerScale <= 2.5 ? centerScale : 1.5;
+        const CW = Math.round(w * factor), CH = Math.round(h * factor);
+        const left = Math.round((CW - w) / 2), top = Math.round((CH - h) / 2);
+        const seed = await sharp(G)
+          .extend({ left, right: CW - w - left, top, bottom: CH - h - top, extendWith: 'copy' })
+          .blur(Math.max(20, Math.round(Math.min(w, h) * 0.05))).toBuffer();
+        const canvas = await sharp(seed).composite([{ input: G, left, top }]).png().toBuffer();
+        const model = typeof cfModel === 'string' && cfModel ? cfModel : 'google/nano-banana-pro';
+        const res = typeof imageSize === 'string' ? imageSize : '2K';
+        const prompt = 'Extend ONLY the surrounding sky, clouds and city rooftops outward from the central image, as a natural continuation of the SAME scene, same art style, colours, lighting and time of day. Do NOT add any creatures, birds or characters; do not change the central image. One coherent wide scene, sharp to the edges.';
+        const { url } = await genImageNanoBanana(model, prompt, `data:image/png;base64,${canvas.toString('base64')}`, res);
+        let out = await sharp(Buffer.from(await (await fetch(url)).arrayBuffer())).resize(CW, CH, { fit: 'fill', kernel: 'lanczos3' }).png().toBuffer();
+        if (variant !== 'nopaste') {
+          // Original pixelgenau (weiche Kante) wieder einsetzen → G bleibt exakt (aber Naht möglich).
+          const f = Math.max(8, Math.round(Math.min(w, h) * 0.05));
+          const GA = await sharp(G).removeAlpha().joinChannel(await featherAlpha(w, h, f)).png().toBuffer();
+          out = await sharp(out).composite([{ input: GA, left, top }]).png().toBuffer();
+        }
+        return NextResponse.json({ provider: 'extend', factor, dim: [CW, CH], latencyMs: Date.now() - t0, image: `data:image/png;base64,${out.toString('base64')}` });
+      } catch (e) {
+        return NextResponse.json({ provider: 'extend', error: e instanceof Error ? e.message : String(e) }, { status: 502 });
       }
     }
 
