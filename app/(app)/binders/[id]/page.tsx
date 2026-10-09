@@ -82,7 +82,9 @@ function InfoOffIcon({ size = 13 }: { size?: number }) {
 }
 
 /** Resolved Hintergrund-Farbe basierend auf Binder-Setting. */
-const MILKY_BG = 'rgba(255, 255, 255, 0.55)';
+// „Halbtransparent"-Seitenhintergrund: schon im Ruhezustand deutlich durchscheinend (nicht erst
+// beim Umblättern) — der App-Hintergrund scheint durch, nur ein Hauch Milchglas für Lesbarkeit.
+const MILKY_BG = 'rgba(255, 255, 255, 0.2)';
 
 const ADD_GLASS_STYLE    = tintedGlassStyle('#2f855a');
 const DELETE_GLASS_STYLE = tintedGlassStyle('#c53030');
@@ -101,16 +103,19 @@ function readableText(bg: string): string {
   return readableTextColor(bg, '#1a1a1a');
 }
 
-/** Slot-Farben passend zum Seitenhintergrund. */
+/** Slot-Farben passend zum Seitenhintergrund. Leere Slots werden nur LEICHT gefüllt
+ *  (transparente Füllung) → der Seitenhintergrund scheint durch, der gestrichelte
+ *  Rahmen bleibt als Umriss sichtbar. */
 function slotColors(pageBg: string): { bg: string; border: string } {
   if (!pageBg?.startsWith('#')) {
-    // milky / halbtransparent: dezent opaker Slot mit dunkler Border
-    return { bg: 'rgba(255,255,255,0.6)', border: 'rgba(0,0,0,0.18)' };
+    // milky / halbtransparent: nur ein Hauch Füllung, damit der App-Hintergrund durchscheint.
+    return { bg: 'rgba(255,255,255,0.14)', border: 'rgba(0,0,0,0.18)' };
   }
   const onDark = readableText(pageBg) === '#ffffff';
   const target = onDark ? 'white' : 'black';
   return {
-    bg:     `color-mix(in srgb, ${pageBg} 86%, ${target} 14%)`,
+    // Leichte, transparente Füllung in Kontrastrichtung (hell auf dunkel, dunkel auf hell).
+    bg:     onDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
     border: `color-mix(in srgb, ${pageBg} 65%, ${target} 35%)`,
   };
 }
@@ -120,6 +125,9 @@ function slotColors(pageBg: string): { bg: string; border: string } {
  *  (via ownedCardToInfo), statt einer eingefrorenen URL. Vom Seiten-Root
  *  bereitgestellt, von den Blatt-Komponenten per useContext konsumiert. */
 const BinderCatalogCtx = createContext<Map<string, CardInfo>>(new Map());
+/** true = fehlende Karten NICHT als Proxy-Bild zeigen (leerer Slot, aber die
+ *  einstellbare Info-Zeile bleibt). Aus `BinderDoc.hideMissingProxies`. */
+const BinderHideProxiesCtx = createContext<boolean>(false);
 
 export default function BinderDetailPage({ params }: Props) {
   const { id } = use(params);
@@ -559,6 +567,7 @@ export default function BinderDetailPage({ params }: Props) {
 
   return (
     <BinderCatalogCtx.Provider value={catalogInfoById}>
+    <BinderHideProxiesCtx.Provider value={!!binder.hideMissingProxies}>
     <div className="min-h-screen">
       {/* ── Sticky Header-/Info-Panel: Kopf + Ansichts-Switch UND (in der
           Grid-Ansicht) die kollabierenden Filter — alles in EINEM Panel. ── */}
@@ -889,6 +898,7 @@ export default function BinderDetailPage({ params }: Props) {
         </div>
       )}
     </div>
+    </BinderHideProxiesCtx.Provider>
     </BinderCatalogCtx.Provider>
   );
 }
@@ -933,6 +943,9 @@ function MiniPageGrid({
     ? slotColors(pageBg)
     : { bg: 'var(--secondary)', border: 'var(--border)' };
   const catalogInfoById = useContext(BinderCatalogCtx);
+  // Proxy-Bilder fehlender Karten ausblenden (leere Slots). In der Blatt-Übersicht gibt es
+  // keine Info-Zeile → der Slot bleibt dann schlicht leer/transparent.
+  const hideProxies = useContext(BinderHideProxiesCtx);
   return (
     <div
       className="grid gap-1 w-full"
@@ -941,7 +954,7 @@ function MiniPageGrid({
       {slots.map((slotId, slotI) => {
         const card = slotId ? cardsById.get(slotId) : undefined;
         const cardInfo = card ? ownedCardToInfo(card, catalogInfoById) : undefined;
-        const missing = !card && pageIdx != null ? missingCards?.get(`${pageIdx}-${slotI}`) : undefined;
+        const missing = !card && pageIdx != null && !hideProxies ? missingCards?.get(`${pageIdx}-${slotI}`) : undefined;
         const selectable = selectMode && !!card;
         const isSel = selectable && !!selectedIds?.has(card!.id);
         return (
@@ -1112,12 +1125,15 @@ function SheetTile({
   const slotsFilled = sheet.front.slots.filter(Boolean).length + sheet.back.slots.filter(Boolean).length;
   const slotsTotal = sheet.front.slots.length + sheet.back.slots.length;
   const pageTextColor = pageBg === 'transparent' ? '#1a1a1a' : readableText(pageBg);
+  // Transparente Sammlung: Rand durchscheinend, kein schwerer Karten-Schatten (sonst wirkt das Blatt
+  // gerahmt/solide statt durchscheinend) — konsistent mit der Einzelseite.
+  const isTransparent = !pageBg?.startsWith('#');
   return (
     <div
-      className="rounded-xl border shadow-card p-2"
+      className={`rounded-xl border p-2${isTransparent && !isOverlay ? '' : ' shadow-card'}`}
       style={{
         background: pageBg,
-        borderColor: isOverlay ? pageTextColor : 'var(--border)',
+        borderColor: isOverlay ? pageTextColor : (isTransparent ? 'rgba(255,255,255,0.18)' : 'var(--border)'),
         borderStyle: 'solid',
         borderWidth: isOverlay ? 2 : 1,
         cursor: editMode ? undefined : 'pointer',
@@ -1469,11 +1485,14 @@ function SinglePageView({
     // Hintergrund-Layer (prev-back, neighbor) ohne Shadow rendern, damit kein
     // Schatten an der Ring-Kante der rotierenden Seite sichtbar wird.
     const isBg = key === 'prev-back' || key === 'neighbor';
+    // Transparente Sammlung: auch der Seitenrand (Border) durchscheinend, und KEIN Karten-Schatten
+    // (der ließe den Rand solide/gerahmt wirken). Gilt für ALLE Schichten (renderPage) → Ruhe == Flip.
+    const solidFrame = pageBg?.startsWith('#');
     return (
       <div
         key={key}
-        className={`flex items-stretch gap-2 px-3 py-2 mx-3 rounded-xl border${isBg ? '' : ' shadow-card'}`}
-        style={{ background: pageBg, borderColor: 'var(--border)' }}
+        className={`flex items-stretch gap-2 px-3 py-2 mx-3 rounded-xl border${!isBg && solidFrame ? ' shadow-card' : ''}`}
+        style={{ background: pageBg, borderColor: solidFrame ? 'var(--border)' : 'rgba(255,255,255,0.18)' }}
       >
         {ringsLeft && <RingsCol />}
         {slotsContent}
@@ -1596,6 +1615,18 @@ function SinglePageView({
   const STEP_OFFSET_PX = 22;
   const step = (pct: number) => `calc(${pct}% - ${(pct * STEP_OFFSET_PX / 100).toFixed(3)}px)`;
 
+  // Transparente Sammlung, Ruhezustand: das „dahinterliegende" Blatt DERSELBEN Seite leicht
+  // durchscheinend zeigen (wie bei echten durchsichtigen Sammelhüllen). Vorderseite → Vorderseite
+  // des NÄCHSTEN Blatts (neighborIdx), Rückseite → Rückseite des VORIGEN Blatts (prevBackIdx).
+  // Auch beim SLIDE-Flip zeigen (Rotate hat eigene Nachbar-Layer als Rückseite): sonst scheint die
+  // halbtransparente Seite beim Slide plötzlich auf den dunklen App-Hintergrund → Transparenz-Sprung.
+  const isTransparentPage = !pageBg?.startsWith('#');
+  const showRestBehind = !showFlip || flip?.kind === 'slide';
+  const restBehindIdx = isFront ? neighborIdx : prevBackIdx;
+  const restBehindPage = (showRestBehind && isTransparentPage && restBehindIdx >= 0)
+    ? (pages[restBehindIdx] ?? null)
+    : null;
+
   return (
     <div>
       {editMode ? (
@@ -1665,6 +1696,19 @@ function SinglePageView({
           onPointerUp={onFlipUp}
           onPointerCancel={onFlipUp}
         >
+          {/* Durchscheinendes „Dahinter"-Blatt (nur transparente Sammlung) — UNTERSTE Schicht,
+              konstant im Ruhezustand UND während des Slide-Flips, damit die Transparenz gleich
+              bleibt (kein Durchblitzen des App-Hintergrunds). Vorderseite → nächstes Blatt vorne,
+              Rückseite → voriges Blatt hinten. Schimmert durch transparente Flächen/leere Slots. */}
+          {restBehindPage && (
+            <div
+              aria-hidden
+              className="absolute inset-0"
+              style={{ zIndex: 0, opacity: 0.32, pointerEvents: 'none' }}
+            >
+              {renderPage(restBehindPage, restBehindIdx, 'rest-behind')}
+            </div>
+          )}
           {/* Rückseite des vorherigen Blatts — hinter dem rotierenden Blatt
               auf der gegenüberliegenden Seite des Nachbarblatts. */}
           {showFlip && flip.kind === 'rotate' && prevBackPage && (
@@ -1674,6 +1718,9 @@ function SinglePageView({
                 transform: `translateX(${step(prevBackShift)})`,
                 transition: flipTransition,
                 zIndex: 0,
+                // Bei transparenter Sammlung die Nachbar-Schicht nur leicht durchscheinend zeigen
+                // (wie im Ruhezustand), statt voll sichtbar.
+                opacity: isTransparentPage ? 0.32 : 1,
               }}
             >
               {renderPage(prevBackPage, prevBackIdx, 'prev-back')}
@@ -1688,6 +1735,7 @@ function SinglePageView({
                 transform: `translateX(${step(neighborShift)})`,
                 transition: flipTransition,
                 zIndex: 0,
+                opacity: isTransparentPage ? 0.32 : 1,
               }}
             >
               {renderPage(neighborPage, neighborIdx, 'neighbor')}
@@ -1720,8 +1768,9 @@ function SinglePageView({
               aria-hidden
               className="absolute rounded-l-lg border-y border-l pointer-events-none"
               style={{ top: 0, bottom: 0, right: 0, width: 10, zIndex: 0,
-                background: pageBg === 'transparent' ? 'rgba(120,120,130,.12)' : pageBg,
-                borderColor: 'var(--border)', boxShadow: '-2px 1px 5px rgba(0,0,0,.20)' }}
+                background: pageBg,
+                borderColor: isTransparentPage ? 'rgba(255,255,255,0.18)' : 'var(--border)',
+                boxShadow: `-2px 1px 5px rgba(0,0,0,${isTransparentPage ? '.10' : '.20'})` }}
             />
           )}
           {!showFlip && isFront && pageIdx > 0 && (
@@ -1729,8 +1778,9 @@ function SinglePageView({
               aria-hidden
               className="absolute rounded-r-lg border-y border-r pointer-events-none"
               style={{ top: 0, bottom: 0, left: 0, width: 10, zIndex: 0,
-                background: pageBg === 'transparent' ? 'rgba(120,120,130,.12)' : pageBg,
-                borderColor: 'var(--border)', boxShadow: '2px 1px 5px rgba(0,0,0,.20)' }}
+                background: pageBg,
+                borderColor: isTransparentPage ? 'rgba(255,255,255,0.18)' : 'var(--border)',
+                boxShadow: `2px 1px 5px rgba(0,0,0,${isTransparentPage ? '.10' : '.20'})` }}
             />
           )}
           {/* Animierter Container — bei Rotate als 3D-„Blatt" mit Front- und
@@ -1958,6 +2008,11 @@ function DroppableEmptySlot({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id, disabled: !editMode });
   const { bg: emptyBg, border: emptyBorder } = slotColors(pageBg);
+  // hideProxies = fehlende Karte NICHT als Proxy-Bild zeigen. Die einstellbare Info-Zeile
+  // (Name/Nr./Preis) bleibt trotzdem — so sieht man, welche Karte hier noch fehlt, ohne Bild.
+  const hideProxies = useContext(BinderHideProxiesCtx);
+  const showProxyImage = !!missingCard && !hideProxies;
+  const showMissingInfo = !!missingCard && !!showInfo && !editMode;
   return (
     <div
       ref={setNodeRef}
@@ -1973,18 +2028,18 @@ function DroppableEmptySlot({
       }}
       onClick={() => { if (!editMode && !selectMode && missingCard) onMissingTap?.(missingCard); }}
     >
-      {missingCard && (
-        <>
-          {/* Fehlt-Look wie in der Suche (Card-Theme), ohne Badges/Herz (bare). */}
-          <Card card={catalogCardToInfo(missingCard)} ownedCards={[]} bare cornerRadius={5} />
-          {showInfo && !editMode && (
-            <CardInfoOverlay
-              name={missingCard.nameDe ?? missingCard.name}
-              number={missingCard.number}
-              price={pickTrendPrice(priceResult)}
-            />
-          )}
-        </>
+      {/* Proxy-Bild der fehlenden Karte — nur wenn nicht ausgeblendet. */}
+      {showProxyImage && (
+        /* Fehlt-Look wie in der Suche (Card-Theme), ohne Badges/Herz (bare). */
+        <Card card={catalogCardToInfo(missingCard!)} ownedCards={[]} bare cornerRadius={5} />
+      )}
+      {/* Info-Zeile der fehlenden Karte — auch ohne Proxy-Bild (zeigt, welche Karte fehlt). */}
+      {showMissingInfo && (
+        <CardInfoOverlay
+          name={missingCard!.nameDe ?? missingCard!.name}
+          number={missingCard!.number}
+          price={pickTrendPrice(priceResult)}
+        />
       )}
       <div className="absolute inset-0 flex items-center justify-center">
         {editMode ? (
@@ -1996,7 +2051,7 @@ function DroppableEmptySlot({
           >
             <Plus size={16} strokeWidth={3} />
           </button>
-        ) : !missingCard ? (
+        ) : (!showProxyImage && !showMissingInfo) ? (
           // Platzhalter-Zahl an den Slot-Hintergrund angepasst: dunkel auf hellem,
           // hell auf dunklem Untergrund (Luminanz via readableText), mit moderater
           // Deckkraft — lesbar, aber bewusst dezent (kein harter Kontrast/keine

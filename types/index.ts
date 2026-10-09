@@ -95,6 +95,9 @@ export interface BinderDoc {
   /** Hintergrund der Binder-Seiten: 'black' (default, dunkler Binder), 'white' (weißer Binder),
    *  'transparent' (App-Hintergrund scheint durch). */
   pageBackground?: 'black' | 'white' | 'transparent';
+  /** Fehlende Karten (Vorlagen-/Set-Sammlung): true = die Slots fehlender Karten LEER lassen;
+   *  undefined/false = Katalog-Platzhalter („Proxy") im Slot zeigen (Default, bisheriges Verhalten). */
+  hideMissingProxies?: boolean;
   isDefault?: boolean;
   /** „Eingang"-Inbox: Auffang für ungespeicherte Scans beim Verlassen des Scanners. Wird ausgeblendet wenn leer. */
   isInbox?: boolean;

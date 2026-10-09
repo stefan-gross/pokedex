@@ -6,6 +6,7 @@ import { syncTemplateBinders } from '@/lib/template-binders/sync';
 import { BinderIcon, pokemonArtworkUrl } from '@/lib/binder-icons';
 import { IconPicker } from '@/components/binder/IconPicker';
 import { ButtonGroup } from '@/components/ui/button-group';
+import { Switch } from '@/components/ui/switch';
 import { Sheet } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -61,6 +62,8 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
   const [size,     setSize]     = useState<BinderSize>((existing?.size as BinderSize) ?? 9);
   const [capacity, setCapacity] = useState<string>(existing?.capacity != null ? String(existing.capacity) : '');
   const [pageBg,   setPageBg]   = useState<'black' | 'white' | 'transparent'>(existing?.pageBackground ?? 'black');
+  // Fehlende Karten als Katalog-Platzhalter („Proxy") im Slot zeigen (Default) ODER Slot leer lassen.
+  const [showMissing, setShowMissing] = useState<boolean>(!(existing?.hideMissingProxies ?? false));
   const [saving,   setSaving]   = useState(false);
 
   const isBinder = collectionType === 'binder';
@@ -89,7 +92,7 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
         icon,
         color,
         collectionType,
-        ...(isBinder ? { size, capacity: parsedCapacity, pageBackground: pageBg } : {}),
+        ...(isBinder ? { size, capacity: parsedCapacity, pageBackground: pageBg, hideMissingProxies: !showMissing } : {}),
       };
       if (existing) {
         await updateBinder(existing.id, data);
@@ -288,6 +291,24 @@ export function CreateBinderModal({ existing, templateDraft, initialName, initia
                 ]}
               />
             </div>
+
+            {/* Fehlende Karten: Platzhalter („Proxy") zeigen oder Slot leer lassen. Nur bei
+                Vorlagen-/Set-Sammlungen sinnvoll (nur dort werden fehlende Slots aufgelöst). */}
+            {(existing?.template || templateDraft) && (
+              <div className="mb-5">
+                <Switch
+                  checked={showMissing}
+                  onChange={setShowMissing}
+                  accentColor={color}
+                  label="Fehlende Karten als Platzhalter zeigen"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {showMissing
+                    ? 'Noch fehlende Karten erscheinen als gedimmtes Katalogbild im passenden Slot.'
+                    : 'Plätze fehlender Karten bleiben leer.'}
+                </p>
+              </div>
+            )}
           </>
         )}
 
