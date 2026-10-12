@@ -1626,6 +1626,17 @@ function SinglePageView({
   const restBehindPage = (showRestBehind && isTransparentPage && restBehindIdx >= 0)
     ? (pages[restBehindIdx] ?? null)
     : null;
+  // Beim SLIDE scrollt alles wie ein Karussell → die Backing-Schichten müssen MITLAUFEN (sonst
+  // stehen sie fest und man sieht durch die Transparenz, dass sie sich nicht bewegen). Daher auch
+  // für die ZIELSEITE ein eigenes Dahinter-Blatt, das mit ihr gleitet.
+  const isSlide = showFlip && flip?.kind === 'slide';
+  const targetIsFront = targetIdx % 2 === 0;
+  const targetSheetIdx = Math.floor(targetIdx / 2);
+  const targetBehindIdx = targetIsFront ? (targetSheetIdx + 1) * 2 : targetSheetIdx * 2 - 1;
+  const targetBehindPage = (isSlide && isTransparentPage && targetBehindIdx >= 0)
+    ? (pages[targetBehindIdx] ?? null)
+    : null;
+  const targetSlideShift = slideShift + (flip?.dir === 'forward' ? 100 : -100);
 
   return (
     <div>
@@ -1700,13 +1711,36 @@ function SinglePageView({
               konstant im Ruhezustand UND während des Slide-Flips, damit die Transparenz gleich
               bleibt (kein Durchblitzen des App-Hintergrunds). Vorderseite → nächstes Blatt vorne,
               Rückseite → voriges Blatt hinten. Schimmert durch transparente Flächen/leere Slots. */}
-          {restBehindPage && (
+          {/* Ruhezustand: statische Dahinter-Schicht. */}
+          {!showFlip && restBehindPage && (
             <div
               aria-hidden
               className="absolute inset-0"
               style={{ zIndex: 0, opacity: 0.32, pointerEvents: 'none' }}
             >
               {renderPage(restBehindPage, restBehindIdx, 'rest-behind')}
+            </div>
+          )}
+          {/* Slide: Dahinter-Schichten laufen MIT (aktuelle Seite + Zielseite), damit sie sich
+              durch die Transparenz nicht als stehende Fläche verraten. */}
+          {isSlide && restBehindPage && (
+            <div
+              aria-hidden
+              className="absolute inset-0"
+              style={{ zIndex: 0, opacity: 0.32, pointerEvents: 'none',
+                transform: `translateX(${step(slideShift)})`, transition: flipTransition }}
+            >
+              {renderPage(restBehindPage, restBehindIdx, 'rest-behind-cur')}
+            </div>
+          )}
+          {isSlide && targetBehindPage && (
+            <div
+              aria-hidden
+              className="absolute inset-0"
+              style={{ zIndex: 0, opacity: 0.32, pointerEvents: 'none',
+                transform: `translateX(${step(targetSlideShift)})`, transition: flipTransition }}
+            >
+              {renderPage(targetBehindPage, targetBehindIdx, 'rest-behind-tgt')}
             </div>
           )}
           {/* Rückseite des vorherigen Blatts — hinter dem rotierenden Blatt
