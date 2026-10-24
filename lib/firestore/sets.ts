@@ -15,6 +15,10 @@ export interface TcgSet {
   symbolUrl?: string;
   releaseDate?: string;
   tcgdexId?: string;
+  /** true = manuell importiertes Set, das es in TCGdex nicht gibt (z.B. die
+   *  „Gem Pack"-Serie). Wird vom Catalog-Sync-Prune ausgenommen (siehe
+   *  lib/sync-catalog.ts), sonst würde es bei jedem Sync gelöscht. */
+  custom?: boolean;
 }
 
 const COL = 'tcg_sets';

@@ -487,8 +487,13 @@ export async function syncSets(): Promise<SyncSetsResult> {
   let prunedSets = 0, prunedCards = 0;
   const validIds = new Set(ids);
   if (validIds.size > 0) {                                  // leere Liste = kaputte Antwort → nie prunen
-    const existing = await db.collection('tcg_sets').select().get();
-    const stale = existing.docs.map(d => d.id).filter(id => !validIds.has(id));
+    // `custom: true` = manuell importierte Sets (z.B. „Gem Pack"-Serie), die es
+    // in TCGdex NICHT gibt. Sie gälten sonst immer als „veraltet" und würden bei
+    // jedem Sync mitsamt Karten gelöscht → vom Prune ausnehmen.
+    const existing = await db.collection('tcg_sets').select('custom').get();
+    const stale = existing.docs
+      .filter(d => !validIds.has(d.id) && d.get('custom') !== true)
+      .map(d => d.id);
     // Sicherheitskappe: eine legitime Bereinigung betrifft 0–2 Sets. Viele
     // „verwaiste" IDs deuten auf eine unvollständige TCGdex-Antwort → NICHT löschen.
     if (stale.length > 10) {
