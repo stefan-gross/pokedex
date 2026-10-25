@@ -39,6 +39,9 @@ export interface CardInfo {
   heightDm?: number;
   weightHg?: number;
   region?: string;
+  /** Native Kartensprache des Drucks (z.B. 'zh' für die Gem-Pack-Serie). Für die
+   *  Sprach-Flagge am Katalog-Druck, unabhängig vom Besitz. */
+  nativeLanguage?: CardLanguage;
   hp?: number;
   nationalDexNumber?: number;
   evolutionFamily?: number[];
@@ -95,6 +98,7 @@ export function catalogCardToInfo(c: CatalogCard): CardInfo {
     heightDm: c.heightDm,
     weightHg: c.weightHg,
     region: c.region,
+    nativeLanguage: c.nativeLanguage,
     hp: c.hp,
     nationalDexNumber: c.nationalDexNumber,
     evolutionFamily: c.evolutionFamily,

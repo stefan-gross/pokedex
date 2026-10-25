@@ -336,6 +336,20 @@ function CardImpl({
           </CardBadge>
         )}
 
+        {/* Native-Sprache-Badge — Originalsprache des Drucks (z.B. Chinesisch
+            bei der Gem-Pack-Serie), oben links. Zeigt die Flagge auch bei NICHT
+            besessenen Karten; entfällt, wenn schon das Besitz-Sprach-Badge
+            (ownedForeignOnly) an derselben Stelle sitzt. */}
+        {!bare && !ownedForeignOnly && card.nativeLanguage && card.nativeLanguage !== 'de' && (
+          <CardBadge
+            size={preset.badgeSize} background={false} corner="tl" cornerRadius={badgeCornerRadius}
+            style={{ top: layout.reviewBadge.top, left: layout.reviewBadge.left, overflow: 'hidden' }}
+            ariaLabel={`Originalsprache ${card.nativeLanguage.toUpperCase()}`} title="Originalsprache"
+          >
+            <LanguageFlag lang={card.nativeLanguage} cover />
+          </CardBadge>
+        )}
+
         {/* Anzahl-Badge — grün, oben rechts. Nur ab 2 Exemplaren; bei genau
             einer Karte reicht die Voll-Farbe (fehlende sind ausgegraut) als
             Besitz-Anzeige, ein „×1" wäre redundant. Im Auswahl-Modus

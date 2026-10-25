@@ -83,7 +83,7 @@ for (const h of heads) {
         number: `${nn} ${String(mm).padStart(2, '0')}/07`, setId: SET_ID, setName: SET_NAME, series: SERIES, setCode: SET_ID,
         rarity: mm === 7 ? 'Illustration Rare' : 'Holo Rare', supertype: 'Pokémon', types,
         ...(dex ? { nationalDexNumber: dex } : {}), ...(family.length ? { evolutionFamily: family } : {}),
-        imgSmall: '', imgLarge: '', variants: ['holo'],
+        imgSmall: '', imgLarge: '', variants: ['holo'], nativeLanguage: 'zh',
         ...(url ? { imgSmallDe: url, imgLargeDe: url, hasDeImage: true, deImageSource: 'pokezentrum' } : { hasDeImage: false }),
       };
       if (!DRY) batch.set(db.collection('tcg_catalog').doc(id), doc, { merge: true });

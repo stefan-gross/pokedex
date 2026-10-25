@@ -128,7 +128,7 @@ for (const c of cards) {
       number: `${num}/${c.tt}`, setId: SET_ID, setName: cfg.name, series: SERIES, setCode: SET_ID,
       rarity: rarityFromFile(c.file), supertype, types,
       ...(dex ? { nationalDexNumber: dex } : {}), ...(family.length ? { evolutionFamily: family } : {}),
-      imgSmall: '', imgLarge: '', variants: ['holo'],
+      imgSmall: '', imgLarge: '', variants: ['holo'], nativeLanguage: 'zh',
       imgSmallDe: url, imgLargeDe: url, hasDeImage: true, deImageSource: 'pokezentrum',
     };
     if (!DRY && !SAMPLE) await db.collection('tcg_catalog').doc(id).set(doc, { merge: true });

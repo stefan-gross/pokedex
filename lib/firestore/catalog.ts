@@ -5,7 +5,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import { RARITY_GROUPS, SPECIAL_MECHANIC_KEYS, rarityMatchValues } from '../card-constants';
-import type { CardVariant, CardAttack, CardAbility, CardWeakRes } from '@/types';
+import type { CardVariant, CardAttack, CardAbility, CardWeakRes, CardLanguage } from '@/types';
 import type { CachedPricesLike } from '../prices/trend-from-cached';
 
 export interface CatalogCard {
@@ -36,6 +36,10 @@ export interface CatalogCard {
   imgLargeDe?: string;         // Selbst gehostetes DE-Kartenbild groß (Backfill). TCGdex-DE-URL wird sonst beim Lesen abgeleitet (/en/→/de/).
   deImageSource?: string;      // Herkunft des selbst gehosteten DE-Bilds, z.B. 'pokewiki' | 'limitless'
   hasDeImage?: boolean;        // Abgeleitet (enrichDeData): ein deutsches Bild ist verfügbar (selbst gehostet ODER TCGdex-DE-Scan)
+  // Native Kartensprache (Originalsprache des Drucks, z.B. 'zh' für die
+  // chinesische „Gem Pack"-Serie). Rein informativ für die Sprach-Flagge am
+  // Katalog-Druck — unabhängig davon, in welcher Sprache der Nutzer sie besitzt.
+  nativeLanguage?: CardLanguage;
   // Pokémon-Artdaten (nur Pokémon-Karten, via PokéAPI-Enrichment)
   genusDe?: string;            // z.B. "Maus-Pokémon"
   flavorTextDe?: string;       // Beschreibungstext auf Deutsch

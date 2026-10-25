@@ -99,7 +99,7 @@ for (const h of heads) {
       number: `${num}/${h.tt}`, setId: SET_ID, setName: SET_NAME, series: SERIES, setCode: SET_ID,
       rarity: pick ? rarityFromFile(pick.file) : 'Common', supertype, types,
       ...(dex ? { nationalDexNumber: dex } : {}), ...(family.length ? { evolutionFamily: family } : {}),
-      imgSmall: '', imgLarge: '', variants: ['holo'],
+      imgSmall: '', imgLarge: '', variants: ['holo'], nativeLanguage: 'zh',
       ...(url ? { imgSmallDe: url, imgLargeDe: url, hasDeImage: true, deImageSource: 'pokezentrum' } : { hasDeImage: false }),
     };
     if (!DRY && !SAMPLE) await db.collection('tcg_catalog').doc(id).set(doc, { merge: true });

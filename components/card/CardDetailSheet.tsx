@@ -796,12 +796,24 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                 )}
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[13px] font-bold leading-snug truncate">{setNameDe}</span>
-                  {isSymbolOnlySet && resolvedMeta?.symbolUrl ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={resolvedMeta.symbolUrl} alt={setCode} className="w-[21px] h-[21px] object-contain shrink-0" />
-                  ) : (
-                    <HeaderPill mono title={setNameDe}>{setCode}</HeaderPill>
-                  )}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Native Kartensprache (z.B. Chinesisch bei Gem Packs) —
+                        Flagge am Katalog-Druck, unabhängig vom Besitz. */}
+                    {card.nativeLanguage && card.nativeLanguage !== 'de' && (
+                      <span
+                        className="w-5 h-5 rounded-full overflow-hidden shrink-0 flex items-center justify-center"
+                        title={`Originalsprache ${card.nativeLanguage.toUpperCase()}`}
+                      >
+                        <LanguageFlag lang={card.nativeLanguage} size={20} />
+                      </span>
+                    )}
+                    {isSymbolOnlySet && resolvedMeta?.symbolUrl ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={resolvedMeta.symbolUrl} alt={setCode} className="w-[21px] h-[21px] object-contain shrink-0" />
+                    ) : (
+                      <HeaderPill mono title={setNameDe}>{setCode}</HeaderPill>
+                    )}
+                  </div>
                 </div>
                 {card.series && (
                   <div className="text-[11px] text-muted-foreground">
