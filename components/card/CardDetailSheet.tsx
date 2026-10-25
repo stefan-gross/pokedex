@@ -736,10 +736,14 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
 
           {/* ── Hero: Kartenbild links · Set-Info rechts ───── */}
           <div className="flex gap-3.5 px-4 pt-1 pb-4">
-            {/* Kartenbild mit Zoom — kein Schatten */}
+            {/* Kartenbild mit Zoom — kein Schatten. Äußere, randlose Hülle, damit
+                das Sprach-Badge (als Geschwister) BÜNDIG in der Außenecke sitzt,
+                über dem farbigen Rand — exakt wie im Grid (dort sind die Badges
+                ebenfalls Geschwister des overflow-hidden-Bildcontainers). */}
+            <div className="relative shrink-0" style={{ width: 140 }}>
             <div
-              className="relative shrink-0 rounded-[8px] overflow-hidden cursor-zoom-in border"
-              style={{ width: 140, borderColor: rarityInfo?.color ?? 'var(--border)' }}
+              className="relative rounded-[8px] overflow-hidden cursor-zoom-in border"
+              style={{ borderColor: rarityInfo?.color ?? 'var(--border)' }}
               onClick={() => setZoomed(true)}
             >
               <CardImage
@@ -776,10 +780,10 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                   />
                 ) : null;
               })()}
-              {/* Native Kartensprache als Eck-Badge direkt auf dem Bild — exakt
-                  dieselbe CardBadge-Form wie im Grid (corner „tl", background
-                  aus, Drop-Shadow), nur Größe/Radius an das 140px-Hero-Bild
-                  angepasst. */}
+            </div>
+              {/* Native Kartensprache als Eck-Badge — Geschwister des Bild-
+                  containers, bündig in der Außenecke (wie im Grid), dieselbe
+                  CardBadge-Form (corner „tl", background aus, Drop-Shadow). */}
               {card.nativeLanguage && card.nativeLanguage !== 'de' && (
                 <CardBadge
                   size={24} background={false} corner="tl" cornerRadius={8}
