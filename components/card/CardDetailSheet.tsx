@@ -33,6 +33,7 @@ import { CardPlaceholder } from '@/components/card/CardPlaceholder';
 import { EvolutionTree } from '@/components/card/EvolutionTree';
 import { CardNameLabel } from '@/components/card/CardNameLabel';
 import { LanguageFlag } from '@/components/card/LanguageFlag';
+import { CardBadge } from '@/components/card/CardBadge';
 import { HeaderPill } from '@/components/ui/HeaderPill';
 import type { CardDoc, BinderDoc, CardVariant, WishlistDoc } from '@/types';
 
@@ -775,16 +776,18 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
                   />
                 ) : null;
               })()}
-              {/* Native Kartensprache als Eck-Badge direkt auf dem Bild (wie im
-                  Grid): Originalsprache des Drucks, unabhängig vom Besitz. */}
+              {/* Native Kartensprache als Eck-Badge direkt auf dem Bild — exakt
+                  dieselbe CardBadge-Form wie im Grid (corner „tl", background
+                  aus, Drop-Shadow), nur Größe/Radius an das 140px-Hero-Bild
+                  angepasst. */}
               {card.nativeLanguage && card.nativeLanguage !== 'de' && (
-                <span
-                  className="absolute top-1 left-1 w-5 h-5 rounded-full overflow-hidden"
-                  style={{ boxShadow: '0 0 0 1.5px rgba(255,255,255,0.92), 0 1px 2px rgba(0,0,0,0.45)' }}
-                  title={`Originalsprache ${card.nativeLanguage.toUpperCase()}`}
+                <CardBadge
+                  size={24} background={false} corner="tl" cornerRadius={8}
+                  style={{ top: 4, left: 4, overflow: 'hidden' }}
+                  ariaLabel={`Originalsprache ${card.nativeLanguage.toUpperCase()}`} title="Originalsprache"
                 >
                   <LanguageFlag lang={card.nativeLanguage} cover />
-                </span>
+                </CardBadge>
               )}
             </div>
 
