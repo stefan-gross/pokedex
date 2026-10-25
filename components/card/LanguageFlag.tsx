@@ -58,6 +58,10 @@ export function LanguageFlag({ lang, size = 14, elevated = false, cover = false 
       <rect width="30" height="18" fill="#fff" />
       <circle cx="15" cy="9" r="4.5" fill="#BC002D" />
     </>);
+    case 'zh': return wrap(<>
+      <rect width="30" height="18" fill="#DE2910" />
+      <polygon fill="#FFDE00" points="7,2.4 7.88,4.79 10.42,4.89 8.43,6.46 9.12,8.91 7,7.5 4.88,8.91 5.57,6.46 3.58,4.89 6.12,4.79" />
+    </>);
     default: return cover ? (
       <span style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.5, fontWeight: 700, textTransform: 'uppercase' }}>{lang}</span>
     ) : (

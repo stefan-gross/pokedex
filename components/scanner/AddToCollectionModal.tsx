@@ -52,7 +52,8 @@ export function AddToCollectionModal({
   const [variant, setVariant] = useState<CardVariant>(preVariant ?? (card.variants?.[0] as CardVariant) ?? 'standard');
   const variantOptions: CardVariant[] = (card.variants && card.variants.length > 0 ? card.variants : ['standard']) as CardVariant[];
   const [condition, setCondition] = useState<CardCondition>(preCondition ?? 'NM');
-  const [language, setLanguage] = useState<CardLanguage>(preLanguage ?? 'de');
+  // Gem-Pack-Serie ist chinesisch → Chinesisch vorbelegen (sonst Deutsch).
+  const [language, setLanguage] = useState<CardLanguage>(preLanguage ?? (card.series === 'Gem Pack' ? 'zh' : 'de'));
 
   // Variante/Sprache kommen aus dem Aufruf-Kontext bereits feststehend (z.B.
   // der "+"-Button einer bestimmten Variantenzeile im Kartendetail, oder

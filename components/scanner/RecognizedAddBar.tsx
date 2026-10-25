@@ -79,7 +79,7 @@ export function RecognizedAddBar({
 
   const [variant, setVariant]     = useState<CardVariant>(preVariant ?? variantOptions[0] ?? 'standard');
   const [condition, setCondition] = useState<CardCondition>(preCondition ?? 'NM');
-  const [language, setLanguage]   = useState<CardLanguage>(preLanguage ?? 'de');
+  const [language, setLanguage]   = useState<CardLanguage>(preLanguage ?? (card.series === 'Gem Pack' ? 'zh' : 'de'));
 
   const [binders, setBinders] = useState<BinderDoc[]>([]);
   const [targetId, setTargetId] = useState<string | null>(null);

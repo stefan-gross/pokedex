@@ -6,6 +6,7 @@ export const LANGUAGES: { value: CardLanguage; label: string }[] = [
   { value: 'fr', label: 'Französisch' },
   { value: 'es', label: 'Spanisch' },
   { value: 'jp', label: 'Japanisch' },
+  { value: 'zh', label: 'Chinesisch' },
 ];
 
 export const CONDITIONS: { value: CardCondition; label: string; short: string }[] = [
