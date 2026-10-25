@@ -783,7 +783,7 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
               {card.nativeLanguage && card.nativeLanguage !== 'de' && (
                 <CardBadge
                   size={24} background={false} corner="tl" cornerRadius={8}
-                  style={{ top: 4, left: 4, overflow: 'hidden' }}
+                  style={{ top: 0, left: 0, overflow: 'hidden' }}
                   ariaLabel={`Originalsprache ${card.nativeLanguage.toUpperCase()}`} title="Originalsprache"
                 >
                   <LanguageFlag lang={card.nativeLanguage} cover />
