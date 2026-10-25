@@ -450,8 +450,10 @@ export function CardDetailSheet({ card: initialCard, ownedCopies, binders, setMe
             : prev);
         });
       } else {
-        // Fallback: live von PokéAPI (vor Enrichment oder bei Karten ohne DE-Namen)
-        fetchPokemonSpeciesDE(card.name, card.supertype)
+        // Fallback: live von PokéAPI (vor Enrichment oder bei Karten ohne DE-Namen).
+        // Dex-Nummer mitgeben → lädt die Art auch bei Regional-Formen/chinesischen
+        // Karten zuverlässig (Name-Slug scheitert dort, z.B. „Alola-Digdri").
+        fetchPokemonSpeciesDE(card.name, card.supertype, card.nationalDexNumber)
           .then(s => { setSpecies(s); setSpeciesLoaded(true); });
       }
 

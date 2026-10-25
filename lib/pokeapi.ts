@@ -69,15 +69,23 @@ const GENERATION_REGIONS: Record<string, string> = {
 export async function fetchPokemonSpeciesDE(
   cardName: string,
   supertype?: string,
+  /** National-Dex-Nummer. Wenn gesetzt, wird die Art ÜBER DIE NUMMER geladen —
+   *  zuverlässiger als der Namens-Slug (z.B. bei Regional-Formen/chinesischen
+   *  Karten wie „Alola-Digdri", deren Name die PokéAPI nicht auflöst). */
+  dexNumber?: number,
 ): Promise<SpeciesDE | null> {
   if (supertype && !['pokémon', 'pokemon'].includes(supertype.toLowerCase())) return null;
   try {
     const slug = extractSpeciesName(cardName);
-    if (!slug) return null;
+    // Art-Endpoint: Dex-Nummer bevorzugt (robust), sonst Namens-Slug.
+    // Pokémon-Endpoint (Größe/Gewicht/Werte/Form): Namens-Slug bevorzugt, sonst Nummer.
+    const speciesKey = dexNumber ?? slug;
+    const pokemonKey = slug ?? dexNumber;
+    if (!speciesKey) return null;
 
     const [speciesRes, pokemonRes] = await Promise.all([
-      fetch(`${BASE}/pokemon-species/${slug}`, { signal: AbortSignal.timeout(5000) }),
-      fetch(`${BASE}/pokemon/${slug}`,         { signal: AbortSignal.timeout(5000) }),
+      fetch(`${BASE}/pokemon-species/${speciesKey}`, { signal: AbortSignal.timeout(5000) }),
+      fetch(`${BASE}/pokemon/${pokemonKey}`,         { signal: AbortSignal.timeout(5000) }),
     ]);
     if (!speciesRes.ok) return null;
 
